@@ -189,8 +189,11 @@ const project = computed(() =>
 /** What each entry holds, which a failure's record names. */
 const credentialKinds: CredentialKinds = (providerId) =>
   resources.providers.find((provider) => provider.id === providerId)?.kind ?? null
+// Until the entries are known, as when the offline copy kept no models, the
+// conversation's own is taken to be there: its recovery stays where it is,
+// and the backend says when the entry is gone.
 const hasProvider = computed(() =>
-  resources.providerInfos.some(
+  product.catalogLoad !== 'ready' || resources.providerInfos.some(
     (p) => p.id === conversation.value?.model.providerId && p.isAvailable,
   ),
 )

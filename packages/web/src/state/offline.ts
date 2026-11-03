@@ -24,7 +24,7 @@ import {
   userDtoSchema,
   type UserDto,
 } from '../api/generated/web-api'
-import { readStateSchema, type PageState } from './lists'
+import { readStateSchema, type PageState, type ReadState } from './lists'
 import { IndexedDatabase } from '@demicodes/web-ui/infra/indexed-db'
 import { t } from './locales/text'
 
@@ -34,8 +34,8 @@ import { t } from './locales/text'
  * page opens offline.
  *
  * - The account's record: the parts of the product state that show the
- *   conversations (`COPIED_PARTS`), and the account the session names.
- *   Nothing else of the state is written to disk.
+ *   conversations (`COPIED_GROUPS`), and the account the session names, each
+ *   group with its own format. Nothing else of the state is written to disk.
  * - Each conversation's record: its metadata and its agents at their
  *   version, and the descriptions of the attachments its replies name, so
  *   an opening from the copy shows the whole conversation at once.
@@ -53,7 +53,9 @@ import { t } from './locales/text'
  * It is disposable: each kind of record names its format, the shape it was
  * written in, and a record of another format is dropped, never migrated, so
  * a release that changes one kind's shape drops that kind alone and keeps
- * the rest. It is the account's alone.
+ * the rest. The account's record keeps each group of parts as a kind of its
+ * own: a release that changes the shape of a provider leaves the
+ * conversations the sidebar shows at once. It is the account's alone.
  */
 
 const ACCOUNT = 'account'
@@ -101,36 +103,40 @@ const database = new IndexedDatabase('demi-offline', 3, (request) => {
 }, { [NODES]: NODE_INDEXES })
 
 /**
- * The parts of the state the account's record keeps: what the sidebar and an
- * opened conversation draw before the state is read.
+ * The parts of the state the account's record keeps, what the sidebar and an
+ * opened conversation draw before the state is read, in groups of the parts a
+ * view draws together: a group is kept or dropped whole, so a view never
+ * reads one part of it beside another's absence, as a project would read a
+ * device the copy dropped as removed. The model menus' parts are a group of
+ * their own, because their shapes change most often. The copy holds the
+ * conversations' group, or nothing: the page takes a copy that shows as a
+ * state known, its preferences, its plugins and the conversations the
+ * address names among them, so the models' group alone would show it as one
+ * known without them.
  */
-export const COPIED_PARTS = [
-  'user',
-  'conversations',
-  'workspaces',
-  'projects',
-  'devices',
-  'plugins',
-  'preferences',
-  'publicUrl',
-  'providers',
-  'models',
-  'subagents',
-] as const satisfies readonly (keyof PageState)[]
+const COPIED_GROUPS = {
+  conversations: ['user', 'conversations', 'workspaces', 'projects', 'devices', 'plugins', 'preferences', 'publicUrl'],
+  /** The providers, their models' catalog, and the subagent profiles, which name models. */
+  models: ['providers', 'models', 'subagents'],
+} as const satisfies Record<string, readonly (keyof ReadState)[]>
 
-const copiedPartsSchema = readStateSchema
-  .pick(Object.fromEntries(COPIED_PARTS.map((part) => [part, true])) as { [Part in typeof COPIED_PARTS[number]]: true })
-  .partial()
+type CopiedGroup = keyof typeof COPIED_GROUPS
+const GROUPS = Object.keys(COPIED_GROUPS) as CopiedGroup[]
+const COPIED_PARTS = GROUPS.flatMap((group) => COPIED_GROUPS[group])
 
 /** What the account's record keeps of `state`. */
 function copiedParts(state: PageState): PageState {
   return Object.fromEntries(COPIED_PARTS.flatMap((part) => (state[part] === undefined ? [] : [[part, state[part]]])))
 }
 
+/** A value the account's record keeps, with the format it was written in, read before the value. */
+const keptSchema = z.object({ format: z.string(), value: z.unknown() })
+
+/** The account's record: the account the session names, and the parts it keeps, by name. */
 const accountRecordSchema = z.object({
   format: z.string(),
-  user: userDtoSchema,
-  parts: copiedPartsSchema,
+  user: keptSchema,
+  parts: z.record(z.string(), keptSchema),
 })
 
 const conversationRecordSchema = z.object({
@@ -206,8 +212,27 @@ function hashOf(text: string): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)
 }
 
-/** The account's record's format. */
+/** The account's record's own format, the layout that holds its values, each of which names its own. */
 const accountFormat = formatOf(accountRecordSchema)
+/** The format of the account the record names. */
+const userFormat = formatOf(userDtoSchema)
+/** What a group of `parts` is read as: each of them, missing when the state held none. */
+function groupSchema(parts: readonly (keyof ReadState)[]): z.ZodType<PageState> {
+  const mask: Partial<Record<keyof ReadState, true>> = Object.fromEntries(parts.map((part) => [part, true]))
+  return readStateSchema.pick(mask).partial()
+}
+/** What each group's value is read as. */
+const groupSchemas: Record<CopiedGroup, z.ZodType<PageState>> = {
+  conversations: groupSchema(COPIED_GROUPS.conversations),
+  models: groupSchema(COPIED_GROUPS.models),
+}
+/** Each group's format. */
+const groupFormats = Object.fromEntries(GROUPS.map((group) => [group, formatOf(groupSchemas[group])])) as Record<CopiedGroup, () => string>
+
+/** The parts of `parts` that are in `group`. */
+function groupParts(parts: PageState, group: CopiedGroup): PageState {
+  return Object.fromEntries(COPIED_GROUPS[group].flatMap((part) => (parts[part] === undefined ? [] : [[part, parts[part]]])))
+}
 /** A conversation's record's format: its metadata, its agents, its attachments' descriptions and its reply blocks' facts. */
 const conversationFormat = formatOf(conversationRecordSchema)
 /** A node's record's format, and its blocks', which its runs name: a block of another shape goes with the record. */
@@ -246,7 +271,7 @@ export interface NodeWrite {
 
 export interface AccountCopy {
   user: UserDto
-  /** The parts of the state the record keeps (`COPIED_PARTS`). */
+  /** The parts of the state the record keeps (`COPIED_GROUPS`). */
   parts: PageState
 }
 
@@ -294,27 +319,51 @@ function inFormat(value: unknown, format: string): boolean {
 }
 
 /**
- * The account's copy; none when there is none, or it is in another format
- * or does not read, which is then dropped. The conversations' and the
- * nodes' records stay, each read by its own format.
+ * `kept` read as `schema`: its value when it is in `format`, `'other'` when
+ * it is missing or in another format, and `'defect'` when it is in `format`
+ * and does not read, which is said. A value of another format is not read,
+ * as its shape may be another release's own.
+ */
+function keptValue<S extends z.ZodType>(kept: z.infer<typeof keptSchema> | undefined, format: string, schema: S): { value: z.infer<S> } | 'other' | 'defect' {
+  if (kept === undefined || kept.format !== format) {
+    return 'other'
+  }
+  const value = schema.safeParse(kept.value)
+  if (!value.success) {
+    reportError(t('failures.readOffline'), schemaRefusal(value.error), { site: 'failures.readOffline' })
+    return 'defect'
+  }
+  return { value: value.data }
+}
+
+/**
+ * The account's copy, with each group of parts it keeps in this release's
+ * format; none when there is none, or when the record, its account or its
+ * conversations' group is in another format or does not read, which is then
+ * dropped. The models' group of another format is missing until the state is
+ * read, and the next write replaces it. The conversations' and the nodes'
+ * records stay, each read by its own format.
  */
 export async function readAccountCopy(): Promise<AccountCopy | null> {
   const value = await database.transaction(ACCOUNT, 'readonly', (store) => store.get(ACCOUNT_KEY))
   if (value === undefined) {
     return null
   }
-  // A copy of another format is dropped before its shape is read, which
-  // may be another release's own: only a copy of this format that does not
-  // read is a defect.
   const record = inFormat(value, accountFormat()) ? accountRecordSchema.safeParse(value) : null
-  if (record === null || !record.success) {
-    if (record !== null) {
-      reportError(t('failures.readOffline'), schemaRefusal(record.error), { site: 'failures.readOffline' })
-    }
+  if (record !== null && !record.success) {
+    reportError(t('failures.readOffline'), schemaRefusal(record.error), { site: 'failures.readOffline' })
+  }
+  const user = record?.success ? keptValue(record.data.user, userFormat(), userDtoSchema) : 'other'
+  const conversations = record?.success ? keptValue(record.data.parts['conversations'], groupFormats.conversations(), groupSchemas.conversations) : 'other'
+  const models = record?.success ? keptValue(record.data.parts['models'], groupFormats.models(), groupSchemas.models) : 'other'
+  // A value of this format that does not read is a defect, said once: the
+  // record goes with it, as a record that does not read does.
+  if (typeof user === 'string' || typeof conversations === 'string' || models === 'defect') {
     await database.transaction(ACCOUNT, 'readwrite', (store) => store.delete(ACCOUNT_KEY))
     return null
   }
-  return { user: record.data.user, parts: record.data.parts }
+  pageLog.info('offline_copy.read', { what: 'account', models: models === 'other' ? 'dropped' : 'kept' })
+  return { user: user.value, parts: { ...conversations.value, ...(models === 'other' ? {} : models.value) } }
 }
 
 /** Reads `value` as `schema` says a record in `format` for `userId` is; another format's, another account's or one that does not read is none. */
@@ -853,7 +902,11 @@ function keepAccountCopy(
         if (!account() || !holds(user.id) || (parts.user !== undefined && parts.user.id !== user.id)) {
           return
         }
-        const record = stored({ format: accountFormat(), user, parts })
+        const record = stored({
+          format: accountFormat(),
+          user: { format: userFormat(), value: user },
+          parts: Object.fromEntries(GROUPS.map((group) => [group, { format: groupFormats[group](), value: groupParts(parts, group) }])),
+        })
         await withRoom(null, () => database.transaction(ACCOUNT, 'readwrite', (store) => store.put(record, ACCOUNT_KEY)))
       }
     } catch (error) {
