@@ -41,6 +41,10 @@ impl AnthropicConfig {
     /// The base URL of an entry that names none (`crates/provider-common/src/endpoint.rs`).
     pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
 
+    /// The header that names the workspace a request runs in, which a key
+    /// not scoped to a workspace must send and a key scoped to one need not.
+    pub const WORKSPACE_HEADER: &str = "anthropic-workspace-id";
+
     /// The lifetimes the Messages API keeps a cache entry for.
     pub const CACHE_TTLS: [&str; 2] = ["5m", "1h"];
 

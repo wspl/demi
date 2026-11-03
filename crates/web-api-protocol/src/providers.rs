@@ -297,7 +297,9 @@ pub struct ProviderPatch {
     #[schemars(with = "Option<Nullable<DeviceId>>")]
     #[garde(skip)]
     pub through_device: Option<Option<DeviceId>>,
-    /// A compatible entry's whole new list of headers.
+    /// The entry's whole new list of headers: any for a compatible entry,
+    /// those its family declares for a vendor entry, where an empty value
+    /// sends none.
     #[serde(default, with = "unwrap_or_skip")]
     #[schemars(with = "Vec<ProviderHeader>")]
     #[garde(skip)]
@@ -518,8 +520,10 @@ pub struct ProviderDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<DeviceId>")]
     pub through_device: Option<DeviceId>,
-    /// The headers every request of a compatible entry carries, in the
-    /// user's order; empty for any other entry.
+    /// The headers every request of the entry carries: a compatible entry's
+    /// in the user's order, and for a vendor entry each one its vendor
+    /// documents, with an empty value when it sends none. Empty for a
+    /// subscription.
     pub headers: Vec<ProviderHeader>,
     pub created_at: Timestamp,
 }

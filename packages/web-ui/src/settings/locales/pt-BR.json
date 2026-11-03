@@ -751,6 +751,12 @@
       "throughRemoved": "Dispositivo removido",
       "throughRemovedDescription": "O dispositivo foi removido: as solicitações falham até você escolher outro."
     },
+    "vendorHeaders": {
+      "anthropic-workspace-id": {
+        "label": "ID do espaço de trabalho",
+        "description": "Para uma chave sem espaço de trabalho definido."
+      }
+    },
     "headers": {
       "title": "Cabeçalhos",
       "description": "Enviados com cada solicitação. Em um valor, {token} representa o ID da conversa.",

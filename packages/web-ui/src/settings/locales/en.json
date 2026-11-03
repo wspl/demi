@@ -751,6 +751,12 @@
       "throughRemoved": "Removed Device",
       "throughRemovedDescription": "The device was removed: requests fail until you choose another."
     },
+    "vendorHeaders": {
+      "anthropic-workspace-id": {
+        "label": "Workspace ID",
+        "description": "For a key not scoped to a workspace."
+      }
+    },
     "headers": {
       "title": "Headers",
       "description": "Sent with every request. In a value, {token} stands for the conversation’s ID.",

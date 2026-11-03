@@ -3,7 +3,7 @@ import { formError, type ShownError } from '../infra/errors'
 import { computed, reactive, ref, watch, type Component } from 'vue'
 import { effortLabel } from './efforts'
 import { t as uiText } from '../locales/text'
-import { t } from './locales/text'
+import { find, t } from './locales/text'
 import { showToast } from '../infra/toast'
 import {
   Brain,
@@ -90,6 +90,7 @@ import {
   type SettingsModelSearch,
   type SettingsModelEditor,
   type SettingsProviderEntry,
+  type SettingsProviderHeader,
   type SettingsProviderOperation,
   type SettingsProviderModel,
   type SettingsRotation,
@@ -900,6 +901,16 @@ function throughDescriptions(provider: SettingsProviderEntry): { text: string; s
   ]
 }
 
+/** The page's `part` of a vendor's header `name`, null when it has none. */
+function vendorHeaderText(name: string, part: 'label' | 'description'): string | null {
+  return find(`providers.vendorHeaders.${name}.${part}`)
+}
+
+/** `entry`'s headers with `name`'s value `value`. */
+function withHeader(entry: SettingsProviderEntry, name: string, value: string): SettingsProviderHeader[] {
+  return (entry.headers ?? []).map((header) => (header.name === name ? { name, value } : header))
+}
+
 function endpointCheck(value: string) {
   return value.trim() === '' ? null : endpointProblem(value)
 }
@@ -1329,6 +1340,25 @@ function endpointCheck(value: string) {
                     class="w-72 max-w-full"
                   />
                 </SettingsRow>
+                <!-- A vendor's entry sets only the headers its vendor documents, one row each. -->
+                <template v-if="!selected.compatible">
+                  <SettingsRow
+                    v-for="header in selected.headers ?? []"
+                    :key="header.name"
+                    :label="vendorHeaderText(header.name, 'label') ?? header.name"
+                    :description="vendorHeaderText(header.name, 'description') ?? undefined"
+                  >
+                    <CommitTextInput
+                      :disabled="fieldsLocked(selected)"
+                      :model-value="header.value"
+                      :aria-label="vendorHeaderText(header.name, 'label') ?? header.name"
+                      literal
+                      trim
+                      class="w-72 max-w-full"
+                      @commit="emit('change', selected, { headers: withHeader(selected, header.name, $event) })"
+                    />
+                  </SettingsRow>
+                </template>
                 <ProviderCacheTtl
                   v-if="selected.cacheTtl"
                   :key="selected.id"

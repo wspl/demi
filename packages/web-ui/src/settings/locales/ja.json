@@ -751,6 +751,12 @@
       "throughRemoved": "削除されたデバイス",
       "throughRemovedDescription": "デバイスは削除されました。別のデバイスを選ぶまでリクエストは失敗します。"
     },
+    "vendorHeaders": {
+      "anthropic-workspace-id": {
+        "label": "ワークスペース ID",
+        "description": "ワークスペース未指定のキーで必要です。"
+      }
+    },
     "headers": {
       "title": "リクエストヘッダー",
       "description": "すべてのリクエストに付けて送信します。値の {token} はチャットの ID に置き換わります。",

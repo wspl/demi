@@ -136,8 +136,10 @@ pub struct ApiKeyConfig {
     )]
     #[garde(skip)]
     pub audio_shape: Option<AudioShape>,
-    /// A compatible entry's headers, which every request of it carries;
-    /// always none for a vendor entry.
+    /// The headers every request of it carries: a compatible entry's own,
+    /// and a vendor entry's values of those its family declares
+    /// ([`crate::families::ProviderFamily::vendor_headers`]), only those it
+    /// sets.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(skip)]
     pub headers: Vec<ProviderHeader>,
@@ -157,12 +159,12 @@ impl ApiKeyConfig {
 }
 
 impl ProviderEntry {
-    /// The headers every request of the entry carries: a compatible entry's
-    /// own, none for any other.
+    /// The headers every request of the entry carries; none for a
+    /// subscription.
     pub fn headers(&self) -> &[ProviderHeader] {
         match &self.credential {
-            EntryCredential::ApiKey(config) if config.is_compatible() => &config.headers,
-            _ => &[],
+            EntryCredential::ApiKey(config) => &config.headers,
+            EntryCredential::Subscription { .. } => &[],
         }
     }
 
@@ -267,6 +269,7 @@ impl ProviderEntry {
         offered: Searches,
         catalog: Timestamp,
         cache_ttl_presets: Option<Vec<CacheTtl>>,
+        vendor_headers: &[&str],
     ) -> ProviderDto {
         let config = match &self.credential {
             EntryCredential::ApiKey(config) => Some(config),
@@ -311,7 +314,21 @@ impl ProviderEntry {
             cache_ttl: self.cache_ttl.clone(),
             cache_ttl_presets,
             through_device: self.through_device.clone(),
-            headers: self.headers().to_vec(),
+            headers: match config {
+                Some(config) if !config.is_compatible() => vendor_headers
+                    .iter()
+                    .map(|name| ProviderHeader {
+                        name: (*name).to_owned(),
+                        value: config
+                            .headers
+                            .iter()
+                            .find(|set| set.name.eq_ignore_ascii_case(name))
+                            .map(|set| set.value.clone())
+                            .unwrap_or_default(),
+                    })
+                    .collect(),
+                _ => self.headers().to_vec(),
+            },
             created_at: self.created_at,
         }
     }

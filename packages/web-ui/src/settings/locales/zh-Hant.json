@@ -751,6 +751,12 @@
       "throughRemoved": "已移除的裝置",
       "throughRemovedDescription": "該裝置已被移除：選擇其他裝置之前請求會失敗。"
     },
+    "vendorHeaders": {
+      "anthropic-workspace-id": {
+        "label": "工作區 ID",
+        "description": "金鑰未限定工作區時填寫。"
+      }
+    },
     "headers": {
       "title": "請求標頭",
       "description": "每次請求都會帶上。值中的 {token} 會換成對話的 ID。",

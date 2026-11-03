@@ -751,6 +751,12 @@
       "throughRemoved": "已移除的设备",
       "throughRemovedDescription": "该设备已被移除：选择其他设备之前请求会失败。"
     },
+    "vendorHeaders": {
+      "anthropic-workspace-id": {
+        "label": "工作区 ID",
+        "description": "密钥未限定工作区时填写。"
+      }
+    },
     "headers": {
       "title": "请求头",
       "description": "每次请求都会带上。值里的 {token} 会换成对话的 ID。",

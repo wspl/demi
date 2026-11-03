@@ -88,6 +88,13 @@ pub trait ProviderFamily: Send + Sync + 'static {
         Searches::default()
     }
 
+    /// The headers a vendor entry of the family may set, by the models.dev
+    /// id of its vendor: the ones its vendor documents for its user to send,
+    /// such as the workspace a key names. None by default.
+    fn vendor_headers(&self, _vendor_id: Option<&str>) -> &'static [&'static str] {
+        &[]
+    }
+
     /// How a vendor entry of the family makes images, by the models.dev id
     /// of its vendor, none for a subscription; none when it makes none. A
     /// compatible entry's is the one its user chose, whatever its family.

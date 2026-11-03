@@ -1649,9 +1649,13 @@ impl ShownEntry {
             accounts.row([account.as_str()]);
         }
         let entry = &self.entry;
+        // A vendor entry lists each header its vendor documents, empty when
+        // it sends none; a compatible entry sends an empty value too.
         let mut headers = Table::new(["header", "value"]);
-        for header in &entry.headers {
+        let mut sent = 0;
+        for header in entry.headers.iter().filter(|header| entry.compatible || !header.value.is_empty()) {
             headers.row([header.name.as_str(), header.value.as_str()]);
+            sent += 1;
         }
         let mut models = Table::new([
             "id",
@@ -1704,7 +1708,7 @@ impl ShownEntry {
                 api_key.then(|| self.through_name.as_deref().unwrap_or("Server")),
             )
             .field("Key saved", api_key.then_some(entry.has_api_key));
-        if !entry.headers.is_empty() {
+        if sent > 0 {
             fields.table("Headers", &headers);
         }
         if entry.kind == CredentialKind::Subscription {
