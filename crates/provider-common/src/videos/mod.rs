@@ -78,7 +78,7 @@ pub trait VideoMaker: MediaMaker {
 
     /// How a call's message names the request it takes, such as `Veo takes
     /// no --audio`.
-    fn shape_name(&self) -> &'static str;
+    fn shape_name(&self) -> String;
 }
 
 /// A job a vendor took: its id at the vendor, and the model it makes as

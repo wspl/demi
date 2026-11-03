@@ -9,16 +9,24 @@
 //!
 //! The borrower composes every failure's message from its code: nothing of
 //! the lender's failure crosses but the code.
+//!
+//! Its media are made by the lender too, each kind by one maker
+//! (`media`) that sends each call over HTTPS. The kinds it makes are those
+//! the lender said when the key was pasted, which the entry keeps.
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use demi_provider_common::{
     CatalogError, ErrorCode, Provider, ProviderEvent, ProviderFailure, ProviderHttp, ProviderRun, ProviderRuntime,
-    RequestLimits, RuntimeEnv, RuntimeError, InferenceRequest,
+    RequestBuilder, RequestLimits, RuntimeEnv, RuntimeError, InferenceRequest,
 };
+use demi_provider_common::audio::AudioMaker;
+use demi_provider_common::images::ImageMaker;
+use demi_provider_common::videos::VideoMaker;
 use demi_shared_types::{
-    AuthState, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState, Timestamp,
+    AuthState, MediaKind, MediaShapes, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    RuntimeState, Timestamp,
 };
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use futures_util::stream::{SplitStream, StreamExt as _};
@@ -41,8 +49,15 @@ use crate::wire::{
 /// borrowed with.
 pub const FAMILY: &str = "relay";
 
+mod media;
+
 /// A provider another server lends.
-pub struct Borrowed(Arc<Config>);
+pub struct Borrowed {
+    config: Arc<Config>,
+    images: Option<media::Relayed>,
+    videos: Option<media::Relayed>,
+    audio: Option<media::Relayed>,
+}
 
 struct Config {
     key: ShareKey,
@@ -81,15 +96,18 @@ impl Refusal {
         }
     }
 
-    fn failure(&self, lender: &str) -> ProviderFailure {
-        let code = match self {
+    fn code(&self) -> Option<ErrorCode> {
+        match self {
             Self::Key => Some(ErrorCode::AuthExpired),
             Self::Unreachable(_) => Some(ErrorCode::Overloaded),
             Self::Version(_) | Self::NoLender => None,
-        };
+        }
+    }
+
+    fn failure(&self, lender: &str) -> ProviderFailure {
         ProviderFailure {
             message: self.message(lender),
-            code,
+            code: self.code(),
             diagnostics: None,
             retry_after: None,
         }
@@ -146,21 +164,29 @@ pub fn server_name(public: Option<&Url>) -> String {
 
 impl Borrowed {
     /// The provider `key` lends, asked for by `server`, the host of this
-    /// server's public URL, with `http`, the entry's client.
-    pub fn new(key: ShareKey, server: String, http: ProviderHttp) -> Self {
+    /// server's public URL, with `http`, the entry's client; it makes the
+    /// media `shapes` names.
+    pub fn new(key: ShareKey, server: String, http: ProviderHttp, shapes: MediaShapes) -> Self {
         let lender = key.url.host_str().unwrap_or("the lending server").to_owned();
-        Self(Arc::new(Config {
+        let config = Arc::new(Config {
             key,
             lender,
             server,
             http,
             limits: RwLock::new(HashMap::new()),
-        }))
+        });
+        let maker = |kind| shapes.makes(kind).then(|| media::Relayed::new(config.clone(), kind, shapes));
+        Self {
+            images: maker(MediaKind::Image),
+            videos: maker(MediaKind::Video),
+            audio: maker(MediaKind::Audio),
+            config,
+        }
     }
 
     /// What the lender says of the lent entry now.
     pub async fn lent(&self) -> Result<Lent, String> {
-        self.0.lent().await.map_err(|refusal| refusal.message(&self.0.lender))
+        self.config.lent().await.map_err(|refusal| refusal.message(&self.config.lender))
     }
 }
 
@@ -169,13 +195,18 @@ impl Config {
         self.key.url.join(route.trim_start_matches('/')).expect("a route joins a URL")
     }
 
-    async fn lent(&self) -> Result<Lent, Refusal> {
-        let answer = self
-            .http
-            .get(self.route(PROVIDER_ROUTE))
+    /// `request` with what every request to the lender carries: the key,
+    /// the wire's version and this server's name.
+    fn authorized(&self, request: RequestBuilder) -> RequestBuilder {
+        request
             .header(http::header::AUTHORIZATION, format!("Bearer {}", self.key.token))
             .header(VERSION_HEADER, VERSION.to_string())
             .header(SERVER_HEADER, self.server.clone())
+    }
+
+    async fn lent(&self) -> Result<Lent, Refusal> {
+        let answer = self
+            .authorized(self.http.get(self.route(PROVIDER_ROUTE)))
             .send()
             .await
             .map_err(|error| Refusal::Unreachable(error.to_string()))?;
@@ -199,13 +230,13 @@ impl Provider for Borrowed {
 
     fn auth_status(&self) -> BoxFuture<'_, AuthState> {
         Box::pin(async move {
-            match self.0.lent().await {
+            match self.config.lent().await {
                 Ok(_) => AuthState::Authenticated { account_label: None },
                 Err(Refusal::Key) => AuthState::Unauthenticated {
-                    message: Some(Refusal::Key.message(&self.0.lender)),
+                    message: Some(Refusal::Key.message(&self.config.lender)),
                 },
                 Err(refusal) => AuthState::Unknown {
-                    message: Some(refusal.message(&self.0.lender)),
+                    message: Some(refusal.message(&self.config.lender)),
                 },
             }
         })
@@ -213,16 +244,16 @@ impl Provider for Borrowed {
 
     fn runtime_state(&self) -> RuntimeState {
         RuntimeState::Ready {
-            message: Some(format!("Uses a provider {} shares", self.0.lender)),
+            message: Some(format!("Uses a provider {} shares", self.config.lender)),
         }
     }
 
     fn list_models(&self) -> BoxFuture<'_, Result<ProviderModelList, CatalogError>> {
         Box::pin(async move {
-            match self.0.lent().await {
+            match self.config.lent().await {
                 Ok(lent) => Ok(lent.catalog),
-                Err(Refusal::Key) => Err(CatalogError::Unauthenticated(Refusal::Key.message(&self.0.lender))),
-                Err(refusal) => Err(CatalogError::Unavailable(refusal.message(&self.0.lender))),
+                Err(Refusal::Key) => Err(CatalogError::Unauthenticated(Refusal::Key.message(&self.config.lender))),
+                Err(refusal) => Err(CatalogError::Unavailable(refusal.message(&self.config.lender))),
             }
         })
     }
@@ -236,9 +267,21 @@ impl Provider for Borrowed {
         }
     }
 
+    fn images(&self) -> Option<&dyn ImageMaker> {
+        self.images.as_ref().map(|maker| maker as &dyn ImageMaker)
+    }
+
+    fn videos(&self) -> Option<&dyn VideoMaker> {
+        self.videos.as_ref().map(|maker| maker as &dyn VideoMaker)
+    }
+
+    fn audio(&self) -> Option<&dyn AudioMaker> {
+        self.audio.as_ref().map(|maker| maker as &dyn AudioMaker)
+    }
+
     fn runtime(&self, _env: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {
         Ok(Box::new(BorrowedRuntime {
-            config: self.0.clone(),
+            config: self.config.clone(),
             connection: None,
             next_run: 0,
         }))

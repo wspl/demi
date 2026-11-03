@@ -18,11 +18,15 @@ use demi_provider_common::{
     OpaqueStep, PromptCache, ProviderEvent, ProviderFailure, RequestBlock, RequestLimits, RequestPurpose, ResultPart,
     ToolCall, ToolDefinition, ToolResultKinds, UserPart, VendorCall,
 };
-use demi_shared_types::{B64Bytes, Entry, OpaqueStatus, OpaqueView, ProviderModelList, ThinkingConfig, TokenUsage};
+use demi_shared_types::{
+    B64Bytes, Entry, MediaShapes, OpaqueStatus, OpaqueView, ProviderModelList, ThinkingConfig, TokenUsage,
+};
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use crate::delta::Delta;
+
+pub mod media;
 
 /// The wire's version, which both ends require to be their own: it goes up
 /// when a message or a type of this module changes.
@@ -54,13 +58,15 @@ pub struct OtherVersion {
 }
 
 /// What [`PROVIDER_ROUTE`] answers: the provider's name as its lender calls
-/// it, its catalog, and what one request of each model may hold.
+/// it, its catalog, what one request of each model may hold, and the
+/// shapes in which it makes media ([`media`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Lent {
     pub name: String,
     pub catalog: ProviderModelList,
     pub limits: Vec<ModelLimits>,
+    pub media: MediaShapes,
 }
 
 /// What one request of a model may hold.

@@ -77,10 +77,10 @@ use crate::services::Services;
 
 /// An entry that makes media of a kind, with what makes them for its
 /// active account, in the order a call tries the entries.
-struct Route {
+pub(super) struct Route {
     entry: ProviderEntry,
     kind: MediaKind,
-    maker: MakerOf,
+    pub(super) maker: MakerOf,
     /// The user turned the entry off in Settings › Providers.
     hidden: bool,
 }
@@ -92,7 +92,7 @@ impl Route {
 
     /// The client the entry's calls go through on `client`, the shard's or
     /// the shared services'.
-    fn http(&self, services: &Services, client: &reqwest::Client) -> demi_provider_common::ProviderHttp {
+    pub(super) fn http(&self, services: &Services, client: &reqwest::Client) -> demi_provider_common::ProviderHttp {
         services.provider_registry.http_for(&self.entry, client.clone())
     }
 
@@ -158,7 +158,7 @@ async fn routes(
     Ok(routes)
 }
 
-async fn route(
+pub(super) async fn route(
     services: &Services,
     entry: ProviderEntry,
     preferences: &demi_web_api_protocol::settings::Preferences,
@@ -210,7 +210,7 @@ async fn current(
 }
 
 /// The model `id` as a rotation reads a window's scope.
-fn model_of(id: &str) -> Model {
+pub(super) fn model_of(id: &str) -> Model {
     Model {
         id: id.to_owned(),
         name: id.to_owned(),
@@ -608,7 +608,7 @@ fn described(
 /// The kinds of audio `listed` makes: what the catalog states of it for
 /// `vendor`, else what its listing says, such as a compatible entry's
 /// shape's kinds; empty when neither says.
-fn audio_kinds(catalog: &Catalog, vendor: Option<MediaVendor>, listed: &MediaModelInfo) -> Vec<AudioKind> {
+pub(super) fn audio_kinds(catalog: &Catalog, vendor: Option<MediaVendor>, listed: &MediaModelInfo) -> Vec<AudioKind> {
     let made = vendor
         .and_then(|vendor| catalog.model(vendor.id(), &listed.id))
         .and_then(|model| catalog.audio(model))
@@ -1089,7 +1089,7 @@ impl Asking for AudioCall {
         let asked_speed = self.request.speed;
         let speed = asked_speed.map(|speed| audio::sent_speed(audio, speed));
         let request = AudioRequest { model: making.name.clone(), speed, ..self.request.clone() };
-        let shape = audio.shape_name(making.catalog, &request).to_owned();
+        let shape = audio.shape_name(making.catalog, &request);
         let unsent = audio
             .unsent(making.catalog, &request)
             .into_iter()
@@ -1225,7 +1225,7 @@ impl Asking for VideoCall {
             provider: making.route.entry.label.clone(),
             vendor: videos.name().to_owned(),
             account: label.clone(),
-            shape: videos.shape_name().to_owned(),
+            shape: videos.shape_name(),
             unsent: videos.unsent(making.catalog, &request).into_iter().map(plugin_option).collect(),
         };
         let tuning = making.shard.services().media_tuning;
@@ -1454,103 +1454,21 @@ impl Making<'_> {
     }
 
     async fn run<A: Asking>(self, asking: &A) -> Result<A::Made, PortFailure> {
-        let entry = &self.route.entry;
         let vendor = self.route.media().name().to_owned();
-        if !self.route.subscription() {
-            asking.check(&self, &self.route.maker).map_err(refused)?;
-            return asking
-                .send(&self, &self.route.maker, None, None)
+        let made = on_accounts(self.shard, self.route, &self.model, self.manages, async |maker, account, label| {
+            asking.check(&self, maker).map_err(Unmade::Refusal)?;
+            asking
+                .send(&self, maker, account, label.clone())
                 .await
-                .map_err(|failure| refused(vendor_refusal(failure, vendor, None, self.manages)));
-        }
-        let services = self.shard.services();
-        let provider_registry = &services.provider_registry;
-        let rotation = entry.rotation();
-        // The accounts that refused the call, which it does not ask again.
-        let mut tried: Vec<CredentialId> = Vec::new();
-        let mut last_moment = None;
-        // What the vendor named to trace the last usage limit, which the
-        // call's words end with.
-        let mut last_trace = VendorTrace::default();
-        loop {
-            let used_up = |resets_at, trace: &VendorTrace| {
-                refused(MediaRefusal::UsedUp { vendor: vendor.clone(), resets_at, trace: trace.clone() })
-            };
-            // Another account is sent to only while the entry may still
-            // make its kind.
-            if !tried.is_empty()
-                && current(services, self.shard.user(), self.route).await.map_err(failed)?.is_none()
-            {
-                return Err(used_up(last_moment, &last_trace));
-            }
-            let (account, running) = match rotation {
-                Rotation::Manual => {
-                    let active = entry.active().cloned();
-                    (active.ok_or_else(|| refused(MediaRefusal::NoProvider))?, None)
-                }
-                Rotation::InOrder | Rotation::Smart => {
-                    let (choice, _) = provider_registry.take_account(entry, &self.model, &tried).await.map_err(failed)?;
-                    match choice {
-                        Some(Choice::Account(running)) => (running.account().clone(), Some(running)),
-                        Some(Choice::AllTried) => return Err(used_up(last_moment, &last_trace)),
-                        None => unreachable!("a rotating entry takes an account or finds them used up"),
-                    }
-                }
-            };
-            let provider = provider_registry
-                .for_account(entry, &account)
-                .await
-                .map_err(failed)?
-                .ok_or_else(|| refused(MediaRefusal::NoProvider))?;
-            // The account is named only to whoever manages the entry: on a
-            // shared instance it is the administrator's
-            // (`crates/backend-providers/src/vault/entries.rs`).
-            let label = if self.manages {
-                let record = services.vault.account(entry.id.clone(), account.clone()).await.ok().flatten();
-                Some(record.map_or_else(|| account.to_string(), |record| record.label))
-            } else {
-                None
-            };
-            let Some(maker) = provider_registry.maker(entry, &provider, self.route.kind) else {
-                return Err(refused(MediaRefusal::NoProvider));
-            };
-            asking.check(&self, &maker).map_err(refused)?;
-            let sent = asking.send(&self, &maker, Some(&account), label.clone()).await;
-            // The call's account counts no longer: its request ended, and a
-            // video's job, once asked for, is the vendor's.
-            drop(running);
-            let failure = match sent {
-                Ok(made) => return Ok(made),
-                Err(failure) => failure,
-            };
-            let MediaFailure::UsageLimit { retry_at, trace } = failure else {
-                return Err(refused(vendor_refusal(failure, vendor, label, self.manages)));
-            };
-            let now = services.clock.now();
-            let moment = retry_at
-                .or_else(|| provider.quota()?.used_up_until(now))
-                .filter(|moment| *moment > now);
-            let source = if moment.is_none() {
-                "default"
-            } else if retry_at.is_some() {
-                "vendor_refusal"
-            } else {
-                "snapshot"
-            };
-            let until = moment.unwrap_or_else(|| {
-                Timestamp::from_millisecond(now.as_millisecond() + USED_UP_FOR_MS)
-                    .expect("half an hour from now is a time")
-            });
-            // Used up as a turn's failure marks it, whatever the call does
-            // next.
-            provider_registry.mark_used_up(&entry.id, &account, until, source);
-            if rotation == Rotation::Manual {
-                return Err(used_up(moment, &trace));
-            }
-            tried.push(account);
-            last_moment = moment;
-            last_trace = trace;
-        }
+                .map_err(|failure| Unmade::Vendor { failure, label })
+        })
+        .await;
+        made.map_err(|unmade| {
+            refused(match unmade {
+                Unmade::Refusal(refusal) => refusal,
+                Unmade::Vendor { failure, label } => vendor_refusal(failure, vendor, label, self.manages),
+            })
+        })
     }
 
     /// The ledger row of a request sent now on `account`, or with the
@@ -1599,6 +1517,119 @@ impl Making<'_> {
             tools_hash: None,
         };
         (OpenRow { row: Some(row), shard: self.shard.this() }, span)
+    }
+}
+
+/// Why a call on an entry ended without what it made.
+pub(super) enum Unmade {
+    /// Demi's, told before a request is sent or instead of the vendor's
+    /// answer, such as every account used up.
+    Refusal(MediaRefusal),
+    /// The vendor's, on the account `label` names to whoever manages the
+    /// entry; none for a key or for anyone else.
+    Vendor { failure: MediaFailure, label: Option<String> },
+}
+
+/// Sends a call on `route`'s entry with `send`: once with the entry's key, or
+/// on the account the entry's rotation takes, and on another at once when the
+/// vendor finds that one used up. Each used-up account is marked as a turn's
+/// failure marks it. `send` is told the account and, when `manages`, its
+/// label.
+pub(super) async fn on_accounts<T>(
+    shard: &Shard,
+    route: &Route,
+    model: &Model,
+    manages: bool,
+    mut send: impl AsyncFnMut(&MakerOf, Option<&CredentialId>, Option<String>) -> Result<T, Unmade>,
+) -> Result<T, Unmade> {
+    if !route.subscription() {
+        return send(&route.maker, None, None).await;
+    }
+    let entry = &route.entry;
+    let vendor = route.media().name().to_owned();
+    let failed = |error: &dyn std::fmt::Display| Unmade::Refusal(MediaRefusal::Failed { message: error.to_string() });
+    let services = shard.services();
+    let provider_registry = &services.provider_registry;
+    let rotation = entry.rotation();
+    // The accounts that refused the call, which it does not ask again.
+    let mut tried: Vec<CredentialId> = Vec::new();
+    let mut last_moment = None;
+    // What the vendor named to trace the last usage limit, which the
+    // call's words end with.
+    let mut last_trace = VendorTrace::default();
+    loop {
+        let used_up = |resets_at, trace: &VendorTrace| {
+            Unmade::Refusal(MediaRefusal::UsedUp { vendor: vendor.clone(), resets_at, trace: trace.clone() })
+        };
+        // Another account is sent to only while the entry may still
+        // make its kind.
+        if !tried.is_empty() && current(services, shard.user(), route).await.map_err(|error| failed(&error))?.is_none() {
+            return Err(used_up(last_moment, &last_trace));
+        }
+        let (account, running) = match rotation {
+            Rotation::Manual => {
+                let active = entry.active().cloned();
+                (active.ok_or(Unmade::Refusal(MediaRefusal::NoProvider))?, None)
+            }
+            Rotation::InOrder | Rotation::Smart => {
+                let (choice, _) =
+                    provider_registry.take_account(entry, model, &tried).await.map_err(|error| failed(&error))?;
+                match choice {
+                    Some(Choice::Account(running)) => (running.account().clone(), Some(running)),
+                    Some(Choice::AllTried) => return Err(used_up(last_moment, &last_trace)),
+                    None => unreachable!("a rotating entry takes an account or finds them used up"),
+                }
+            }
+        };
+        let provider = provider_registry
+            .for_account(entry, &account)
+            .await
+            .map_err(|error| failed(&error))?
+            .ok_or(Unmade::Refusal(MediaRefusal::NoProvider))?;
+        // The account is named only to whoever manages the entry: on a
+        // shared instance it is the administrator's
+        // (`crates/backend-providers/src/vault/entries.rs`).
+        let label = if manages {
+            let record = services.vault.account(entry.id.clone(), account.clone()).await.ok().flatten();
+            Some(record.map_or_else(|| account.to_string(), |record| record.label))
+        } else {
+            None
+        };
+        let Some(maker) = provider_registry.maker(entry, &provider, route.kind) else {
+            return Err(Unmade::Refusal(MediaRefusal::NoProvider));
+        };
+        let sent = send(&maker, Some(&account), label).await;
+        // The call's account counts no longer: its request ended, and a
+        // video's job, once asked for, is the vendor's.
+        drop(running);
+        let (retry_at, trace) = match sent {
+            Err(Unmade::Vendor { failure: MediaFailure::UsageLimit { retry_at, trace }, .. }) => (retry_at, trace),
+            sent => return sent,
+        };
+        let now = services.clock.now();
+        let moment = retry_at
+            .or_else(|| provider.quota()?.used_up_until(now))
+            .filter(|moment| *moment > now);
+        let source = if moment.is_none() {
+            "default"
+        } else if retry_at.is_some() {
+            "vendor_refusal"
+        } else {
+            "snapshot"
+        };
+        let until = moment.unwrap_or_else(|| {
+            Timestamp::from_millisecond(now.as_millisecond() + USED_UP_FOR_MS)
+                .expect("half an hour from now is a time")
+        });
+        // Used up as a turn's failure marks it, whatever the call does
+        // next.
+        provider_registry.mark_used_up(&entry.id, &account, until, source);
+        if rotation == Rotation::Manual {
+            return Err(used_up(moment, &trace));
+        }
+        tried.push(account);
+        last_moment = moment;
+        last_trace = trace;
     }
 }
 

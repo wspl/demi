@@ -230,8 +230,8 @@ impl VideoMaker for Hailuo {
         }
     }
 
-    fn shape_name(&self) -> &'static str {
-        "Hailuo"
+    fn shape_name(&self) -> String {
+        "Hailuo".to_owned()
     }
 }
 

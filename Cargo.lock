@@ -3152,6 +3152,7 @@ version = "0.1.65"
 dependencies = [
  "async-stream",
  "base64 0.22.1",
+ "bytes",
  "demi-provider-common",
  "demi-shared-types",
  "futures-util",

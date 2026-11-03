@@ -61,7 +61,7 @@ pub trait AudioMaker: MediaMaker {
 
     /// How a call of `request` names the request it takes, such as `Lyria
     /// takes no --duration`.
-    fn shape_name(&self, catalog: &Catalog, request: &AudioRequest) -> &'static str;
+    fn shape_name(&self, catalog: &Catalog, request: &AudioRequest) -> String;
 
     /// The factors of the voice's speed the vendor takes, ends included.
     ///

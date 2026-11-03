@@ -178,8 +178,8 @@ impl AudioMaker for KeyAudio {
         }
     }
 
-    fn shape_name(&self, _: &Catalog, _: &AudioRequest) -> &'static str {
-        "ElevenLabs"
+    fn shape_name(&self, _: &Catalog, _: &AudioRequest) -> String {
+        "ElevenLabs".to_owned()
     }
 
     fn shape(&self) -> AudioShape {

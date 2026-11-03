@@ -116,8 +116,8 @@ impl VideoMaker for ArkVideos {
         Vec::new()
     }
 
-    fn shape_name(&self) -> &'static str {
-        "Ark Tasks"
+    fn shape_name(&self) -> String {
+        "Ark Tasks".to_owned()
     }
 
     fn shape(&self) -> VideoShape {

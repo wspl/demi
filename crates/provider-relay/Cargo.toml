@@ -16,6 +16,7 @@ demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }
 async-stream = "0.3"
 base64.workspace = true
+bytes.workspace = true
 futures-util.workspace = true
 hostname = "0.4"
 http.workspace = true
@@ -27,4 +28,4 @@ tokio.workspace = true
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 tokio-util.workspace = true
 tracing.workspace = true
-url = "2"
+url = { version = "2", features = ["serde"] }

@@ -114,6 +114,9 @@ pub struct Services {
     /// The sessions other servers borrow this one's entries in, by share
     /// key, which revoking a key closes.
     pub lent: crate::provider_sharing::LentSessions,
+    /// The video jobs other servers asked this one's entries for, which
+    /// revoking their key cancels.
+    pub lent_jobs: crate::shard::lent_media::LentJobs,
     /// The build of the web app the backend serves, if it serves one.
     pub web_build: Option<String>,
     /// The runner releases paired devices follow.
@@ -495,6 +498,7 @@ impl Services {
             cloud: settings.cloud,
             public_url: settings.public_url,
             lent: Default::default(),
+            lent_jobs: Default::default(),
             web_build: settings.web_build,
             runner_releases: settings.runner_releases,
             prefetches: Prefetches::default(),

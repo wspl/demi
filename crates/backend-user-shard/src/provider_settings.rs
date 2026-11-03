@@ -601,7 +601,7 @@ impl Services {
             wire_api: None,
             models: None,
             rotation: None,
-            media: None,
+            media,
             search: None,
             cache_ttl: None,
             through_device: None,
@@ -610,6 +610,15 @@ impl Services {
         else {
             return Err(ProviderRefusal::BorrowedFixed(entry.label.clone()));
         };
+        // Its shapes are its lender's; its switches are its own.
+        let shaped = media.as_ref().is_some_and(|media| {
+            media.image.as_ref().is_some_and(|image| image.shape.is_some())
+                || media.video.as_ref().is_some_and(|video| video.shape.is_some())
+                || media.audio.as_ref().is_some_and(|audio| audio.shape.is_some())
+        });
+        if shaped {
+            return Err(ProviderRefusal::ShapeFixed(entry.label.clone()));
+        }
         let mut label = label.map(Trimmed::into_string);
         let config = match share_key {
             None => None,
@@ -626,10 +635,15 @@ impl Services {
                 config.api_key = Some(key(share.token.clone())?);
                 let server = server_name(self.public_url.get().map(|url| url.url()));
                 let http = ProviderHttp::new(self.provider_registry.http().clone());
-                let lent = Borrowed::new(share, server, http)
+                let lent = Borrowed::new(share, server, http, MediaShapes::default())
                     .lent()
                     .await
                     .map_err(ProviderRefusal::ShareKey)?;
+                // The shapes the lender makes media in now; a later change
+                // of them is read when a key is pasted again.
+                config.image_shape = lent.media.image;
+                config.video_shape = lent.media.video;
+                config.audio_shape = lent.media.audio;
                 let named = entry.label == BORROWED_LABEL
                     || entry.label.strip_prefix(BORROWED_LABEL).is_some_and(|rest| rest.starts_with(" ("));
                 if label.is_none() && named {
@@ -641,10 +655,24 @@ impl Services {
                 Some(config)
             }
         };
+        let shapes = match &config {
+            Some(config) => MediaShapes { image: config.image_shape, video: config.video_shape, audio: config.audio_shape },
+            None => self.provider_registry.media_shapes(&entry),
+        };
+        let switch = |kind| media.as_ref().and_then(|media| media.enabled(kind));
+        if let Some(kind) = MediaKind::ALL.into_iter().find(|kind| switch(*kind).is_some() && !shapes.makes(*kind)) {
+            return Err(ProviderRefusal::MakesNo(entry.label.clone(), kind.plural()));
+        }
+        let switches = EntrySwitches {
+            image: switch(MediaKind::Image),
+            video: switch(MediaKind::Video),
+            audio: switch(MediaKind::Audio),
+            ..EntrySwitches::default()
+        };
         let reconfigures = config.is_some();
         let updated = self
             .vault
-            .update(entry.id.clone(), label, None, config, None, EntrySwitches::default(), None, None)
+            .update(entry.id.clone(), label, None, config, None, switches, None, None)
             .await?
             .ok_or(ProviderRefusal::NotFound)?;
         if reconfigures {

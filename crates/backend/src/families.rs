@@ -28,7 +28,7 @@ use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
 use demi_provider_relay::borrow::{Borrowed, server_name};
 use demi_provider_relay::key::ShareKey;
 use demi_backend_runners::public_url::PublicUrl;
-use demi_shared_types::{AudioShape, CacheTtl, ImageShape, VideoShape, WireApi};
+use demi_shared_types::{AudioShape, CacheTtl, ImageShape, MediaShapes, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 
 /// The families built into the backend, whose Claude Code family reads its
@@ -82,7 +82,12 @@ impl ProviderFamily for RelayFamily {
             token: token.expose().to_owned(),
         };
         let server = server_name(self.0.get().map(|url| url.url()));
-        Ok(Arc::new(Borrowed::new(key, server, args.http)))
+        let shapes = MediaShapes {
+            image: settings.image_shape,
+            video: settings.video_shape,
+            audio: settings.audio_shape,
+        };
+        Ok(Arc::new(Borrowed::new(key, server, args.http, shapes)))
     }
 }
 

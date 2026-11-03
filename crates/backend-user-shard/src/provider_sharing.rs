@@ -11,7 +11,8 @@
 //! - Each use marks the key with the server that used it, by the host it
 //!   gives, and when. Nothing else of a borrowed session is kept: its usage
 //!   is the borrower's.
-//! - Revoking a key closes every session it opened.
+//! - Revoking a key closes every session it opened and cancels the video jobs
+//!   it asked for (`crate::shard::lent_media`).
 //!
 //! A borrowed session runs on the shard of the key's maker, on the runtime a
 //! conversation of theirs would have, unmetered
@@ -143,7 +144,7 @@ impl Services {
         if !self.control.delete_share_key(entry.id, key.to_owned()).await? {
             return Err(ProviderRefusal::NotFound);
         }
-        self.lent.revoke(key);
+        self.end_lending(&[key.to_owned()]);
         Ok(())
     }
 
@@ -155,10 +156,12 @@ impl Services {
         Ok(rows.into_iter().map(|row| row.id).collect())
     }
 
-    /// Closes the sessions borrowed with `keys`.
+    /// Closes the sessions borrowed with `keys`, and cancels the video jobs
+    /// they asked for.
     pub(crate) fn end_lending(&self, keys: &[String]) {
         for key in keys {
             self.lent.revoke(key);
+            self.lent_jobs.revoke(key);
         }
     }
 
@@ -228,6 +231,7 @@ impl Shard {
         .await?;
         Ok(Lent {
             name: entry.label.clone(),
+            media: registry.media_shapes(entry),
             catalog,
             limits: limits
                 .into_iter()
