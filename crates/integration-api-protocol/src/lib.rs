@@ -227,11 +227,25 @@ pub struct CreateConversation {
     #[schemars(length(min = 1))]
     #[garde(inner(length(chars, min = 1)))]
     pub directory: Option<String>,
+    /// The sentence that opens its main agent's system prompt in place of
+    /// Demi's, such as "You are the Acme team's assistant in its group
+    /// chat."; Demi's when none. The runtime's rules and the commands follow
+    /// it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(length(min = 1))]
+    #[garde(inner(length(chars, min = 1)))]
+    pub identity: Option<String>,
+    /// The roots of the integration's declaration its agents have, such as
+    /// `["memory"]`, and `[]` for none; every one when none is given. A root
+    /// the declaration does not have is left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub commands: Option<Vec<String>>,
 }
 
 /// `PATCH /conversations/:id`: moves it to another Cloud or directory while
-/// it is not running, renames it, or changes its model or its workflow,
-/// from its main agent's next request.
+/// it is not running, renames it, or changes its model, its workflow, its
+/// identity or its commands, each when its field says.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConversationPatch {
@@ -257,6 +271,19 @@ pub struct ConversationPatch {
     #[schemars(with = "Option<String>")]
     #[garde(skip)]
     pub workflow: Option<Option<String>>,
+    /// Its identity, as `CreateConversation` names it; null for Demi's. It
+    /// reaches every agent of the conversation from its next request.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[schemars(with = "Option<String>", length(min = 1))]
+    #[garde(inner(inner(length(chars, min = 1))))]
+    pub identity: Option<Option<String>>,
+    /// The roots its agents have, as `CreateConversation` names them; null
+    /// for every one. The agents' next command has them, and their next
+    /// request lists them in its system prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[schemars(with = "Option<Vec<String>>")]
+    #[garde(skip)]
+    pub commands: Option<Option<Vec<String>>>,
 }
 
 /// `GET /conversations?key=&limit=&after=`: a page of the integration's

@@ -47,6 +47,7 @@ pub use tree::{AskError, KeptAgents, SideCard, Tree, side_instruction};
 use tree::OpenError;
 
 use crate::Node;
+use crate::node::PromptCommands;
 
 /// Where the agent gets a conversation's model selection and the provider
 /// runtimes its sessions infer with.
@@ -186,13 +187,9 @@ pub struct ServerDeps<H: HostResolver> {
     /// The user's Subagents switch, limits and profiles, read at each spawn
     /// and each `demi agent profiles`.
     pub subagents: Rc<dyn SubagentSource>,
-    /// The instructions of every node's system prompt, its identity, which a
-    /// profile's replace.
-    pub instructions: Rc<str>,
-    /// The harness guide every node's system prompt carries after its
-    /// identity, which no profile replaces, by the conversation
-    /// ([`GuideSource`]).
-    pub guides: Rc<dyn GuideSource>,
+    /// The identity and the harness guide that open every node's system
+    /// prompt, by the conversation ([`PromptSource`]).
+    pub prompts: Rc<dyn PromptSource>,
     /// Where a node's shell tools run.
     pub hosts: Rc<H>,
     /// What the model must learn before each request, in this order.
@@ -224,20 +221,31 @@ pub struct ServerDeps<H: HostResolver> {
     pub observers: Rc<dyn TreeObservers>,
 }
 
-/// Where the harness guide of a conversation's nodes comes from: the
-/// product's, which may differ by conversation, as an integration's agents
-/// read the runtime's rules without the web app's display conventions. A
-/// tree reads it once as it opens; its children and side questions carry the
-/// root's.
-pub trait GuideSource {
-    fn guide<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, Rc<str>>;
+/// The product's layers of a conversation's system prompts.
+#[derive(Debug, Clone)]
+pub struct ProductPrompt {
+    /// What the agent is, which opens every node's prompt; a profile's
+    /// instructions follow it, never replace it.
+    pub identity: Rc<str>,
+    /// The harness guide after it.
+    pub guide: Rc<str>,
 }
 
-/// One guide for every conversation.
-impl GuideSource for Rc<str> {
-    fn guide<'a>(&'a self, _root: &'a NodeId) -> LocalBoxFuture<'a, Rc<str>> {
-        let guide = self.clone();
-        Box::pin(async move { guide })
+/// Where the product's layers of a conversation's system prompts come from,
+/// which may differ by conversation, as an integration's agents speak as its
+/// product and read the runtime's rules without the web app's display
+/// conventions. A tree reads them as it opens, and its children and side
+/// questions carry the root's; the product's change of the identity
+/// reaches every node from its next request ([`AgentServer::adopt_identity`]).
+pub trait PromptSource {
+    fn prompt<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, ProductPrompt>;
+}
+
+/// One prompt for every conversation.
+impl PromptSource for ProductPrompt {
+    fn prompt<'a>(&'a self, _root: &'a NodeId) -> LocalBoxFuture<'a, ProductPrompt> {
+        let prompt = self.clone();
+        Box::pin(async move { prompt })
     }
 }
 
@@ -355,10 +363,37 @@ impl<H: HostResolver> AgentServer<H> {
         let trees: Vec<_> = self.trees.borrow().iter().map(|(root, tree)| (root.clone(), tree.clone())).collect();
         for (root, tree) in trees {
             let toolset = self.toolset(Some(&root)).await?;
-            tree.adopt_commands(self, &toolset.commands)
+            tree.adopt_commands(self, &toolset, PromptCommands::Kept)
                 .map_err(|error| error.to_string())?;
         }
         Ok(())
+    }
+
+    /// Gives the live tree of the conversation `root`, if it has one, the
+    /// toolset the product now has for it alone, as a change of its commands
+    /// asks: each node runs them from its next command and lists them in its
+    /// system prompt from its next request.
+    pub async fn adopt_commands_of(self: &Rc<Self>, root: &NodeId) -> Result<(), String> {
+        // A tree that is opening read the commands before the change; it is
+        // live once the order is ours.
+        let _turn = self.opening.acquire(root.clone()).await;
+        let Some(tree) = self.tree(root) else {
+            return Ok(());
+        };
+        let toolset = self.toolset(Some(root)).await?;
+        tree.adopt_commands(self, &toolset, PromptCommands::Renewed)
+            .map_err(|error| error.to_string())
+    }
+
+    /// Gives the live tree of the conversation `root`, if it has one, the
+    /// identity its product's prompt now has, from each node's next request.
+    pub async fn adopt_identity(&self, root: &NodeId) {
+        // A tree that is opening read the identity before the change; it is
+        // live once the order is ours.
+        let _turn = self.opening.acquire(root.clone()).await;
+        if let Some(tree) = self.tree(root) {
+            tree.adopt_identity(self.deps.prompts.prompt(root).await.identity);
+        }
     }
 
     /// The product's toolset now for the conversation `root`, or for its

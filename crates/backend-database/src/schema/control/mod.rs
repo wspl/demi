@@ -91,6 +91,7 @@ mod from_0_1_65_dev_no_integrations;
 mod from_0_1_65_dev_undeclared_integrations;
 mod from_0_1_65_dev_uninitialized_integrations;
 mod from_0_1_65_dev_usage_without_messages;
+mod from_0_1_65_dev_conversations_without_identities;
 
 pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
@@ -419,5 +420,9 @@ pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
         sql: include_str!("from_0_1_65_dev_usage_without_messages.sql"),
         migration: from_0_1_65_dev_usage_without_messages::MIGRATION,
+    },
+    Shipped {
+        sql: include_str!("from_0_1_65_dev_conversations_without_identities.sql"),
+        migration: from_0_1_65_dev_conversations_without_identities::MIGRATION,
     },
 ];

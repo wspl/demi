@@ -435,6 +435,8 @@ impl Shard {
             integration: integration.id.clone(),
             key: request.key.clone(),
             workflow: request.workflow.clone(),
+            identity: request.identity.clone(),
+            commands: request.commands.clone(),
         };
         // Two requests with one key made two conversations: the first kept
         // is the key's, and this one goes.
@@ -461,7 +463,8 @@ impl Shard {
     }
 
     /// Moves the integration's conversation `id` to another of its Clouds,
-    /// renames it, or changes its model or its workflow.
+    /// renames it, or changes its model, its workflow, its identity or its
+    /// commands.
     ///
     /// What the patch names is checked before anything changes, so a
     /// refusal of its workflow, its Cloud or its model leaves the
@@ -506,6 +509,17 @@ impl Shard {
         }
         if let Some(workflow) = patch.workflow {
             self.services().control.set_integration_workflow(id.clone(), workflow).await?;
+        }
+        if let Some(identity) = patch.identity {
+            self.services().control.set_integration_identity(id.clone(), identity).await?;
+            self.agent().adopt_identity(&root_of(id)).await;
+        }
+        if let Some(commands) = patch.commands {
+            self.services().control.set_integration_commands(id.clone(), commands).await?;
+            self.agent()
+                .adopt_commands_of(&root_of(id))
+                .await
+                .map_err(IntegrationRefusal::Refused)?;
         }
         if let Some(title) = patch.title {
             self.transition(id, RecordChange::Title(title).into()).await?;
@@ -845,8 +859,8 @@ impl Shard {
 
     /// Forks the integration's conversation `id` through `request.block_id`
     /// into a new conversation of the integration's, with the source's
-    /// workflow and the key the request names; or finds the one of that
-    /// key, which the flag says.
+    /// workflow, identity and commands and the key the request names; or
+    /// finds the one of that key, which the flag says.
     pub async fn fork_integration_conversation(
         self: &Rc<Self>,
         integration: &IntegrationRecord,
@@ -876,6 +890,8 @@ impl Shard {
             integration: integration.id.clone(),
             key: request.key.clone(),
             workflow: source.workflow,
+            identity: source.identity,
+            commands: source.commands,
         };
         if let Some(first) = control.record_integration_conversation(kept).await? {
             let _ = self.delete_conversation(&forked.record.id).await;

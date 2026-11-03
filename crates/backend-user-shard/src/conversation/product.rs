@@ -28,7 +28,7 @@ use crate::shard::provider_commands::providers_group;
 use demi_backend_host_access::{HostShard, conversation_of};
 use demi_plugin_host::ContextAsk;
 use demi_runner_client::RemoteHost;
-use demi_agent_server::GuideSource;
+use demi_agent_server::{ProductPrompt, PromptSource};
 use demi_agent_store::Placement;
 use demi_web_api_protocol::ids::DeviceId;
 use demi_host_interface::{HostError, HostErrorKind};
@@ -46,36 +46,55 @@ use crate::shard::credential_commands::credentials_group;
 use crate::shard::notify_commands::notify_group;
 
 /// The product's instructions, the identity that opens every node's system
-/// prompt, which a subagent profile's replace.
-pub(crate) const INSTRUCTIONS: &str = "You are Demi, an agent that works for the user on their computers: a Demi Cloud machine or the devices they paired. You write and run software, research, operate websites, and work with files and data, across turns.";
+/// prompt in the user's own conversations; an integration's conversation
+/// opens with the one its program gave, else this.
+const INSTRUCTIONS: &str = "You are Demi, an agent that works for the user on their computers: a Demi Cloud machine or the devices they paired. You write and run software, research, operate websites, and work with files and data, across turns.";
 
-/// The rules of the runtime every agent reads, in its harness guide: where
-/// its commands run and how it waits.
-const RUNTIME_RULES: &str = "- Commands run on the conversation's primary Host, in its working directory; a context block names both. The directory stays between turns, and the work panel shows it.\n- To wait for a command or a subagent, end your turn: its end or its message wakes you, and you continue then. Never wait with sleep or a loop.";
+/// The rule of the runtime that says where an agent's commands run, which
+/// every agent reads first in its harness guide; the user's own
+/// conversation's adds [`WORK_PANEL`].
+const WHERE_COMMANDS_RUN: &str = "- Commands run on the conversation's primary Host, in its working directory; a context block names both. The directory stays between turns";
+
+/// What the web app shows of the working directory, a display convention of
+/// its own.
+const WORK_PANEL: &str = ", and the work panel shows it";
+
+/// The rule of the runtime that says how an agent waits, after
+/// [`WHERE_COMMANDS_RUN`].
+const HOW_TO_WAIT: &str = "- To wait for a command or a subagent, end your turn: its end or its message wakes you, and you continue then. Never wait with sleep or a loop.";
 
 /// What the web app shows of a reply, which an agent of the user's own
 /// conversation reads after the rules: an integration shows replies in its
 /// own way, and says so in its workflow's instructions.
 const DISPLAY_CONVENTIONS: &str = "- The user reads only your replies, rendered as Markdown. Be concise.\n- Deliver a file as an attachment: `demi attachment upload`, then `<attachment id=\"a3\" />` on its own line; a medium a tool result showed you has its `attachment_id` already.\n- Link what the user can open: a Host file `[runner.md](docs/runner.md#L438)`, a subagent `[File icons](agent:4)`, a commit `[Fix the cart total](commit:3f2a9c1)`, or `commit:src/v8@86229da` in another repository, a conversation `[Login test](conversation:<id>)`.";
 
-/// The harness guide of a conversation's agents: the runtime's rules, and for
-/// the user's own conversation the web app's display conventions.
-pub(crate) struct ShardGuides {
+/// The product's layers of a conversation's prompts: for the user's own
+/// conversation Demi's identity, the runtime's rules and the web app's display
+/// conventions; for an integration's its program's identity, else Demi's, and
+/// the runtime's rules alone.
+pub(crate) struct ShardPrompts {
     pub(crate) shard: Weak<Shard>,
 }
 
-impl GuideSource for ShardGuides {
-    fn guide<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, Rc<str>> {
+impl PromptSource for ShardPrompts {
+    fn prompt<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, ProductPrompt> {
         Box::pin(async move {
-            let integration = match self.shard.upgrade() {
-                Some(shard) => shard.integration_capabilities(Some(root)).await.ok().flatten().is_some(),
-                None => false,
+            let kept = match self.shard.upgrade() {
+                Some(shard) => shard.services().control.integration_conversation(conversation_of(root)).await.ok().flatten(),
+                None => None,
             };
-            Rc::from(if integration {
-                format!("Guidelines:\n{RUNTIME_RULES}")
-            } else {
-                format!("Guidelines:\n{RUNTIME_RULES}\n{DISPLAY_CONVENTIONS}")
-            })
+            match kept {
+                Some(kept) => ProductPrompt {
+                    identity: Rc::from(kept.identity.as_deref().unwrap_or(INSTRUCTIONS)),
+                    guide: Rc::from(format!("Guidelines:\n{WHERE_COMMANDS_RUN}.\n{HOW_TO_WAIT}")),
+                },
+                None => ProductPrompt {
+                    identity: Rc::from(INSTRUCTIONS),
+                    guide: Rc::from(format!(
+                        "Guidelines:\n{WHERE_COMMANDS_RUN}{WORK_PANEL}.\n{HOW_TO_WAIT}\n{DISPLAY_CONVENTIONS}"
+                    )),
+                },
+            }
         })
     }
 }
@@ -200,7 +219,9 @@ pub(crate) fn integration_allows(capabilities: &IntegrationCapabilities, plugin:
     }
 }
 
-/// The integration of the conversation `root` and the plugin it declared.
+/// The integration of the conversation `root` and the plugin it declared,
+/// with only the roots the conversation has: a root it names and the
+/// declaration has not is left out.
 async fn integration_declaration(
     shard: &Shard,
     root: Option<&NodeId>,
@@ -211,13 +232,17 @@ async fn integration_declaration(
         .integration_conversation(conversation_of(root?))
         .await
         .ok()??;
-    let declaration = shard.declaration(&kept.integration).await?;
+    let mut declaration = shard.declaration(&kept.integration).await?;
+    if let Some(roots) = &kept.commands {
+        declaration.commands.retain(|tree| roots.iter().any(|root| root == tree.name()));
+    }
     Some((kept.integration, declaration))
 }
 
 /// What a toolset's revision names of an integration's declaration: the
-/// integration, whose program alone serves its commands, and its text's hash,
-/// so a new declaration is a new toolset.
+/// integration, whose program alone serves its commands, and the hash of the
+/// text of what the conversation has of it, so a new declaration, or other
+/// roots, is a new toolset.
 fn declaration_revision(
     declared: Option<&(demi_web_api_protocol::ids::IntegrationId, demi_integration_api_protocol::Declaration)>,
 ) -> String {

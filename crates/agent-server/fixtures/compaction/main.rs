@@ -29,7 +29,7 @@ use std::{
 };
 
 use demi_agent_server::{
-    AgentServer, ProviderResolver, ResolveError, ServerConfig, ServerDeps,
+    AgentServer, ProductPrompt, ProviderResolver, ResolveError, ServerConfig, ServerDeps,
     testing::{TestClient, client_text},
 };
 use demi_agent_store::{
@@ -517,8 +517,10 @@ impl Conversation {
                 max_depth: None,
                 profiles: Vec::new(),
             }),
-            instructions: Rc::from(SYSTEM_PROMPT),
-            guides: Rc::new(Rc::<str>::from("")),
+            prompts: Rc::new(ProductPrompt {
+                identity: Rc::from(SYSTEM_PROMPT),
+                guide: Rc::from(""),
+            }),
             hosts: Rc::new(NoHosts),
             context: Rc::new([]),
             providers: deepseek,

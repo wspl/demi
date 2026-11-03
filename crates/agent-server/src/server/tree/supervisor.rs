@@ -769,14 +769,15 @@ impl<H: HostResolver> Tree<H> {
         let runs_on = runs_on(deps.subagents.as_ref(), origin.target()).await;
         let activity = self.admission.enter(Purpose::Demand).await;
         let record = origin.record();
-        // A child has the product's prompt with what its record says its
+        // A child has the root's identity with what its record says its
         // profile added, or what its parent's had when it inherited: never what
         // its parent has now.
         let instructions = Instructions {
-            identity: deps.instructions.clone(),
+            identity: self.root.instructions().identity.clone(),
             added: record.instructions.as_deref().map(Rc::from),
         };
         let inherited = owner.inherited_commands();
+        let taken = inherited.clone();
         let can_spawn = record.can_spawn_subagents;
         let commands = server
             .runtime_commands(&inherited, can_spawn)
@@ -818,6 +819,7 @@ impl<H: HostResolver> Tree<H> {
         }
         self.placement().await;
         let child = self.attach_child(assembled.node, runs_on);
+        Self::catch_up_commands(server, &child.node, &taken, owner.inherited_commands())?;
         drop(slot);
         let id = child.id().clone();
         if let Some(continuation) = assembled.continuation

@@ -265,6 +265,27 @@ new `workflow`, or `null` for none. Every agent reads it from its next
 request. A `workflow` that isn't a valid workflow file is refused with `400`
 and the reason.
 
+### Identity
+
+The agents' system prompt opens with a sentence that says what they are:
+Demi's own, "You are Demi, an agent that works for the user on their
+computers…", unless you give the conversation an `identity` of your
+product's:
+
+```json
+{"cloud": "<Cloud id>", "model": {…}, "identity": "You are the Acme team's assistant in its group chat."}
+```
+
+Demi's rules of where commands run and how to wait follow it, then the
+commands. A subagent opens with the same sentence, and its profile's
+instructions follow. Put the identity here and your product's conventions in
+the workflow's `instructions`.
+
+A `PATCH` of `identity`, or `null` for Demi's, reaches every agent of the
+conversation from its next request. That request starts the model vendor's
+prompt cache over, so change the identity when what the agents are changes,
+and keep wording you change often in the workflow's `instructions`.
+
 ### Messages
 
 A message sent while a turn runs waits until the turn ends. With
@@ -304,7 +325,7 @@ These do what the same controls do in the Demi app. Each path starts with
 | `POST …/retry` | Retries the request that failed. |
 | `POST …/compact`, `POST …/agents/{agent}/compact` | Compacts an agent's context. |
 | `POST …/commands/{command}/stop` | Stops a command an agent runs. |
-| `POST …/fork` | Makes a new conversation with the transcript up to `blockId`, a reply of the main agent's, and the source's workflow. Give it a `key` as you would a new conversation. |
+| `POST …/fork` | Makes a new conversation with the transcript up to `blockId`, a reply of the main agent's, and the source's workflow, identity and commands. Give it a `key` as you would a new conversation. |
 
 `POST …/agents/{agent}/messages` sends a subagent a message, as if from its
 user: a working subagent reads it after its current step, an idle one starts
@@ -416,6 +437,18 @@ The socket answers with a `declared` event. From then on, every agent of the
 integration can run `chatbot post --text "..."`, and Demi keeps the
 declaration while your program is away. Only the socket that declared last
 receives requests.
+
+A conversation can have only some of the trees: name their roots as its
+`commands` when you create it, such as `["memory"]` for a nightly
+conversation that only tidies notes, or `[]` for none. Without `commands`,
+it has every tree. A root the declaration doesn't have is left out, and
+returns when you declare it again. `PATCH` with other `commands`, or `null`
+for every tree, gives them to the agents' next command and lists them in
+their system prompt from their next request. To try a new version of a tree
+in one conversation, declare it beside the current one under a root of its
+own, such as `chatbot-next`, and `PATCH` that conversation's `commands` to
+it; `PATCH` back to end the trial. The conversation keeps its history, its
+Cloud and the shared folder.
 
 The agents' system prompt lists each command tree with its `indexEntry`, as
 it lists Demi's own commands, and an agent reads the rest with `--help` when

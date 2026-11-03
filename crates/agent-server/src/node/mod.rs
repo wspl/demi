@@ -13,9 +13,11 @@
 //! - the role that sets the lifecycle policy.
 //!
 //! The role is never a depth, and every child has its parent's commands. A
-//! node's commands change while it lives when the product's do, as a plugin
-//! turned on or off changes them, but its capability index, part of its system
-//! prompt, stays as it was rendered.
+//! node's commands change while it lives when the product's do. A change of
+//! every conversation's, as a plugin turned on or off makes, leaves its
+//! capability index, part of its system prompt, as it was rendered, so one
+//! switch does not miss every conversation's prompt cache; a change of its
+//! own conversation's renders the index again for its next request.
 //!
 //! A child starts with an empty transcript: isolation is the point, so Demi
 //! never rewrites or summarizes the parent's conversation into it. Its context
@@ -208,8 +210,11 @@ impl<H: HostResolver> Node<H> {
     /// The node's commands are `commands`, `inherited` with the node's
     /// `demi agent` group grafted, from now on: its shells' jobs offer them
     /// as they start, and its jobs' calls run in them. Its capability index
-    /// stays.
-    pub(crate) fn replace_commands(&self, inherited: Rc<CommandSet>, commands: Rc<CommandSet>) {
+    /// follows as `list` says.
+    pub(crate) fn replace_commands(&self, inherited: Rc<CommandSet>, commands: Rc<CommandSet>, list: PromptCommands) {
+        if list == PromptCommands::Renewed {
+            self.runtime.index.replace(commands.render_index());
+        }
         self.runtime.inherited.replace(inherited);
         self.runtime.commands.replace(commands.clone());
         if let Err(error) = self.runtime.environments.replace_commands(&commands) {
@@ -536,8 +541,8 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     instructions: Instructions,
     /// The product's harness guide.
     guide: Rc<str>,
-    /// The capability index of its commands, rendered once.
-    index: CapabilityIndex,
+    /// The capability index of its commands, which its system prompt lists.
+    index: RefCell<CapabilityIndex>,
     /// A child's identity, the text before each of its user turns.
     preamble: Option<String>,
     /// The product's context sources, in their order.
@@ -852,9 +857,9 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 id: &model.model.id,
             };
             Ok(system_prompt(
-                &self.instructions.identity,
+                &self.instructions.identity.get(),
                 &self.guide,
-                &self.index,
+                &self.index.borrow(),
                 identity,
                 self.instructions.added.as_deref(),
             ))
@@ -1249,13 +1254,43 @@ impl Origin {
     }
 }
 
+/// Whether a change of a node's commands reaches the list of them in its
+/// system prompt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PromptCommands {
+    /// The list stays as the node opened with it.
+    Kept,
+    /// The node's next request lists the new commands.
+    Renewed,
+}
+
 /// The instructions of a node's system prompt: the product's, its
 /// identity, which every node has, and the text its subagent profile added
 /// after the model identity, if any.
 #[derive(Debug, Clone)]
 pub(crate) struct Instructions {
-    pub(crate) identity: Rc<str>,
+    pub(crate) identity: TreeIdentity,
     pub(crate) added: Option<Rc<str>>,
+}
+
+/// The identity that opens the system prompt of every node of a tree: one
+/// per tree, which its children and side questions share with its root, so
+/// a change the product makes reaches each node from its next request.
+#[derive(Debug, Clone)]
+pub(crate) struct TreeIdentity(Rc<RefCell<Rc<str>>>);
+
+impl TreeIdentity {
+    pub(crate) fn new(text: Rc<str>) -> Self {
+        Self(Rc::new(RefCell::new(text)))
+    }
+
+    pub(crate) fn get(&self) -> Rc<str> {
+        self.0.borrow().clone()
+    }
+
+    pub(crate) fn replace(&self, text: Rc<str>) {
+        *self.0.borrow_mut() = text;
+    }
 }
 
 /// What makes a node itself, and what it is built with.
@@ -1357,7 +1392,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         hosts,
         instructions,
         guide,
-        index,
+        index: RefCell::new(index),
         preamble,
         context,
         inherited: RefCell::new(inherited),

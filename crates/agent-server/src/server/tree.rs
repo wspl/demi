@@ -42,7 +42,7 @@ use std::{
 
 use demi_agent_session::{Continuation, LatestPage, ModelSwitch, SessionEvent, Settle, Status, Subscription};
 use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
-use demi_agent_tools::{HostResolver, shell_status};
+use demi_agent_tools::{HostResolver, Toolset, shell_status};
 use demi_agent_transcript::IdSource;
 use demi_conversation_lane_protocol::{
     AgentCost, AgentCode, AgentRole, CacheChart, RequestOutput, STORED_EPOCH, ServerFrame, ShellStatus, TranscriptPatch, Version,
@@ -63,7 +63,7 @@ use self::{agents::Agents, live::LiveOutput, reading::OutputReadings, sides::Sid
 use super::{AgentServer, ResolveError, connection::{Follows, Outbox}};
 use crate::{
     Node,
-    node::{self, AssembleError, Instructions, NodeRole, NodeSpec, Origin},
+    node::{self, AssembleError, Instructions, NodeRole, NodeSpec, Origin, PromptCommands, TreeIdentity},
 };
 
 /// A conversation's live tree.
@@ -106,8 +106,8 @@ pub struct Tree<H: HostResolver> {
     /// Every action of the tree holds a lease on it, and so does a child's
     /// creation; a target switch or an archive reserves it.
     admission: ActivityGate,
-    /// The revision of the toolset the tree opened with.
-    toolset: Rc<str>,
+    /// The revision of the toolset its nodes' system prompts list.
+    toolset: RefCell<Rc<str>>,
     store: Rc<dyn AgentTreeStore>,
     clock: Arc<dyn Clock>,
     ids: Rc<dyn IdSource>,
@@ -413,21 +413,26 @@ pub(crate) enum CommandPlace<H: HostResolver> {
 }
 
 impl<H: HostResolver> Tree<H> {
-    /// The revision of the toolset the tree opened with, which the product
-    /// compares with its current one: its nodes' system prompts list those
-    /// commands, whichever commands they have now.
-    pub fn toolset(&self) -> &str {
-        &self.toolset
+    /// The revision of the toolset its nodes' system prompts list, which the
+    /// product compares with its current one: the one the tree opened with,
+    /// whichever commands they have now, until a change of the
+    /// conversation's own renews the list.
+    pub fn toolset(&self) -> Rc<str> {
+        self.toolset.borrow().clone()
     }
 
     /// Gives every live node of the tree, the root, each child and each side
-    /// question, the product's commands `inherited` with its own runtime
-    /// groups, as the user's switch of a plugin asks.
+    /// question, the commands of `toolset` with its own runtime groups, as
+    /// the user's switch of a plugin or the product's change of the
+    /// conversation's commands asks, and the list in their system prompts as
+    /// `list` says.
     pub(crate) fn adopt_commands(
         &self,
         server: &Rc<AgentServer<H>>,
-        inherited: &Rc<CommandSet>,
+        toolset: &Toolset,
+        list: PromptCommands,
     ) -> Result<(), RegisterError> {
+        let inherited = &toolset.commands;
         let children = self.children.borrow().values().map(|child| child.node().clone()).collect::<Vec<_>>();
         let sides = self.sides.borrow().values().map(|side| side.node().clone()).collect::<Vec<_>>();
         let nodes = std::iter::once((self.root.clone(), true)).chain(
@@ -441,9 +446,39 @@ impl<H: HostResolver> Tree<H> {
         );
         for (node, can_spawn) in nodes {
             let commands = server.runtime_commands(inherited, can_spawn)?;
-            node.replace_commands(inherited.clone(), commands);
+            node.replace_commands(inherited.clone(), commands, list);
+        }
+        if list == PromptCommands::Renewed {
+            self.toolset.replace(toolset.revision.clone());
         }
         Ok(())
+    }
+
+    /// Gives `node`, which took `taken` from its owner as it was assembled
+    /// and was attached only after, the commands its owner has `now` if they
+    /// changed meanwhile, which [`adopt_commands`](Self::adopt_commands) gave
+    /// every node attached then. Its system prompt lists them, as one
+    /// assembled now would.
+    pub(super) fn catch_up_commands(
+        server: &Rc<AgentServer<H>>,
+        node: &Node<H>,
+        taken: &Rc<CommandSet>,
+        now: Rc<CommandSet>,
+    ) -> Result<(), String> {
+        if Rc::ptr_eq(taken, &now) {
+            return Ok(());
+        }
+        let commands = server
+            .runtime_commands(&now, node.record().can_spawn_subagents)
+            .map_err(|error| error.to_string())?;
+        node.replace_commands(now, commands, PromptCommands::Renewed);
+        Ok(())
+    }
+
+    /// Gives every node of the tree the product's `identity` from its next
+    /// request.
+    pub(crate) fn adopt_identity(&self, identity: Rc<str>) {
+        self.root.instructions().identity.replace(identity);
     }
 
     /// Opens the conversation's tree from its store, or creates it, with the
@@ -490,6 +525,7 @@ impl<H: HostResolver> Tree<H> {
         sink.observe(deps.observers.observer(root).await);
         let live = LiveOutput::new(sink.clone(), root.clone());
         let agents = Agents::new(deps.ids.next_id(), sink.clone());
+        let prompt = deps.prompts.prompt(root).await;
         let assembled = node::assemble(NodeSpec {
             origin,
             role: NodeRole::Root,
@@ -499,10 +535,10 @@ impl<H: HostResolver> Tree<H> {
             providers: deps.providers.clone(),
             hosts: deps.hosts.clone(),
             instructions: Instructions {
-                identity: deps.instructions.clone(),
+                identity: TreeIdentity::new(prompt.identity),
                 added: None,
             },
-            guide: deps.guides.guide(root).await,
+            guide: prompt.guide,
             preamble: None,
             context: deps.context.clone(),
             inherited,
@@ -607,7 +643,7 @@ impl<H: HostResolver> Tree<H> {
                 admitted: Cell::new(0),
                 lifecycle: TaskTracker::new(),
                 admission,
-                toolset: toolset.revision,
+                toolset: RefCell::new(toolset.revision),
                 store,
                 clock: deps.clock.clone(),
                 ids: deps.ids.clone(),
@@ -627,6 +663,9 @@ impl<H: HostResolver> Tree<H> {
             }
         });
         server.trees.borrow_mut().insert(root.clone(), tree.clone());
+        // Read again once the tree is listed, so a change of the identity
+        // made while it opened reaches it.
+        tree.adopt_identity(deps.prompts.prompt(root).await.identity);
         tree.placement().await;
         tree.show_subagents();
         // Read once the tree is listed, so a ledger row announced meanwhile

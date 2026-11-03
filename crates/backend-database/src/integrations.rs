@@ -59,6 +59,12 @@ pub struct IntegrationConversation {
     /// The workflow it was created with, YAML; none for no subagent
     /// profiles.
     pub workflow: Option<String>,
+    /// The sentence that opens its main agent's system prompt in place of
+    /// Demi's; none for Demi's.
+    pub identity: Option<String>,
+    /// The roots of the integration's declaration its agents have; none for
+    /// every one.
+    pub commands: Option<Vec<String>>,
 }
 
 /// One of an integration's Clouds.
@@ -262,8 +268,8 @@ impl ControlService {
     }
 
     /// Records the conversation `conversation`, just made in the
-    /// integration's workspace, as the integration's, with its key and
-    /// workflow. A key another conversation of the integration has answers
+    /// integration's workspace, as the integration's, with its key,
+    /// workflow, identity and commands. A key another conversation of the integration has answers
     /// that conversation instead, and records nothing.
     pub async fn record_integration_conversation(
         &self,
@@ -271,13 +277,16 @@ impl ControlService {
     ) -> Result<Option<ConversationId>, StorageError> {
         self.call(move |connection, _| {
             let inserted = connection.execute(
-                "INSERT INTO integration_conversations (conversation_id, integration_id, external_key, workflow)
-                 VALUES (?1, ?2, ?3, ?4) ON CONFLICT DO NOTHING",
+                "INSERT INTO integration_conversations
+                   (conversation_id, integration_id, external_key, workflow, identity, commands)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT DO NOTHING",
                 params![
                     record.conversation.as_str(),
                     record.integration.as_str(),
                     record.key,
-                    record.workflow
+                    record.workflow,
+                    record.identity,
+                    commands_text(record.commands.as_deref())
                 ],
             )?;
             if inserted == 1 {
@@ -295,7 +304,7 @@ impl ControlService {
     ) -> Result<Vec<IntegrationConversation>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(
-                "SELECT i.conversation_id, i.integration_id, i.external_key, i.workflow
+                "SELECT i.conversation_id, i.integration_id, i.external_key, i.workflow, i.identity, i.commands
                  FROM integration_conversations i JOIN conversations c ON c.id = i.conversation_id
                  WHERE i.integration_id = ?1 ORDER BY c.created_at DESC, c.id",
             )?;
@@ -320,7 +329,7 @@ impl ControlService {
     ) -> Result<Vec<(IntegrationConversation, Timestamp)>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(
-                "SELECT i.conversation_id, i.integration_id, i.external_key, i.workflow, c.created_at
+                "SELECT i.conversation_id, i.integration_id, i.external_key, i.workflow, i.identity, i.commands, c.created_at
                  FROM integration_conversations i JOIN conversations c ON c.id = i.conversation_id
                  WHERE i.integration_id = ?1
                    AND (?2 IS NULL OR c.created_at < ?2 OR (c.created_at = ?2 AND c.id > ?3))
@@ -333,7 +342,7 @@ impl ControlService {
             let mut rows = statement.query(params![integration.as_str(), at, id, limit])?;
             let mut page = Vec::new();
             while let Some(row) = rows.next()? {
-                let created = decode("conversations", "created_at", Timestamp::from_millisecond(row.get(4)?))?;
+                let created = decode("conversations", "created_at", Timestamp::from_millisecond(row.get(6)?))?;
                 page.push((integration_conversation_row(row)?, created));
             }
             Ok(page)
@@ -348,6 +357,30 @@ impl ControlService {
             Ok(connection.execute(
                 "UPDATE integration_conversations SET workflow = ?2 WHERE conversation_id = ?1",
                 params![id.as_str(), workflow],
+            )? == 1)
+        })
+        .await
+    }
+
+    /// Replaces the identity of the integration's conversation `id`, or
+    /// none for Demi's; false when it is no integration's.
+    pub async fn set_integration_identity(&self, id: ConversationId, identity: Option<String>) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            Ok(connection.execute(
+                "UPDATE integration_conversations SET identity = ?2 WHERE conversation_id = ?1",
+                params![id.as_str(), identity],
+            )? == 1)
+        })
+        .await
+    }
+
+    /// Replaces the roots of the declaration the integration's conversation
+    /// `id` has, or none for every one; false when it is no integration's.
+    pub async fn set_integration_commands(&self, id: ConversationId, commands: Option<Vec<String>>) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            Ok(connection.execute(
+                "UPDATE integration_conversations SET commands = ?2 WHERE conversation_id = ?1",
+                params![id.as_str(), commands_text(commands.as_deref())],
             )? == 1)
         })
         .await
@@ -398,7 +431,7 @@ impl ControlService {
         self.call(move |connection, _| {
             Ok(connection
                 .query_row(
-                    "SELECT conversation_id, integration_id, external_key, workflow
+                    "SELECT conversation_id, integration_id, external_key, workflow, identity, commands
                      FROM integration_conversations WHERE conversation_id = ?1",
                     [id.as_str()],
                     |row| Ok(integration_conversation_row(row)),
@@ -663,7 +696,18 @@ fn integration_conversation_row(row: &Row<'_>) -> Result<IntegrationConversation
         integration: decode(TABLE, "integration_id", IntegrationId::try_from(row.get::<_, String>(1)?))?,
         key: row.get(2)?,
         workflow: row.get(3)?,
+        identity: row.get(4)?,
+        commands: row
+            .get::<_, Option<String>>(5)?
+            .map(|text| decode(TABLE, "commands", serde_json::from_str(&text)))
+            .transpose()?,
     })
+}
+
+/// The roots a conversation has as its row keeps them: a JSON array of
+/// names, null for every root.
+fn commands_text(commands: Option<&[String]>) -> Option<String> {
+    commands.map(|commands| serde_json::to_string(commands).expect("names serialize"))
 }
 
 fn integration_cloud_by_key(

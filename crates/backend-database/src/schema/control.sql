@@ -1108,7 +1108,13 @@ CREATE TABLE integration_conversations (
   external_key    TEXT,
   -- The workflow it was created with, YAML in the format of a project's
   -- workflow file; none for no subagent profiles.
-  workflow        TEXT
+  workflow        TEXT,
+  -- The sentence that opens its main agent's system prompt in place of
+  -- Demi's; none for Demi's.
+  identity        TEXT,
+  -- The roots of the integration's declaration its agents have, a JSON
+  -- array of names; none for every one.
+  commands        TEXT
 ) STRICT;
 CREATE UNIQUE INDEX integration_conversations_by_key
   ON integration_conversations (integration_id, external_key) WHERE external_key IS NOT NULL;

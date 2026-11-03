@@ -26,6 +26,7 @@
 //!
 //! - The identity says what Demi is, not one job it does. Guidance that holds
 //!   only for software is written as a working habit that applies to any work.
+//!   An integration's conversation has its product's identity instead.
 //! - A profile's instructions never replace the identity, so a profile's node
 //!   is Demi with the same harness, tools, capabilities and model, told what
 //!   its kind of work is.

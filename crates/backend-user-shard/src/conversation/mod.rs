@@ -76,7 +76,7 @@ pub use self::announcement::AgentsError;
 pub(crate) use self::product::ShardHosts;
 pub(crate) use self::providers::{lent_limits, lent_runtime};
 use self::product::{
-    ExecutionContext, INSTRUCTIONS, ShardGuides, PluginContext, ShardAgents, ShardReplyFiles, ShardSubagents, ShardToolsets,
+    ExecutionContext, ShardPrompts, PluginContext, ShardAgents, ShardReplyFiles, ShardSubagents, ShardToolsets,
 };
 use self::providers::ConversationProviders;
 use self::small_requests::SmallRequests;
@@ -171,8 +171,7 @@ pub(crate) fn conversation_parts(
         subagents: Rc::new(ShardSubagents {
             shard: shard.clone(),
         }),
-        instructions: Rc::from(INSTRUCTIONS),
-        guides: Rc::new(ShardGuides { shard: shard.clone() }),
+        prompts: Rc::new(ShardPrompts { shard: shard.clone() }),
         hosts: Rc::new(ShardHosts {
             shard: shard.clone(),
         }),

@@ -18,8 +18,8 @@
 //!
 //! A product supplies:
 //!
-//! - the commands, instructions, harness guide and context sources every node
-//!   is assembled with;
+//! - the commands, the identity and harness guide of each conversation, and
+//!   the context sources every node is assembled with;
 //! - the user's subagent settings each spawn reads;
 //! - the Host its shell tools reach
 //!   ([`HostResolver`](demi_agent_tools::HostResolver));
@@ -36,7 +36,9 @@
 //!   reaches a conversation when its tree opens again.
 //! - The profiles and the Subagents switch are asked at each spawn instead, so
 //!   a change reaches the next spawn.
-//! - A node's system prompt is rendered once, when the node is assembled.
+//! - A node's system prompt is rendered for each request from what it was
+//!   assembled with; of that, only the identity the product gives may change,
+//!   for every node of the tree at once.
 //!
 //! Everything here runs on the user's shard, a single-threaded runtime: nothing
 //! is `Send`, and shared state sits in `Rc` and `RefCell` behind synchronous
@@ -76,6 +78,6 @@ pub use server::{
     resolve_content,
     NoObservers, Observer, Outgoing, SideCard, side_instruction, Follows,
     ProviderResolver, ResolveError, ResolvedFiles, RestoreError, ServerConfig,
-    GuideSource, ServerDeps, Tree, TreeObservers,
+    ProductPrompt, PromptSource, ServerDeps, Tree, TreeObservers,
     TreeStores, Working,
 };

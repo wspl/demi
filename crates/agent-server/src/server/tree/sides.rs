@@ -448,6 +448,7 @@ impl<H: HostResolver> Tree<H> {
         let activity = self.admission.enter(Purpose::Demand).await;
         let id = origin.record().id.clone();
         let inherited = self.root.inherited_commands();
+        let taken = inherited.clone();
         let commands = server
             .runtime_commands(&inherited, origin.record().can_spawn_subagents)
             .map_err(|error| error.to_string())?;
@@ -478,6 +479,7 @@ impl<H: HostResolver> Tree<H> {
         .await
         .map_err(|error| error.to_string())?;
         let side = self.attach_side(assembled.node);
+        Self::catch_up_commands(server, &side.node, &taken, self.root.inherited_commands())?;
         if let Some(continuation) = assembled.continuation
             && let Err(error) = side.node.continue_from(continuation).await
         {

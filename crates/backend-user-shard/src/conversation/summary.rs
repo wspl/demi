@@ -135,7 +135,7 @@ impl Shard {
     pub async fn conversation_metadata(&self, record: ConversationRecord) -> Result<ConversationMetadata, StorageError> {
         let tree = self.agent().tree(&root_of(&record.id));
         let plugins_changed = match &tree {
-            Some(tree) => tree.toolset() != self.plugins().revision().await.map_err(StorageError::from)?,
+            Some(tree) => *tree.toolset() != *self.plugins().revision().await.map_err(StorageError::from)?,
             None => false,
         };
         let facts = self.summary_facts(&record.id).await;
