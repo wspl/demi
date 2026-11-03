@@ -410,9 +410,10 @@ export const useProduct = defineStore('product', () => {
   }
   /**
    * Whether the page holds the catalog of the entries' models, which comes
-   * with the product state and its owner announces anew.
+   * with the product state and its owner announces anew, and the entries it
+   * lists them for: the model menus draw both.
    */
-  const catalogLoad = computed(() => (partLoad('models') === 'ready' ? 'ready' : 'loading'))
+  const catalogLoad = computed(() => (partLoad('models') === 'ready' && partLoad('providers') === 'ready' ? 'ready' : 'loading'))
   const activeConversationId = ref<string | null>(null)
   /** Consecutive channels that ended, and reads of the state that failed, before the state was read. */
   const failures = ref(0)
