@@ -29,7 +29,7 @@ use demi_provider_common::{
     media_catalog::{Catalog, MediaKind},
     videos::{self, Content, Done, JobState, VideoMaker, VideoOption, VideoRequest, content},
 };
-use demi_shared_types::{Clock, TokenUsage, VendorTrace, VideoResolution, VideoShape};
+use demi_shared_types::{Clock, TokenUsage, VendorTrace, VideoResolution};
 use futures_util::future::BoxFuture;
 use reqwest::{Url, header::HeaderMap};
 use serde::{Deserialize, Serialize};
@@ -118,10 +118,6 @@ impl VideoMaker for ArkVideos {
 
     fn shape_name(&self) -> String {
         "Ark Tasks".to_owned()
-    }
-
-    fn shape(&self) -> VideoShape {
-        VideoShape::ArkTasks
     }
 
     fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {

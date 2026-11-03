@@ -22,7 +22,9 @@ use demi_backend_user_shard::provider_sharing::Borrowing;
 use demi_backend_user_shard::services::Services;
 use demi_backend_user_shard::shard::Shard;
 use demi_provider_relay::wire::media::WireMediaFailure;
-use demi_provider_relay::wire::{ClientMessage, OtherVersion, MESSAGE_BYTES, SERVER_HEADER, VERSION, VERSION_HEADER};
+use demi_provider_relay::wire::{
+    ClientMessage, OtherVersion, MESSAGE_BYTES, SERVER_HEADER, TURNED_OFF, VERSION, VERSION_HEADER,
+};
 use demi_shared_types::MediaKind;
 use demi_web_api_protocol::providers::{NewShareKey, ShareKeys};
 use futures_util::{SinkExt as _, StreamExt as _, future};
@@ -83,6 +85,22 @@ async fn borrowing(
     match services.borrowing(bearer.token(), server).await {
         Ok(Some(borrowing)) => Ok(borrowing),
         Ok(None) => Err(refused()),
+        Err(error) => Err(ApiError::from(error).into_response()),
+    }
+}
+
+/// What a borrowing server's request presents, checked as [`borrowing`]
+/// checks it, for a route that lends: a provider its lender turned off is
+/// answered [`TURNED_OFF`].
+async fn lending(
+    services: &Services,
+    headers: &HeaderMap,
+    bearer: Option<TypedHeader<Authorization<Bearer>>>,
+) -> Result<Borrowing, Response> {
+    let borrowing = borrowing(services, headers, bearer).await?;
+    match services.lends(&borrowing).await {
+        Ok(true) => Ok(borrowing),
+        Ok(false) => Err(StatusCode::from_u16(TURNED_OFF).expect("423 is a status").into_response()),
         Err(error) => Err(ApiError::from(error).into_response()),
     }
 }
@@ -158,7 +176,7 @@ pub(super) async fn media_maker(
     bearer: Option<TypedHeader<Authorization<Bearer>>>,
     Path(kind): Path<MediaKind>,
 ) -> Response {
-    let borrowing = match borrowing(&state.services, &headers, bearer).await {
+    let borrowing = match lending(&state.services, &headers, bearer).await {
         Ok(borrowing) => borrowing,
         Err(response) => return response,
     };
@@ -175,7 +193,7 @@ pub(super) async fn media_image(
     bearer: Option<TypedHeader<Authorization<Bearer>>>,
     request: Request,
 ) -> Response {
-    let borrowing = match borrowing(&state.services, &headers, bearer).await {
+    let borrowing = match lending(&state.services, &headers, bearer).await {
         Ok(borrowing) => borrowing,
         Err(response) => return response,
     };
@@ -196,7 +214,7 @@ pub(super) async fn media_audio(
     bearer: Option<TypedHeader<Authorization<Bearer>>>,
     request: Request,
 ) -> Response {
-    let borrowing = match borrowing(&state.services, &headers, bearer).await {
+    let borrowing = match lending(&state.services, &headers, bearer).await {
         Ok(borrowing) => borrowing,
         Err(response) => return response,
     };
@@ -217,7 +235,7 @@ pub(super) async fn media_voices(
     bearer: Option<TypedHeader<Authorization<Bearer>>>,
     request: Request,
 ) -> Response {
-    let borrowing = match borrowing(&state.services, &headers, bearer).await {
+    let borrowing = match lending(&state.services, &headers, bearer).await {
         Ok(borrowing) => borrowing,
         Err(response) => return response,
     };
@@ -238,7 +256,7 @@ pub(super) async fn media_video(
     bearer: Option<TypedHeader<Authorization<Bearer>>>,
     request: Request,
 ) -> Response {
-    let borrowing = match borrowing(&state.services, &headers, bearer).await {
+    let borrowing = match lending(&state.services, &headers, bearer).await {
         Ok(borrowing) => borrowing,
         Err(response) => return response,
     };
@@ -252,7 +270,9 @@ pub(super) async fn media_video(
     .await
 }
 
-/// `GET /api/relay/media/video/{job}`.
+/// `GET /api/relay/media/video/{job}`: answered while the provider is
+/// turned off too, as cancel is, so a job started before it was turned off
+/// is not lost.
 pub(super) async fn media_video_state(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -270,7 +290,7 @@ pub(super) async fn media_video_state(
 }
 
 /// `GET /api/relay/media/video/{job}/file`: the finished job's video, its
-/// bytes.
+/// bytes, answered as its state is.
 pub(super) async fn media_video_file(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -314,7 +334,7 @@ pub(super) async fn socket(
     bearer: Option<TypedHeader<Authorization<Bearer>>>,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    let borrowing = match borrowing(&state.services, &headers, bearer).await {
+    let borrowing = match lending(&state.services, &headers, bearer).await {
         Ok(borrowing) => borrowing,
         Err(response) => return response,
     };

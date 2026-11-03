@@ -650,6 +650,7 @@
     "loading": "Loading providers…",
     "subscriptions": "Subscriptions",
     "apiKeys": "API Keys",
+    "shared": "Shared with You",
     "apiKeysShared": "The master shares API keys with every user.",
     "name": "Provider name",
     "rename": "Rename",

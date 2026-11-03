@@ -53,7 +53,7 @@ use demi_provider_common::{
     read_http_failure,
 };
 use demi_shared_types::audio::Pcm;
-use demi_shared_types::{AudioKind, AudioShape, B64Bytes, Clock, VendorTrace};
+use demi_shared_types::{AudioKind, B64Bytes, Clock, VendorTrace};
 use futures_util::future::BoxFuture;
 use reqwest::{
     StatusCode, Url,
@@ -356,10 +356,6 @@ impl MediaMaker for SeedAudio {
 }
 
 impl AudioMaker for SeedAudio {
-    fn shape(&self) -> AudioShape {
-        AudioShape::Seed
-    }
-
     fn needs_voice(&self) -> bool {
         true
     }

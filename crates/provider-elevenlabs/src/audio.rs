@@ -35,7 +35,7 @@ use demi_provider_common::{
     read_http_failure,
 };
 use demi_shared_types::audio::Pcm;
-use demi_shared_types::{AudioKind, AudioShape, Clock};
+use demi_shared_types::{AudioKind, Clock};
 use futures_util::future::BoxFuture;
 use reqwest::{
     StatusCode, Url,
@@ -180,10 +180,6 @@ impl AudioMaker for KeyAudio {
 
     fn shape_name(&self, _: &Catalog, _: &AudioRequest) -> String {
         "ElevenLabs".to_owned()
-    }
-
-    fn shape(&self) -> AudioShape {
-        AudioShape::Elevenlabs
     }
 
     fn needs_voice(&self) -> bool {

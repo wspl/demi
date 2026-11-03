@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { requestFailure } from '../fixtures/request-failures'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
-import { computed, onScopeDispose, ref } from 'vue'
+import { computed, onScopeDispose, ref, toRaw } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ProviderLoginDialog, {
   type ProviderLoginPhase,
@@ -95,14 +95,17 @@ async function borrow(entry: SettingsProviderEntry, text: string): Promise<void>
     return
   }
   if (/^Another Demi( \(\d+\))?$/.test(entry.name)) {
-    entry.name = 'Studio Claude'
+    entry.name = 'Studio'
   }
   entry.lender = 'lab.example.com'
   entry.baseUrl = 'https://lab.example.com'
   entry.catalogFetched = new Date().toISOString()
+  // What the lender has on: the studio specimen's models and media.
+  const studio = s.value.providers.find((other) => other.id === 'studio-relay')!
   if (!entry.models.length) {
-    entry.models = [{ ...s.value.providers.find((other) => other.id === 'studio-relay')!.models[0]! }]
+    entry.models = [{ ...studio.models[0]! }]
   }
+  entry.media = structuredClone(toRaw(studio.media))
   settle(entry)
 }
 

@@ -21,7 +21,7 @@ use demi_provider_common::{
     media::{MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable},
     media_catalog::{Catalog, MediaKind, Voices},
 };
-use demi_shared_types::{AudioKind, AudioShape, Clock};
+use demi_shared_types::{AudioKind, Clock};
 use futures_util::future::BoxFuture;
 use reqwest::{
     Url,
@@ -126,10 +126,6 @@ impl AudioMaker for KeyAudio {
 
     fn shape_name(&self, _: &Catalog, _: &AudioRequest) -> String {
         "OpenAI Speech".to_owned()
-    }
-
-    fn shape(&self) -> AudioShape {
-        AudioShape::OpenaiSpeech
     }
 
     /// OpenAI's speech requires `voice` and has no default one; a

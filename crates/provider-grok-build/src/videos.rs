@@ -11,7 +11,6 @@ use demi_provider_common::{
     media_catalog::{Catalog, MediaKind, Subscription},
     videos::{self, Done, JobState, VideoMaker, VideoOption, VideoRequest, unsent_of, xai},
 };
-use demi_shared_types::VideoShape;
 use futures_util::future::BoxFuture;
 use reqwest::header::HeaderMap;
 
@@ -48,10 +47,6 @@ impl VideoMaker for GrokVideos {
 
     fn shape_name(&self) -> String {
         "Grok".to_owned()
-    }
-
-    fn shape(&self) -> VideoShape {
-        VideoShape::Grok
     }
 
     fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {

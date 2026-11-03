@@ -12,7 +12,7 @@
 pub mod xai;
 
 use bytes::Bytes;
-use demi_shared_types::{Clock, Cost, TokenUsage, VendorTrace, VideoResolution, VideoShape};
+use demi_shared_types::{Clock, Cost, TokenUsage, VendorTrace, VideoResolution};
 use futures_util::future::BoxFuture;
 use http::HeaderMap;
 use reqwest::Url;
@@ -50,10 +50,6 @@ pub fn content(request: &VideoRequest) -> Vec<Content> {
 
 /// A provider's video role.
 pub trait VideoMaker: MediaMaker {
-    /// The shape its requests take, which says the options it sends
-    /// ([`unsent`]).
-    fn shape(&self) -> VideoShape;
-
     /// Asks for the video `request` describes and answers the job's id;
     /// `catalog` says what the model takes.
     fn ask<'a>(&'a self, http: &'a crate::ProviderHttp, catalog: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>>;

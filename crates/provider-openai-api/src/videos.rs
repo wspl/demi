@@ -65,6 +65,14 @@ impl KeyVideos {
         headers
     }
 
+    /// The shape its requests take, which says the options it sends.
+    fn shape(&self) -> VideoShape {
+        match self.flavor {
+            Flavor::Xai => VideoShape::XaiVideos,
+            Flavor::Compatible { shape, .. } => shape,
+        }
+    }
+
     fn url(&self, path: &str) -> Url {
         endpoint_url(&self.base, path)
     }
@@ -137,13 +145,6 @@ impl VideoMaker for KeyVideos {
             _ => "xAI Videos",
         };
         name.to_owned()
-    }
-
-    fn shape(&self) -> VideoShape {
-        match self.flavor {
-            Flavor::Xai => VideoShape::XaiVideos,
-            Flavor::Compatible { shape, .. } => shape,
-        }
     }
 
     fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {

@@ -650,6 +650,7 @@
     "loading": "Chargement des fournisseurs…",
     "subscriptions": "Abonnements",
     "apiKeys": "Clés API",
+    "shared": "Partagé avec vous",
     "apiKeysShared": "Le maître partage les clés API avec tous les utilisateurs.",
     "name": "Nom du fournisseur",
     "rename": "Renommer",

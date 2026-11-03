@@ -19,7 +19,7 @@ use demi_provider_common::{
     media_catalog::Catalog,
     videos::{self, Done, JobState, VideoMaker, VideoOption, VideoRequest, unsent_of},
 };
-use demi_shared_types::{VideoResolution, VideoShape};
+use demi_shared_types::VideoResolution;
 use futures_util::future::BoxFuture;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -60,10 +60,6 @@ impl VideoMaker for KeyVideos {
 
     fn shape_name(&self) -> String {
         "Veo".to_owned()
-    }
-
-    fn shape(&self) -> VideoShape {
-        VideoShape::Veo
     }
 
     fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {

@@ -819,6 +819,12 @@ async fn show_in_menu(
     let entry = named(&scope.entries, &args.entry).map_err(failed)?;
     let id = entry.id.clone();
     if let Some(model) = &args.model {
+        if shard.services().provider_registry.reads_directory(entry) {
+            return Err(failed(format!(
+                "--model: {} is shared by another server, whose settings say which of its models it offers",
+                entry.label
+            )));
+        }
         let offered = scope
             .catalog_of(entry)
             .is_some_and(|catalog| catalog.models.iter().any(|offered| offered.model.id == *model));

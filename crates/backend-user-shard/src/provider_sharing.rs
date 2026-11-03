@@ -31,8 +31,9 @@ use demi_backend_providers::vault::entries::Vault;
 use demi_provider_registry::entry::ProviderEntry;
 use demi_provider_relay::borrow::FAMILY as BORROWED;
 use demi_provider_relay::key::ShareKey as KeyText;
+use demi_provider_relay::lend::Lends;
 use demi_provider_relay::wire::{ClientMessage, Lent, ModelLimits, ServerMessage};
-use demi_shared_types::Timestamp;
+use demi_shared_types::{ProviderModelList, Timestamp};
 use demi_web_api_protocol::ids::{ProviderId, UserId};
 use demi_web_api_protocol::providers::{NewShareKey, ShareKey, ShareKeyUse, ShareKeys};
 use futures_util::{Sink, Stream};
@@ -198,15 +199,62 @@ fn shown(row: ShareKeyRow) -> ShareKey {
     }
 }
 
+impl Services {
+    /// Whether the key's maker still lends `borrowing`'s entry: one they
+    /// turned off in Settings › Providers lends nothing until it is on.
+    pub async fn lends(&self, borrowing: &Borrowing) -> Result<bool, StorageError> {
+        Ok(self.lends_model(borrowing, None).await? == Lends::Yes)
+    }
+
+    /// Whether the key's maker lends `borrowing`'s entry and, when given,
+    /// its `model`: they lend only what they have on in Settings ›
+    /// Providers.
+    async fn lends_model(&self, borrowing: &Borrowing, model: Option<&str>) -> Result<Lends, StorageError> {
+        let preferences = self.control.preferences(borrowing.key.created_by.clone()).await?;
+        let entry = &borrowing.entry.id;
+        Ok(if preferences.hides_provider(entry) {
+            Lends::TurnedOff
+        } else if model.is_some_and(|model| preferences.hides_model(entry, model)) {
+            Lends::NotTheModel
+        } else {
+            Lends::Yes
+        })
+    }
+}
+
 impl Shard {
-    /// What the lender says of `borrowing`'s entry: its name, its catalog,
-    /// and what one request of each of its models may hold.
+    /// What the lender says of `borrowing`'s entry: its name, its catalog of
+    /// the models the key's maker has on, and what one request of each may
+    /// hold; nothing but its name while they have it turned off.
     pub async fn lent(self: Rc<Self>, borrowing: Borrowing) -> Result<Lent, String> {
         let services = self.shared_services();
         let registry = &services.provider_registry;
         let entry = &borrowing.entry;
+        let preferences = services
+            .control
+            .preferences(borrowing.key.created_by.clone())
+            .await
+            .map_err(|error| error.to_string())?;
+        if preferences.hides_provider(&entry.id) {
+            return Ok(Lent {
+                name: entry.label.clone(),
+                catalog: ProviderModelList {
+                    models: Vec::new(),
+                    default_model_id: None,
+                    warnings: Vec::new(),
+                    source_fetched_at: services.clock.now(),
+                    stale: false,
+                },
+                limits: Vec::new(),
+                turned_off: true,
+            });
+        }
         let provider = registry.provider_for(entry).await;
         let mut catalog = registry.entry_catalog(entry, &provider, false).await;
+        catalog.models.retain(|model| !preferences.hides_model(&entry.id, &model.id));
+        if catalog.default_model_id.as_ref().is_some_and(|id| !catalog.models.iter().any(|model| &model.id == id)) {
+            catalog.default_model_id = None;
+        }
         // A warning is the source's own words, such as an account signed
         // out, which stay here; the borrower hears only that there is one.
         if !catalog.warnings.is_empty() {
@@ -231,7 +279,7 @@ impl Shard {
         .await?;
         Ok(Lent {
             name: entry.label.clone(),
-            media: registry.media_shapes(entry),
+            turned_off: false,
             catalog,
             limits: limits
                 .into_iter()
@@ -268,8 +316,9 @@ impl Shard {
             borrowing.entry.id.clone(),
             key.clone(),
         );
+        let lends = async |model: &str| services.lends_model(&borrowing, Some(model)).await.map_err(|error| error.to_string());
         tokio::select! {
-            () = demi_provider_relay::lend::serve(runtime, incoming, outgoing, &key) => {}
+            () = demi_provider_relay::lend::serve(runtime, incoming, outgoing, &key, lends) => {}
             () = revoked.cancelled() => {}
         }
         services.lent.ended(&key, &revoked);

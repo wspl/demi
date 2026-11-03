@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted, superseded in part by 0245
 ---
 
 # A Demi relays its providers to another, which keeps its conversations

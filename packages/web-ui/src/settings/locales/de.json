@@ -650,6 +650,7 @@
     "loading": "Anbieter werden geladen …",
     "subscriptions": "Abos",
     "apiKeys": "API-Schlüssel",
+    "shared": "Mit dir geteilt",
     "apiKeysShared": "Der Master teilt API-Schlüssel mit allen Benutzern.",
     "name": "Name des Anbieters",
     "rename": "Umbenennen",

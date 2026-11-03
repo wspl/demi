@@ -6,7 +6,7 @@
 //! its requests; the borrower never hears of it. A failure crosses as its
 //! code alone, and is logged here whole.
 
-use demi_provider_common::{ProviderEvent, ProviderRuntime};
+use demi_provider_common::{ErrorCode, ProviderEvent, ProviderRuntime};
 use demi_shared_types::AgentAccount;
 use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
 use tokio_util::sync::CancellationToken;
@@ -14,10 +14,31 @@ use tokio_util::sync::CancellationToken;
 use crate::delta::Inbox;
 use crate::wire::{ClientMessage, ServerMessage, WireEvent};
 
+/// Whether the lender lends a run, as its own settings say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lends {
+    Yes,
+    /// The provider is turned off.
+    TurnedOff,
+    /// The run's model is turned off.
+    NotTheModel,
+}
+
 /// Serves the session of one socket until `incoming` ends or `outgoing`
 /// closes, then closes `runtime`. `key` names the share key in the log.
-pub async fn serve<In, Out>(mut runtime: Box<dyn ProviderRuntime>, mut incoming: In, mut outgoing: Out, key: &str)
-where
+///
+/// `lends` says, before each run, whether the lender still lends the
+/// provider and the run's model. A provider it turned off ends the session,
+/// and the borrower, asking why, hears that it is off; a model it turned off
+/// fails the run as one the provider does not offer. A setting `lends`
+/// cannot read ends the session too, logged as the failure it is.
+pub async fn serve<In, Out>(
+    mut runtime: Box<dyn ProviderRuntime>,
+    mut incoming: In,
+    mut outgoing: Out,
+    key: &str,
+    mut lends: impl AsyncFnMut(&str) -> Result<Lends, String>,
+) where
     In: Stream<Item = ClientMessage> + Unpin,
     Out: Sink<ServerMessage> + Unpin,
 {
@@ -41,6 +62,26 @@ where
                 break;
             }
         };
+        match lends(&request.model_id).await {
+            Ok(Lends::Yes) => {}
+            Ok(Lends::TurnedOff) => {
+                tracing::info!(event = "relay.turned_off", key, "a borrowed session ended: its provider is turned off");
+                break;
+            }
+            Err(error) => {
+                tracing::warn!(event = "relay.lends_unread", key, %error, "a borrowed session ended: what it lends could not be read");
+                break;
+            }
+            Ok(Lends::NotTheModel) => {
+                let failure = WireEvent::Error { code: Some(ErrorCode::ModelUnavailable.as_str().to_owned()) };
+                let sent = outgoing.send(ServerMessage::Event { run, event: failure }).await.is_ok()
+                    && outgoing.send(ServerMessage::End { run }).await.is_ok();
+                if !sent {
+                    break;
+                }
+                continue;
+            }
+        }
         request.account = account.clone();
         let mut events = runtime.run(request);
         let mut cancelled = false;

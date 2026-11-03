@@ -108,9 +108,9 @@ pub struct ApiKeyConfig {
     )]
     #[garde(dive)]
     pub models: Option<ConfiguredModels>,
-    /// A compatible entry's image shape, which its user chose, or for a
-    /// borrowed entry its lender said; none until then, and always none for
-    /// a vendor entry, whose shape is its vendor's.
+    /// A compatible entry's image shape, which its user chose; none until
+    /// then, and always none for a vendor entry, whose shape is its
+    /// vendor's.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

@@ -650,6 +650,7 @@
     "loading": "プロバイダーを読み込んでいます…",
     "subscriptions": "サブスクリプション",
     "apiKeys": "API キー",
+    "shared": "あなたと共有",
     "apiKeysShared": "オーナーがすべてのユーザーと API キーを共有しています。",
     "name": "プロバイダー名",
     "rename": "名前を変更",
