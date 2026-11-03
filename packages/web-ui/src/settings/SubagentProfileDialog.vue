@@ -193,7 +193,7 @@ const title = computed(() => (props.mode === 'create' ? t('profile.new') : t('pr
 
       <!-- Only the fields scroll; the title and the buttons stay in place. -->
       <ScrollArea class="min-h-0" viewport-class="flex flex-col gap-3 px-5">
-        <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
+        <div class="settings-card @container shrink-0 overflow-hidden rounded-xl border border-line bg-surface-float">
           <SettingsRow :label="t('profile.name')" :description="t('profile.nameDescription')">
             <template v-if="nameProblem" #detail>
               <InlineError :message="nameProblem" />

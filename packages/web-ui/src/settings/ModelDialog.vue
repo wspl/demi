@@ -196,7 +196,7 @@ function save(): void {
         :viewport-class="`flex flex-col gap-4 px-5 ${editable ? '' : 'pb-5'}`"
       >
         <div
-          class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
+          class="settings-card @container shrink-0 overflow-hidden rounded-xl border border-line bg-surface-float"
         >
           <SettingsRow v-if="editable" :label="t('modelDialog.id')">
             <template v-if="idProblem" #detail>
@@ -314,7 +314,7 @@ function save(): void {
 
         <div
           v-if="text"
-          class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
+          class="settings-card @container shrink-0 overflow-hidden rounded-xl border border-line bg-surface-float"
         >
           <SettingsRow
             :label="t('modelDialog.acceptedFiles')"
