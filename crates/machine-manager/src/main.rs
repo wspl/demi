@@ -174,6 +174,7 @@ mod service {
         storage::{base, durable, room, state, store::ImageStore},
         tools::Tools,
     };
+    use demi_machine_manager_protocol::PrivateNetwork;
     use demi_shared_types::LogLine;
     use tokio::signal::unix::{SignalKind, signal};
     use tokio::sync::mpsc::Receiver;
@@ -323,9 +324,10 @@ mod service {
             return Ok(());
         }
         // The recovery above fenced every recorded sandbox but those taken
-        // over, which keep running.
-        let slots: Vec<_> = adopted.iter().map(|(_, sandbox)| sandbox.slot().clone()).collect();
-        core.network.prepare(&slots).await?;
+        // over, which keep running. They reach no private destination until
+        // the backend, as it connects, names the private network.
+        let slots: Vec<_> = adopted.iter().filter_map(|(_, sandbox)| sandbox.admitted()).collect();
+        core.network.prepare(&slots, &PrivateNetwork::Off).await?;
         let base = base::import(&core.tools, &core.config.image, &core.store.bases()).await?;
         let programs: Vec<_> = left
             .iter()

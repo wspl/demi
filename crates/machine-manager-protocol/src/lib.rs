@@ -36,6 +36,7 @@
 //! It holds no manager policy and no IO.
 
 pub mod image;
+pub mod network;
 pub mod runtime;
 pub mod store;
 mod state;
@@ -76,25 +77,36 @@ pub struct LeftRecord {
 }
 
 /// A sandbox a manager left running: its device, the boot its working pair
-/// records, and the base whose `/opt/demi` it mounts, which the next manager
-/// keeps while the sandbox runs.
+/// records, the base whose `/opt/demi` it mounts, which the next manager
+/// keeps while the sandbox runs, and which machine it is, which decides
+/// whether it reaches the private network.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LeftSandbox {
     pub device: DeviceId,
     pub id: String,
     pub slot: u16,
     pub programs: BaseVersion,
+    /// Absent from a record an earlier release wrote, which does not say
+    /// whether its sandbox is the Claude Code machine: it is then taken as
+    /// one, which reaches no private destination, until its next boot.
+    #[serde(default = "unknown_machine")]
+    pub machine: SandboxMachine,
+}
+
+fn unknown_machine() -> SandboxMachine {
+    SandboxMachine::ClaudeCode
 }
 
 pub use state::{
     BaseVersion, DeviceId, GenerationId, IdError, MachineImageState, RuntimeState, Volume,
     is_image_name,
 };
+pub use network::{Destination, PrivateNetwork};
 pub use wire::{
     Capacity, CheckpointParams, CurrentBaseVersionParams, DecodeError, HibernateParams,
     ImageStateParams, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, ManagerEvent, Message,
     Operation, ReconcileParams, Reconciled, ResetParams, RuntimeStateParams, VERSION as WIRE_VERSION,
-    SandboxMachine, WakeParams, decode_request, decode_response, encode_line,
+    SandboxMachine, SetPrivateNetworkParams, WakeParams, decode_request, decode_response, encode_line,
 };
 
 /// The room a large write to a server's disk leaves free: the backend's

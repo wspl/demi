@@ -82,7 +82,7 @@ pub async fn take_over(core: &Core, left: &LeftSandbox) -> io::Result<Option<Tak
         return Ok(None);
     };
     let lease = core.slots.reserve(record.slot).map_err(|_| io::Error::other("the sandbox's network slot is taken"))?;
-    let sandbox = Sandbox::adopted(core, record, lease, left.programs.clone());
+    let sandbox = Sandbox::adopted(core, record, lease, left.programs.clone(), left.machine);
     let owner = Owner {
         bundle: sandbox.bundle().to_owned(),
         sentry,

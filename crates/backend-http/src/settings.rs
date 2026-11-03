@@ -5,10 +5,14 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::State;
+use axum::http::StatusCode;
 use demi_backend_accounts::settings;
+use demi_backend_cloud::client::MachinesError;
+use demi_backend_cloud::network::{self, DestinationError};
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::auth::Role;
-use demi_web_api_protocol::settings::{PreferencesPatch, SetInstanceMode, Settings, UserPreferences};
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::settings::{CloudNetwork, PreferencesPatch, SetInstanceMode, Settings, UserPreferences};
 
 use super::body::JsonBody;
 use super::error::ApiError;
@@ -33,6 +37,59 @@ pub(super) async fn set_instance_mode(
     }
     services.vault.set_mode(request.mode).await?;
     Ok(Json(Settings { mode: request.mode }))
+}
+
+/// Settings › Cloud Network, which only the master reads.
+pub(super) async fn cloud_network(
+    State(services): State<Arc<Services>>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<CloudNetwork>, ApiError> {
+    if user.role != Role::Master {
+        return Err(ApiError::forbidden("Only the master sees which private destinations Clouds reach"));
+    }
+    Ok(Json(services.control.cloud_network().await?))
+}
+
+/// Changes which private destinations Clouds reach, which only the master
+/// does. A destination that is not one refuses the change, naming its place
+/// in the list (`index`). A manager that cannot be reached gets the stored
+/// setting when the backend connects to it again; one that refuses it
+/// leaves the setting as it was.
+pub(super) async fn set_cloud_network(
+    State(services): State<Arc<Services>>,
+    AuthUser(user): AuthUser,
+    JsonBody(request): JsonBody<CloudNetwork>,
+) -> Result<Json<CloudNetwork>, ApiError> {
+    if user.role != Role::Master {
+        return Err(ApiError::forbidden("Only the master changes which private destinations Clouds reach"));
+    }
+    let private = network::private_network(&request).map_err(|invalid| {
+        let problem = match invalid.error {
+            DestinationError::Address(_) => "address",
+            DestinationError::Port(_) => "port",
+            DestinationError::NeverReachable(_) => "neverReachable",
+        };
+        ApiError::invalid_body(invalid.to_string())
+            .with_param("index", invalid.index)
+            .with_param("problem", problem)
+    })?;
+    match network::apply(&services.cloud, private).await {
+        Ok(()) => {
+            services.control.set_cloud_network(request.clone()).await?;
+            Ok(Json(request))
+        }
+        Err(error @ MachinesError::Unavailable { .. }) => {
+            services.control.set_cloud_network(request).await?;
+            Err(ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ErrorCode::CloudUnavailable,
+                format!("Saved. Clouds get it when the machine manager is back: {error}"),
+            ))
+        }
+        Err(error) => Err(ApiError::internal_message(format!(
+            "The machine manager did not apply the private network: {error}"
+        ))),
+    }
 }
 
 pub(super) async fn preferences(

@@ -7,9 +7,15 @@
 //!
 //! - It allows outbound public traffic, replies to established connections and
 //!   the configured resolver on TCP and UDP port 53.
-//! - It denies every other private, loopback, link-local, metadata, multicast,
-//!   reserved and other-tenant destination, the host's own services included,
-//!   on forwarded traffic and on traffic addressed to the host.
+//! - It allows a Cloud, not the Claude Code machine, the private destinations
+//!   the master chose, which the backend names each time it connects and
+//!   after each change (`crates/machine-manager-protocol/src/network.rs`).
+//!   The manager keeps that choice in memory only, so it starts with none
+//!   until the backend connects.
+//! - It rejects every other private, loopback, link-local, metadata,
+//!   multicast, reserved and other-tenant destination, the host's own services
+//!   included, on forwarded traffic and on traffic addressed to the host. No
+//!   choice opens loopback, link-local, multicast, the host or another Cloud.
 //! - The backend is not among the allowed: a Cloud reaches it through the
 //!   runner socket, never the network.
 //!
@@ -52,6 +58,7 @@ mod linux {
         path::PathBuf,
     };
 
+    use demi_machine_manager_protocol::{PrivateNetwork, SandboxMachine};
     use ipnet::Ipv4Net;
 
     use super::{
@@ -113,14 +120,20 @@ mod linux {
         }
 
         /// Checks that the pool overlaps no host route, enables forwarding,
-        /// and installs the firewall table with the pairs of `running`, the
-        /// slots of the sandboxes that keep running.
-        pub async fn prepare(&self, running: &[Slot]) -> Result<(), NetworkError> {
+        /// and installs the firewall table with the private network Clouds
+        /// reach and the pairs of `running`, the slots of the sandboxes that
+        /// keep running.
+        pub async fn prepare(
+            &self,
+            running: &[(Slot, SandboxMachine)],
+            private: &PrivateNetwork,
+        ) -> Result<(), NetworkError> {
             self.check().await?;
             let table = ruleset::table(
                 &Policy {
                     pool: self.pool,
                     dns: &self.dns,
+                    private,
                 },
                 running,
             );
@@ -165,9 +178,9 @@ mod linux {
 
         /// Creates `slot`'s namespace and veth pair, gives both ends their
         /// addresses with IPv6 off, routes the sandbox through the host end,
-        /// and admits the slot's pair to the firewall. A kernel without IPv6
-        /// has none to turn off on either end.
-        pub async fn attach(&self, slot: &Slot) -> Result<(), NetworkError> {
+        /// and admits the slot's pair to the firewall as a `machine`'s. A
+        /// kernel without IPv6 has none to turn off on either end.
+        pub async fn attach(&self, slot: &Slot, machine: SandboxMachine) -> Result<(), NetworkError> {
             let namespace = slot.namespace();
             let host = slot.host_interface();
             let peer = slot.peer_interface();
@@ -216,7 +229,7 @@ mod linux {
                     .map_err(io::Error::other)
             })
             .await?;
-            let element = ruleset::add_slot(slot);
+            let element = ruleset::add_slot(slot, machine);
             let nft = self.nft.clone();
             blocking::run(move |_| apply(&nft, &element)).await
         }

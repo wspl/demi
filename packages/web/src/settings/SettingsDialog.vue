@@ -14,7 +14,12 @@ import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotificati
 import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
-import { settingsSections, withUpdatesSection, withUsersSection } from '@demicodes/web-ui/settings/sections'
+import {
+  settingsSections,
+  withCloudNetworkSection,
+  withUpdatesSection,
+  withUsersSection,
+} from '@demicodes/web-ui/settings/sections'
 import { appShortcuts, isAppShortcut } from '@demicodes/web-ui/settings/shortcuts'
 import { shortcutSet } from '@demicodes/web-ui/ui/shortcut'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
@@ -54,6 +59,7 @@ import InstructionsPanel from './InstructionsPanel.vue'
 import SubagentsPanel from './SubagentsPanel.vue'
 import CredentialsPanel from './CredentialsPanel.vue'
 import UsersPanel from './UsersPanel.vue'
+import CloudNetworkPanel from './CloudNetworkPanel.vue'
 import AboutPanel from './AboutPanel.vue'
 import UpdatesPanel from './UpdatesPanel.vue'
 import type { Action } from '@demicodes/web-ui/ui/operations'
@@ -76,15 +82,17 @@ const pluginSettings = usePluginSettings()
 const router = useRouter()
 const lifetime = new AbortController()
 /**
- * The rail lists Users for the master and admins only, and Updates
- * for them on a server that offers updates, whose state then carries it.
+ * The rail lists Users for the master and admins only, Cloud Network for the
+ * master only, and Updates for the master and admins on a server that offers
+ * updates, whose state then carries it.
  */
-const withUsers = computed(() =>
-  withUpdatesSection(
-    withUsersSection(settingsSections(), product.snapshot?.user?.role ?? 'user'),
+const withUsers = computed(() => {
+  const role = product.snapshot?.user?.role ?? 'user'
+  return withUpdatesSection(
+    withCloudNetworkSection(withUsersSection(settingsSections(), role), role),
     !!product.snapshot?.serverUpgrade,
-  ),
-)
+  )
+})
 const sections = keptComputed(() =>
   withPluginSections(withUsers.value, PLUGIN_PAGES, (plugin) =>
     pluginEnabled(product.snapshot, plugin),
@@ -473,6 +481,7 @@ function resetShortcuts(): void {
     <DevicesPanel v-else-if="section === 'devices'" />
     <PortForwardsPanel v-else-if="section === 'portForwards'" />
     <UsersPanel v-else-if="section === 'users' && product.snapshot?.user?.role !== 'user'" />
+    <CloudNetworkPanel v-else-if="section === 'cloudNetwork' && product.snapshot?.user?.role === 'master'" />
     <CredentialsPanel v-else-if="section === 'credentials'" />
     <InstructionsPanel v-else-if="section === 'instructions'" />
     <SubagentsPanel v-else-if="section === 'subagents'" />

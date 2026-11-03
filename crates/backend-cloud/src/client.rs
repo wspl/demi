@@ -102,6 +102,9 @@ pub struct Notices {
     pub deaths: mpsc::Receiver<DeviceId>,
     /// The device whose status changed.
     pub statuses: mpsc::Receiver<DeviceId>,
+    /// The client connected to the manager, which may have started since the
+    /// last connection and lost what it keeps in memory only.
+    pub connections: mpsc::Receiver<()>,
 }
 
 /// A handle on the machine manager's socket.
@@ -132,6 +135,8 @@ impl MachinesClient {
         let (commands, received) = mpsc::channel(QUEUE);
         let (deaths, died) = mpsc::channel(DEATHS);
         let (changed, statuses) = mpsc::channel(STATUSES);
+        // One waiting notice says all a second would.
+        let (connected, connections) = mpsc::channel(1);
         let kept = Arc::new(Mutex::new(HashMap::new()));
         let supervisor = Supervisor {
             socket,
@@ -140,6 +145,7 @@ impl MachinesClient {
             next_id: 1,
             deaths,
             changed,
+            connected,
             statuses: kept.clone(),
             log,
         };
@@ -150,7 +156,7 @@ impl MachinesClient {
                 statuses: kept,
                 _supervisor: AbortOnDropHandle::new(task),
             },
-            Notices { deaths: died, statuses },
+            Notices { deaths: died, statuses, connections },
         )
     }
 
@@ -210,6 +216,7 @@ struct Supervisor {
     next_id: u64,
     deaths: mpsc::Sender<DeviceId>,
     changed: mpsc::Sender<DeviceId>,
+    connected: mpsc::Sender<()>,
     statuses: Arc<Mutex<HashMap<DeviceId, ImageStatus>>>,
     log: ServerLog,
 }
@@ -255,7 +262,7 @@ impl Supervisor {
             tokio::select! {
                 _ = reconnect.tick(), if self.connection.is_none() => {
                     match connect(&self.socket).await {
-                        Ok(connection) => self.connection = Some(connection),
+                        Ok(connection) => self.connected(connection),
                         // The manager may not run yet; a call that needs it
                         // fails on its own.
                         Err(reason) => tracing::debug!(event = "machine_manager.connect_failed", reason, "the machine manager could not be reached"),
@@ -279,6 +286,13 @@ impl Supervisor {
         }
     }
 
+    /// Keeps `connection` and says the client connected.
+    fn connected(&mut self, connection: Connection) {
+        self.connection = Some(connection);
+        // A notice already waiting covers this one.
+        let _ = self.connected.try_send(());
+    }
+
     /// Sends `call`, connecting first.
     async fn call(
         &mut self,
@@ -288,7 +302,7 @@ impl Supervisor {
         let operation = call.name();
         if self.connection.is_none() {
             match connect(&self.socket).await {
-                Ok(connection) => self.connection = Some(connection),
+                Ok(connection) => self.connected(connection),
                 Err(reason) => {
                     // A caller that went away needs no answer.
                     let _ = answer.send(Err(MachinesError::Unavailable { operation, reason }));

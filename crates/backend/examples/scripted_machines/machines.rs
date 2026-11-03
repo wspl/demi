@@ -211,6 +211,9 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             }
             json(serde_json::to_value(demi_machine_manager_protocol::Reconciled { running }).unwrap())
         }
+        // Its guests run on the host's own network, which no firewall
+        // limits.
+        MachineCall::SetPrivateNetwork(_) => json(serde_json::Value::Null),
         MachineCall::CurrentBaseVersion(_) => json(serde_json::json!(BASE)),
         MachineCall::ImageState(params) => {
             let image = shared

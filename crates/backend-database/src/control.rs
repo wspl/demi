@@ -12,7 +12,7 @@ use demi_shared_types::{Clock, Timestamp};
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::UserId;
 use demi_web_api_protocol::server_upgrade::UpgradeChannel;
-use demi_web_api_protocol::settings::{InstanceMode, Preferences};
+use demi_web_api_protocol::settings::{CloudNetwork, InstanceMode, Preferences, PrivateNetworkAccess};
 use demi_web_api_protocol::text::EmailAddress;
 use demi_web_api_protocol::users::{CloudStorage, ListedUser};
 use jiff::SignedDuration;
@@ -431,6 +431,54 @@ impl ControlService {
                 "INSERT INTO server_settings (id, instance_mode) VALUES (1, ?1)
                  ON CONFLICT (id) DO UPDATE SET instance_mode = excluded.instance_mode",
                 [mode.to_string()],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Which private destinations Clouds reach: none until the master
+    /// chooses.
+    pub async fn cloud_network(&self) -> Result<CloudNetwork, StorageError> {
+        self.call(|connection, _| {
+            let row: Option<(String, String)> = connection
+                .query_row(
+                    "SELECT private_network, private_destinations FROM server_settings WHERE id = 1",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            let Some((access, destinations)) = row else {
+                return Ok(CloudNetwork {
+                    access: PrivateNetworkAccess::Off,
+                    destinations: Vec::new(),
+                });
+            };
+            let corrupt = |column, reason: String| StorageError::Corrupt {
+                table: "server_settings",
+                column,
+                reason,
+            };
+            Ok(CloudNetwork {
+                access: access
+                    .parse()
+                    .map_err(|_| corrupt("private_network", format!("{access} is no access")))?,
+                destinations: serde_json::from_str(&destinations)
+                    .map_err(|error| corrupt("private_destinations", error.to_string()))?,
+            })
+        })
+        .await
+    }
+
+    pub async fn set_cloud_network(&self, network: CloudNetwork) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            let destinations = serde_json::to_string(&network.destinations)
+                .expect("a list of strings serializes");
+            connection.execute(
+                "INSERT INTO server_settings (id, private_network, private_destinations) VALUES (1, ?1, ?2)
+                 ON CONFLICT (id) DO UPDATE SET private_network = excluded.private_network,
+                   private_destinations = excluded.private_destinations",
+                [network.access.to_string(), destinations],
             )?;
             Ok(())
         })

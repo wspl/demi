@@ -39,6 +39,37 @@ pub struct SetInstanceMode {
     pub mode: InstanceMode,
 }
 
+/// Which private destinations the server's Clouds reach, which the master
+/// chooses in Settings › Cloud Network.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PrivateNetworkAccess {
+    /// None: Clouds reach only the internet.
+    Off,
+    /// Every private network.
+    Entire,
+    /// Only the destinations listed.
+    Only,
+}
+
+serde_plain::derive_display_from_serialize!(PrivateNetworkAccess);
+serde_plain::derive_fromstr_from_deserialize!(PrivateNetworkAccess);
+
+/// Settings › Cloud Network, which only the master reads with
+/// `GET /settings/cloud-network` and changes with `PUT` to the same path.
+/// `destinations` are written as the master typed them, such as
+/// `10.20.0.0/16` or `10.20.0.7:22`, and kept while another access is chosen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct CloudNetwork {
+    #[garde(skip)]
+    pub access: PrivateNetworkAccess,
+    /// Bounded so the setting stays one small row; a network covers many
+    /// addresses in one entry.
+    #[garde(length(max = 256), inner(length(min = 1, max = 64)))]
+    pub destinations: Vec<String>,
+}
+
 /// Whether the page follows the system's light or dark scheme or fixes one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

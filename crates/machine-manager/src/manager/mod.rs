@@ -18,8 +18,8 @@ mod linux {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     use demi_machine_manager_protocol::{
-        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeviceId, DrainRecord, HibernateParams, ImageStateParams, LeftRecord, LeftSandbox, MachineCall, ManagerEvent, Operation, ReconcileParams, Reconciled,
-        ResetParams, RuntimeState, RuntimeStateParams, WakeParams,
+        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeviceId, DrainRecord, HibernateParams, ImageStateParams, LeftRecord, LeftSandbox, MachineCall, ManagerEvent, Operation, PrivateNetwork, ReconcileParams, Reconciled,
+        ResetParams, RuntimeState, RuntimeStateParams, SandboxMachine, SetPrivateNetworkParams, WakeParams,
     };
     use tokio::{
         sync::{mpsc, oneshot},
@@ -87,6 +87,8 @@ mod linux {
         workers: RefCell<JoinSet<()>>,
         deaths: mpsc::Sender<DeviceId>,
         changes: mpsc::Sender<DeviceId>,
+        /// The private network Clouds reach, as the backend last named it.
+        private: RefCell<PrivateNetwork>,
     }
 
     impl Manager {
@@ -105,6 +107,7 @@ mod linux {
                 admission: Admission::new(),
                 devices: RefCell::default(),
                 workers: RefCell::default(),
+                private: RefCell::new(PrivateNetwork::Off),
                 deaths,
                 changes,
             }
@@ -164,12 +167,13 @@ mod linux {
                 if worker.send(DeviceCommand::Leave { reply }).await.is_err() {
                     continue;
                 }
-                if let Ok(Some((record, programs))) = answer.await {
+                if let Ok(Some((record, programs, machine))) = answer.await {
                     sandboxes.push(LeftSandbox {
                         device,
                         id: record.id.as_str().to_owned(),
                         slot: record.slot,
                         programs,
+                        machine,
                     });
                 }
             }
@@ -205,23 +209,36 @@ mod linux {
         /// Reports the devices whose sandboxes run, which stay running,
         /// recovers what an interrupted operation left of the others, and
         /// installs the network policy again with the running sandboxes'
-        /// slots (`crates/machine-manager-protocol/src/lib.rs`): a
+        /// slots and the private network the backend last named: a
         /// backend's restart stops no Cloud and cuts none off.
         pub async fn reconcile(&self) -> Result<Reconciled, OpError> {
             let _whole = self.admission.exclusive().await?;
-            let (running, slots): (Vec<DeviceId>, Vec<Slot>) =
+            let (running, slots): (Vec<DeviceId>, Vec<(Slot, SandboxMachine)>) =
                 self.running_devices().await.into_iter().unzip();
             recovery::fence_and_save(&self.core, &running).await?;
-            self.core.network.prepare(&slots).await?;
+            let private = self.private.borrow().clone();
+            self.core.network.prepare(&slots, &private).await?;
             Ok(Reconciled {
                 running: running.iter().map(|device| device.as_str().to_owned()).collect(),
             })
         }
 
-        /// The devices whose workers run a sandbox, with its slot; the
-        /// caller holds the whole gate, so no worker is running an
-        /// operation.
-        async fn running_devices(&self) -> Vec<(DeviceId, Slot)> {
+        /// Installs the network policy with the private network `private`
+        /// and the running sandboxes' slots; under the whole gate, so no
+        /// sandbox starts or stops while the table is replaced.
+        pub async fn set_private_network(&self, private: PrivateNetwork) -> Result<(), OpError> {
+            let _whole = self.admission.exclusive().await?;
+            let slots: Vec<(Slot, SandboxMachine)> =
+                self.running_devices().await.into_iter().map(|(_, slot)| slot).collect();
+            self.core.network.prepare(&slots, &private).await?;
+            *self.private.borrow_mut() = private;
+            Ok(())
+        }
+
+        /// The devices whose workers run a sandbox, with its slot and
+        /// machine; the caller holds the whole gate, so no worker is running
+        /// an operation.
+        async fn running_devices(&self) -> Vec<(DeviceId, (Slot, SandboxMachine))> {
             let workers: Vec<_> = self
                 .devices
                 .borrow()
@@ -360,6 +377,10 @@ mod linux {
         async fn handle(&self, call: MachineCall) -> Result<serde_json::Value, OpError> {
             match call {
                 MachineCall::Reconcile(_) => Ok(reply::<ReconcileParams>(self.reconcile().await?)),
+                MachineCall::SetPrivateNetwork(params) => {
+                    self.set_private_network(params.private_network).await?;
+                    Ok(reply::<SetPrivateNetworkParams>(()))
+                }
                 MachineCall::CurrentBaseVersion(_) => {
                     Ok(reply::<CurrentBaseVersionParams>(self.base.clone()))
                 }

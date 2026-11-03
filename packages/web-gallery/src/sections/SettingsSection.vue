@@ -9,6 +9,7 @@ import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GalleryAbout from '../components/GalleryAbout.vue'
 import GalleryUpdates, { type UpdatesMoment } from '../components/GalleryUpdates.vue'
+import GalleryCloudNetwork, { type CloudNetworkMoment } from '../components/GalleryCloudNetwork.vue'
 import type { NoticesAnswer } from '../fixtures/acknowledgements'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import GallerySettingsRows from '../components/GallerySettingsRows.vue'
@@ -17,7 +18,12 @@ import GallerySkillsCalls from '../components/GallerySkillsCalls.vue'
 import GalleryWebSearchCalls from '../components/GalleryWebSearchCalls.vue'
 import GalleryWebSearchShowcase from '../components/GalleryWebSearchShowcase.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
-import { settingsSections as productSections, withUpdatesSection, withUsersSection } from '@demicodes/web-ui/settings/sections'
+import {
+  settingsSections as productSections,
+  withCloudNetworkSection,
+  withUpdatesSection,
+  withUsersSection,
+} from '@demicodes/web-ui/settings/sections'
 import GallerySettingsProviders from '../components/GallerySettingsProviders.vue'
 import { createSettingsState, gallerySessions, incompleteProviders, mockProviders } from '../fixtures/settings'
 import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
@@ -199,6 +205,15 @@ const updateMoments = [
   { value: 'checkFailed', label: 'Check Failed' },
 ] as const
 const updateMoment = ref<UpdatesMoment>('available')
+const cloudNetworkMoments = [
+  { value: 'off', label: 'Off' },
+  { value: 'entire', label: 'Entire' },
+  { value: 'only', label: 'Only These' },
+  { value: 'managerAway', label: 'Manager Away' },
+  { value: 'loading', label: 'Loading' },
+  { value: 'loadFailed', label: 'Load Failed' },
+] as const
+const cloudNetworkMoment = ref<CloudNetworkMoment>('only')
 /** The account specimen on a server without mail. */
 const noMail = ref({ name: 'Alex' })
 /** The specimen's signed-in browsers: Sign Out drops one, as the product's list would. */
@@ -218,12 +233,15 @@ providePageHost(
   ),
 )
 // The full mock's user is the master of a server that offers updates, whose
-// rail lists Users and Updates.
+// rail lists Users, Cloud Network and Updates.
 const sections = computed(() =>
   withUpdatesSection(
-    withUsersSection(
-      withPluginSections(productSections(), PLUGIN_PAGES, (plugin) =>
-        full.plugins.some((entry) => entry.id === plugin && entry.enabled),
+    withCloudNetworkSection(
+      withUsersSection(
+        withPluginSections(productSections(), PLUGIN_PAGES, (plugin) =>
+          full.plugins.some((entry) => entry.id === plugin && entry.enabled),
+        ),
+        'master',
       ),
       'master',
     ),
@@ -464,6 +482,22 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
           />
           <div class="@container rounded-xl border border-line bg-surface-dialog p-6">
             <GalleryUpdates :moment="updateMoment" />
+          </div>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Cloud Network"
+        note="Only for the master, after Users: Private Network Access, whether the server’s Clouds reach the private network the server is on. Off, the default, leaves them the internet alone; Entire Private Network opens 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and 100.64.0.0/10, and its description says a page the Cloud’s browser opens can reach them too; Only These Addresses lists what the master adds, each an IPv4 address or network with an optional port, as plain rows under one bare field, as a provider's models are under their filter: Enter in the field adds what it holds, and each row's button removes it. An address is changed by removing it and adding it again. Another choice keeps the list for when Only These Addresses is chosen again. The stand-in server refuses what the real one does, and the field keeps what was typed with why under it: try 10.20.0.0/33, 10.20.0.7:70000, 127.0.0.1 or 169.254.169.254. With the machine manager away a change is stored and a toast says Clouds get it once the manager is back. The server itself, cloud metadata services and other people’s Clouds are never reachable."
+      >
+        <div class="flex w-full max-w-2xl flex-col gap-4">
+          <Segmented
+            v-model="cloudNetworkMoment"
+            :options="cloudNetworkMoments"
+            size="sm"
+          />
+          <div class="@container rounded-xl border border-line bg-surface-dialog p-6">
+            <GalleryCloudNetwork :key="cloudNetworkMoment" :moment="cloudNetworkMoment" />
           </div>
         </div>
       </GallerySection>
