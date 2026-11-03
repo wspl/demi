@@ -439,13 +439,27 @@ socket.onmessage = async (message) => {
 are your program's own. A browser's `WebSocket` can't send the header, so run
 this in a server program.
 
-While no socket serves your commands, an agent's command waits for one to
-connect for a short while and then fails, telling the model that the
-integration is unreachable. An `optional` context request waits 10 seconds at
-most for your answer: then the agent asks its model without your context. A
-`required` one waits for your program to connect as a command does, and 10
-seconds for its answer; then the agent's turn ends with an error, which
-`lastTurn` shows.
+While no socket serves your commands, an agent's new command waits for one
+to connect for a short while and then fails, telling the model that the
+integration is unreachable.
+
+A command already sent outlives your program's restart. When its socket
+closes, the command waits, and the socket that serves your commands next
+receives its `request` again, under the same `id` and with
+`"resent": true`: another socket that has sent `declare` already, or else
+the next one to send it. Output the command wrote before reaches the agent
+once. Input your program read is not read again, and input it asked for but
+never received answers its next `read_stdin`. Make your work idempotent by
+the `id`, which no other request takes, even after Demi restarts: a resent
+request is the same call, which your program may have done already, such
+as a card it posted before it restarted. Such a command waits until your
+program replies or the agent stops it.
+
+An `optional` context request waits for your answer for 10 seconds, or the
+`contextWaitSeconds` your `declare` message names: then the agent asks its
+model without your context. A `required` one waits for your program to
+connect as a command does, and as long for its answer; then the agent's turn
+ends with an error, which `lastTurn` shows.
 
 ## Usage
 

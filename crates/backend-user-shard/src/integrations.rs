@@ -15,7 +15,8 @@ use demi_agent_server::{Observer, TreeObservers};
 use demi_agent_tools::parse_workflow;
 use demi_backend_host_access::{conversation_of, root_of};
 use demi_conversation_lane_protocol::ServerFrame;
-use demi_shared_types::NodeId;
+use demi_host_interface::PortResponse;
+use demi_shared_types::{B64Bytes, NodeId};
 use demi_web_api_protocol::devices::DeviceKind;
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::{Notify, mpsc};
@@ -1025,6 +1026,7 @@ pub struct IntegrationEvents {
     pub(crate) declared: Notify,
     /// The plugin requests that wait for their replies, by id.
     pub(crate) calls: RefCell<HashMap<u64, crate::integration_plugins::Call>>,
+    /// The last call's id (`crate::integration_plugins`).
     pub(crate) next_call: Cell<u64>,
     /// Each conversation as its sockets last heard it, which a change that
     /// shows nothing new is not told again against.
@@ -1138,6 +1140,7 @@ impl IntegrationEvents {
             list.push(declared);
         }
         self.declared.notify_waiters();
+        self.resend(integration);
     }
 
     /// A socket of `integration`'s that serves its plugin, the one that
@@ -1152,23 +1155,79 @@ impl IntegrationEvents {
             .map(|socket| socket.id)
     }
 
-    /// The socket `socket` of `integration`'s went: its requests fail.
+    /// The socket `socket` of `integration`'s went: its requests wait for
+    /// the next socket that serves the plugin, which may be one that does
+    /// now.
     pub(crate) fn closed(&self, integration: &IntegrationId, socket: u64) {
         if let Some(list) = self.sockets.borrow_mut().get_mut(integration) {
             list.retain(|candidate| candidate.id != socket);
         }
-        let ended: Vec<u64> = self
-            .calls
-            .borrow()
-            .iter()
-            .filter(|(_, call)| call.integration == *integration && call.socket == socket)
-            .map(|(id, _)| *id)
-            .collect();
-        for id in ended {
-            if let Some(call) = self.calls.borrow_mut().remove(&id) {
-                let _ = call.reply.send(api::PluginReply::Failed {
-                    message: "the integration's program went away".to_owned(),
-                });
+        for call in self.calls.borrow_mut().values_mut() {
+            if call.integration == *integration && call.socket == Some(socket) {
+                call.socket = None;
+            }
+        }
+        self.resend(integration);
+    }
+
+    /// Sends `socket` the answer to the `port` message `port` of the call
+    /// `id`. Input that does not reach it, since the socket closed, waits
+    /// on the call for its next `read_stdin`: it was read from the caller
+    /// once and cannot be read again.
+    pub(crate) fn answer(&self, integration: &IntegrationId, socket: u64, id: u64, port: u64, response: PortResponse) {
+        let input = match &response {
+            PortResponse::Input { bytes: Some(bytes) } => Some(bytes.clone()),
+            _ => None,
+        };
+        if self.send_to(integration, socket, api::Event::Answer { id, port, response }) {
+            return;
+        }
+        if let Some(bytes) = input
+            && let Some(call) = self.calls.borrow_mut().get_mut(&id)
+        {
+            call.unread = Some(match call.unread.take() {
+                Some(earlier) => B64Bytes::from([earlier.as_bytes(), bytes.as_bytes()].concat()),
+                None => bytes,
+            });
+        }
+    }
+
+    /// The call `id` lost its socket: it waits for the next.
+    pub(crate) fn orphan(&self, integration: &IntegrationId, id: u64) {
+        if let Some(call) = self.calls.borrow_mut().get_mut(&id) {
+            call.socket = None;
+        }
+        self.resend(integration);
+    }
+
+    /// Sends each of `integration`'s calls that lost their socket to the one
+    /// that serves its plugin, if any, again under its id: its program makes
+    /// its work idempotent by it.
+    fn resend(&self, integration: &IntegrationId) {
+        loop {
+            let Some(socket) = self.server(integration) else {
+                return;
+            };
+            let waiting: Vec<(u64, api::PluginRequest)> = self
+                .calls
+                .borrow()
+                .iter()
+                .filter(|(_, call)| call.integration == *integration && call.socket.is_none())
+                .map(|(id, call)| (*id, call.request.clone()))
+                .collect();
+            let mut lost = false;
+            for (id, request) in waiting {
+                if !self.send_to(integration, socket, api::Event::Request { id, request, resent: true }) {
+                    // That socket closed too: the next one serving gets them.
+                    lost = true;
+                    break;
+                }
+                if let Some(call) = self.calls.borrow_mut().get_mut(&id) {
+                    call.socket = Some(socket);
+                }
+            }
+            if !lost {
+                return;
             }
         }
     }

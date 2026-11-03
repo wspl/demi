@@ -612,7 +612,14 @@ pub enum Event {
     },
     /// A request of the integration's plugin, to this socket, which served
     /// the plugin when it was sent: a `reply` of the same `id` answers it.
-    Request { id: u64, request: PluginRequest },
+    /// `resent` when it went to a socket before that closed: the same call,
+    /// which its program may have done.
+    Request {
+        id: u64,
+        request: PluginRequest,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        resent: bool,
+    },
     /// The answer to the `port` message `port` of the request `id`.
     Answer {
         id: u64,

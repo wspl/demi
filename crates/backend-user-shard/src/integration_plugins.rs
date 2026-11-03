@@ -16,11 +16,16 @@
 //!
 //! A call while no socket serves the plugin waits for one as long as the
 //! backend waits for a runner that dropped, then fails, telling the model the
-//! integration is unreachable. A context request of an optional context does
-//! not wait for a socket, and waits for its answer only so long: an agent then
-//! asks its model without the block. One of a required context waits for a
-//! socket as a call does and for its answer as long, and then fails the
-//! agent's request.
+//! integration is unreachable. A call already sent outlives its socket: once
+//! a socket serves the plugin again, it receives the request again under the
+//! same id, marked `resent`, and the call waits until the agent stops it.
+//! Input read for it that the closed socket never received answers the next
+//! socket's first `read_stdin`.
+//!
+//! A context request of an optional context does not wait for a socket, and
+//! waits for its answer only so long: an agent then asks its model without
+//! the block. One of a required context waits for a socket as a call does
+//! and for its answer as long, and then fails the agent's request.
 //!
 //! Each request names the turn its work is in and the program's message that
 //! work descends from (`demi_backend_database::tree::turn_message`), which the
@@ -33,11 +38,11 @@ use demi_agent_tools::{ContextAnswer, ContextFailure, ContextSource, NodeContext
 use demi_backend_database::integrations::IntegrationRecord;
 use demi_backend_host_access::conversation_of;
 use demi_command_declarations::{LeafKind, NativeOperation, Node};
-use demi_host_interface::{Declared, RpcError, RpcHandler, RpcInvocation, RpcPort};
+use demi_host_interface::{Declared, PortRequest, PortResponse, RpcError, RpcHandler, RpcInvocation, RpcPort};
 use demi_integration_api_protocol as api;
 use demi_backend_database::tree;
 use demi_backend_host_access::root_of;
-use demi_shared_types::{NodeId, TurnId};
+use demi_shared_types::{B64Bytes, NodeId, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, IntegrationId};
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::oneshot;
@@ -57,11 +62,17 @@ const CONTEXT_WAIT: Duration = Duration::from_secs(10);
 /// A plugin request that waits for its reply.
 pub(crate) struct Call {
     pub(crate) integration: IntegrationId,
-    /// The socket it went to.
-    pub(crate) socket: u64,
+    /// The socket it went to last; none while no socket serves the plugin
+    /// since that one closed.
+    pub(crate) socket: Option<u64>,
+    /// What is sent again to the next socket that serves the plugin.
+    pub(crate) request: api::PluginRequest,
     pub(crate) reply: oneshot::Sender<api::PluginReply>,
     /// A command's port, which the program's `port` messages reach.
     port: Option<RpcPort>,
+    /// Input read for the call that no socket received, as one that closed
+    /// before its answer: the next `read_stdin` answers it.
+    pub(crate) unread: Option<B64Bytes>,
 }
 
 impl Shard {
@@ -129,12 +140,23 @@ impl Shard {
     pub async fn integration_message(self: &Rc<Self>, integration: &IntegrationRecord, socket: u64, message: api::ClientMessage) {
         let events = &self.integration_events;
         match message {
-            api::ClientMessage::Declare { commands, context } => {
-                let refused = self.declare(integration, commands, context).await.err();
-                if refused.is_none() {
+            api::ClientMessage::Declare {
+                commands,
+                context,
+                context_wait_seconds,
+            } => {
+                let declaration = api::Declaration {
+                    commands,
+                    context,
+                    context_wait_seconds,
+                };
+                let refused = self.declare(integration, declaration).await.err();
+                let serves = refused.is_none();
+                events.send_to(&integration.id, socket, api::Event::Declared { refused });
+                // After its answer, so the requests sent again come after it.
+                if serves {
                     events.serve(&integration.id, socket);
                 }
-                events.send_to(&integration.id, socket, api::Event::Declared { refused });
             }
             api::ClientMessage::Reply { id, reply } => {
                 let mut calls = events.calls.borrow_mut();
@@ -155,8 +177,15 @@ impl Shard {
                 let Some(rpc) = held else {
                     return;
                 };
-                let shard = self.clone();
                 let integration = integration.id.clone();
+                if matches!(request, PortRequest::ReadStdin {}) {
+                    let unread = events.calls.borrow_mut().get_mut(&id).and_then(|call| call.unread.take());
+                    if let Some(bytes) = unread {
+                        events.answer(&integration, socket, id, port, PortResponse::Input { bytes: Some(bytes) });
+                        return;
+                    }
+                }
+                let shard = self.clone();
                 self.tasks().spawn_local(async move {
                     let response = match rpc.forward(request).await {
                         Ok(response) => response,
@@ -164,9 +193,7 @@ impl Shard {
                         // program.
                         Err(_) => return,
                     };
-                    shard
-                        .integration_events
-                        .send_to(&integration, socket, api::Event::Answer { id, port, response });
+                    shard.integration_events.answer(&integration, socket, id, port, response);
                 });
             }
         }
@@ -236,7 +263,12 @@ impl Shard {
                 return Err("the integration is unreachable: no program of it is connected".to_owned());
             }
         };
-        let id = events.next_call.get() + 1;
+        // A program makes its work idempotent by the id, so no id is taken
+        // again after the backend restarts: ids count on from the clock's
+        // milliseconds times 1000, which a run outgrows only at 1000 calls a
+        // millisecond, and stay below 2^53, which a JSON reader keeps whole.
+        let floor = u64::try_from(self.services().clock.now().as_millisecond()).unwrap_or(0) * 1000;
+        let id = events.next_call.get().max(floor) + 1;
         events.next_call.set(id);
         let (reply, answered) = oneshot::channel();
         let cancel = port.as_ref().map(RpcPort::cancellation);
@@ -244,9 +276,11 @@ impl Shard {
             id,
             Call {
                 integration: integration.clone(),
-                socket,
+                socket: Some(socket),
+                request: request.clone(),
                 reply,
                 port,
+                unread: None,
             },
         );
         // A request that ends unanswered, stopped, timed out or dropped,
@@ -254,11 +288,11 @@ impl Shard {
         let _pending = Pending {
             shard: self,
             integration,
-            socket,
             id,
         };
-        if !events.send_to(integration, socket, api::Event::Request { id, request }) {
-            return Err("the integration's program went away".to_owned());
+        if !events.send_to(integration, socket, api::Event::Request { id, request, resent: false }) {
+            // The socket closed as it was sent: the next one gets it.
+            events.orphan(integration, id);
         }
         let stopped = async {
             match &cancel {
@@ -281,19 +315,19 @@ impl Shard {
 }
 
 /// A plugin request sent: unless its reply took it, its end removes it and
-/// sends its socket `cancel`.
+/// sends the socket it went to last `cancel`.
 struct Pending<'a> {
     shard: &'a Shard,
     integration: &'a IntegrationId,
-    socket: u64,
     id: u64,
 }
 
 impl Drop for Pending<'_> {
     fn drop(&mut self) {
         let events = &self.shard.integration_events;
-        if events.calls.borrow_mut().remove(&self.id).is_some() {
-            events.send_to(self.integration, self.socket, api::Event::Cancel { id: self.id });
+        let removed = events.calls.borrow_mut().remove(&self.id);
+        if let Some(socket) = removed.and_then(|call| call.socket) {
+            events.send_to(self.integration, socket, api::Event::Cancel { id: self.id });
         }
     }
 }
