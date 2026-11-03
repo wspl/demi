@@ -1,7 +1,7 @@
 //! What `demi video` does:
 //!
-//! 1. It reads the call's prompt and its frames and references from the Host
-//!    the command runs on.
+//! 1. It reads the call's prompt, its frames and references, and the video
+//!    an edit or an extension changes from the Host the command runs on.
 //! 2. It asks the Providers service for the video's job and names it on stderr
 //!    at once.
 //! 3. It says each change of the job's state.
@@ -13,12 +13,15 @@
 
 use demi_host_interface::RpcInvocation;
 use demi_plugin_interface::{
-    AskedVideo, ImageAspect, MadeVideo, PluginError, PluginPort, VideoAsk, VideoOption, VideoResolution, VideoStep,
+    AskedVideo, ImageAspect, MadeVideo, PluginError, PluginPort, SentSource, VideoAsk, VideoChange, VideoOption,
+    VideoResolution, VideoSourceAsk, VideoStep,
 };
-use demi_plugin_media::{decode_args, fits, models, parse_aspect, prompt, read_images, refused, required_model};
+use demi_plugin_media::{
+    decode_args, fits, models, parse_aspect, prompt, read_images, read_video, refused, required_model,
+};
 use demi_shared_types::{MediaKind, mp4};
 
-use crate::commands::{GenerateArgs, ModelsArgs};
+use crate::commands::{ChangeArgs, GenerateArgs, ModelsArgs};
 
 /// How far a video's length may be from the one asked before it is a
 /// different length: the vendors cut at a frame, not at the second.
@@ -30,7 +33,14 @@ pub(crate) async fn run(invocation: RpcInvocation, port: &PluginPort) -> Result<
         Some("generate") => {
             let args: GenerateArgs = decode_args(&invocation)?;
             let ask = ask(port, args).await?;
-            generate(&invocation, port, ask).await
+            generate(&invocation, port, ask, None).await
+        }
+        Some(leaf @ ("edit" | "extend")) => {
+            let change = if leaf == "edit" { VideoChange::Edit } else { VideoChange::Extend };
+            let args: ChangeArgs = decode_args(&invocation)?;
+            let path = args.video.clone();
+            let ask = change_ask(port, args, change).await?;
+            generate(&invocation, port, ask, Some(&path)).await
         }
         Some("models") => {
             let args: ModelsArgs = decode_args(&invocation)?;
@@ -75,14 +85,40 @@ async fn ask(port: &PluginPort, args: GenerateArgs) -> Result<VideoAsk, PluginEr
         seed: args.seed,
         model,
         provider: args.provider,
+        source: None,
+    })
+}
+
+/// An edit's or an extension's ask: its prompt, its options, its
+/// references and the video it changes, read together from the Host.
+async fn change_ask(port: &PluginPort, args: ChangeArgs, change: VideoChange) -> Result<VideoAsk, PluginError> {
+    let model = required_model(args.model, MediaKind::Video)?;
+    let prompt = prompt(port, args.prompt).await?;
+    let aspect = args.aspect.as_deref().map(parse_aspect).transpose()?;
+    let references = read_images(port, &args.reference.unwrap_or_default()).await?;
+    let bytes = read_video(port, &args.video).await?;
+    Ok(VideoAsk {
+        prompt,
+        image: None,
+        last_frame: None,
+        references,
+        duration: None,
+        aspect,
+        resolution: args.resolution,
+        audio: None,
+        seed: None,
+        model,
+        provider: args.provider,
+        source: Some(VideoSourceAsk { change, bytes }),
     })
 }
 
 /// Asks for the video, follows its job to its end, checks it and writes
-/// it to stdout, and says what came back.
-async fn generate(invocation: &RpcInvocation, port: &PluginPort, ask: VideoAsk) -> Result<u8, PluginError> {
+/// it to stdout, and says what came back; `source` is the path of the
+/// video an edit or an extension changes.
+async fn generate(invocation: &RpcInvocation, port: &PluginPort, ask: VideoAsk, source: Option<&str>) -> Result<u8, PluginError> {
     let command = format!("demi {}", invocation.path.join(" "));
-    let wanted = Wanted::of(&ask);
+    let wanted = Wanted::of(&ask, source);
     let aspect = ask.aspect;
     let asked = port
         .make_video(ask)
@@ -121,15 +157,19 @@ struct Wanted {
     aspect: Option<ImageAspect>,
     resolution: Option<VideoResolution>,
     audio: Option<bool>,
+    /// The change asked of the video at the path, for an edit or an
+    /// extension.
+    change: Option<(VideoChange, String)>,
 }
 
 impl Wanted {
-    fn of(ask: &VideoAsk) -> Self {
+    fn of(ask: &VideoAsk, source: Option<&str>) -> Self {
         Self {
             duration: ask.duration,
             aspect: ask.aspect,
             resolution: ask.resolution,
             audio: ask.audio,
+            change: ask.source.as_ref().zip(source).map(|(asked, path)| (asked.change, path.to_owned())),
         }
     }
 }
@@ -161,11 +201,21 @@ fn summary(command: &str, asked: &AskedVideo, video: &MadeVideo, facts: &mp4::Mp
         asked.model,
         entry(asked)
     );
+    if let (Some((change, _)), Some(SentSource::Job { job })) = (&wanted.change, &asked.source) {
+        let verb = match change {
+            VideoChange::Edit => "editing",
+            VideoChange::Extend => "extending",
+        };
+        said.push_str(&format!(", {verb} its job {job}"));
+    }
     if let Some(cost) = video.cost {
         said.push_str(&format!(", {cost}"));
     }
     said.push('\n');
     let mut warn = |text: String| said.push_str(&format!("{command}: warning: {text}\n"));
+    if let (Some((_, path)), Some(SentSource::FileInstead { job })) = (&wanted.change, &asked.source) {
+        warn(format!("{} no longer keeps job {job}; {path} was sent instead", asked.vendor));
+    }
     let got = format!("{}×{}", facts.width, facts.height);
     for option in &asked.unsent {
         let flag = match option {
@@ -189,17 +239,23 @@ fn summary(command: &str, asked: &AskedVideo, video: &MadeVideo, facts: &mp4::Mp
             _ => warn(format!("{} takes no {flag}", asked.shape)),
         }
     }
+    // An option that was not sent is warned of once, above, whatever the
+    // result is.
+    let sent = |option| !asked.unsent.contains(&option);
     if let Some(duration) = wanted.duration
+        && sent(VideoOption::Duration)
         && (facts.seconds - f64::from(duration)).abs() > DURATION_SLACK
     {
         warn(format!("asked for {}, got {}", seconds(f64::from(duration)), seconds(facts.seconds)));
     }
     if let Some(aspect) = wanted.aspect
+        && sent(VideoOption::Aspect)
         && !fits(aspect, facts.width, facts.height)
     {
         warn(format!("asked for {}:{}, got {got}", aspect.width, aspect.height));
     }
     if let Some(resolution) = wanted.resolution
+        && sent(VideoOption::Resolution)
         && !resolution.fits(facts.width, facts.height)
     {
         warn(format!("asked for {}, got {got}", resolution.lowercase()));

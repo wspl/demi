@@ -5,8 +5,9 @@
 //! its state until its end, whose video the role downloads. A whole job is one
 //! call, so it crosses a channel as one (`crate::media::channel`). Most vendors
 //! answer a job's ask with its id and are read until it ends ([`PolledVideos`],
-//! [`polled`]). The backend chooses the entry and the account, paces the reads
-//! and bounds the job.
+//! [`polled`]); one that streams the job's states, as Gemini Omni does, answers
+//! them as they come. The backend chooses the entry and the account, paces the
+//! reads and bounds the job.
 //!
 //! What every vendor's request has in common is in [`crate::media`]. The xAI
 //! Videos shape, which a Grok subscription, an xAI key and a compatible API
@@ -68,6 +69,18 @@ pub trait VideoMaker: MediaMaker {
         every: Duration,
     ) -> BoxStream<'a, MediaAnswer<JobStep>>;
 
+    /// The changes of a video its request has a field for; none for a
+    /// vendor that only makes new ones.
+    fn changes(&self) -> Vec<Change> {
+        Vec::new()
+    }
+
+    /// Whether it continues a job it made by the job's id
+    /// ([`SourceVideo::Job`]), the vendor keeping the video.
+    fn continues_jobs(&self) -> bool {
+        false
+    }
+
     /// Downloads the video a finished job names at `url`, with the entry's
     /// key where the vendor needs it.
     fn download<'a>(&'a self, http: &'a crate::ProviderHttp, url: &'a Url) -> BoxFuture<'a, MediaAnswer<Bytes>>;
@@ -83,8 +96,8 @@ pub trait VideoMaker: MediaMaker {
     /// request lacks.
     fn unsent(&self, catalog: &Catalog, request: &VideoRequest) -> Vec<VideoOption>;
 
-    /// How a call's message names the request it takes, such as `Veo takes
-    /// no --audio`.
+    /// How a call's message names the request it takes, such as `Gemini
+    /// Interactions takes no --seed`.
     fn shape_name(&self) -> String;
 }
 
@@ -147,6 +160,37 @@ pub fn polled<'a, M: PolledVideos + ?Sized>(
         .boxed()
 }
 
+/// What `demi video edit` and `demi video extend` ask of a video.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub enum Change {
+    /// The same scene changed as the prompt says, its length and shape
+    /// kept.
+    Edit,
+    /// The video followed by its continuation, as one video.
+    Extend,
+}
+
+/// The video an edit or an extension changes.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub struct VideoSource {
+    pub change: Change,
+    pub video: SourceVideo,
+}
+
+/// How the source goes to the vendor.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub enum SourceVideo {
+    /// An MP4's bytes.
+    File(Bytes),
+    /// The vendor's id of the job that made it, which the vendor keeps; a
+    /// vendor that no longer does fails the job with
+    /// [`MediaFailure::SourceGone`](crate::media::MediaFailure::SourceGone).
+    /// It never crosses a channel: a channel's maker continues no job
+    /// ([`VideoMaker::continues_jobs`]), whose id names the vendor.
+    #[serde(skip)]
+    Job(String),
+}
+
 /// A job a vendor took: its id at the vendor, and the model it makes as
 /// `catalog` states it, by which a vendor whose models take different
 /// requests, as MiniMax's do, reads its state.
@@ -175,9 +219,11 @@ pub struct VideoRequest {
     /// Whether the model makes sound.
     pub audio: Option<bool>,
     pub seed: Option<u64>,
+    /// The video an edit or an extension changes; none for a new one.
+    pub source: Option<VideoSource>,
 }
 
-/// An option of `demi video generate`.
+/// An option of `demi video generate`, `edit` or `extend`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum VideoOption {
     Image,
@@ -235,8 +281,8 @@ pub enum JobState {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Done {
     pub video: DoneVideo,
-    /// The cost the vendor reported, in its documented unit; none
-    /// otherwise.
+    /// The cost the vendor reported, in its documented unit, or the
+    /// tokens it reported priced at its published rates; none otherwise.
     pub cost: Option<Cost>,
     /// The counts the vendor reported; none when it reported none.
     pub usage: Option<TokenUsage>,
@@ -250,7 +296,8 @@ pub enum DoneVideo {
     /// ([`crate::media::channel::serve`]): the address names the vendor.
     #[serde(skip)]
     At(Url),
-    /// Within the answer, as a channel sends it.
+    /// Within the answer, as a channel sends it, or as Gemini Omni sends a
+    /// video it keeps for the job's continuation.
     Sent(Bytes),
 }
 

@@ -272,7 +272,7 @@ impl ProviderFamily for GoogleFamily {
             api_key: settings.api_key,
             base_url: settings.base_url,
             makes_images: settings.image_shape == Some(ImageShape::Gemini),
-            makes_videos: settings.video_shape == Some(VideoShape::Veo),
+            makes_videos: settings.video_shape == Some(VideoShape::GeminiInteractions),
             makes_audio: settings.audio_shape == Some(AudioShape::Gemini),
         };
         Ok(Arc::new(GoogleProvider::new(config, args.clock)))
@@ -283,9 +283,9 @@ impl ProviderFamily for GoogleFamily {
         (vendor_id == Some("google")).then_some(ImageShape::Gemini)
     }
 
-    /// A Gemini API key makes videos with Veo.
+    /// A Gemini API key makes videos with Gemini Omni.
     fn video_shape(&self, vendor_id: Option<&str>) -> Option<VideoShape> {
-        (vendor_id == Some("google")).then_some(VideoShape::Veo)
+        (vendor_id == Some("google")).then_some(VideoShape::GeminiInteractions)
     }
 
     /// A Gemini API key makes speech and, with Lyria, music.

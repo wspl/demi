@@ -272,6 +272,7 @@ impl Calls {
         );
         let observed = std::mem::take(&mut self.observed);
         UsageRow {
+            media_digest: None,
             user: self.ledger.user.clone(),
             conversation: self.ledger.conversation.clone(),
             agent: self.agent,

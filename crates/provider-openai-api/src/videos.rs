@@ -163,7 +163,7 @@ impl VideoMaker for KeyVideos {
     fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, url: &'a reqwest::Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
         let headers = match self.shape() {
             VideoShape::OpenaiVideos | VideoShape::OpenrouterVideos => self.headers(),
-            VideoShape::Grok | VideoShape::XaiVideos | VideoShape::Veo | VideoShape::ArkTasks | VideoShape::Hailuo => HeaderMap::new(),
+            VideoShape::Grok | VideoShape::XaiVideos | VideoShape::GeminiInteractions | VideoShape::ArkTasks | VideoShape::Hailuo => HeaderMap::new(),
         };
         let label = if self.shape_is_xai() { "xAI" } else { "OpenAI" };
         Box::pin(videos::download(label, &*self.clock, http, url, &self.base, headers))
@@ -199,7 +199,7 @@ impl demi_provider_common::videos::PolledVideos for KeyVideos {
                     let body = Bytes::from(openrouter_body(&request));
                     self.send(http, Ask::post_json(&url, body)).await.and_then(|body| read_id(&body))
                 }
-                VideoShape::Grok | VideoShape::XaiVideos | VideoShape::Veo | VideoShape::ArkTasks | VideoShape::Hailuo => {
+                VideoShape::Grok | VideoShape::XaiVideos | VideoShape::GeminiInteractions | VideoShape::ArkTasks | VideoShape::Hailuo => {
                     let url = self.url("/videos/generations");
                     let body = xai::encode(&request);
                     self.send(http, Ask::post_json(&url, body))
@@ -221,7 +221,7 @@ impl demi_provider_common::videos::PolledVideos for KeyVideos {
                     answer.and_then(|body| read_openai_state(&body, content))
                 }
                 VideoShape::OpenrouterVideos => answer.and_then(|body| read_openrouter_state(&body)),
-                VideoShape::Grok | VideoShape::XaiVideos | VideoShape::Veo | VideoShape::ArkTasks | VideoShape::Hailuo => {
+                VideoShape::Grok | VideoShape::XaiVideos | VideoShape::GeminiInteractions | VideoShape::ArkTasks | VideoShape::Hailuo => {
                     answer.and_then(|body| xai::read_state(&body))
                 }
             }

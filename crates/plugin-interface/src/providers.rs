@@ -127,6 +127,14 @@ pub struct VideoFacts {
     /// Whether it makes sound.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<bool>,
+    /// Whether it edits a video, and extends one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edits: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extends: Option<bool>,
+    /// The longest video it edits or extends, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_source_seconds: Option<f64>,
 }
 
 /// What an audio model makes and takes; a fact the vendor does not state
@@ -381,10 +389,46 @@ pub struct VideoAsk {
     /// The entry to make it through, as [`ImageAsk::provider`] names one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// The video `demi video edit` or `extend` changes; none for
+    /// `generate`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<VideoSourceAsk>,
 }
 
-/// An option of `demi video generate`, as a shape that has no field for it
-/// is said not to take it.
+/// The video an edit or an extension changes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VideoSourceAsk {
+    pub change: VideoChange,
+    /// An MP4's bytes, as the Host's file holds them.
+    pub bytes: B64Bytes,
+}
+
+/// What a call asks of the video it is given.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum VideoChange {
+    /// `demi video edit`.
+    Edit,
+    /// `demi video extend`.
+    Extend,
+}
+
+/// How the video an edit or an extension changes went to the vendor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
+pub enum SentSource {
+    /// As the file's bytes.
+    File,
+    /// As the id of the vendor's job that made it, which the vendor keeps.
+    Job { job: String },
+    /// As the file's bytes, since the vendor no longer keeps the job that
+    /// made it.
+    FileInstead { job: String },
+}
+
+/// An option of `demi video generate`, `edit` or `extend`, as a shape that
+/// has no field for it is said not to take it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VideoOption {
@@ -411,11 +455,15 @@ pub struct AskedVideo {
     /// The account, as [`MadeImage::account`] names it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
-    /// The shape's name, such as `Veo`, which a warning of an option it
-    /// has no field for names.
+    /// The shape's name, such as `Gemini Interactions`, which a warning of
+    /// an option it has no field for names.
     pub shape: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unsent: Vec<VideoOption>,
+    /// How the video an edit or an extension changes was sent; none for a
+    /// new video.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<SentSource>,
 }
 
 /// What one wait for the job answers: its next state, or its video.
@@ -685,6 +733,9 @@ pub enum MediaRefusal {
     /// The job expired at the vendor before it ran.
     #[error("the job expired at {vendor} before it ran")]
     JobExpired { vendor: String },
+    /// The model's entry has no field for the change asked of a video.
+    #[error("{model} cannot make the change asked of a video")]
+    NoChange { model: String, change: VideoChange },
     /// A speech call named no voice and the vendor has no default one.
     #[error("{vendor} needs a voice")]
     NeedsVoice { vendor: String, model: String },

@@ -4,7 +4,7 @@
 use demi_host_interface::RpcInvocation;
 use demi_plugin_interface::{ImageAspect, ImageInput, ImageKind, PluginError, PluginPort, PortFailure, PortRefusal};
 use demi_host_interface::{HostFile, HostRead};
-use demi_shared_types::MediaKind;
+use demi_shared_types::{B64Bytes, MediaKind, mp4};
 use image::ImageFormat;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -12,6 +12,11 @@ use serde_json::Value;
 /// The largest image a call sends: it is held whole in memory and sent to a
 /// vendor, whose APIs refuse an image over a few tens of megabytes.
 pub const MAX_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
+
+/// The largest video an edit or an extension sends: the call holds it
+/// whole in memory, and a source a vendor takes, of at most 10 seconds as
+/// Gemini Omni's, is a few MiB.
+pub const MAX_VIDEO_BYTES: u64 = 64 * 1024 * 1024;
 
 /// The largest prompt read from stdin, which is held whole in memory.
 const MAX_PROMPT_BYTES: usize = 1024 * 1024;
@@ -103,6 +108,35 @@ pub async fn read_images(port: &PluginPort, paths: &[String]) -> Result<Vec<Imag
             Ok(ImageInput { kind, bytes })
         })
         .collect()
+}
+
+/// The video at `path`, read from the Host the command runs on as
+/// [`read_images`] reads an image: an MP4 file of at most 64 MiB, else the
+/// call fails naming it.
+pub async fn read_video(port: &PluginPort, path: &str) -> Result<B64Bytes, PluginError> {
+    let named = |reason: &str| PluginError::failed(format!("{path}: {reason}"));
+    let read = HostRead::content(path.to_owned(), MAX_VIDEO_BYTES);
+    let file = match port.read_host_files(vec![read]).await {
+        Ok(files) => files.into_iter().next(),
+        Err(PortFailure::Refused(PortRefusal::NotRunning)) => {
+            return Err(PluginError::failed("the Host is not running"));
+        }
+        Err(failure) => return Err(failure.into()),
+    };
+    let bytes = match file {
+        Some(HostFile::File { size, .. }) if size > MAX_VIDEO_BYTES => {
+            return Err(named(&format!("the file is {size} bytes; a video is at most 64 MiB")));
+        }
+        Some(HostFile::File { bytes, .. }) => bytes,
+        Some(HostFile::Missing) | None => return Err(named("no such file")),
+        Some(HostFile::Directory { .. }) => return Err(named("is a directory")),
+        Some(HostFile::Unreadable { message }) => return Err(named(&message)),
+        Some(HostFile::Other) => return Err(named("not a file")),
+    };
+    if mp4::read(bytes.as_bytes()).is_err() {
+        return Err(named("not an MP4 video"));
+    }
+    Ok(bytes)
 }
 
 /// Whether an image of `width`×`height` pixels has the shape `aspect`,

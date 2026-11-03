@@ -144,6 +144,7 @@ impl Channel for Relay {
                 };
                 MediaFailure::Unanswered { cause, code, trace }
             }
+            MediaFailure::SourceGone { .. } => MediaFailure::SourceGone { trace },
         }
     }
 }

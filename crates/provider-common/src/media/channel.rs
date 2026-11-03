@@ -38,7 +38,9 @@ use crate::audio::{self, AudioFormatAsk, AudioMaker, AudioOption, AudioRequest, 
 use crate::images::{Aspect, ImageMaker, ImageRequest, InputImage, MadeImage};
 use crate::media::{MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable, within_limit};
 use crate::media_catalog::Catalog;
-use crate::videos::{self, Done, DoneVideo, JobState, JobStep, VideoMaker, VideoOption, VideoRequest};
+use crate::videos::{
+    self, Change, Done, DoneVideo, JobState, JobStep, SourceVideo, VideoMaker, VideoOption, VideoRequest, VideoSource,
+};
 
 /// What a failed video whose words stayed with whoever served it says.
 pub const NO_REASON: &str = "no reason is shared";
@@ -134,6 +136,8 @@ pub struct Facts {
     pub confirms_model: bool,
     pub needs_voice: bool,
     pub speeds: Option<(f64, f64)>,
+    /// [`VideoMaker::changes`].
+    pub changes: Vec<Change>,
     pub models: Vec<ModelFacts>,
 }
 
@@ -141,8 +145,9 @@ pub struct Facts {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ModelFacts {
     pub info: MediaModelInfo,
-    /// For a video model.
-    pub video: Option<Takes<VideoOption>>,
+    /// For a video model: of a new video, then of each of the maker's
+    /// [`changes`](Facts::changes), whose request may take less.
+    pub video: Vec<(Option<Change>, Takes<VideoOption>)>,
     /// For an audio model, of each kind.
     pub audio: Vec<(AudioKind, Takes<AudioOption>)>,
 }
@@ -223,10 +228,19 @@ async fn facts(maker: Roles<'_>, http: &crate::ProviderHttp, catalog: &Catalog) 
     let models = listed
         .into_iter()
         .map(|info| {
-            let video = maker.videos.map(|videos| Takes {
-                shape_name: videos.shape_name(),
-                lacks: videos.unsent(catalog, &every_video_option(&info.id)),
-            });
+            let video = match maker.videos {
+                Some(videos) => std::iter::once(None)
+                    .chain(videos.changes().into_iter().map(Some))
+                    .map(|change| {
+                        let takes = Takes {
+                            shape_name: videos.shape_name(),
+                            lacks: videos.unsent(catalog, &every_video_option(&info.id, change)),
+                        };
+                        (change, takes)
+                    })
+                    .collect(),
+                None => Vec::new(),
+            };
             let audio = match maker.audio {
                 Some(audio) => AudioKind::ALL
                     .into_iter()
@@ -250,6 +264,7 @@ async fn facts(maker: Roles<'_>, http: &crate::ProviderHttp, catalog: &Catalog) 
         confirms_model: maker.media.confirms_model(),
         needs_voice: maker.audio.is_some_and(|audio| audio.needs_voice()),
         speeds: maker.audio.and_then(|audio| audio.speeds()),
+        changes: maker.videos.map(|videos| videos.changes()).unwrap_or_default(),
         models,
     })
 }
@@ -257,12 +272,12 @@ async fn facts(maker: Roles<'_>, http: &crate::ProviderHttp, catalog: &Catalog) 
 /// What a maker of no kind it serves says of itself: no models, so a
 /// caller lists none rather than failing to list.
 pub fn no_facts(name: String) -> Facts {
-    Facts { name, vendor: None, confirms_model: true, needs_voice: false, speeds: None, models: Vec::new() }
+    Facts { name, vendor: None, confirms_model: true, needs_voice: false, speeds: None, changes: Vec::new(), models: Vec::new() }
 }
 
-/// A video request that gives every option, whose unsent ones are those a
-/// model's request lacks.
-fn every_video_option(model: &str) -> VideoRequest {
+/// A video request that gives every option, a new video's or `change`'s,
+/// whose unsent ones are those a model's request lacks.
+fn every_video_option(model: &str, change: Option<Change>) -> VideoRequest {
     let image = || InputImage { media_type: "image/png", bytes: Bytes::new() };
     VideoRequest {
         model: model.to_owned(),
@@ -275,6 +290,7 @@ fn every_video_option(model: &str) -> VideoRequest {
         resolution: Some(VideoResolution::Height(720)),
         audio: Some(true),
         seed: Some(0),
+        source: change.map(|change| VideoSource { change, video: SourceVideo::File(Bytes::new()) }),
     }
 }
 
@@ -443,20 +459,29 @@ impl<C: Channel> VideoMaker for Remote<C> {
             .boxed()
     }
 
+    /// Those of the maker that serves, whose source goes as its file: a
+    /// job it continues is named by an id the lender keeps to itself.
+    fn changes(&self) -> Vec<Change> {
+        self.facts().map(|facts| facts.changes.clone()).unwrap_or_default()
+    }
+
     /// Never asked: whoever serves sends a finished job's video.
     fn download<'a>(&'a self, _: &'a crate::ProviderHttp, _: &'a Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
         Box::pin(async { Self::answered(Err(unreadable("it sent an address rather than its video".to_owned()))) })
     }
 
     fn unsent(&self, _: &Catalog, request: &VideoRequest) -> Vec<VideoOption> {
-        let lacks = self.model(&request.model).and_then(|model| model.video).map(|takes| takes.lacks).unwrap_or_default();
+        let change = request.source.as_ref().map(|source| source.change);
+        let model = self.model(&request.model);
+        let takes = model.and_then(|model| model.video.into_iter().find(|(of, _)| *of == change));
+        let lacks = takes.map(|(_, takes)| takes.lacks).unwrap_or_default();
         videos::unsent_of(&lacks, request)
     }
 
     fn shape_name(&self) -> String {
         let named = self
             .facts()
-            .and_then(|facts| facts.models.iter().find_map(|model| model.video.as_ref().map(|takes| takes.shape_name.clone())));
+            .and_then(|facts| facts.models.iter().find_map(|model| model.video.first().map(|(_, takes)| takes.shape_name.clone())));
         named.unwrap_or_else(|| self.name().to_owned())
     }
 }

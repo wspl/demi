@@ -36,7 +36,7 @@ export const SETTINGS_MEDIA_KINDS: readonly SettingsMediaKind[] = ['image', 'vid
 export type SettingsImageShape = 'chatgpt' | 'grok' | 'openai-images' | 'gemini' | 'seedream' | 'minimax'
 
 /** How an entry's API makes videos, as `SettingsImageShape` says of images. */
-export type SettingsVideoShape = 'grok' | 'xai-videos' | 'veo' | 'openai-videos' | 'ark-tasks' | 'openrouter-videos' | 'hailuo'
+export type SettingsVideoShape = 'grok' | 'xai-videos' | 'gemini-interactions' | 'openai-videos' | 'ark-tasks' | 'openrouter-videos' | 'hailuo'
 
 /** How an entry's API makes audio, as `SettingsImageShape` says of images. */
 export type SettingsAudioShape = 'openai-speech' | 'gemini' | 'elevenlabs' | 'seed' | 'minimax'
@@ -61,7 +61,7 @@ export const MEDIA_SHAPE_LABELS: Record<SettingsMediaShape, string> = {
   'openai-images': 'OpenAI Images',
   gemini: 'Gemini',
   'xai-videos': 'xAI Videos',
-  veo: 'Veo',
+  'gemini-interactions': 'Gemini Interactions',
   'openai-videos': 'OpenAI Videos',
   'ark-tasks': 'Ark Tasks',
   'openrouter-videos': 'OpenRouter Videos',

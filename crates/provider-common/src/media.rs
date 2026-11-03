@@ -11,6 +11,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use demi_shared_types::{AudioKind, Clock, QuotaWindow, Timestamp, VendorTrace};
 use futures_util::future::BoxFuture;
+use futures_util::stream::{BoxStream, StreamExt as _};
 use http::{HeaderMap, StatusCode};
 use reqwest::Url;
 use serde::Deserialize;
@@ -412,6 +413,11 @@ pub enum MediaFailure {
         #[serde(skip)]
         trace: VendorTrace,
     },
+    /// The vendor no longer keeps the job a video change named as its
+    /// source, which the file can be sent in place of. It never crosses a
+    /// channel, whose maker continues no job.
+    #[serde(skip)]
+    SourceGone { trace: VendorTrace },
 }
 
 impl MediaFailure {
@@ -423,7 +429,8 @@ impl MediaFailure {
             | Self::KeyRefused { trace: own, .. }
             | Self::Refused { trace: own, .. }
             | Self::Shape { trace: own, .. }
-            | Self::Unanswered { trace: own, .. } => *own = std::mem::take(own).or(trace),
+            | Self::Unanswered { trace: own, .. }
+            | Self::SourceGone { trace: own } => *own = std::mem::take(own).or(trace),
             Self::SignIn(_) => {}
         }
         self
@@ -437,7 +444,8 @@ impl MediaFailure {
             | Self::KeyRefused { trace, .. }
             | Self::Refused { trace, .. }
             | Self::Shape { trace, .. }
-            | Self::Unanswered { trace, .. } => trace.clone(),
+            | Self::Unanswered { trace, .. }
+            | Self::SourceGone { trace } => trace.clone(),
             Self::SignIn(_) => VendorTrace::default(),
         }
     }
@@ -449,6 +457,7 @@ impl MediaFailure {
             Self::SignIn(failure) => failure.failure().code,
             Self::KeyRefused { code, .. } => Some(code.clone()),
             Self::Refused { code, .. } | Self::Shape { code, .. } | Self::Unanswered { code, .. } => code.clone(),
+            Self::SourceGone { .. } => None,
         };
         code.map_or_else(|| "failed".to_owned(), |code| code.as_str().to_owned())
     }
@@ -491,6 +500,8 @@ pub struct Answered {
     /// The request or trace ID its headers name, which a failure the body
     /// states is traced by.
     pub trace_id: Option<String>,
+    /// Its headers, such as the address a resumable upload continues at.
+    pub headers: HeaderMap,
 }
 
 impl MediaCall<'_> {
@@ -533,6 +544,54 @@ impl MediaCall<'_> {
         let call = self.attempts(http, &ask, holding, credentials, &mut observed);
         let result = within_deadline(call).await;
         MediaAnswer { result, observed }
+    }
+
+    /// Posts `body`, a JSON object, to `url` with the key's `headers`, and
+    /// answers the data of each server-sent event of the vendor's success
+    /// as it comes ([`crate::wire::sse_data`]).
+    ///
+    /// The answer's head comes within [`REQUEST_TIMEOUT`], and so does each
+    /// part of its body after the one before, a keep-alive included; a
+    /// longer silence fails the stream. The body is at most what
+    /// [`Holding::Json`] holds, a file in it as base64. A line of JSON
+    /// outside an event, as Google sends a failure mid-stream, is read as an
+    /// event's data. A refusal reads as a call's does.
+    pub async fn post_events(
+        &self,
+        http: &crate::ProviderHttp,
+        url: &Url,
+        body: Bytes,
+        headers: HeaderMap,
+    ) -> Result<BoxStream<'static, Result<String, MediaFailure>>, MediaFailure> {
+        let response = within_deadline(async {
+            let response = follow(http, &Ask::post_json(url, body), &headers, url).await?;
+            if !response.status().is_success() {
+                return Err(self.refusal(response).await);
+            }
+            Ok(response)
+        })
+        .await?;
+        let silence = format!("no part of its answer in {} s", REQUEST_TIMEOUT.as_secs());
+        let chunks = futures_util::stream::unfold(Some(response.bytes_stream().boxed()), move |body| {
+            let silence = silence.clone();
+            async move {
+                let mut body = body?;
+                match tokio::time::timeout(REQUEST_TIMEOUT, body.next()).await {
+                    Ok(Some(Ok(chunk))) => Some((Ok(chunk), Some(body))),
+                    Ok(Some(Err(error))) => Some((Err(transport(error)), None)),
+                    Ok(None) => None,
+                    Err(_) => Some((Err(unanswered(silence)), None)),
+                }
+            }
+        });
+        let events = crate::wire::sse_data(stray_lines_as_events(chunks.boxed(), Holding::Json.limit())).map(|event| {
+            event.map_err(|error| match error {
+                crate::wire::SseError::Transport(failure) => failure,
+                crate::wire::SseError::Utf8(error) => unreadable(format!("its answer is not UTF-8: {error}")),
+                crate::wire::SseError::Syntax(error) => unreadable(format!("its answer could not be read: {error}")),
+            })
+        });
+        Ok(events.boxed())
     }
 
     /// The body of a successful `GET` of `url` with `headers`, such as a
@@ -598,8 +657,9 @@ impl MediaCall<'_> {
                 return Err(self.refusal(response).await);
             }
             let trace_id = trace_id(response.headers());
+            let headers = response.headers().clone();
             let body = read_within(response, holding, "answer").await?;
-            return Ok(Answered { status, body, trace_id });
+            return Ok(Answered { status, body, trace_id, headers });
         }
     }
 
@@ -645,6 +705,64 @@ impl MediaCall<'_> {
     }
 }
 
+/// What is left of an event stream's body to read: the chunks to come, the
+/// line begun and not ended, and how many bytes came.
+struct Lines<S> {
+    chunks: S,
+    begun: Vec<u8>,
+    read: usize,
+}
+
+/// `chunks`, each line that starts with `{` made an event of its own, `data:`
+/// and the line, and failed once they hold more than `limit` bytes.
+fn stray_lines_as_events<S>(chunks: S, limit: usize) -> impl futures_util::Stream<Item = Result<Bytes, MediaFailure>>
+where
+    S: futures_util::Stream<Item = Result<Bytes, MediaFailure>> + Unpin,
+{
+    futures_util::stream::unfold(Some(Lines { chunks, begun: Vec::new(), read: 0 }), move |lines| async move {
+        let mut lines = lines?;
+        loop {
+            let chunk = match lines.chunks.next().await {
+                Some(Ok(chunk)) => chunk,
+                Some(Err(failure)) => return Some((Err(failure), None)),
+                None if lines.begun.is_empty() => return None,
+                None => {
+                    let rest = std::mem::take(&mut lines.begun);
+                    return Some((Ok(as_events(&rest)), None));
+                }
+            };
+            lines.read += chunk.len();
+            if lines.read > limit {
+                return Some((Err(too_large("answer")), None));
+            }
+            // Only the new chunk is searched, so a long line is scanned
+            // once however many chunks it comes in.
+            let Some(end) = chunk.iter().rposition(|byte| *byte == b'\n') else {
+                lines.begun.extend_from_slice(&chunk);
+                continue;
+            };
+            lines.begun.extend_from_slice(&chunk[..=end]);
+            let ended = std::mem::replace(&mut lines.begun, chunk[end + 1..].to_vec());
+            return Some((Ok(as_events(&ended)), Some(lines)));
+        }
+    })
+}
+
+/// `text`'s lines, each that starts with `{` an event of its own.
+fn as_events(text: &[u8]) -> Bytes {
+    let mut out = Vec::with_capacity(text.len());
+    for line in text.split_inclusive(|byte| *byte == b'\n') {
+        if line.first() == Some(&b'{') {
+            out.extend_from_slice(b"data: ");
+            out.extend_from_slice(line.strip_suffix(b"\n").unwrap_or(line));
+            out.extend_from_slice(b"\n\n");
+        } else {
+            out.extend_from_slice(line);
+        }
+    }
+    Bytes::from(out)
+}
+
 /// `call`'s result, or a failure once [`REQUEST_TIMEOUT`] has passed.
 pub(crate) async fn within_deadline<T>(call: impl Future<Output = Result<T, MediaFailure>>) -> Result<T, MediaFailure> {
     match tokio::time::timeout(REQUEST_TIMEOUT, call).await {
@@ -677,6 +795,11 @@ pub fn transport(error: impl Into<crate::SendError>) -> MediaFailure {
 /// The failure of an answer that is not what the vendor documents.
 pub fn unreadable(cause: String) -> MediaFailure {
     MediaFailure::Unanswered { cause, code: None, trace: VendorTrace::default() }
+}
+
+/// The failure of an answer that stopped coming.
+fn unanswered(cause: String) -> MediaFailure {
+    MediaFailure::Unanswered { cause, code: Some(ErrorCode::Overloaded), trace: VendorTrace::default() }
 }
 
 /// The headers vendors name a request by, in the order they are read:
