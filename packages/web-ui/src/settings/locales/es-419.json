@@ -751,6 +751,12 @@
       "throughRemoved": "Dispositivo eliminado",
       "throughRemovedDescription": "Se eliminó el dispositivo: las solicitudes fallan hasta que elijas otro."
     },
+    "vendorHeaders": {
+      "anthropic-workspace-id": {
+        "label": "ID del espacio de trabajo",
+        "description": "Para una clave sin espacio de trabajo asignado."
+      }
+    },
     "headers": {
       "title": "Encabezados",
       "description": "Se envían con cada solicitud. En un valor, {token} representa el ID del chat.",

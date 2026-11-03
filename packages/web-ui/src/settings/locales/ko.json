@@ -751,6 +751,12 @@
       "throughRemoved": "제거된 기기",
       "throughRemovedDescription": "기기가 제거되었습니다. 다른 기기를 선택할 때까지 요청이 실패합니다."
     },
+    "vendorHeaders": {
+      "anthropic-workspace-id": {
+        "label": "워크스페이스 ID",
+        "description": "워크스페이스가 지정되지 않은 키에 필요합니다."
+      }
+    },
     "headers": {
       "title": "요청 헤더",
       "description": "모든 요청에 함께 보냅니다. 값의 {token}은(는) 대화 ID로 바뀝니다.",

@@ -84,10 +84,10 @@ pub enum ProviderRefusal {
     /// the entry.
     #[error("{0} speaks its vendor’s protocol; it can’t be changed.")]
     VendorProtocol(String),
-    /// Headers for a vendor entry, which sends its vendor's; it names the
-    /// entry.
-    #[error("{0} sends its vendor’s headers; it takes none of its own.")]
-    VendorHeaders(String),
+    /// A header a vendor entry's family does not declare; it names the
+    /// entry and the header.
+    #[error("{entry} takes no {header} header; a vendor’s entry sends only the headers its vendor documents.")]
+    VendorHeader { entry: String, header: String },
     /// A list of headers with a name or a value no request can carry, as
     /// [`ProviderHeader::problem`] says it.
     #[error("{0}")]
@@ -363,14 +363,32 @@ impl Services {
                 }
                 config.base_url = base_url;
             }
-            // A vendor's API takes the headers its vendor documents, which
-            // its provider sends; the user's own are a gateway's.
-            if let Some(headers) = patch.headers {
-                if !config.is_compatible() {
-                    return Err(ProviderRefusal::VendorHeaders(entry.label.clone()));
-                }
+            // A vendor's API takes the headers its vendor documents: its
+            // provider sends its own, and its user sets those its family
+            // declares. Any other is a gateway's, a compatible entry's.
+            if let Some(mut headers) = patch.headers {
                 if let Some(problem) = ProviderHeader::problem(&headers) {
                     return Err(ProviderRefusal::Headers(problem));
+                }
+                if !config.is_compatible() {
+                    // A row without a name sends nothing, as a compatible
+                    // entry's does.
+                    headers.retain(|header| !header.name.is_empty());
+                    let declared = self.provider_registry.vendor_headers(&entry);
+                    if let Some(header) = headers
+                        .iter()
+                        .find(|header| !declared.iter().any(|name| name.eq_ignore_ascii_case(&header.name)))
+                    {
+                        return Err(ProviderRefusal::VendorHeader {
+                            entry: entry.label.clone(),
+                            header: header.name.clone(),
+                        });
+                    }
+                    // An empty value is a row left empty, which sends none.
+                    headers.retain_mut(|header| {
+                        header.value = header.value.trim().to_owned();
+                        !header.value.is_empty()
+                    });
                 }
                 config.headers = headers;
             }

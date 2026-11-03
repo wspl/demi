@@ -93,6 +93,15 @@ impl ProviderFamily for AnthropicFamily {
         Some(lifetimes(&AnthropicConfig::CACHE_TTLS))
     }
 
+    /// Anthropic's own keys may need to name a workspace; another vendor on
+    /// the Messages API has none.
+    fn vendor_headers(&self, vendor_id: Option<&str>) -> &'static [&'static str] {
+        match vendor_id {
+            Some("anthropic") => &[AnthropicConfig::WORKSPACE_HEADER],
+            _ => &[],
+        }
+    }
+
     fn default_cache_ttl(&self) -> Option<CacheTtl> {
         Some(lifetime(AnthropicConfig::DEFAULT_CACHE_TTL))
     }

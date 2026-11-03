@@ -182,14 +182,24 @@ impl ProviderRegistry {
             }
             _ => ProviderHttp::new(client),
         };
-        // A compatible entry's headers go to its endpoint, which one that
-        // has headers but no endpoint yet has no request to.
+        // An entry's headers go to its endpoint: its own, else a vendor
+        // entry's family's default. A compatible entry that has headers but
+        // no endpoint yet has no request to.
         let own = entry.and_then(|entry| match &entry.credential {
-            EntryCredential::ApiKey(config) => Some((entry.headers(), config.base_url.as_ref()?)),
+            EntryCredential::ApiKey(config) => {
+                let endpoint = match &config.base_url {
+                    Some(endpoint) => endpoint.url().clone(),
+                    None if !config.is_compatible() => {
+                        reqwest::Url::parse(self.families.get(&entry.family)?.default_endpoint()?).ok()?
+                    }
+                    None => return None,
+                };
+                Some((entry.headers(), endpoint))
+            }
             EntryCredential::Subscription { .. } => None,
         });
         match own {
-            Some((headers, endpoint)) => http.with_headers(headers, endpoint.url()),
+            Some((headers, endpoint)) => http.with_headers(headers, &endpoint),
             None => http,
         }
     }
@@ -559,7 +569,20 @@ impl ProviderRegistry {
             self.offered_searches(entry),
             self.media.current().updated,
             self.cache_ttl_presets(entry),
+            self.vendor_headers(entry),
         )
+    }
+
+    /// The headers a vendor `entry` may set, as its family declares them;
+    /// none for a compatible entry, which sets any, and a subscription.
+    pub fn vendor_headers(&self, entry: &ProviderEntry) -> &'static [&'static str] {
+        match &entry.credential {
+            EntryCredential::ApiKey(config) if !config.is_compatible() => self
+                .families
+                .get(&entry.family)
+                .map_or(&[], |family| family.vendor_headers(config.vendor_id.as_deref())),
+            _ => &[],
+        }
     }
 
     /// The prompt cache lifetimes `entry`'s protocol knows, as its family and

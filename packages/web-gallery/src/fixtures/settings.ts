@@ -781,6 +781,8 @@ export function mockProviders(): MockProvider[] {
     provider({
       id: 'anthropic', name: 'Anthropic', kind: 'api_key', family: 'anthropic', vendorId: 'anthropic',
       baseUrl: 'https://api.anthropic.com', wireApi: 'anthropic-messages', apiKey: '', keyConfigured: true, testedIn: '412 ms',
+      // The one header Anthropic documents for its user, empty for a key scoped to a workspace.
+      headers: [{ name: 'anthropic-workspace-id', value: '' }],
       catalogFetched: ago(14 * MINUTE),
       models: [
         model(

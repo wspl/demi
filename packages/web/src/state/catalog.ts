@@ -173,7 +173,7 @@ export function providerView(
     makesText: entry.providerType !== 'media',
     baseUrl: entry.baseUrl ?? '',
     throughDevice: entry.throughDevice,
-    ...(entry.compatible ? { headers: entry.headers.map((header) => ({ ...header })) } : {}),
+    ...(entry.kind === 'api_key' ? { headers: entry.headers.map((header) => ({ ...header })) } : {}),
     wireApi: wireApi(entry.providerType, entry.wireApi),
     apiKey: '',
     cacheTtl: entry.cacheTtlPresets ? { value: entry.cacheTtl, presets: entry.cacheTtlPresets } : undefined,

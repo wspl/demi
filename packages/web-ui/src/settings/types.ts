@@ -424,9 +424,10 @@ export interface SettingsProviderEntry {
    */
   throughDevice?: string | null
   /**
-   * The headers every request of a compatible API carries, in the user's
-   * order; `{conversation}` in a value is the conversation's ID. Absent for
-   * any other entry.
+   * The headers every request of an API key's entry carries. A compatible
+   * API's are its user's, in their order, and `{conversation}` in a value is
+   * the conversation's ID; a vendor's are each one its vendor documents, with
+   * an empty value when it sends none. Absent for a subscription.
    */
   headers?: SettingsProviderHeader[]
   wireApi: SettingsWireApi
@@ -480,7 +481,11 @@ export interface SettingsProviderEntry {
   cacheTtl?: SettingsCacheTtl
 }
 
-/** One of a compatible API's headers; a name left empty sends nothing. */
+/**
+ * One of the headers an API key's entry sends: a compatible API's, whose
+ * name left empty sends nothing, or one a vendor documents, whose value left
+ * empty sends nothing.
+ */
 export interface SettingsProviderHeader {
   name: string
   value: string

@@ -751,6 +751,12 @@
       "throughRemoved": "Entferntes Gerät",
       "throughRemovedDescription": "Das Gerät wurde entfernt: Anfragen schlagen fehl, bis du ein anderes wählst."
     },
+    "vendorHeaders": {
+      "anthropic-workspace-id": {
+        "label": "Workspace-ID",
+        "description": "Für einen Schlüssel ohne festen Workspace."
+      }
+    },
     "headers": {
       "title": "Header",
       "description": "Wird mit jeder Anfrage gesendet. In einem Wert steht {token} für die ID des Chats.",

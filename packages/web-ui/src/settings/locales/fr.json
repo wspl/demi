@@ -751,6 +751,12 @@
       "throughRemoved": "Appareil supprimé",
       "throughRemovedDescription": "L’appareil a été supprimé : les requêtes échouent jusqu’à ce que vous en choisissiez un autre."
     },
+    "vendorHeaders": {
+      "anthropic-workspace-id": {
+        "label": "ID de l’espace de travail",
+        "description": "Pour une clé non liée à un espace de travail."
+      }
+    },
     "headers": {
       "title": "En-têtes",
       "description": "Envoyés avec chaque requête. Dans une valeur, {token} représente l’ID de la conversation.",
