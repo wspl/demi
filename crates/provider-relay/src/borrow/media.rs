@@ -16,7 +16,7 @@ use demi_provider_common::media_catalog::Catalog;
 use demi_provider_common::videos::{self, Done, JobRef, JobState, VideoMaker, VideoOption, VideoRequest};
 use demi_provider_common::{ErrorCode, ProviderHttp, RequestBuilder};
 use demi_shared_types::audio::Pcm;
-use demi_shared_types::{AudioKind, MediaKind, MediaShapes, VendorTrace};
+use demi_shared_types::{AudioKind, MediaKind, VendorTrace};
 use futures_util::future::BoxFuture;
 use http::Method;
 use serde::de::DeserializeOwned;
@@ -34,7 +34,6 @@ const NO_REASON: &str = "no reason is shared";
 pub(super) struct Relayed {
     config: Arc<Config>,
     kind: MediaKind,
-    shapes: MediaShapes,
     /// Its name, once the lender said its vendor's, such as `OpenAI on
     /// example.com`; the lender's host until then.
     name: OnceLock<String>,
@@ -42,8 +41,8 @@ pub(super) struct Relayed {
 }
 
 impl Relayed {
-    pub(super) fn new(config: Arc<Config>, kind: MediaKind, shapes: MediaShapes) -> Self {
-        Self { config, kind, shapes, name: OnceLock::new(), said: RwLock::new(None) }
+    pub(super) fn new(config: Arc<Config>, kind: MediaKind) -> Self {
+        Self { config, kind, name: OnceLock::new(), said: RwLock::new(None) }
     }
 
     fn said(&self) -> Option<Arc<LentMaker>> {
@@ -84,7 +83,7 @@ impl Relayed {
         }
         let refusal = Refusal::of(status, &body);
         Err(MediaFailure::Unanswered {
-            cause: refusal.message(&self.config.lender),
+            cause: refusal.message(&self.config),
             code: refusal.code(),
             trace: VendorTrace::default(),
         })

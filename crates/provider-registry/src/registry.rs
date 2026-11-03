@@ -597,9 +597,12 @@ impl ProviderRegistry {
     }
 
     /// The shapes in which `entry` makes media: a compatible entry's, its
-    /// user's choice, or for a borrowed one its lender's when its key was
-    /// pasted; a vendor entry's, its family's for its vendor.
+    /// user's choice; a vendor entry's, its family's for its vendor; none
+    /// for a borrowed one, whose lender's are its own ([`Self::makes`]).
     pub fn media_shapes(&self, entry: &ProviderEntry) -> MediaShapes {
+        if self.reads_directory(entry) {
+            return MediaShapes::default();
+        }
         let vendor = match &entry.credential {
             EntryCredential::ApiKey(config) if config.is_compatible() => {
                 return MediaShapes { image: config.image_shape, video: config.video_shape, audio: config.audio_shape };
@@ -613,6 +616,13 @@ impl ProviderRegistry {
             video: family.and_then(|family| family.video_shape(vendor)),
             audio: family.and_then(|family| family.audio_shape(vendor)),
         }
+    }
+
+    /// Whether `entry` may make media of `kind`: its shapes say so, or its
+    /// provider's directory lists what it makes, as a borrowed entry's lists
+    /// its lender's, whose maker lists no models of a kind it does not make.
+    pub fn makes(&self, entry: &ProviderEntry, kind: MediaKind) -> bool {
+        self.reads_directory(entry) || self.media_shapes(entry).makes(kind)
     }
 
     /// What makes `entry`'s media of `kind` with `provider`, its provider for
@@ -719,10 +729,6 @@ impl ProviderRegistry {
                 if lacks {
                     return Err(RegistryError::Incomplete);
                 }
-                // A compatible entry's media are made by the registry's
-                // makers of its shapes ([`Self::maker`]); every other's by
-                // its provider, built with them.
-                let own_makers = !config.is_compatible() || self.reads_directory(entry);
                 FamilyCredential::ApiKey(ApiKeyArgs {
                     api_key: config.api_key.clone(),
                     base_url: config
@@ -732,9 +738,9 @@ impl ProviderRegistry {
                     wire_api: config.wire_api,
                     models,
                     vendor_id: config.vendor_id.clone(),
-                    image_shape: self.media_shapes(entry).image.filter(|_| own_makers),
-                    video_shape: self.media_shapes(entry).video.filter(|_| own_makers),
-                    audio_shape: self.media_shapes(entry).audio.filter(|_| own_makers),
+                    image_shape: self.media_shapes(entry).image.filter(|_| !config.is_compatible()),
+                    video_shape: self.media_shapes(entry).video.filter(|_| !config.is_compatible()),
+                    audio_shape: self.media_shapes(entry).audio.filter(|_| !config.is_compatible()),
                 })
             }
             EntryCredential::Subscription { .. } => {

@@ -650,6 +650,7 @@
     "loading": "Cargando proveedores…",
     "subscriptions": "Suscripciones",
     "apiKeys": "Claves de API",
+    "shared": "Compartido contigo",
     "apiKeysShared": "El maestro comparte las claves de API con todos los usuarios.",
     "name": "Nombre del proveedor",
     "rename": "Cambiar nombre",

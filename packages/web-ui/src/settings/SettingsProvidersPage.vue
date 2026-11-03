@@ -234,9 +234,15 @@ const detailOpen = defineModel<boolean>('detailOpen', { default: false })
 const subscriptions = computed(() =>
   props.providers.filter((p) => p.kind === 'subscription'),
 )
+/** Whether `provider` is another Demi server's, which only its lender sets up. */
+function borrowed(provider: SettingsProviderEntry): boolean {
+  return provider.lender !== undefined
+}
 const apiKeys = computed(() =>
-  props.providers.filter((p) => p.kind === 'api_key'),
+  props.providers.filter((p) => p.kind === 'api_key' && !borrowed(p)),
 )
+/** Another Demi server's providers, in a group of their own below the keys. */
+const shared = computed(() => props.providers.filter(borrowed))
 const selected = computed(
   () => props.providers.find((p) => p.id === selectedId.value) ?? null,
 )
@@ -257,6 +263,7 @@ watch(
     JSON.stringify([
       subscriptions.value.map((provider) => provider.id),
       apiKeys.value.map((provider) => provider.id),
+      shared.value.map((provider) => provider.id),
       selectedId.value,
       props.load,
     ]),
@@ -267,7 +274,7 @@ watch(
     if (selected.value) {
       return
     }
-    const first = subscriptions.value[0] ?? apiKeys.value[0]
+    const first = subscriptions.value[0] ?? apiKeys.value[0] ?? shared.value[0]
     selectedId.value = first?.id ?? null
   },
   { immediate: true },
@@ -463,20 +470,28 @@ function chooseRotation(provider: SettingsProviderEntry, rotation: SettingsRotat
  */
 const subscriptionList = ref<HTMLElement>()
 const keyList = ref<HTMLElement>()
+const sharedList = ref<HTMLElement>()
 // A subscription nobody signed in to is no entry and has no place: only the
 // stored ones are dragged and told, and the placeholders follow them.
 const storedSubscriptions = computed(() =>
   subscriptions.value.filter((provider) => provider.configured !== false).map((provider) => provider.id),
 )
+const keyIds = () => apiKeys.value.map((provider) => provider.id)
+const sharedIds = () => shared.value.map((provider) => provider.id)
 const subscriptionOrder = useListReorder(
   subscriptionList,
   () => storedSubscriptions.value,
-  (ids) => emit('reorderProviders', [...ids, ...apiKeys.value.map((provider) => provider.id)]),
+  (ids) => emit('reorderProviders', [...ids, ...keyIds(), ...sharedIds()]),
 )
 const keyOrder = useListReorder(
   keyList,
-  () => apiKeys.value.map((provider) => provider.id),
-  (ids) => emit('reorderProviders', [...storedSubscriptions.value, ...ids]),
+  keyIds,
+  (ids) => emit('reorderProviders', [...storedSubscriptions.value, ...ids, ...sharedIds()]),
+)
+const sharedOrder = useListReorder(
+  sharedList,
+  sharedIds,
+  (ids) => emit('reorderProviders', [...storedSubscriptions.value, ...keyIds(), ...ids]),
 )
 function moveProvider(order: typeof keyOrder, event: KeyboardEvent, id: string): void {
   if (event.altKey) {
@@ -484,8 +499,14 @@ function moveProvider(order: typeof keyOrder, event: KeyboardEvent, id: string):
   }
 }
 
-/** The kinds the entry makes, each with its switch on the page. */
+/**
+ * The kinds the entry makes, each with its switch on the page: another Demi's,
+ * those its lender lists models of now.
+ */
 function madeKinds(provider: SettingsProviderEntry): SettingsMediaKind[] {
+  if (borrowed(provider)) {
+    return SETTINGS_MEDIA_KINDS.filter((kind) => provider.media[kind].models?.length)
+  }
   return SETTINGS_MEDIA_KINDS.filter((kind) => provider.media[kind].shape !== null)
 }
 
@@ -1017,6 +1038,38 @@ function endpointCheck(value: string) {
             /></template>
           </SettingsListItem>
           </div>
+          <!-- Another Demi's providers, below the keys once there is one, as Shared with You sits
+               apart from a person's own in Apple's apps. Add Provider adds them. -->
+          <div
+            v-if="shared.length"
+            class="select-none px-1 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
+          >
+            {{ t('providers.shared') }}
+          </div>
+          <div ref="sharedList" class="contents">
+          <SettingsListItem
+            v-for="p in shared"
+            :key="p.id"
+            :data-reorder-id="p.id"
+            :class="{ 'bg-surface-float shadow-md': sharedOrder.dragging.value === p.id }"
+            :label="p.name"
+            :selected="p.id === selectedId"
+            :badge="providerBadge[p.state]"
+            :badge-label="providerBadgeLabel[p.state]"
+            :muted="!p.enabled"
+            removable
+            :removing="runs(p.id, { kind: 'removing' })"
+            :remove-disabled="busy(p.id)"
+            @select="select(p.id)"
+            @remove="askRemoveProvider(p)"
+            @pointerdown="sharedOrder.start($event, p.id)"
+            @keydown="moveProvider(sharedOrder, $event, p.id)"
+          >
+            <template #leading
+              ><VendorMark :label="p.name" :src="p.logo" size="sm"
+            /></template>
+          </SettingsListItem>
+          </div>
         </template>
 
         <template #detail>
@@ -1422,9 +1475,10 @@ function endpointCheck(value: string) {
                   @change="emit('change', selected, { headers: $event })"
                 />
               </template>
-              <!-- A key's test has a row of its own; a subscription's sits on its active account. -->
+              <!-- A key's test has a row of its own; a subscription's sits on its active account.
+                   Another Demi's provider is its lender's to test. -->
               <SettingsRow
-                v-if="selected.kind === 'api_key'"
+                v-if="selected.kind === 'api_key' && !borrowed(selected)"
                 :label="t('providers.connection.test')"
                 :description="selected.makesText === false ? t('providers.connection.testMediaDescription') : t('providers.connection.testDescription')"
               >
@@ -1684,8 +1738,11 @@ function endpointCheck(value: string) {
                     :disabled="fieldsLocked(selected)"
                     @click="openAddModel()"
                 /></Tooltip>
-                <!-- A compatible API has no catalog to read again: its models are the ones added. -->
-                <Tooltip v-if="!selected.compatible && selected.modelSource === 'catalog'" :content="t('providers.models.refresh')"
+                <!-- A compatible API has no catalog to read again: its models are the ones added.
+                     Another Demi's lists its lender's whenever it is read. -->
+                <Tooltip
+                  v-if="!selected.compatible && selected.modelSource === 'catalog' && !borrowed(selected)"
+                  :content="t('providers.models.refresh')"
                   ><IconButton
                     size="sm"
                     :icon="RefreshCw"
@@ -1699,15 +1756,17 @@ function endpointCheck(value: string) {
                     @click="emit('refresh', selected)"
                 /></Tooltip>
                 </template>
+                <!-- Another Demi's models are the ones its lender has on, each shown, none
+                     switched here. -->
                 <SettingsRow
                   v-for="m in visibleModels(selected)"
                   :key="m.id"
                   :label="m.name || m.id"
                   compact
-                  interactive
+                  :interactive="!borrowed(selected)"
                   isolate-controls
-                  :muted="!m.enabled"
-                  @click="emit('toggleModel', selected, m, !m.enabled)"
+                  :muted="!borrowed(selected) && !m.enabled"
+                  @click="!borrowed(selected) && emit('toggleModel', selected, m, !m.enabled)"
                 >
                   <template #tags>
                     <Tooltip
@@ -1763,6 +1822,7 @@ function endpointCheck(value: string) {
                       @click="openModel('view', m)"
                   /></Tooltip>
                   <Switch
+                    v-if="!borrowed(selected)"
                     :model-value="m.enabled"
                     @update:model-value="
                       emit('toggleModel', selected, m, $event)
@@ -1781,7 +1841,7 @@ a vendor entry's switch and its vendor's
               <SettingsGroup :title="MEDIA_WORDS[kind].title()">
               <!-- The kind's switch ends the section's title, as an entry's own switch ends its
                    name, so the section stays one card: its shape, then its models. -->
-              <template v-if="selected.media[kind].shape" #actions>
+              <template v-if="selected.media[kind].shape && !borrowed(selected)" #actions>
                 <Switch
                   :model-value="selected.media[kind].enabled"
                   :aria-label="MEDIA_WORDS[kind].generation()"
@@ -1825,7 +1885,7 @@ a vendor entry's switch and its vendor's
                    each edited or removed, added with the list's own Add; a vendor's are its
                    vendor's, newest first, read and never edited. -->
                 <SettingsModelList
-                  v-if="selected.media[kind].shape"
+                  v-if="selected.media[kind].shape || borrowed(selected)"
                   v-model:filter="mediaFilter"
                   :filter-placeholder="t('providers.models.filterModels')"
                   :empty="mediaEmpty(selected, kind)"

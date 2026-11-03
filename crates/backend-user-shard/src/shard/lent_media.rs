@@ -189,9 +189,22 @@ impl Shard {
     }
 
     /// What the lent entry's maker of `kind` says of itself and its models;
-    /// none while its switch is off.
+    /// no models while its switch is off, or when it makes none of `kind`,
+    /// so a borrower lists none rather than failing to list.
     pub async fn lent_maker(self: Rc<Self>, borrowing: Borrowing, kind: MediaKind) -> Result<LentMaker, WireMediaFailure> {
-        let (route, makes) = self.lent_route(&borrowing, kind).await?;
+        let (route, makes) = match self.lent_route(&borrowing, kind).await {
+            Err(WireMediaFailure::Unmade) => {
+                return Ok(LentMaker {
+                    vendor_name: borrowing.entry.label.clone(),
+                    vendor: None,
+                    confirms_model: true,
+                    needs_voice: false,
+                    speeds: None,
+                    models: Vec::new(),
+                });
+            }
+            route => route?,
+        };
         let services = self.services();
         let catalog = services.media.current();
         let media = route.maker.media();

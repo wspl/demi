@@ -144,7 +144,7 @@ async fn routes(
     let preferences = services.control.preferences(user.clone()).await.map_err(StoreError::new)?;
     let mut routes = Vec::new();
     for entry in services.vault.entries_for(user).await.map_err(StoreError::new)? {
-        if !services.provider_registry.media_shapes(&entry).makes(kind) {
+        if !services.provider_registry.makes(&entry, kind) {
             continue;
         }
         let Some(route) = route(services, entry, &preferences, kind).await? else {

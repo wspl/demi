@@ -650,6 +650,7 @@
     "loading": "제공업체를 불러오는 중…",
     "subscriptions": "구독",
     "apiKeys": "API 키",
+    "shared": "나와 공유된 항목",
     "apiKeysShared": "소유자가 모든 사용자와 API 키를 공유합니다.",
     "name": "제공업체 이름",
     "rename": "이름 변경",

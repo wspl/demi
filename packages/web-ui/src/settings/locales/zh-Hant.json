@@ -650,6 +650,7 @@
     "loading": "正在載入供應商…",
     "subscriptions": "訂閱",
     "apiKeys": "API 金鑰",
+    "shared": "與你分享",
     "apiKeysShared": "擁有者與所有使用者共享 API 金鑰。",
     "name": "供應商名稱",
     "rename": "重新命名",

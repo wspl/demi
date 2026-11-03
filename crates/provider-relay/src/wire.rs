@@ -18,9 +18,7 @@ use demi_provider_common::{
     OpaqueStep, PromptCache, ProviderEvent, ProviderFailure, RequestBlock, RequestLimits, RequestPurpose, ResultPart,
     ToolCall, ToolDefinition, ToolResultKinds, UserPart, VendorCall,
 };
-use demi_shared_types::{
-    B64Bytes, Entry, MediaShapes, OpaqueStatus, OpaqueView, ProviderModelList, ThinkingConfig, TokenUsage,
-};
+use demi_shared_types::{B64Bytes, Entry, OpaqueStatus, OpaqueView, ProviderModelList, ThinkingConfig, TokenUsage};
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
@@ -58,16 +56,21 @@ pub struct OtherVersion {
 }
 
 /// What [`PROVIDER_ROUTE`] answers: the provider's name as its lender calls
-/// it, its catalog, what one request of each model may hold, and the
-/// shapes in which it makes media ([`media`]).
+/// it, its catalog of the models the lender has on, and what one request of
+/// each may hold. A provider the lender turned off lends nothing: its
+/// catalog is empty, and its socket and media routes answer [`TURNED_OFF`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Lent {
     pub name: String,
     pub catalog: ProviderModelList,
     pub limits: Vec<ModelLimits>,
-    pub media: MediaShapes,
+    pub turned_off: bool,
 }
+
+/// The status a relay route answers for a provider its lender turned off,
+/// HTTP 423 Locked: the key still lends, once the provider is on again.
+pub const TURNED_OFF: u16 = 423;
 
 /// What one request of a model may hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
