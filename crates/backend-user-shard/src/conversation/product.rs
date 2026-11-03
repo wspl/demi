@@ -467,6 +467,13 @@ impl HostResolver for ShardHosts {
         shard.services().control.device(device).await.ok().flatten().map(|record| record.name)
     }
 
+    /// The conversation moves to the Host its message named, as the web
+    /// app's move does.
+    async fn move_to(&self, root: &NodeId, device: &str, cancel: &CancellationToken) -> Result<(), String> {
+        let shard = self.shard.upgrade().ok_or("the backend is shutting down")?;
+        shard.move_for_turn(&conversation_of(root), device, cancel).await
+    }
+
     /// The conversation's target, read without reaching the Host.
     async fn placement(&self, context: NodeContext<'_>) -> Result<Placement, HostError> {
         let shard = self

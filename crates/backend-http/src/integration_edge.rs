@@ -127,6 +127,12 @@ pub(crate) fn refused(refusal: IntegrationRefusal) -> ApiError {
         }
         IntegrationRefusal::Refused(message) => ApiError::new(StatusCode::CONFLICT, ErrorCode::IntegrationRefused, message),
         IntegrationRefusal::Invalid(message) => ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::IntegrationRefused, message),
+        refusal @ IntegrationRefusal::CloudDiffers => {
+            ApiError::new(StatusCode::CONFLICT, ErrorCode::CloudDiffers, refusal.to_string())
+        }
+        refusal @ IntegrationRefusal::Running => {
+            ApiError::new(StatusCode::CONFLICT, ErrorCode::ConversationRunning, refusal.to_string())
+        }
         IntegrationRefusal::Storage(error) => error.into(),
     }
 }

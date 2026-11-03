@@ -477,6 +477,8 @@ pub enum AgentCode {
     /// A context source the request cannot go without told the node
     /// nothing, as an integration whose program did not answer.
     ContextUnavailable,
+    /// The conversation could not move to the Host its message named.
+    MoveFailed,
 }
 
 serde_plain::derive_display_from_serialize!(AgentCode);

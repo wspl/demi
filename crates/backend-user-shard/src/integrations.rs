@@ -16,6 +16,7 @@ use demi_agent_tools::parse_workflow;
 use demi_backend_host_access::{conversation_of, root_of};
 use demi_conversation_lane_protocol::ServerFrame;
 use demi_shared_types::NodeId;
+use demi_web_api_protocol::devices::DeviceKind;
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::{Notify, mpsc};
 
@@ -158,6 +159,13 @@ pub enum IntegrationRefusal {
     /// A value the request gave that no integration takes.
     #[error("{0}")]
     Invalid(String),
+    /// A steer names another Cloud than the one the running conversation
+    /// works on.
+    #[error("the conversation is running on another Cloud: send the message without `steer`")]
+    CloudDiffers,
+    /// A move while the conversation runs.
+    #[error("the conversation is running: it moves while idle, or to the Cloud its next message names")]
+    Running,
     #[error(transparent)]
     Storage(#[from] StorageError),
 }
@@ -410,7 +418,7 @@ impl Shard {
             pinned: false,
             target: ConversationTarget::Device {
                 device_id: request.cloud.clone(),
-                path: CONVERSATION_DIRECTORY.to_owned(),
+                path: request.directory.clone().unwrap_or_else(|| CONVERSATION_DIRECTORY.to_owned()),
             },
             model: Some(model),
             workflow: WorkflowChoice::None,
@@ -467,6 +475,7 @@ impl Shard {
         if let Some(Some(workflow)) = &patch.workflow {
             checked_workflow(Some(workflow))?;
         }
+        let moves = patch.cloud.is_some() || patch.directory.is_some();
         // Held until the move is written.
         let mut _lease = None;
         if let Some(cloud) = &patch.cloud {
@@ -499,14 +508,65 @@ impl Shard {
         if let Some(title) = patch.title {
             self.transition(id, RecordChange::Title(title).into()).await?;
         }
-        if let Some(cloud) = patch.cloud {
+        if moves {
+            let (device, directory) = self.integration_place(id).await?;
             let target = ConversationTarget::Device {
-                device_id: cloud,
-                path: CONVERSATION_DIRECTORY.to_owned(),
+                device_id: patch.cloud.or(device).ok_or(IntegrationRefusal::NotFound("Cloud"))?,
+                path: patch.directory.unwrap_or(directory),
             };
             self.move_to(id, target, &CancellationToken::new()).await?;
         }
         self.integration_conversation_of(integration, id).await
+    }
+
+    /// Whether the integration's conversation `id` runs, as its `status`
+    /// says `running`.
+    fn integration_conversation_running(&self, id: &ConversationId) -> bool {
+        self.agent().tree(&root_of(id)).is_some_and(|tree| tree.is_running())
+    }
+
+    /// Where the integration's conversation `id` works: its Cloud, none for
+    /// one that is gone, and its directory as the integration names it, `~`
+    /// for its Cloud's home.
+    async fn integration_place(&self, id: &ConversationId) -> Result<(Option<DeviceId>, String), StorageError> {
+        let Some(record) = self.services().control.conversation(id.clone()).await? else {
+            return Ok((None, CONVERSATION_DIRECTORY.to_owned()));
+        };
+        let Ok(target) = self.host_shard().resolve_target(&record).await else {
+            return Ok((None, CONVERSATION_DIRECTORY.to_owned()));
+        };
+        let device = target.device().cloned();
+        // The home a `~` reaches there, as a move reads it: a Cloud before
+        // its first start has the one every Cloud has.
+        let home = match &device {
+            Some(device) => self.services().control.device(device.clone()).await?.and_then(|record| match record.kind {
+                DeviceKind::Managed => Some(record.home.unwrap_or_else(|| demi_backend_database::CLOUD_HOME.to_owned())),
+                DeviceKind::User => record.home,
+            }),
+            None => None,
+        };
+        Ok((device, named_directory(target.path(), home.as_deref())))
+    }
+
+    /// Moves the integration's conversation `id` to its Cloud `device` before
+    /// a turn whose message named it, keeping its directory; nothing when it
+    /// works there already. `cancel` ends it before it commits.
+    pub(crate) async fn move_for_turn(&self, id: &ConversationId, device: &str, cancel: &CancellationToken) -> Result<(), String> {
+        let device = DeviceId::try_from(device.to_owned()).map_err(|_| "no Cloud has that id".to_owned())?;
+        // Held until the move is written, as a PATCH's.
+        let _lease = self
+            .integration_deletions
+            .lease(&[device.as_str()])
+            .ok_or_else(|| "the Cloud is being deleted".to_owned())?;
+        let (_, directory) = self.integration_place(id).await.map_err(|error| error.to_string())?;
+        let target = ConversationTarget::Device {
+            device_id: device,
+            path: directory,
+        };
+        self.move_to(id, target, cancel)
+            .await
+            .map(drop)
+            .map_err(|refusal| refusal.to_string())
     }
 
     /// Sends a message to the integration's conversation `id`: a turn of its
@@ -518,14 +578,27 @@ impl Shard {
         id: &ConversationId,
         message: api::SendMessage,
     ) -> Result<api::MessageAnswer, IntegrationRefusal> {
-        let id = &self.integration_conversation_of(integration, id).await?.id;
+        let conversation = self.integration_conversation_of(integration, id).await?;
+        let id = &conversation.id;
+        if let Some(cloud) = &message.cloud
+            && self.integration_cloud(integration, cloud).await?.is_none()
+        {
+            return Err(IntegrationRefusal::NotFound("Cloud"));
+        }
+        // A steer of a running turn runs where that turn does; one into an
+        // idle agent starts a turn, which moves as a message's does.
+        let elsewhere = message.cloud.as_ref().is_some_and(|cloud| conversation.cloud.as_ref() != Some(cloud));
+        let steer = message.steer && !(elsewhere && !self.integration_conversation_running(id));
+        if steer && elsewhere {
+            return Err(IntegrationRefusal::CloudDiffers);
+        }
         let message_id = message.id.unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string());
         let mut content = vec![ClientContent::Text { text: message.text }];
         content.extend(message.attachments.into_iter().map(|file| ClientContent::Upload {
             r#ref: file.id,
             file_name: file.name,
         }));
-        let frame = if message.steer {
+        let frame = if steer {
             ClientFrame::Steer {
                 steer_id: BlockId::try_from(message_id.clone())
                     .map_err(|_| IntegrationRefusal::Invalid("The message id is no id.".to_owned()))?,
@@ -538,6 +611,7 @@ impl Shard {
                     .map_err(|_| IntegrationRefusal::Invalid("The message id is no id.".to_owned()))?,
                 content,
                 comments: Vec::new(),
+                device: message.cloud.map(|cloud| cloud.to_string()),
             })
         };
         self.admit_frame(id, frame).await?;
@@ -833,12 +907,7 @@ impl Shard {
     ) -> Result<api::Conversation, StorageError> {
         // The device it works on, whether its directory is a project's or
         // the Cloud's own.
-        let cloud = self
-            .host_shard()
-            .resolve_target(&record)
-            .await
-            .ok()
-            .and_then(|target| target.device().cloned());
+        let (cloud, directory) = self.integration_place(&record.id).await?;
         let (summary, facts) = self.conversation_summary_with_facts(record).await?;
         let last_turn = facts.last_turn.map(|turn| api::LastTurn {
             id: turn.turn,
@@ -851,6 +920,7 @@ impl Shard {
             id: summary.id,
             key,
             cloud,
+            directory,
             title: summary.title.unwrap_or_default(),
             status: summary.status,
             created_at: summary.created_at,
@@ -858,6 +928,19 @@ impl Shard {
             revision: facts.revision,
             last_turn,
         })
+    }
+}
+
+/// `path` as an integration names a directory: `~` and what is under its
+/// Cloud's home `home` written from `~`, any other path as it is.
+fn named_directory(path: &str, home: Option<&str>) -> String {
+    match home.map(|home| home.trim_end_matches('/')) {
+        Some(home) if path == home => "~".to_owned(),
+        Some(home) => match path.strip_prefix(home).and_then(|rest| rest.strip_prefix('/')) {
+            Some(rest) => format!("~/{rest}"),
+            None => path.to_owned(),
+        },
+        None => path.to_owned(),
     }
 }
 
@@ -870,6 +953,7 @@ fn api_agent(entry: AgentEntry) -> Option<api::Agent> {
         .map(|message| api::Waiting {
             id: message.id.to_string(),
             text: content_text(&message.content),
+            cloud: message.device.as_ref().and_then(|device| DeviceId::try_from(device.clone()).ok()),
         })
         .collect();
     let pending_steers = entry
@@ -878,6 +962,7 @@ fn api_agent(entry: AgentEntry) -> Option<api::Agent> {
         .map(|steer| api::Waiting {
             id: steer.id.to_string(),
             text: content_text(&steer.content),
+            cloud: None,
         })
         .collect();
     match entry.role {

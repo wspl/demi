@@ -305,6 +305,11 @@ pub struct SendMessage {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub comments: Vec<ClientComment>,
+    /// The device whose Host its turn runs on, which the conversation moves
+    /// to before the turn; omitted to run where it works.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub device: Option<String>,
 }
 
 /// The stage of a message the web app sends, a frame's.

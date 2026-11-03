@@ -435,6 +435,9 @@ pub(super) enum ActionKind {
         comments: Vec<MessageComment>,
         /// The schedule's run that sent it, which its `user` block keeps.
         schedule: Option<ScheduleMark>,
+        /// The device the conversation moves to before the turn's first
+        /// request; none to stay.
+        device: Option<String>,
     },
     /// Input that arrived while nothing ran, command reports or agent
     /// messages: it opens a turn of its own, never shown in the queue.
@@ -998,7 +1001,7 @@ impl SessionCore {
         message: QueuedMessage,
     ) -> Result<ActionHandle, AdmissionError> {
         self.refuse_admission()?;
-        let QueuedMessage { id, content, comments, schedule } = message;
+        let QueuedMessage { id, content, comments, schedule, device } = message;
         if self.knows_turn(&id) {
             return Ok(ActionHandle::ended(ActionEnd::Duplicate));
         }
@@ -1019,7 +1022,7 @@ impl SessionCore {
             queued_ahead = self.pending.len(),
             "a message was admitted"
         );
-        Ok(self.push_action(ActionKind::Send { content, comments, schedule }, id))
+        Ok(self.push_action(ActionKind::Send { content, comments, schedule, device }, id))
     }
 
     /// Admits a retry, a resume or a compaction pass.
@@ -1097,7 +1100,7 @@ impl SessionCore {
                 pending_ms,
                 "a steer no turn took opens the next turn"
             );
-            let kind = ActionKind::Send { content: steer.content, comments: steer.comments, schedule: None };
+            let kind = ActionKind::Send { content: steer.content, comments: steer.comments, schedule: None, device: None };
             self.start_action(kind, turn, None, pending_ms.unwrap_or(0));
             return;
         }
@@ -1125,11 +1128,12 @@ impl SessionCore {
         let cancel = TurnCancel::new();
         self.held = false;
         let unwritten = match &kind {
-            ActionKind::Send { content, comments, schedule } => Some(QueuedMessage {
+            ActionKind::Send { content, comments, schedule, device } => Some(QueuedMessage {
                 id: turn.clone(),
                 content: content.clone(),
                 comments: comments.clone(),
                 schedule: schedule.clone(),
+                device: device.clone(),
             }),
             _ => None,
         };
@@ -1439,9 +1443,9 @@ impl SessionCore {
         if began {
             self.record_stop(CancelReason::Shutdown);
             self.log_turn_ended("interrupted", None);
-        } else if let ActionKind::Send { content, comments, schedule } = kind {
+        } else if let ActionKind::Send { content, comments, schedule, device } = kind {
             self.pending.push_front(PendingAction {
-                kind: ActionKind::Send { content, comments, schedule },
+                kind: ActionKind::Send { content, comments, schedule, device },
                 turn: turn.clone(),
                 reply: None,
                 admitted_at: self.clock.now(),
@@ -1461,7 +1465,7 @@ impl SessionCore {
     fn queue_steers(&mut self, mut ahead: usize) {
         while let Some(steer) = self.inputs.take_first_steer() {
             self.pending.insert(ahead, PendingAction {
-                kind: ActionKind::Send { content: steer.content, comments: steer.comments, schedule: None },
+                kind: ActionKind::Send { content: steer.content, comments: steer.comments, schedule: None, device: None },
                 turn: TurnId::try_from(steer.id.into_string()).expect("a block id is not empty"),
                 reply: None,
                 admitted_at: self.clock.now(),
@@ -1586,11 +1590,11 @@ impl SessionCore {
             _ => None,
         };
         if let Some((turn, message)) = unwritten {
-            let QueuedMessage { content, comments, schedule, .. } = message;
+            let QueuedMessage { content, comments, schedule, device, .. } = message;
             match reason {
                 CancelReason::Stop => self.push_user(turn, content, comments, None, schedule),
                 CancelReason::Hold(_) => self.pending.push_front(PendingAction {
-                    kind: ActionKind::Send { content, comments, schedule },
+                    kind: ActionKind::Send { content, comments, schedule, device },
                     turn,
                     reply: None,
                     admitted_at: self.clock.now(),
@@ -1701,6 +1705,7 @@ impl SessionCore {
             content: user.content.clone(),
             comments: user.comments.clone(),
             schedule: None,
+            device: None,
         };
         let position = self.transcript.start() + at;
         self.transcript.withdraw_from(position);
@@ -1930,11 +1935,12 @@ impl SessionCore {
         self.pending
             .iter()
             .filter_map(|action| match &action.kind {
-                ActionKind::Send { content, comments, schedule } => Some(QueuedMessage {
+                ActionKind::Send { content, comments, schedule, device } => Some(QueuedMessage {
                     id: action.turn.clone(),
                     content: content.clone(),
                     comments: comments.clone(),
                     schedule: schedule.clone(),
+                    device: device.clone(),
                 }),
                 _ => None,
             })
@@ -1981,7 +1987,7 @@ impl SessionCore {
                 path = "starts_turn",
                 "a steer was admitted while nothing ran, and starts the turn"
             );
-            drop(self.push_action(ActionKind::Send { content, comments, schedule: None }, own_turn));
+            drop(self.push_action(ActionKind::Send { content, comments, schedule: None, device: None }, own_turn));
             return Ok(());
         }
         // A steer no running turn will take, as one sent after a Stop, names

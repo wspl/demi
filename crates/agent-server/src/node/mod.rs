@@ -45,6 +45,7 @@ mod reply_files;
 
 pub use reply_files::{CODE_PATHS_MAX, ReplyFiles, code_path};
 
+use tokio_util::sync::CancellationToken;
 use std::{
     cell::RefCell,
     rc::{Rc, Weak},
@@ -874,6 +875,12 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>> {
         let text = self.preamble.clone();
         Box::pin(async move { text })
+    }
+
+    /// The conversation moves, as its product moves it; only its root's
+    /// messages name a Host.
+    fn move_to<'a>(&'a self, device: &'a str, cancel: CancellationToken) -> LocalBoxFuture<'a, Result<(), String>> {
+        Box::pin(async move { self.hosts.move_to(&self.root, device, &cancel).await })
     }
 
     /// Asks every source at once, each with its own blocks, and takes their

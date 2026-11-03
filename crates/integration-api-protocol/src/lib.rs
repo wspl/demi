@@ -164,8 +164,11 @@ pub struct Conversation {
     pub key: Option<String>,
     /// The Cloud its main agent works on; null for one whose Cloud is gone.
     pub cloud: Option<DeviceId>,
-    /// The title the integration gave it; until it gives one, the start of
-    /// its first message, and empty before that. Demi writes none of its own.
+    /// The directory it works in there, as `CreateConversation` names it.
+    pub directory: String,
+    /// Its title: empty before its first message, then that message's start,
+    /// then the one the user's small model writes while the integration has
+    /// `titles` on; one the integration gives replaces either.
     pub title: String,
     /// `running` or `compacting` while more is coming: a turn, a subagent
     /// that is live, a command that is not a service, or a report the main
@@ -218,17 +221,28 @@ pub struct CreateConversation {
     /// Its model, one of `GET /models`.
     #[garde(dive)]
     pub model: ModelChoice,
+    /// The directory its agents work in on each of its Clouds, `~` for the
+    /// home, such as the shared folder; the home when none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(length(min = 1))]
+    #[garde(inner(length(chars, min = 1)))]
+    pub directory: Option<String>,
 }
 
-/// `PATCH /conversations/:id`: moves it to another Cloud, which its main
-/// agent works on from its next command, renames it, or changes its model
-/// or its workflow, from its main agent's next request.
+/// `PATCH /conversations/:id`: moves it to another Cloud or directory while
+/// it is not running, renames it, or changes its model or its workflow,
+/// from its main agent's next request.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConversationPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(skip)]
     pub cloud: Option<DeviceId>,
+    /// The directory its agents work in, as `CreateConversation` names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(length(min = 1))]
+    #[garde(inner(length(chars, min = 1)))]
+    pub directory: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(length(min = 1))]
     #[garde(inner(length(chars, min = 1)))]
@@ -291,6 +305,13 @@ pub struct SendMessage {
     #[serde(default)]
     #[garde(skip)]
     pub steer: bool,
+    /// The Cloud the turn it starts runs on, one of the integration's: the
+    /// conversation moves there before the turn. A steer of a running turn
+    /// names the Cloud it runs on, or none. None runs it where the
+    /// conversation works.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub cloud: Option<DeviceId>,
     /// Files it carries, which the agent finds on its Cloud.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(skip)]
@@ -448,12 +469,14 @@ pub struct Round {
 }
 
 /// A message that waits in an agent's queue or as its pending steer: its
-/// id, the one it was sent with, and its text.
+/// id, the one it was sent with, its text, and the Cloud it named.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Waiting {
     pub id: String,
     pub text: String,
+    /// The Cloud its turn runs on; null for where the conversation works.
+    pub cloud: Option<DeviceId>,
 }
 
 /// `POST /conversations/:id/stop`: which agents stop; every agent when

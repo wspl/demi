@@ -202,12 +202,24 @@ async fn execute(
     match kind {
         // The input is written before a recorded switch lands, so a switch
         // that fails or is stopped ends a turn that holds it.
-        ActionKind::Send { content, comments, schedule } => {
+        ActionKind::Send { content, comments, schedule, device } => {
             let preamble = cancel.guard(s.runtime.preamble()).await?;
             s.update(|core| {
                 let turn = core.turn();
                 core.push_user(turn, content.clone(), comments.clone(), preamble, schedule.clone());
             });
+            // Before the first request, whose context tells the node where it
+            // works now. A stop ends the move only before it commits, so the
+            // move is not dropped as a guarded future would be.
+            if let Some(device) = device {
+                let moved = s.runtime.move_to(device, cancel.child_token()).await;
+                cancel.check()?;
+                if let Err(message) = moved {
+                    let report = ErrorReport::agent(AgentCode::MoveFailed, message);
+                    s.update(|core| core.record_failure(&report));
+                    return Err(TurnError::Failed(Box::new(report)));
+                }
+            }
             turn::apply_switch(s, cancel).await?;
             compaction::preflight(s, cancel).await?;
             turn::run(s, cancel).await

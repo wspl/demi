@@ -1139,6 +1139,7 @@ impl AgentSession {
             content,
             comments: Vec::new(),
             schedule: None,
+            device: None,
         })
     }
 

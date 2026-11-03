@@ -1284,6 +1284,7 @@ fn saved_frame(content: Vec<ClientContent>, turn: TurnId, delivery: SavedDeliver
             message_id: turn,
             content,
             comments: Vec::new(),
+            device: None,
         }),
         SavedDelivery::Steer => ClientFrame::Steer {
             comments: Vec::new(),

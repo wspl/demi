@@ -5,6 +5,7 @@
 //! otherwise, and a tool never reaches into its session: it returns its
 //! outcome.
 
+use tokio_util::sync::CancellationToken;
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -95,6 +96,11 @@ pub trait SessionRuntime {
 
     /// The text before the content of a user turn.
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>>;
+
+    /// Moves the node's conversation to the Host of `device`, where it then
+    /// works; nothing when it works there already. `cancel` ends it before
+    /// it commits, never after. A failure says why it could not.
+    fn move_to<'a>(&'a self, device: &'a str, cancel: CancellationToken) -> LocalBoxFuture<'a, Result<(), String>>;
 
     /// What the context sources tell the node before a request, in the sources'
     /// order.

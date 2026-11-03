@@ -69,6 +69,9 @@ pub enum ErrorCode {
     /// An integration's request could not change what it names, as its
     /// message says (`crates/backend-user-shard/src/integrations.rs`).
     IntegrationRefused,
+    /// An integration's steer names another Cloud than the one the turn it
+    /// steers runs on.
+    CloudDiffers,
     /// A body the backend reads whole is over its limit.
     TooLarge,
     /// The backend failed in a way the request could not cause.

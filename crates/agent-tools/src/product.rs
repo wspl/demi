@@ -8,6 +8,7 @@
 //! - the Host a node's shell tools reach;
 //! - the context sources asked before each request.
 
+use tokio_util::sync::CancellationToken;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
@@ -494,6 +495,13 @@ pub trait HostResolver: 'static {
     /// name it; none when it is not known, and by default.
     async fn host_name(&self, _device: &str) -> Option<String> {
         None
+    }
+
+    /// Moves the conversation of the root `root` to the Host of `device`,
+    /// keeping its directory; nothing when it works there already. `cancel`
+    /// ends it before it commits. By default no conversation moves.
+    async fn move_to(&self, _root: &NodeId, _device: &str, _cancel: &CancellationToken) -> Result<(), String> {
+        Err("this product moves no conversation".to_owned())
     }
 
     /// Where the conversation works now: its primary Host's device and its

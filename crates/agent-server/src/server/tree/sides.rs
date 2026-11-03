@@ -151,6 +151,7 @@ fn first_message(id: TurnId, of: &SideOf) -> QueuedMessage {
         id,
         content,
         schedule: None,
+        device: None,
     }
 }
 

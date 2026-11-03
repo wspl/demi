@@ -13,6 +13,7 @@
 //! size fails the turn with `request_too_large`, which the user's `compact`
 //! continues by summarizing the media away.
 
+use tokio_util::sync::CancellationToken;
 use std::{future::Future, mem, rc::Rc, sync::Arc};
 
 use demi_agent_store::{
@@ -1053,6 +1054,11 @@ impl SessionRuntime for CopyRuntime {
 
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>> {
         Box::pin(async { None })
+    }
+
+    /// The summary request sends no message, which alone moves.
+    fn move_to<'a>(&'a self, _device: &'a str, _cancel: CancellationToken) -> LocalBoxFuture<'a, Result<(), String>> {
+        Box::pin(async { Ok(()) })
     }
 
     fn context<'a>(

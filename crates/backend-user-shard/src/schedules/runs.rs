@@ -285,6 +285,7 @@ impl Shard {
                     name: schedule.name.clone(),
                     at: fired.at,
                 }),
+                device: None,
             })
             .map_err(|error| error.to_string())?;
         // A message that waits behind a running turn reaches it, as the

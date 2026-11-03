@@ -149,6 +149,10 @@ impl SessionRuntime for TestRuntime {
         Box::pin(async move { window })
     }
 
+    fn move_to<'a>(&'a self, _device: &'a str, _cancel: tokio_util::sync::CancellationToken) -> LocalBoxFuture<'a, Result<(), String>> {
+        Box::pin(async { Ok(()) })
+    }
+
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>> {
         if self.hanging_preamble.get() {
             return Box::pin(std::future::pending());
@@ -710,6 +714,7 @@ async fn an_edit_gives_its_version_the_comments_it_carries_and_keeps_them_withou
             content: Vec::new(),
             comments: vec![first, second.clone()],
             schedule: None,
+            device: None,
         })
         .unwrap()
         .await

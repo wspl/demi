@@ -581,6 +581,7 @@ impl<H: HostResolver> Connection<H> {
                 message_id,
                 content,
                 comments,
+                device,
             }) => {
                 // A message the session holds already is acknowledged before
                 // its files are resolved, so a request sent again, after its
@@ -605,6 +606,7 @@ impl<H: HostResolver> Connection<H> {
                     content,
                     comments,
                     schedule: None,
+                    device: device.map(|device| device.to_string()),
                 };
                 if let Err(error) = session.send_message(message) {
                     self.reject(kind, error.refusal());

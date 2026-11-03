@@ -133,6 +133,16 @@ pub struct QueuedMessage {
     #[schemars(with = "crate::ScheduleMark")]
     #[garde(dive)]
     pub schedule: Option<crate::ScheduleMark>,
+    /// The device whose Host its turn runs on: the conversation moves there
+    /// before the turn's first request. Absent to run where it works.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "serde_with::rust::unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub device: Option<String>,
 }
 
 /// A call the model is writing: the provider opened it and has not handed

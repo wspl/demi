@@ -119,10 +119,32 @@ A Cloud sleeps when nobody uses it and wakes at the next command, with its
 files as they were. `POST /v1/clouds/{cloud}/reset` gives it a new system and
 keeps its home directory.
 
-A conversation runs on one Cloud at a time. To move it, for example when
-another person picks up a shared conversation, send
-`PATCH /v1/conversations/{conversation}` with another `cloud`; the main
-agent's next command runs there. A subagent stays on the Cloud it started on.
+A conversation runs on one Cloud at a time, and changes Cloud only between
+turns. To run a person's request on their Cloud, name it on their message:
+
+```json
+{"text": "Make the weekly report.", "cloud": "<sam's Cloud id>"}
+```
+
+The turn that message starts runs on that Cloud: Demi moves the conversation
+there before the turn begins, even when the message waited in the queue
+behind someone else's turn. A message without a `cloud` runs where the
+conversation works. A steer of a running turn can't name another Cloud
+(`409 cloud_differs`): send it as a message instead, and it runs next. A turn
+that a background command or a subagent's report starts runs where the
+conversation works, and a subagent stays on the Cloud it started on.
+
+To move a conversation at once, send
+`PATCH /v1/conversations/{conversation}` with another `cloud`. A move while a
+turn runs takes effect at once, as a move in the web app does: the turn's next
+commands run on the new Cloud.
+
+### Directory
+
+A conversation's agents work in its Cloud's home, `~`, unless you name
+another `directory` when you create it, such as the shared folder. The
+conversation keeps its directory when it moves, and `PATCH` with a
+`directory` changes it while the conversation isn't running.
 
 ### Init script
 
