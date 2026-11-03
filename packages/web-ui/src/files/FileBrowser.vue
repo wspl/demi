@@ -100,7 +100,12 @@ const props = withDefaults(
     confirmLabel?: string
     /** Browsing stays open while choosing is not allowed (a running turn, an archived conversation). */
     confirmDisabled?: boolean
-    /** What the confirm button does (`operations.ts`): it shows it while it works. */
+    /**
+     * The operation the caller starts with what is chosen (`operations.ts`),
+     * which the confirm button shows while it works. The button does not start
+     * it: the choice reaches the caller after the browser reads the entry again,
+     * too late for the caller's start to join one the press began.
+     */
     confirmOperation?: Operation
   }>(),
   {
@@ -194,8 +199,10 @@ const confirmLabel = computed(
   () =>
     props.confirmLabel ?? (props.mode === 'file' ? t('browser.open') : t('browser.selectFolder')),
 )
+/** Whether the caller's operation with the choice runs, which the confirm button shows. */
+const confirming = computed(() => props.confirmOperation !== undefined && operations.runs(props.confirmOperation))
 const canConfirm = computed(() => {
-  if (props.confirmDisabled || (props.confirmOperation !== undefined && operations.runs(props.confirmOperation))) {
+  if (props.confirmDisabled || confirming.value) {
     return false
   }
   if (selectedEntry.value) {
@@ -648,8 +655,8 @@ onBeforeUnmount(() => pending?.abort())
         <Button @click="emit('cancel')">{{ shared('common.cancel') }}</Button>
         <Button
           variant="primary"
-          :disabled="!canConfirm && !(confirmOperation && operations.runs(confirmOperation))"
-          :operation="confirmOperation"
+          :disabled="!canConfirm && !confirming"
+          :loading="confirming"
           @click="confirm"
           >{{ confirmLabel }}</Button
         >

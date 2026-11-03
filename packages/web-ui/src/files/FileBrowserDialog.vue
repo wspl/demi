@@ -34,7 +34,7 @@ const props = defineProps<{
   hostId?: string
   confirmLabel?: TitleText
   confirmDisabled?: boolean
-  /** What the confirm button does (`operations.ts`). */
+  /** The operation the caller starts with what is chosen, which the confirm button shows (`FileBrowser.vue`). */
   confirmOperation?: Operation
 }>()
 
