@@ -417,8 +417,8 @@ provider-elevenlabs -> shared-types, provider-common
 provider-minimax -> shared-types, provider-common
 provider-codex -> shared-types, provider-common, shared-artifacts
 provider-grok-build -> shared-types, provider-common
-provider-claude-code -> shared-types, provider-common, host-interface, shared-artifacts
-provider-registry -> command-package-claude-code-protocol, shared-types, provider-common, provider-anthropic-api, provider-claude-code, provider-openai-api, web-api-protocol
+provider-claude-code -> command-package-claude-code-protocol, shared-types, provider-common, host-interface, shared-artifacts
+provider-registry -> shared-types, provider-common, provider-anthropic-api, provider-openai-api, web-api-protocol
 host-interface -> command-protocol, command-declarations, shared-types
 agent-store -> conversation-lane-protocol, command-protocol, shared-types, provider-common, host-interface
 agent-transcript -> conversation-lane-protocol, agent-store, shared-types, provider-common

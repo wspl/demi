@@ -26,7 +26,7 @@ use demi_backend_page_sync::SyncRegistry;
 use demi_plugin_host::{Registry, RegistryError};
 use demi_provider_registry::registry::ProviderRegistry;
 use demi_provider_registry::catalog_cache::ModelCatalogCache;
-use demi_provider_registry::claude_releases::ClaudeReleases;
+use demi_provider_claude_code::releases::ClaudeReleases;
 use demi_provider_registry::families::FamilyRegistry;
 use demi_provider_registry::vendors::VendorCatalog;
 use demi_backend_providers::vault::entries::{VaultReseal, SeededAccount, Vault};
@@ -48,7 +48,7 @@ use demi_provider_common::models_dev::ModelsDevClient;
 use demi_shared_types::Clock;
 use object_store::ObjectStore;
 
-use crate::conversation::claude_cli::{ClaudeMachine, CliInstalls};
+use crate::conversation::claude_cli::{CliInstalls, MachineSlot};
 use crate::tuning::{ConversationTuning, LifecycleTuning, MediaTuning, PageTuning, RunnerTuning};
 
 const CONTROL_DATABASE: &str = "control.sqlite";
@@ -83,7 +83,7 @@ pub struct Services {
     /// The outcome of the CLI installs no conversation asked for.
     pub cli_installs: CliInstalls,
     /// The Claude Code machine, set as the shards start.
-    pub claude_machine: std::sync::OnceLock<ClaudeMachine>,
+    pub claude_machine: MachineSlot,
     pub operations: Arc<ProviderOperations>,
     pub logins: Arc<LoginFlows>,
     /// Runners waiting to be paired, which have no user yet.
@@ -149,6 +149,9 @@ pub struct ProviderSetup {
     pub media_catalog: Arc<demi_provider_common::media_catalog::Catalog>,
     /// The Claude Code distribution.
     pub claude_releases: url::Url,
+    /// Where the Claude Code machine is, which the master's shard puts there
+    /// as it starts and the Claude Code family reads too.
+    pub claude_machine: MachineSlot,
     pub logins: LoginTiming,
     pub clock: Arc<dyn Clock>,
     /// The account the master account's entry of its family holds.
@@ -465,7 +468,7 @@ impl Services {
             media,
             claude_releases,
             cli_installs: CliInstalls::default(),
-            claude_machine: std::sync::OnceLock::new(),
+            claude_machine: providers.claude_machine,
             operations,
             logins,
             claims: PendingClaims::new(settings.runners.claims_per_minute),

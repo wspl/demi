@@ -12,11 +12,9 @@ doctest = false
 bench = false
 
 [dependencies]
-demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
 demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }
 demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
-demi-provider-claude-code = { path = "../provider-claude-code" }
 demi-provider-openai-api = { path = "../provider-openai-api" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 futures-util.workspace = true

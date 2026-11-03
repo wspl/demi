@@ -304,7 +304,7 @@ impl ProviderRegistry {
             cli_package: provider
                 .as_ref()
                 .ok()
-                .and_then(|provider| crate::claude_releases::cli_package(provider.as_ref())),
+                .and_then(|provider| provider.capabilities().cli_package.map(str::to_owned)),
             models,
             // The media service fills them, which knows the media catalog.
             image_models: Vec::new(),

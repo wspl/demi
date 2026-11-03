@@ -71,7 +71,8 @@ use url::Url;
 use demi_backend_accounts::email_change::AccountMail;
 use demi_backend_blobs::store::{S3Config, Storage};
 use demi_backend_cloud::tuning::CloudTuning;
-use demi_provider_registry::claude_releases::DEFAULT_RELEASES_URL;
+use demi_backend_user_shard::conversation::claude_cli::MachineSlot;
+use demi_provider_claude_code::releases::DEFAULT_RELEASES_URL;
 use demi_provider_registry::families::FamilyRegistry;
 use demi_backend_providers::vault::entries::SeededAccount;
 use demi_backend_providers::vault::logins::LoginTiming;
@@ -526,8 +527,11 @@ pub struct BackendConfig {
     /// downloaded.
     pub media_catalog: Arc<media_catalog::Catalog>,
     /// The Claude Code distribution whose newest release the CLI on each
-    /// Cloud follows (`crates/provider-registry/src/claude_releases.rs`).
+    /// Cloud follows (`crates/provider-claude-code/src/releases.rs`).
     pub claude_releases: Url,
+    /// Where the Claude Code machine is, which the backend's shards put
+    /// there as they start and the Claude Code family of `families` reads.
+    pub claude_machine: MachineSlot,
     /// How long a device login waits for its user, and how long its result
     /// is kept.
     pub logins: LoginTiming,
@@ -565,6 +569,7 @@ impl BackendConfig {
         address: SocketAddr,
         machines_socket: PathBuf,
     ) -> Self {
+        let claude_machine = MachineSlot::default();
         Self {
             log: ServerLog::detached(&data_dir),
             data_dir,
@@ -584,7 +589,8 @@ impl BackendConfig {
             account_mail: None,
             clock: Arc::new(SystemClock),
             shards: ShardPlacement::Threads(NonZeroUsize::MIN),
-            families: crate::families::builtin(),
+            families: crate::families::builtin(claude_machine.clone()),
+            claude_machine,
             plugins: crate::plugins::builtin(),
             models_dev_url: ModelsDevClient::DEFAULT_URL
                 .parse()

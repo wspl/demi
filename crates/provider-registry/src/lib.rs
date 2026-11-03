@@ -31,7 +31,6 @@
 //! - `rotation` and `quotas`: which account an agent takes, and each
 //!   account's quota snapshot.
 //! - `details`: what a program shows of an entry's provider.
-//! - `claude_releases`: the vendor's newest Claude Code release.
 //! - `small_model`: the model a small job runs on.
 //! - `store`: what the program stores for the registry
 //!   ([`RegistryStore`](store::RegistryStore)).
@@ -44,7 +43,6 @@
 
 pub mod catalog;
 pub mod catalog_cache;
-pub mod claude_releases;
 pub mod details;
 pub mod entry;
 pub mod families;

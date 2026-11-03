@@ -684,7 +684,7 @@ impl ConversationRuntime {
                 .await
                 .map_err(|error| refused(error.to_string(), None))?,
         };
-        self.prepares_ahead = provider.capabilities().process_host;
+        self.prepares_ahead = provider.capabilities().cli_package.is_some();
         let kept = self.current.as_ref().is_some_and(|current| {
             Arc::ptr_eq(&current.provider, &provider) && current.model == selection.model.id
         });
@@ -692,16 +692,11 @@ impl ConversationRuntime {
             // A provider that runs a process gets it on the Claude Code
             // machine, whatever the conversation's target
             // (`crates/provider-claude-code/src/placement.rs`).
-            let runtime = if provider.capabilities().process_host {
+            let runtime = if provider.capabilities().cli_package.is_some() {
                 let work = ProcessWork::Conversation(scope.conversation.clone());
-                let placement = CrossPlacement::placement(scope.shard.clone(), work);
-                let env = RuntimeEnv {
-                    http: provider_registry.http_for(entry, scope.http.clone()),
-                };
-                provider_registry
-                    .process_runtime(entry, account.or(entry.active()), env, placement)
+                CrossPlacement::runtime(scope.shard.clone(), provider_registry, entry, account.or(entry.active()), work)
                     .await
-                    .map_err(|error| refused(error.to_string(), None))?
+                    .map_err(|error| refused(error, None))?
             } else {
                 provider
                     .runtime(RuntimeEnv {

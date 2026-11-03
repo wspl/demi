@@ -58,6 +58,7 @@ mod placement;
 mod prepared;
 mod mirror;
 mod quota;
+pub mod releases;
 mod run;
 mod session;
 mod timing;
@@ -65,6 +66,7 @@ mod timing;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use demi_command_package_claude_code_protocol::PACKAGE;
 use demi_provider_common::credentials::{Accounts, CredentialPool, SubscriptionAccounts};
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_provider_common::quota::{ProviderQuota, QuotaSnapshotStore};
@@ -258,7 +260,7 @@ impl ClaudeCodeProvider {
 
 impl Provider for ClaudeCodeProvider {
     fn capabilities(&self) -> Capabilities {
-        Capabilities { process_host: true }
+        Capabilities { cli_package: Some(PACKAGE) }
     }
 
     /// The account as its record holds it: signed in, unless its vendor
@@ -305,7 +307,7 @@ impl Provider for ClaudeCodeProvider {
     }
 
     fn runtime(&self, _env: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {
-        Err(RuntimeError::ProcessHostRequired {
+        Err(RuntimeError::PlacementRequired {
             provider: self.shared.display_name.clone(),
         })
     }

@@ -43,8 +43,8 @@ environment it receives:
 
 ```rust
 /// One provider entry, shared by every user and request of the entry.
-pub trait Provider: Send + Sync + 'static {
-    fn capabilities(&self) -> Capabilities;              // { process_host: bool }
+pub trait Provider: Any + Send + Sync {
+    fn capabilities(&self) -> Capabilities;              // { cli_package: Option<&'static str> }
     fn auth_status(&self) -> BoxFuture<'_, AuthState>;
     fn runtime_state(&self) -> RuntimeState;
     /// A fresh read of the provider's directory; the backend's catalog cache is the cache.
@@ -65,7 +65,7 @@ The following table says what your provider does in each method:
 
 | Method | What your provider does |
 |---|---|
-| `capabilities` | Sets `process_host` only when the runtime starts a process on a Host; the backend then builds the runtime over a placement that starts the process (`crates/provider-claude-code/src/placement.rs`) |
+| `capabilities` | Names `cli_package`, the command package of its CLI, only when its requests run that CLI as a process; the backend then builds the runtime over a placement that starts the process (`crates/provider-claude-code/src/placement.rs`) |
 | `auth_status`, `runtime_state` | Says whether the credential is present and usable, and whether the provider can run. Reading either never makes an inference request |
 | `list_models` | Reads the vendor's model directory on each call and keeps no cache: the backend's catalog cache (`crates/provider-registry/src/catalog_cache.rs`) is the only one |
 | `read_failure` | Reads your vendor's own fields out of a stored failure record ([Report failures](#report-failures)) |
