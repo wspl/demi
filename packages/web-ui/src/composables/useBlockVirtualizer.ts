@@ -8,7 +8,7 @@ import { deviceSystem } from '../auth/device-unlock'
 import { revealOffset } from '../ui/reveal'
 import { windowHeight } from '../ui/window-height'
 import { prefersReducedMotion } from '../ui/stream-reveal'
-import { moveRows, rowsBefore, rowTails, scrolledRows, stopRowMoves, tailDisplaced, type RowsBefore, type RowTail } from './row-motion'
+import { keptStill, moveRows, rowsBefore, rowTails, scrolledRows, stopRowMoves, tailDisplaced, type KeptRow, type RowsBefore, type RowTail } from './row-motion'
 
 type ScrollIntent = 'up' | 'down' | null
 interface VirtualizedBlock {
@@ -262,6 +262,12 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
    * position when the list gets shorter.
    */
   let pendingFrom: number | null = null
+  /**
+   * The rows whose change of height the view followed since the rows were
+   * last laid out: the rows below each stood still, so their moves start
+   * from there (`keptStill`).
+   */
+  let keptRows: KeptRow[] = []
   /** A finger is on the list. */
   let touching = false
   /** Ends the reader's scroll `MOMENTUM_END_MS` after its last scroll event. */
@@ -280,9 +286,12 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
    * scroll after the update otherwise. The virtualizer's place for the view
    * moves at once, so the update draws the rows the view will show.
    */
-  function followRowsAbove(by: number): void {
+  function followRowsAbove(by: number, row?: { key: string, index: number }): void {
     virtualizer.value.scrollOffset = (virtualizer.value.scrollOffset ?? 0) + by
     scrollOffset.value = virtualizer.value.scrollOffset
+    // A follow of no one row is a reflow's, after which no row moves.
+    if (row)
+      keptRows.push({ ...row, by })
     if (shiftsRows && readerScrolls()) {
       rowsShift.value += by
       return
@@ -301,6 +310,9 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       return
     el.scrollTop = from + by
     scrolledTo = el.scrollTop
+    // The list's own scroll is no move of any row, as `keptStill` says of the rows it kept.
+    if (seen)
+      seen = { ...seen, scrollTop: seen.scrollTop + el.scrollTop - from }
   }
   /**
    * The view takes the rows' shift over: the rows are drawn at their places
@@ -399,6 +411,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         // position it writes is theirs.
         pendingScrollBy = 0
         pendingFrom = null
+        keptRows = []
         const settled = settleShift(true)
         if (settled) {
           void settled.then(() => {
@@ -1018,9 +1031,15 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         remeasureReadAt()
     } else {
       scrollPending()
-      if (el && seen)
+      if (el && seen) {
+        // Kept in `seen` itself: a later update before the next paint moves
+        // the rows from there too, and must not read the follow as a move.
+        const indexOf = new Map(virtualizer.value.getVirtualItems().map((item) => [String(item.key), item.index]))
+        seen = keptStill(seen, keptRows, (key) => indexOf.get(key))
         moveRows(el, seen, placedHeights(), shouldAutoScroll.value)
+      }
     }
+    keptRows = []
     settled = placedHeights()
     settledTails = scrollContainer.value ? rowTails(scrollContainer.value) : new Map()
   }, { flush: 'post' })
@@ -1054,7 +1073,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
           if (above > RESIZED_PX) {
             resizeCorrections += 1
             resizeCorrectedPx += Math.round(above)
-            followRowsAbove(above)
+            followRowsAbove(above, { key: String(item.key), index: item.index })
           }
           return false
         }
@@ -1071,7 +1090,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
           // Many a second as rows are measured: counted, and told with the scroll that follows.
           resizeCorrections += 1
           resizeCorrectedPx += Math.round(by)
-          followRowsAbove(by)
+          followRowsAbove(by, { key: String(item.key), index: item.index })
         }
         return false
       }

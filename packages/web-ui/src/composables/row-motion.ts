@@ -83,6 +83,40 @@ export function scrolledRows(before: RowsBefore, scrollTop: number): RowsBefore 
   return { tops: new Map([...before.tops].map(([key, top]) => [key, top - by])), heights: before.heights, tails: before.tails, scrollTop }
 }
 
+/** A row whose change of height the view followed, by `by` px, so the rows below it stood still on the screen. */
+export interface KeptRow {
+  key: string
+  index: number
+  by: number
+}
+
+/**
+ * `before` as the reader saw it once the view followed `kept`: a row that grew
+ * by `by` px while the view scrolled (or shifted) by as much stands that much
+ * taller, and it and the rows above it stand `by` px higher, where the view's
+ * move carried them, while the rows below it stood still. Without this, a row
+ * above the view measured shorter than its estimate would be read as having
+ * pulled the rows below it up, and `moveRows` would draw every row in view a
+ * row's height away and slide it back.
+ */
+export function keptStill(before: RowsBefore, kept: readonly KeptRow[], indexOf: (key: string) => number | undefined): RowsBefore {
+  if (kept.length === 0)
+    return before
+  const tops = new Map(before.tops)
+  const heights = new Map(before.heights)
+  for (const row of kept) {
+    const was = heights.get(row.key)
+    if (was !== undefined)
+      heights.set(row.key, was + row.by)
+    for (const [key, top] of tops) {
+      const index = indexOf(key)
+      if (index !== undefined && index <= row.index)
+        tops.set(key, top - row.by)
+    }
+  }
+  return { ...before, tops, heights }
+}
+
 /** The moves of a row that are running. */
 function moving(row: HTMLElement): Animation[] {
   return row.getAnimations().filter((move) => move.id === ROW_MOVE_ID)
