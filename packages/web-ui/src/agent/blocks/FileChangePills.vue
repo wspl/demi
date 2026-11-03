@@ -20,9 +20,10 @@ import type { ChangeFile } from '../../files/changes'
  * - A deleted file is struck through.
  * - A renamed file names its old path in the tooltip.
  *
- * The pills take at most two lines. The files that do not fit fold into a last
- * pill, "+N Files", which shows them in place on the lines below and turns into
- * Show Less, which folds them back.
+ * The pills take one line. The files that do not fit fold into a last pill,
+ * "+N Files", which shows them in place on the lines below and turns into Show
+ * Less, which folds them back. The newest file always shows, its name cut to
+ * leave the count its room.
  */
 const props = withDefaults(
   defineProps<{
@@ -38,9 +39,6 @@ const props = withDefaults(
 
 const emit = defineEmits<{ select: [path: string] }>()
 const icons = useIconPx()
-
-/** The most lines the pills take. */
-const MAX_ROWS = 2
 
 function opens(path: string): boolean {
   return typeof props.selectable === 'function' ? props.selectable(path) : props.selectable
@@ -84,9 +82,12 @@ function moreLabel(count: number): string {
 const MORE_PADDING_PX = 16
 
 /**
- * How many pills fit within `maxRows` rows with the "+N Files" button after
- * them.
+ * The width the first pill may take beside the "+N Files" button for the
+ * rest, as the last measure found it.
  */
+const firstRoom = ref(0)
+
+/** How many pills fit on the line with the "+N Files" button after them. */
 const fitCount = useFitMore({
   items: () => props.files,
   box: () => container.value,
@@ -99,19 +100,28 @@ const fitCount = useFitMore({
     const style = getComputedStyle(box)
     const font = getComputedStyle(first).font
     const room = box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+    const gap = parseFloat(style.columnGap)
+    const countWidth = (rest: number) => Math.ceil(textWidth(moreLabel(rest), font)) + MORE_PADDING_PX
+    firstRoom.value = room - gap - countWidth(props.files.length - 1)
     return {
       room,
       // A pill wider than the line shrinks to it, truncating its name.
       widths: pills.map((pill) => Math.min(pill!.offsetWidth, room)),
-      gap: parseFloat(style.columnGap),
-      rows: MAX_ROWS,
-      countWidth: (rest) => Math.ceil(textWidth(moreLabel(rest), font)) + MORE_PADDING_PX,
+      gap,
+      countWidth,
     }
   },
 })
 
-/** How many files the first two lines leave out. */
-const hidden = computed(() => props.files.length - fitCount.value)
+/**
+ * Whether the first pill alone does not fit beside the button, and shows with
+ * its name cut to the room the button leaves.
+ */
+const squeezed = computed(() => fitCount.value === 0 && props.files.length > 1 && firstRoom.value > 0)
+/** How many pills show while folded. */
+const shownCount = computed(() => (squeezed.value ? 1 : fitCount.value))
+/** How many files the line leaves out. */
+const hidden = computed(() => props.files.length - shownCount.value)
 /** "+N Files" put the files it counted in place. */
 const expanded = ref(false)
 </script>
@@ -125,8 +135,9 @@ const expanded = ref(false)
       <component
         :is="opens(file.path) ? 'button' : 'span'"
         :type="opens(file.path) ? 'button' : undefined"
-        v-show="expanded || index < fitCount"
+        v-show="expanded || index < shownCount"
         :ref="pillRef(file.path)"
+        :style="squeezed && !expanded && index === 0 ? { maxWidth: `${firstRoom}px` } : undefined"
         class="file-pill group/pill inline-flex h-pill max-w-64 select-none items-center gap-1.5 rounded-full pl-1.5 pr-2 text-pill leading-4 phone:pl-2 phone:pr-2.5 text-fg-muted transition-colors duration-200 ease-out"
         :class="opens(file.path) ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
         @click="opens(file.path) && emit('select', file.path)"
