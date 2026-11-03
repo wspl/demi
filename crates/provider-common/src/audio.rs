@@ -54,21 +54,14 @@ pub trait AudioMaker: MediaMaker {
         search: Option<&'a str>,
     ) -> BoxFuture<'a, Result<Option<Vec<Voice>>, MediaFailure>>;
 
-    /// The options `request` gives that its request has no field for, which are
-    /// not sent.
-    ///
-    /// They are its shape's ([`unsent`]), unless the maker's models take
-    /// different requests, as ByteDance's Seed Audio and Seed speech do.
-    fn unsent(&self, _catalog: &Catalog, request: &AudioRequest) -> Vec<AudioOption> {
-        unsent(self.shape(), request)
-    }
+    /// The options `request` gives that its request has no field for, which
+    /// are not sent, as [`unsent_of`] picks them from the ones the request
+    /// lacks.
+    fn unsent(&self, catalog: &Catalog, request: &AudioRequest) -> Vec<AudioOption>;
 
     /// How a call of `request` names the request it takes, such as `Lyria
-    /// takes no --duration`: its shape's name for its kind, unless the
-    /// maker's models take different requests.
-    fn shape_name(&self, _catalog: &Catalog, request: &AudioRequest) -> &'static str {
-        self.shape().name(request.kind)
-    }
+    /// takes no --duration`.
+    fn shape_name(&self, catalog: &Catalog, request: &AudioRequest) -> &'static str;
 
     /// The factors of the voice's speed the vendor takes, ends included.
     ///
@@ -142,27 +135,6 @@ pub enum AudioOption {
     Instrumental,
     Seed,
     Loop,
-}
-
-/// The options `request` gives that `shape` has no field for in a call of
-/// its kind, which are not sent, in the order of the options.
-pub fn unsent(shape: AudioShape, request: &AudioRequest) -> Vec<AudioOption> {
-    use AudioOption::{Duration, Instructions, Instrumental, Loop, Seed, Speed};
-    let lacks: &[AudioOption] = match (shape, request.kind) {
-        (AudioShape::OpenaiSpeech, _) => &[],
-        (AudioShape::Gemini, AudioKind::Speech) => &[Speed],
-        (AudioShape::Gemini, _) => &[Duration, Instrumental, Seed, Loop],
-        (AudioShape::Elevenlabs, AudioKind::Speech) => &[Instructions],
-        // ElevenLabs takes no seed with a prompt, the only way a call asks.
-        (AudioShape::Elevenlabs, _) => &[Seed],
-        // Seed speech's; Seed Audio's speech takes instructions too.
-        (AudioShape::Seed, AudioKind::Speech) => &[Instructions, Seed],
-        // Seed Audio states an effect's length and loop in its prompt.
-        (AudioShape::Seed, _) => &[Duration, Instrumental, Seed, Loop],
-        // MiniMax makes speech alone, which takes neither.
-        (AudioShape::Minimax, _) => &[Instructions, Seed],
-    };
-    unsent_of(lacks, request)
 }
 
 /// The options `request` gives among those a request `lacks`, in the order

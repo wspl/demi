@@ -27,7 +27,7 @@ use demi_provider_common::{
     json_body,
     media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, catalog_models, unreadable},
     media_catalog::{Catalog, MediaKind},
-    videos::{self, Content, Done, JobState, VideoMaker, VideoRequest, content},
+    videos::{self, Content, Done, JobState, VideoMaker, VideoOption, VideoRequest, content},
 };
 use demi_shared_types::{Clock, TokenUsage, VendorTrace, VideoResolution, VideoShape};
 use futures_util::future::BoxFuture;
@@ -111,6 +111,15 @@ impl MediaMaker for ArkVideos {
 }
 
 impl VideoMaker for ArkVideos {
+    /// Ark's task has a field for every option a call gives.
+    fn unsent(&self, _: &Catalog, _: &VideoRequest) -> Vec<VideoOption> {
+        Vec::new()
+    }
+
+    fn shape_name(&self) -> &'static str {
+        "Ark Tasks"
+    }
+
     fn shape(&self) -> VideoShape {
         VideoShape::ArkTasks
     }

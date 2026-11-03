@@ -88,6 +88,13 @@ pub trait ProviderFamily: Send + Sync + 'static {
         Searches::default()
     }
 
+    /// The models.dev vendors whose models take an effort on the family's
+    /// protocol where models.dev lists one; a model of any other vendor on
+    /// it takes a budget. None by default.
+    fn effort_vendors(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     /// The headers a vendor entry of the family may set, by the models.dev
     /// id of its vendor: the ones its vendor documents for its user to send,
     /// such as the workspace a key names. None by default.
@@ -363,5 +370,11 @@ impl FamilyRegistry {
             .iter()
             .filter(|(_, family)| family.credential() == CredentialKind::Subscription)
             .map(|(name, _)| name.as_str())
+    }
+
+    /// The vendors whose models take an effort on their family's protocol
+    /// ([`ProviderFamily::effort_vendors`]), of every family.
+    pub fn effort_vendors(&self) -> Vec<&'static str> {
+        self.families.values().flat_map(|family| family.effort_vendors().iter().copied()).collect()
     }
 }

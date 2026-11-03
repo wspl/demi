@@ -14,7 +14,7 @@ use demi_provider_common::{
     json_body,
     media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable},
     media_catalog::Catalog,
-    videos::{self, Done, JobState, VideoMaker, VideoRequest, xai},
+    videos::{self, Done, JobState, VideoMaker, VideoOption, VideoRequest, unsent_of, xai},
 };
 use demi_shared_types::{Clock, Cost, Currency, VendorTrace, VideoResolution, VideoShape};
 use futures_util::future::BoxFuture;
@@ -117,6 +117,27 @@ impl MediaMaker for KeyVideos {
 }
 
 impl VideoMaker for KeyVideos {
+    /// OpenAI's Videos API takes no last frame, no references, no sound and
+    /// no seed; OpenRouter's has a field for each; xAI's, the third shape
+    /// this maker is given, takes no seed.
+    fn unsent(&self, _: &demi_provider_common::media_catalog::Catalog, request: &VideoRequest) -> Vec<VideoOption> {
+        use VideoOption::{Audio, LastFrame, Reference, Seed};
+        let lacks: &[VideoOption] = match self.shape() {
+            VideoShape::OpenaiVideos => &[LastFrame, Reference, Audio, Seed],
+            VideoShape::OpenrouterVideos => &[],
+            _ => &[Seed],
+        };
+        unsent_of(lacks, request)
+    }
+
+    fn shape_name(&self) -> &'static str {
+        match self.shape() {
+            VideoShape::OpenaiVideos => "OpenAI Videos",
+            VideoShape::OpenrouterVideos => "OpenRouter Videos",
+            _ => "xAI Videos",
+        }
+    }
+
     fn shape(&self) -> VideoShape {
         match self.flavor {
             Flavor::Xai => VideoShape::XaiVideos,

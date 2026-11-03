@@ -379,12 +379,16 @@ impl AudioMaker for SeedAudio {
         })
     }
 
-    /// Seed Audio's speech takes the instructions Seed speech's does not.
+    /// Seed speech takes no instructions and no seed, and Seed Audio's speech
+    /// no seed. Seed Audio states an effect's length and loop in its prompt,
+    /// and takes no instrumental switch and no seed.
     fn unsent(&self, catalog: &Catalog, request: &AudioRequest) -> Vec<AudioOption> {
-        if request.kind == AudioKind::Speech && self.seed_audio(catalog, request) {
-            return unsent_of(&[AudioOption::Seed], request);
+        use AudioOption::{Duration, Instructions, Instrumental, Loop, Seed};
+        match request.kind {
+            AudioKind::Speech if self.seed_audio(catalog, request) => unsent_of(&[Seed], request),
+            AudioKind::Speech => unsent_of(&[Instructions, Seed], request),
+            _ => unsent_of(&[Duration, Instrumental, Seed, Loop], request),
         }
-        demi_provider_common::audio::unsent(self.shape(), request)
     }
 
     /// Both services count 0.5× to 2×, from −50 to 100.

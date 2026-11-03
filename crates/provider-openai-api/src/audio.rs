@@ -16,7 +16,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_provider_common::{
     Secret,
-    audio::{AudioMaker, AudioRequest, MadeAudio, Voice, searched},
+    audio::{AudioMaker, AudioOption, AudioRequest, MadeAudio, Voice, searched},
     endpoint_url, json_body,
     media::{MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable},
     media_catalog::{Catalog, MediaKind, Voices},
@@ -119,6 +119,15 @@ impl MediaMaker for KeyAudio {
 }
 
 impl AudioMaker for KeyAudio {
+    /// `…/audio/speech` has a field for every option a speech call gives.
+    fn unsent(&self, _: &Catalog, _: &AudioRequest) -> Vec<AudioOption> {
+        Vec::new()
+    }
+
+    fn shape_name(&self, _: &Catalog, _: &AudioRequest) -> &'static str {
+        "OpenAI Speech"
+    }
+
     fn shape(&self) -> AudioShape {
         AudioShape::OpenaiSpeech
     }

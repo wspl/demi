@@ -1225,7 +1225,7 @@ impl Asking for VideoCall {
             provider: making.route.entry.label.clone(),
             vendor: videos.name().to_owned(),
             account: label.clone(),
-            shape: videos.shape().name().to_owned(),
+            shape: videos.shape_name().to_owned(),
             unsent: videos.unsent(making.catalog, &request).into_iter().map(plugin_option).collect(),
         };
         let tuning = making.shard.services().media_tuning;

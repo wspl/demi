@@ -16,7 +16,7 @@
 
 use bytes::Bytes;
 use demi_provider_common::{
-    audio::{AudioFormatAsk, AudioMaker, AudioRequest, MadeAudio, Voice},
+    audio::{AudioFormatAsk, AudioMaker, AudioOption, AudioRequest, MadeAudio, Voice, unsent_of},
     endpoint_url, json_body,
     media::{MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable, within_limit},
     media_catalog::Catalog,
@@ -75,6 +75,23 @@ impl MediaMaker for KeyAudio {
 }
 
 impl AudioMaker for KeyAudio {
+    /// Gemini's speech takes no speed; Lyria's music takes no duration, no
+    /// instrumental switch, no seed and no loop.
+    fn unsent(&self, _: &Catalog, request: &AudioRequest) -> Vec<AudioOption> {
+        use AudioOption::{Duration, Instrumental, Loop, Seed, Speed};
+        match request.kind {
+            AudioKind::Speech => unsent_of(&[Speed], request),
+            _ => unsent_of(&[Duration, Instrumental, Seed, Loop], request),
+        }
+    }
+
+    fn shape_name(&self, _: &Catalog, request: &AudioRequest) -> &'static str {
+        match request.kind {
+            AudioKind::Music => "Lyria",
+            _ => "Gemini",
+        }
+    }
+
     fn shape(&self) -> AudioShape {
         AudioShape::Gemini
     }
