@@ -396,8 +396,9 @@ impl AudioMaker for SeedAudio {
         Some((0.5, 2.0))
     }
 
-    fn shape_name(&self, catalog: &Catalog, request: &AudioRequest) -> &'static str {
-        if self.seed_audio(catalog, request) { "Seed Audio" } else { "Seed speech" }
+    fn shape_name(&self, catalog: &Catalog, request: &AudioRequest) -> String {
+        let name = if self.seed_audio(catalog, request) { "Seed Audio" } else { "Seed speech" };
+        name.to_owned()
     }
 
     /// The speakers the catalog names for `model`; Seed Audio's are Seed

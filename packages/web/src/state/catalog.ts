@@ -113,6 +113,9 @@ function healthMessage(health: AuthState | RuntimeState): string | undefined {
   return 'message' in health ? health.message : undefined
 }
 
+/** The family of a provider another Demi server shares (`crates/provider-relay`). */
+const RELAY = 'relay'
+
 /**
  * The plan an account is on (`packages/web-ui/src/ui/dates.ts`): what its
  * quota snapshot reports; empty before one, or when it names none.
@@ -154,6 +157,8 @@ export function providerView(
     makesText: entry.providerType !== 'media',
     baseUrl: entry.baseUrl ?? '',
     throughDevice: entry.throughDevice,
+    // Another Demi's provider, by the host its share key names.
+    ...(entry.providerType === RELAY ? { lender: entry.baseUrl ? new URL(entry.baseUrl).host : null } : {}),
     ...(entry.kind === 'api_key' ? { headers: entry.headers.map((header) => ({ ...header })) } : {}),
     wireApi: wireApi(entry.providerType, entry.wireApi),
     apiKey: '',

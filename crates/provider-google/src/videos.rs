@@ -58,8 +58,8 @@ impl VideoMaker for KeyVideos {
         unsent_of(&[VideoOption::Audio], request)
     }
 
-    fn shape_name(&self) -> &'static str {
-        "Veo"
+    fn shape_name(&self) -> String {
+        "Veo".to_owned()
     }
 
     fn shape(&self) -> VideoShape {

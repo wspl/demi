@@ -1549,7 +1549,7 @@ async fn shown(
     Ok(ShownEntry {
         entry: services.provider_registry.provider_dto(entry),
         status: catalog.map_or_else(
-            || Availability::setup(entry.missing()),
+            || Availability::setup(services.provider_registry.missing(entry)),
             |catalog| catalog.availability.clone(),
         ),
         hidden: scope.preferences.hides_provider(&entry.id),

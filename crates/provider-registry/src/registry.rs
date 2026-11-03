@@ -29,7 +29,7 @@ use demi_provider_common::{DeviceRoute, ModelWires, Provider, ProviderHttp};
 use demi_shared_types::{AudioShape, CacheTtl, Clock, ImageShape, MediaKind, MediaShapes, Model, Rotation};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use demi_provider_common::models_dev::ModelsDevError;
-use demi_web_api_protocol::providers::{ModelKind, ProviderDto, SETUP_MESSAGE, Vendor};
+use demi_web_api_protocol::providers::{ModelKind, ProviderDto, SETUP_MESSAGE, SetupPart, Vendor};
 use demi_web_api_protocol::text::EndpointUrl;
 
 use crate::catalog_cache::ModelCatalogCache;
@@ -300,6 +300,17 @@ impl ProviderRegistry {
         self.families.get(&entry.family).is_none_or(|family| family.makes_text())
     }
 
+    /// Whether `entry`'s catalog is its provider's directory
+    /// ([`ProviderFamily::reads_directory`]).
+    pub fn reads_directory(&self, entry: &ProviderEntry) -> bool {
+        self.families.get(&entry.family).is_some_and(|family| family.reads_directory())
+    }
+
+    /// What `entry` lacks to infer ([`ProviderEntry::missing`]).
+    pub fn missing(&self, entry: &ProviderEntry) -> Vec<SetupPart> {
+        entry.missing(self.reads_directory(entry))
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<BuiltKey, Built>> {
         // A section only looks up or replaces one entry's provider.
         self.built.lock().unwrap_or_else(PoisonError::into_inner)
@@ -543,14 +554,19 @@ impl ProviderRegistry {
             .and_then(|family| family.default_endpoint())
             // A family's default is a constant that parses.
             .map(|url| EndpointUrl::try_from(url.to_owned()).expect("a default endpoint parses"));
-        entry.dto(
+        let mut dto = entry.dto(
             default,
             self.media_shapes(entry),
             self.offered_searches(entry),
             self.media.current().updated,
             self.cache_ttl_presets(entry),
             self.vendor_headers(entry),
-        )
+        );
+        // An entry whose models its provider's directory lists, as a
+        // borrowed one lists its lender's, is no compatible entry: neither
+        // its endpoint nor its models are the user's to choose.
+        dto.compatible &= !self.reads_directory(entry);
+        dto
     }
 
     /// The headers a vendor `entry` may set, as its family declares them;
@@ -575,13 +591,14 @@ impl ProviderRegistry {
         self.families.get(&entry.family)?.cache_ttl_presets(wire)
     }
 
-    /// The shapes in which `entry` makes media: a compatible entry's, its
-    /// user's choice; a vendor entry's, its family's for its vendor.
     /// The searches `entry`'s vendor has, which its switches turn on.
     pub fn offered_searches(&self, entry: &ProviderEntry) -> Searches {
         self.families.get(&entry.family).map(|family| family.searches()).unwrap_or_default()
     }
 
+    /// The shapes in which `entry` makes media: a compatible entry's, its
+    /// user's choice, or for a borrowed one its lender's when its key was
+    /// pasted; a vendor entry's, its family's for its vendor.
     pub fn media_shapes(&self, entry: &ProviderEntry) -> MediaShapes {
         let vendor = match &entry.credential {
             EntryCredential::ApiKey(config) if config.is_compatible() => {
@@ -604,14 +621,16 @@ impl ProviderRegistry {
     /// - For a compatible entry, it is its shape's role: the one implementation
     ///   every endpoint of that shape shares, offering the models of the kind
     ///   its user added.
-    /// - For a vendor entry, it is its provider's own.
+    /// - For a vendor entry, and an entry whose provider's directory lists
+    ///   its models, as a borrowed one's lists its lender's, it is its
+    ///   provider's own.
     ///
     /// The result is none for an entry that makes none of the kind.
     pub fn maker(&self, entry: &ProviderEntry, provider: &Arc<dyn Provider>, kind: MediaKind) -> Option<MakerOf> {
         let EntryCredential::ApiKey(config) = &entry.credential else {
             return MakerOf::of(provider, kind);
         };
-        if !config.is_compatible() {
+        if !config.is_compatible() || self.reads_directory(entry) {
             return MakerOf::of(provider, kind);
         }
         let base = config.base_url.as_ref()?.url().clone();
@@ -700,6 +719,10 @@ impl ProviderRegistry {
                 if lacks {
                     return Err(RegistryError::Incomplete);
                 }
+                // A compatible entry's media are made by the registry's
+                // makers of its shapes ([`Self::maker`]); every other's by
+                // its provider, built with them.
+                let own_makers = !config.is_compatible() || self.reads_directory(entry);
                 FamilyCredential::ApiKey(ApiKeyArgs {
                     api_key: config.api_key.clone(),
                     base_url: config
@@ -709,9 +732,9 @@ impl ProviderRegistry {
                     wire_api: config.wire_api,
                     models,
                     vendor_id: config.vendor_id.clone(),
-                    image_shape: self.media_shapes(entry).image.filter(|_| !config.is_compatible()),
-                    video_shape: self.media_shapes(entry).video.filter(|_| !config.is_compatible()),
-                    audio_shape: self.media_shapes(entry).audio.filter(|_| !config.is_compatible()),
+                    image_shape: self.media_shapes(entry).image.filter(|_| own_makers),
+                    video_shape: self.media_shapes(entry).video.filter(|_| own_makers),
+                    audio_shape: self.media_shapes(entry).audio.filter(|_| own_makers),
                 })
             }
             EntryCredential::Subscription { .. } => {

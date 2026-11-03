@@ -26,6 +26,8 @@ import {
   type SettingsState,
 } from '../fixtures/settings'
 import { slow } from '../fixtures/slow'
+import { galleryShareKeys, useGalleryShareKeys } from '../fixtures/provider-sharing'
+import { showToast } from '@demicodes/web-ui/infra/toast'
 import { operations } from '@demicodes/web-ui/ui/operations'
 import { providerOperation } from '@demicodes/web-ui/settings/provider-operations'
 import { DAY, HOUR, MINUTE, ahead } from '../fixtures/time'
@@ -77,10 +79,41 @@ function settle(entry: SettingsProviderEntry): void {
   }
 }
 
+/** Share's keys, which every entry shares here: the product lists each entry's own. */
+const { service: shareService } = useGalleryShareKeys(galleryShareKeys())
+
+/**
+ * As the backend takes a borrowed entry's share key: it asks the lending
+ * server, a beat, and names the entry as that server names its provider when
+ * it still has its default name. A key that is not one is refused, as the
+ * product's toast says. Any `demi-share-key-…` text stands for a key here.
+ */
+async function borrow(entry: SettingsProviderEntry, text: string): Promise<void> {
+  await slow()
+  if (!text.startsWith('demi-share-key-')) {
+    showToast({ title: 'Could Not Save the Provider', message: 'The share key isn’t valid, or it was revoked.', tone: 'danger' })
+    return
+  }
+  if (/^Another Demi( \(\d+\))?$/.test(entry.name)) {
+    entry.name = 'Studio Claude'
+  }
+  entry.lender = 'lab.example.com'
+  entry.baseUrl = 'https://lab.example.com'
+  entry.catalogFetched = new Date().toISOString()
+  if (!entry.models.length) {
+    entry.models = [{ ...s.value.providers.find((other) => other.id === 'studio-relay')!.models[0]! }]
+  }
+  settle(entry)
+}
+
 function changeProvider(
   entry: SettingsProviderEntry,
   patch: Partial<SettingsProviderEntry>,
 ): void {
+  if (patch.shareKey !== undefined) {
+    void borrow(entry, patch.shareKey)
+    return
+  }
   const kept = entry.cacheTtl?.value ?? null
   Object.assign(entry, patch)
   // A new protocol offers its own lifetimes, as the backend's families do.
@@ -148,6 +181,30 @@ function addCompatible() {
     keyConfigured: false,
     configured: true,
     modelSource: 'manual',
+  }))
+}
+
+/**
+ * As the backend creates another Demi's provider: at once, named *Another
+ * Demi* or the first free *(2)*, without its share key, which its page asks
+ * for.
+ */
+function addBorrowed() {
+  const taken = (name: string) => s.value.providers.some((entry) => entry.name === name)
+  let name = 'Another Demi'
+  for (let number = 2; taken(name); number += 1) {
+    name = `Another Demi (${number})`
+  }
+  join(provider({
+    id: `p-${Date.now()}`,
+    name,
+    kind: 'api_key',
+    family: 'relay',
+    vendorId: null,
+    lender: null,
+    wireApi: 'anthropic-messages',
+    cacheTtl: undefined,
+    configured: true,
   }))
 }
 
@@ -562,6 +619,8 @@ function closeLogin() {
     @toggle-model="(_provider, model, enabled) => (model.enabled = enabled)"
     @add="addProvider"
     @add-compatible="addCompatible"
+    @add-borrowed="addBorrowed"
+    :share-service="shareService"
     @remove="removeProvider"
     @sign-in="beginLogin"
     @test="test"

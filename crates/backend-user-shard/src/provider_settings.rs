@@ -31,7 +31,9 @@ use demi_provider_registry::families::{ProviderFamily, family_name};
 use demi_provider_registry::entry::{ApiKeyConfig, EntryCredential, ProviderEntry};
 use demi_backend_providers::vault::entries::Vault;
 use demi_backend_providers::vault::operations::OperationGuard;
-use demi_provider_common::{Secret, SecretError};
+use demi_provider_common::{ProviderHttp, Secret, SecretError};
+use demi_provider_relay::borrow::{Borrowed, FAMILY as BORROWED, server_name};
+use demi_provider_relay::key::{NotAKey, ShareKey};
 use demi_shared_types::{AudioShape, CacheTtl, ImageShape, MediaKind, MediaShapes, VideoShape, WireApi};
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::ids::{DeviceId, ProviderId, UserId};
@@ -39,7 +41,7 @@ use demi_web_api_protocol::providers::{
     ConfiguredModel, ConfiguredModels, CreateProvider, CredentialKind, ModelKind, ModelMatch, ProviderHeader, ProviderPatch,
     Rotation,
 };
-use demi_web_api_protocol::text::EndpointUrl;
+use demi_web_api_protocol::text::{EndpointUrl, Trimmed};
 use std::sync::Arc;
 
 use crate::services::Services;
@@ -53,6 +55,22 @@ pub enum ProviderRefusal {
     NotConfiguring,
     #[error("No such provider")]
     NotFound,
+    /// A change of a borrowed entry besides its name and share key; it
+    /// names the entry.
+    #[error("{0} is shared by another server; only its name and share key can be changed.")]
+    BorrowedFixed(String),
+    /// A share key for an entry no other server shares; it names the entry.
+    #[error("{0} is not shared by another server; it takes no share key.")]
+    NotBorrowed(String),
+    /// A share key that is not one, or that its lender refused.
+    #[error("{0}")]
+    ShareKey(String),
+    /// Sharing an entry another server shares; it names the entry.
+    #[error("{0} is shared by another server; it can’t be shared again.")]
+    Borrowed(String),
+    /// Sharing while the server cannot say where it is reached.
+    #[error("{0}")]
+    Unlendable(String),
     #[error("Another change of this provider is still running")]
     Busy,
     #[error("Unknown provider type \"{0}\"")]
@@ -294,6 +312,21 @@ impl Services {
                 };
                 (provider_type, label, config)
             }
+            CreateProvider::Borrowed { label } => {
+                let label = label.ok_or_else(|| BORROWED_LABEL.to_owned());
+                let config = ApiKeyConfig {
+                    api_key: None,
+                    base_url: None,
+                    wire_api: None,
+                    vendor_id: None,
+                    models: None,
+                    image_shape: None,
+                    video_shape: None,
+                    audio_shape: None,
+                    headers: Vec::new(),
+                };
+                (BORROWED.to_owned(), label, config)
+            }
         };
         distinct_models(config.models.as_ref())?;
         let cache_ttl = self
@@ -327,6 +360,12 @@ impl Services {
     ) -> Result<ProviderEntry, ProviderRefusal> {
         let entry = self.managed_entry(&user.id, id).await?;
         let _held = self.hold_entry(&entry)?;
+        if entry.family == BORROWED {
+            return self.update_borrowed(&user.id, entry, patch).await;
+        }
+        if patch.share_key.is_some() {
+            return Err(ProviderRefusal::NotBorrowed(entry.label.clone()));
+        }
         let protocol = patch.provider_type.is_some() || patch.wire_api.is_some();
         let image_shape = patch.media.as_ref().and_then(|media| media.image.as_ref()).and_then(|image| image.shape);
         let video_shape = patch.media.as_ref().and_then(|media| media.video.as_ref()).and_then(|video| video.shape);
@@ -544,6 +583,104 @@ impl Services {
         Ok(updated)
     }
 
+    /// Edits the borrowed entry `entry`: its label, and its share key, which
+    /// the lender is asked about now. The entry takes the lender's name for
+    /// it while it has the name it was added with.
+    async fn update_borrowed(
+        &self,
+        user: &UserId,
+        entry: ProviderEntry,
+        patch: ProviderPatch,
+    ) -> Result<ProviderEntry, ProviderRefusal> {
+        let ProviderPatch {
+            label,
+            share_key,
+            api_key: None,
+            base_url: None,
+            provider_type: None,
+            wire_api: None,
+            models: None,
+            rotation: None,
+            media,
+            search: None,
+            cache_ttl: None,
+            through_device: None,
+            headers: None,
+        } = patch
+        else {
+            return Err(ProviderRefusal::BorrowedFixed(entry.label.clone()));
+        };
+        // Its shapes are its lender's; its switches are its own.
+        let shaped = media.as_ref().is_some_and(|media| {
+            media.image.as_ref().is_some_and(|image| image.shape.is_some())
+                || media.video.as_ref().is_some_and(|video| video.shape.is_some())
+                || media.audio.as_ref().is_some_and(|audio| audio.shape.is_some())
+        });
+        if shaped {
+            return Err(ProviderRefusal::ShapeFixed(entry.label.clone()));
+        }
+        let mut label = label.map(Trimmed::into_string);
+        let config = match share_key {
+            None => None,
+            Some(text) => {
+                let share = ShareKey::parse(&text).map_err(|refusal| ProviderRefusal::ShareKey(refusal.to_string()))?;
+                let EntryCredential::ApiKey(config) = &entry.credential else {
+                    return Err(ProviderRefusal::SubscriptionOnly);
+                };
+                let mut config = config.clone();
+                config.base_url = Some(
+                    EndpointUrl::try_from(share.url.to_string())
+                        .map_err(|_| ProviderRefusal::ShareKey(NotAKey.to_string()))?,
+                );
+                config.api_key = Some(key(share.token.clone())?);
+                let server = server_name(self.public_url.get().map(|url| url.url()));
+                let http = ProviderHttp::new(self.provider_registry.http().clone());
+                let lent = Borrowed::new(share, server, http, MediaShapes::default())
+                    .lent()
+                    .await
+                    .map_err(ProviderRefusal::ShareKey)?;
+                // The shapes the lender makes media in now; a later change
+                // of them is read when a key is pasted again.
+                config.image_shape = lent.media.image;
+                config.video_shape = lent.media.video;
+                config.audio_shape = lent.media.audio;
+                let named = entry.label == BORROWED_LABEL
+                    || entry.label.strip_prefix(BORROWED_LABEL).is_some_and(|rest| rest.starts_with(" ("));
+                if label.is_none() && named {
+                    let entries = self.vault.entries(user.clone()).await?;
+                    label = Some(free_label(lent.name, |taken| {
+                        entries.iter().any(|other| other.id != entry.id && other.label == taken)
+                    }));
+                }
+                Some(config)
+            }
+        };
+        let shapes = match &config {
+            Some(config) => MediaShapes { image: config.image_shape, video: config.video_shape, audio: config.audio_shape },
+            None => self.provider_registry.media_shapes(&entry),
+        };
+        let switch = |kind| media.as_ref().and_then(|media| media.enabled(kind));
+        if let Some(kind) = MediaKind::ALL.into_iter().find(|kind| switch(*kind).is_some() && !shapes.makes(*kind)) {
+            return Err(ProviderRefusal::MakesNo(entry.label.clone(), kind.plural()));
+        }
+        let switches = EntrySwitches {
+            image: switch(MediaKind::Image),
+            video: switch(MediaKind::Video),
+            audio: switch(MediaKind::Audio),
+            ..EntrySwitches::default()
+        };
+        let reconfigures = config.is_some();
+        let updated = self
+            .vault
+            .update(entry.id.clone(), label, None, config, None, switches, None, None)
+            .await?
+            .ok_or(ProviderRefusal::NotFound)?;
+        if reconfigures {
+            self.provider_registry.invalidate(&entry.id).await?;
+        }
+        Ok(updated)
+    }
+
     /// Puts the entries of `user`'s scope in the order `ids` names them,
     /// each once: the order of Settings › Providers, which generated media
     /// try entries in.
@@ -563,7 +700,11 @@ impl Services {
     ) -> Result<ProviderEntry, ProviderRefusal> {
         let entry = self.managed_entry(&user.id, id).await?;
         let _held = self.hold_entry(&entry)?;
+        // Deleting the entry deletes its share keys; their sessions close
+        // with them, as a revoke closes them.
+        let lent = self.lent_keys(&entry.id).await?;
         self.vault.delete(&entry).await?;
+        self.end_lending(&lent);
         self.provider_registry.forget(&entry.id).await?;
         self.cli_installs.forget(&entry.id);
         Ok(entry)
@@ -761,6 +902,10 @@ fn key(text: String) -> Result<Secret, ProviderRefusal> {
 /// The family a compatible entry speaks when it names none: Anthropic
 /// Messages.
 const COMPATIBLE_FAMILY: &str = "anthropic";
+
+/// What a borrowed entry is named until its share key names it after the
+/// lender's.
+const BORROWED_LABEL: &str = "Another Demi";
 
 /// The name a compatible entry takes when it is given none.
 const COMPATIBLE_LABEL: &str = "Compatible API";

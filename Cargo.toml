@@ -67,6 +67,7 @@ members = [
   "crates/provider-bytedance",
   "crates/provider-minimax",
   "crates/provider-grok-build",
+  "crates/provider-relay",
   "crates/provider-openai-api",
   "crates/runner",
   "crates/runner-host",

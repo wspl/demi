@@ -124,8 +124,8 @@ impl AudioMaker for KeyAudio {
         Vec::new()
     }
 
-    fn shape_name(&self, _: &Catalog, _: &AudioRequest) -> &'static str {
-        "OpenAI Speech"
+    fn shape_name(&self, _: &Catalog, _: &AudioRequest) -> String {
+        "OpenAI Speech".to_owned()
     }
 
     fn shape(&self) -> AudioShape {

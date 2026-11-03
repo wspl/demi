@@ -18,6 +18,7 @@ mod host;
 pub mod lane;
 mod permissions;
 pub(crate) mod media;
+pub(crate) mod lent_media;
 pub(crate) mod provider_commands;
 
 pub use self::adoption::KeptJobs;
@@ -310,6 +311,11 @@ impl Shard {
 
     pub fn services(&self) -> &Services {
         &self.services
+    }
+
+    /// The services, for work the shard builds that keeps them.
+    pub(crate) fn shared_services(&self) -> Arc<Services> {
+        self.services.clone()
     }
 
     pub fn http(&self) -> &reqwest::Client {

@@ -85,11 +85,12 @@ impl AudioMaker for KeyAudio {
         }
     }
 
-    fn shape_name(&self, _: &Catalog, request: &AudioRequest) -> &'static str {
-        match request.kind {
+    fn shape_name(&self, _: &Catalog, request: &AudioRequest) -> String {
+        let name = match request.kind {
             AudioKind::Music => "Lyria",
             _ => "Gemini",
-        }
+        };
+        name.to_owned()
     }
 
     fn shape(&self) -> AudioShape {

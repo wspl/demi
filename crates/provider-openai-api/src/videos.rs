@@ -130,12 +130,13 @@ impl VideoMaker for KeyVideos {
         unsent_of(lacks, request)
     }
 
-    fn shape_name(&self) -> &'static str {
-        match self.shape() {
+    fn shape_name(&self) -> String {
+        let name = match self.shape() {
             VideoShape::OpenaiVideos => "OpenAI Videos",
             VideoShape::OpenrouterVideos => "OpenRouter Videos",
             _ => "xAI Videos",
-        }
+        };
+        name.to_owned()
     }
 
     fn shape(&self) -> VideoShape {

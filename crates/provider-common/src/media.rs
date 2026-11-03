@@ -78,7 +78,7 @@ pub fn within_limit(file: Bytes, what: &str) -> Result<Bytes, MediaFailure> {
 /// The body of `response`, read as it arrives and failing as soon as it
 /// is past what `holding` allows, a `Content-Length` over it failing before
 /// a byte is read; `what` names the file.
-pub(crate) async fn read_within(mut response: reqwest::Response, holding: Holding, what: &str) -> Result<Bytes, MediaFailure> {
+pub async fn read_within(mut response: reqwest::Response, holding: Holding, what: &str) -> Result<Bytes, MediaFailure> {
     let limit = holding.limit();
     if response.content_length().is_some_and(|length| length > limit as u64) {
         return Err(too_large(what));
@@ -625,7 +625,7 @@ pub(crate) async fn within_deadline<T>(call: impl Future<Output = Result<T, Medi
 /// The failure of a request that did not reach the vendor or broke off.
 /// A request through a removed device is `device_removed`, which waiting
 /// cannot fix, and one through an offline device `device_offline`.
-pub(crate) fn transport(error: impl Into<crate::SendError>) -> MediaFailure {
+pub fn transport(error: impl Into<crate::SendError>) -> MediaFailure {
     let error = error.into();
     let code = match &error {
         crate::SendError::Device(crate::DeviceRefusal::Removed) => ErrorCode::DeviceRemoved,

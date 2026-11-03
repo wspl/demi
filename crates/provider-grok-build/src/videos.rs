@@ -46,8 +46,8 @@ impl VideoMaker for GrokVideos {
         unsent_of(&[VideoOption::Seed], request)
     }
 
-    fn shape_name(&self) -> &'static str {
-        "Grok"
+    fn shape_name(&self) -> String {
+        "Grok".to_owned()
     }
 
     fn shape(&self) -> VideoShape {

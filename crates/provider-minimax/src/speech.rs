@@ -80,8 +80,8 @@ impl AudioMaker for MinimaxSpeech {
         unsent_of(&[AudioOption::Instructions, AudioOption::Seed], request)
     }
 
-    fn shape_name(&self, _: &Catalog, _: &AudioRequest) -> &'static str {
-        "MiniMax speech"
+    fn shape_name(&self, _: &Catalog, _: &AudioRequest) -> String {
+        "MiniMax speech".to_owned()
     }
 
     fn shape(&self) -> AudioShape {

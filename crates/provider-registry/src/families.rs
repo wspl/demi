@@ -73,6 +73,13 @@ pub trait ProviderFamily: Send + Sync + 'static {
         None
     }
 
+    /// Whether an API-key entry of the family lists the models its
+    /// provider's directory reads, as an entry another server lends lists
+    /// its lender's, rather than a vendor's or its own configured ones.
+    fn reads_directory(&self) -> bool {
+        false
+    }
+
     /// Whether the family's entries make text: false for the family of the
     /// vendors that make media alone, whose entries have no text models
     /// and are never in the model menu (`crates/backend/src/families.rs`).
@@ -173,9 +180,9 @@ pub struct ApiKeyArgs {
     pub models: ModelWires,
     /// The models.dev id of that vendor; none for a compatible entry.
     pub vendor_id: Option<String>,
-    /// How the vendor entry makes images, as its family says; none for a
-    /// compatible entry, whose images are the registry's
-    /// [`CompatibleImages`].
+    /// How the vendor entry makes images, as its family says, or a borrowed
+    /// entry, as its lender said; none for a compatible entry, whose images
+    /// are the registry's [`CompatibleImages`].
     pub image_shape: Option<ImageShape>,
     /// How the vendor entry makes videos, as its family says; none for a
     /// compatible entry, whose videos are the registry's

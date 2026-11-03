@@ -52,6 +52,7 @@ use demi_backend_blobs::ObjectError;
 use demi_backend_blobs::store as objects;
 use demi_backend_runners::install::{RunnerReleases, read_runner_release};
 use demi_backend_runners::native::NativeCatalog;
+use demi_backend_runners::public_url::PublicUrl;
 use demi_runner_protocol::release::{RunnerRelease, UPDATE_RECORD, UpdateRecord};
 use demi_backend_runners::publication::{PublicationError, publish_native};
 use demi_backend_cloud::CloudServices;
@@ -75,6 +76,7 @@ use demi_backend_user_shard::shard::cloud::{route_deaths, route_statuses};
 use tokio_util::task::AbortOnDropHandle;
 
 use crate::config::BackendConfig;
+use crate::families::RelayFamily;
 use crate::config::secret::{InstanceSecret, SecretError};
 
 /// A running backend.
@@ -421,8 +423,13 @@ impl Backend {
         listening: Listening,
         update: Arc<Update>,
     ) -> Result<Self, StartError> {
+        // Where this backend is reached, which the services set once it
+        // listens, and the family of borrowed entries names to their lenders.
+        let public_url = PublicUrl::default();
         let providers = ProviderSetup {
-            families: config.families,
+            families: config
+                .families
+                .with(demi_provider_relay::borrow::FAMILY, RelayFamily(public_url.clone())),
             models_dev_url: config.models_dev_url,
             model_shutdowns_url: config.model_shutdowns_url,
             media_catalog_url: config.media_catalog_url,
@@ -469,6 +476,7 @@ impl Backend {
             upgrade_request: config.upgrade_request,
             upgrade_channel: config.upgrade_channel,
             update: update.clone(),
+            public_url,
         };
         let services = Services::start(storage.clone(), keys, providers, settings);
         let services = Arc::new(services.await?);

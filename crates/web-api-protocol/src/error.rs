@@ -137,6 +137,14 @@ pub enum ErrorCode {
     RotationNeedsAccounts,
     /// A media shape for a vendor entry, whose shapes are its vendor's.
     ShapeFixed,
+    /// Sharing an entry another server shares, which is not shared again; a
+    /// change of one besides its name and share key; a share key for an
+    /// entry no other server shares.
+    Borrowed,
+    /// A share key that is not one, or that its lender refused.
+    ShareKey,
+    /// Sharing an entry while the server does not know its own address.
+    Unlendable,
     /// The family has no login.
     NoLoginFlow,
     /// No login of the caller's has that id, or its result was dropped ten

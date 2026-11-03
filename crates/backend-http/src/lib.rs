@@ -54,6 +54,7 @@ mod html_view;
 mod hosts;
 mod install;
 mod instructions;
+mod lending;
 mod listener;
 mod models;
 mod oauth;
@@ -448,6 +449,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             patch(providers::update).delete(providers::delete),
         )
         .route("/providers/{id}/status", get(providers::status))
+        .route("/providers/{id}/share-keys", get(lending::list).post(lending::create))
+        .route("/providers/{id}/share-keys/{key}", delete(lending::revoke))
         .route("/providers/{id}/quota", post(providers::quota))
         .route("/providers/{id}/test", post(providers::test))
         .route("/providers/{id}/cli", get(provider_cli::read))
@@ -682,6 +685,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
     let app = Router::new()
         .merge(runners_and_downloads())
         .merge(hooks())
+        .merge(relay())
         .merge(web_app_routes);
     let app = match web_directory {
         Some(directory) => assets::serve(app, directory, state.services.public_url.clone()),
@@ -728,6 +732,29 @@ fn html_views() -> Router<AppState> {
 /// keys.
 fn hooks() -> Router<AppState> {
     Router::new().route("/hooks/{id}", axum::routing::any(schedules::hook))
+}
+
+/// What a server that borrows an entry of this one's calls: no session gate
+/// and no check of the page it comes from, since another server calls it; the
+/// share key is its only key.
+fn relay() -> Router<AppState> {
+    use demi_provider_relay::wire::media::MEDIA_ROUTE;
+    // A media call's body, an edit's or a video's carrying their images, is
+    // read within the limit of one message, as `media_body` reads it.
+    let images = DefaultBodyLimit::max(demi_provider_relay::wire::MESSAGE_BYTES);
+    Router::new()
+        .route(demi_provider_relay::wire::PROVIDER_ROUTE, get(lending::provider))
+        .route(demi_provider_relay::wire::SOCKET_ROUTE, get(lending::socket))
+        .route(&format!("{MEDIA_ROUTE}/makers/{{kind}}"), get(lending::media_maker))
+        .route(&format!("{MEDIA_ROUTE}/image"), post(lending::media_image).layer(images))
+        .route(&format!("{MEDIA_ROUTE}/audio"), post(lending::media_audio).layer(images))
+        .route(&format!("{MEDIA_ROUTE}/audio/voices"), post(lending::media_voices).layer(images))
+        .route(&format!("{MEDIA_ROUTE}/video"), post(lending::media_video).layer(images))
+        .route(
+            &format!("{MEDIA_ROUTE}/video/{{job}}"),
+            get(lending::media_video_state).delete(lending::media_video_cancel),
+        )
+        .route(&format!("{MEDIA_ROUTE}/video/{{job}}/file"), get(lending::media_video_file))
 }
 
 /// The routes of the backend's runner socket: what a Cloud's runner reaches

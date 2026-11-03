@@ -19,6 +19,7 @@ import {
   Plus,
   RefreshCw,
   Server,
+  Share,
   SlidersHorizontal,
   TextCursorInput,
   Trash2,
@@ -56,6 +57,8 @@ import { DEVICE_STATE_LABEL } from '../devices/state'
 import type { HostMenuHost } from '../hosts/types'
 import AddModelDialog from './AddModelDialog.vue'
 import AddProviderDialog from './AddProviderDialog.vue'
+import ProviderShareDialog from './ProviderShareDialog.vue'
+import { useProviderShare, type ProviderShareService } from './provider-sharing'
 import ModelDialog from './ModelDialog.vue'
 import { freeModelId } from './model-ids'
 import { endpointProblem } from './provider-defaults'
@@ -184,6 +187,11 @@ const props = defineProps<{
    * page knows them.
    */
   hosts?: HostMenuHost[]
+  /**
+   * Share's keys, by which another Demi server uses an entry the user
+   * manages, as every entry the page lists is; absent, no entry has Share.
+   */
+  shareService?: ProviderShareService
 }>()
 
 const emit = defineEmits<{
@@ -201,6 +209,8 @@ const emit = defineEmits<{
   add: [vendor: SettingsVendor]
   /** A compatible API, created at once with its defaults. */
   addCompatible: []
+  /** Another Demi's provider, created at once without its share key. */
+  addBorrowed: []
   signIn: [provider: SettingsProviderEntry]
   /** Test the provider; a subscription names the account to test with. */
   test: [provider: SettingsProviderEntry, accountId?: string]
@@ -579,6 +589,9 @@ function select(id: string) {
 
 // Adding happens in its own dialog; the host appends the entry and selects it.
 const addOpen = ref(false)
+const share = useProviderShare(() => props.shareService)
+/** Whether the entry has Share: one another server shares is not shared again. */
+const sharable = (provider: SettingsProviderEntry) => props.shareService !== undefined && provider.lender === undefined
 
 // The name edits in place (`TitleInput`).
 const renaming = ref(false)
@@ -1045,6 +1058,16 @@ function endpointCheck(value: string) {
                           :aria-label="t('providers.rename')"
                           @click="renaming = true"
                       /></Tooltip>
+                      <Tooltip
+                        v-if="sharable(selected)"
+                        :content="t('providers.share.share')"
+                        ><IconButton
+                          size="sm"
+                          variant="ghost"
+                          :icon="Share"
+                          :aria-label="t('providers.share.title', { name: selected.name })"
+                          @click="share.start({ id: selected.id, name: selected.name })"
+                      /></Tooltip>
                     </template>
                     <div class="ml-auto flex items-center gap-1.5">
                       <span
@@ -1217,6 +1240,25 @@ function endpointCheck(value: string) {
                 </div>
               </template>
 
+              <!-- Connection (another Demi's provider): the share key alone. The endpoint,
+                   key and everything else are the lending server's, which this server never sees. -->
+              <SettingsRow
+                v-else-if="selected.lender !== undefined"
+                :label="t('providers.connection.shareKey')"
+                :description="selected.lender ? t('providers.connection.lender', { server: selected.lender }) : t('providers.connection.shareKeyHint')"
+              >
+                <CommitTextInput
+                  :disabled="fieldsLocked(selected)"
+                  :model-value="selected.shareKey ?? ''"
+                  :aria-label="t('providers.connection.shareKey')"
+                  masked="secret"
+                  trim
+                  :stored="selected.lender !== null"
+                  :placeholder="selected.lender ? t('providers.connection.keyReplace') : t('providers.connection.shareKeyPaste')"
+                  class="w-72 max-w-full"
+                  @commit="emit('change', selected, { shareKey: $event })"
+                />
+              </SettingsRow>
               <!-- Connection (API key) -->
               <template v-else>
                 <!-- A vendor's endpoint is its vendor's: shown, never edited. A compatible API's
@@ -1601,9 +1643,10 @@ function endpointCheck(value: string) {
                         :aria-label="t('providers.models.refresh')"
                         @click="emit('refresh', selected)" /></Tooltip
                   ></span>
+                  <!-- Another Demi's provider lists its lender's models, which only the lender changes. -->
                   <Segmented
                     size="sm"
-                    v-else-if="!selected.compatible"
+                    v-else-if="!selected.compatible && selected.lender === undefined"
                     :model-value="selected.modelSource"
                     :disabled="fieldsLocked(selected)"
                     @update:model-value="
@@ -1633,7 +1676,7 @@ function endpointCheck(value: string) {
                 "
               >
                 <template #actions>
-                <Tooltip :content="t('providers.models.add')"
+                <Tooltip v-if="selected.lender === undefined" :content="t('providers.models.add')"
                   ><IconButton
                     size="sm"
                     :icon="Plus"
@@ -1861,6 +1904,19 @@ a vendor entry's switch and its vendor's
       </SettingsSplit>
     </AsyncRegion>
 
+    <ProviderShareDialog
+      :is-open="share.isOpen.value"
+      :overlay-store="overlayStore"
+      :name="share.provider.value?.name ?? ''"
+      :keys="share.keys.value"
+      :made="share.made.value"
+      :copied="share.copied.value"
+      :on-revoke="share.revoke"
+      @close="share.close()"
+      @copy="share.copy()"
+      @make="share.make()"
+      @reload="share.reload()"
+    />
     <AddProviderDialog
       :is-open="addOpen"
       :overlay-store="overlayStore"
@@ -1878,6 +1934,12 @@ a vendor entry's switch and its vendor's
         () => {
           addOpen = false
           emit('addCompatible')
+        }
+      "
+      @add-borrowed="
+        () => {
+          addOpen = false
+          emit('addBorrowed')
         }
       "
     />

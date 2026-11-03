@@ -234,6 +234,14 @@ pub enum CreateProvider {
         #[garde(dive)]
         models: Option<ConfiguredModels>,
     },
+    /// An entry another server shares, named *Another Demi* until its share
+    /// key names it after the lender's (`crates/provider-relay/src/lib.rs`).
+    Borrowed {
+        #[serde(default, with = "unwrap_or_skip")]
+        #[schemars(with = "Trimmed")]
+        #[garde(length(chars, min = 1))]
+        label: Option<Trimmed>,
+    },
 }
 
 /// `PATCH /providers/:id`: a new label for any entry; for an API-key entry
@@ -304,6 +312,13 @@ pub struct ProviderPatch {
     #[schemars(with = "Vec<ProviderHeader>")]
     #[garde(skip)]
     pub headers: Option<Vec<ProviderHeader>>,
+    /// A borrowed entry's share key, as the lender gave it: the lender is
+    /// asked for the entry at once, and a key it refuses is refused here.
+    /// It is the only change of a borrowed entry besides its label.
+    #[serde(default, with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub share_key: Option<String>,
 }
 
 /// A change of an entry's media, by kind.
@@ -651,6 +666,48 @@ pub struct QuotaAnswer {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<QuotaSnapshot>")]
     pub quota: Option<QuotaSnapshot>,
+}
+
+/// `GET /providers/:id/share-keys`: the entry's share keys, newest first.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShareKeys {
+    pub keys: Vec<ShareKey>,
+}
+
+/// A share key, without the key itself, which only the answer that made it
+/// holds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShareKey {
+    pub id: String,
+    pub created_at: Timestamp,
+    /// The server that used it last, by the host it gave, and when; null
+    /// until it is used.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<ShareKeyUse>")]
+    pub used: Option<ShareKeyUse>,
+    /// When a key never used stops working; null once it is used.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    pub expires_at: Option<Timestamp>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShareKeyUse {
+    pub server: String,
+    pub at: Timestamp,
+}
+
+/// `POST /providers/:id/share-keys`: the key made, and the one time its text
+/// is given.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NewShareKey {
+    pub key: ShareKey,
+    /// What the borrowing server's user pastes.
+    pub text: String,
 }
 
 /// `POST /providers/:id/test`: one real request to the model, with the
