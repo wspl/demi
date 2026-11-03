@@ -288,6 +288,7 @@
     "context_length_exceeded": "對話超出了模型的上下文視窗。",
     "request_too_large": "請求過大，供應商無法處理。",
     "incomplete": "回覆在完成前結束。",
+    "filtered": "供應商的安全篩選器攔下了這則回覆。",
     "auth_expired": "供應商的登入已過期或遭拒。",
     "permission_denied": "供應商拒絕了此請求。",
     "auth_missing": "供應商沒有憑證。",

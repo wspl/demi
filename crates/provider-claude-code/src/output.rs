@@ -192,6 +192,9 @@ struct AssistantMessage {
     /// The API call's counts, whole only on a message that never streamed.
     #[serde(default)]
     usage: Option<MessagesUsage>,
+    /// Why the message ended, set only on a message that never streamed.
+    #[serde(default)]
+    stop_reason: Option<String>,
 }
 
 /// A content block as the CLI printed it, and as Demi reads it: `None` for
@@ -232,6 +235,15 @@ impl AssistantLine {
     /// The counts of the API call that wrote the message.
     pub(crate) fn usage(&self) -> Option<MessagesUsage> {
         self.message.as_ref().and_then(|message| message.usage)
+    }
+
+    /// Whether the vendor's filter stopped the message, which only a message
+    /// that never streamed says on its line; each of its lines says it.
+    pub(crate) fn filtered(&self) -> bool {
+        self.message
+            .as_ref()
+            .and_then(|message| message.stop_reason.as_deref())
+            == Some(FILTER_STOP)
     }
 
     pub(crate) fn content(self) -> impl Iterator<Item = Printed> {
@@ -363,12 +375,36 @@ impl MessageStart {
     }
 }
 
-/// The end of an API call's message, with the call's final token counts.
+/// The end of an API call's message, with the call's final token counts and
+/// why the message ended.
 #[derive(Deserialize)]
 pub(crate) struct MessageDelta {
     #[serde(default)]
     usage: Option<MessagesUsage>,
+    #[serde(default)]
+    delta: Option<MessageEnd>,
 }
+
+#[derive(Deserialize)]
+struct MessageEnd {
+    #[serde(default)]
+    stop_reason: Option<String>,
+}
+
+impl MessageDelta {
+    /// Whether the vendor's filter stopped the message: its safety
+    /// classifier stopped it wherever it was, even inside a tool call's
+    /// input.
+    pub(crate) fn filtered(&self) -> bool {
+        self.delta
+            .as_ref()
+            .and_then(|end| end.stop_reason.as_deref())
+            == Some(FILTER_STOP)
+    }
+}
+
+/// The stop reason of a message the vendor's safety classifier stopped.
+pub(crate) const FILTER_STOP: &str = "refusal";
 
 tagged_wire! {
     pub(crate) enum Delta {
@@ -494,6 +530,7 @@ impl LastCall {
             }
             StreamEvent::MessageDelta(MessageDelta {
                 usage: Some(counts),
+                ..
             }) => {
                 log_usage("message_delta", counts);
                 self.0.delta(*counts);

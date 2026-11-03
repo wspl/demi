@@ -46,7 +46,7 @@ use std::task::Poll;
 use async_stream::stream;
 use demi_provider_common::credentials::{AuthFailure, AuthReason};
 use demi_provider_common::{
-    Ahead, CallEvent, CallOutcome, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
+    Ahead, CallEvent, CallOutcome, EarlyEnd, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, ToolResultKinds, offers, quota::Observation,
 };
 use demi_shared_types::Model;
@@ -359,6 +359,9 @@ fn run(
             // The vendor refused the account's sign-in: the CLI said
             // `authentication_failed` on the line it made up for the call.
             let mut signed_out = false;
+            // The `message_delta` line of the streaming message, as received,
+            // when it says the vendor's filter stopped the message.
+            let mut filtered: Option<String> = None;
             loop {
                 let (text, line) = match live.next(&cancel).await {
                     Next::Cancelled => {
@@ -461,8 +464,9 @@ fn run(
                             complete = Some(live.abandon_streaming());
                             yield live.call_started();
                             live.last_call.answered(id.clone(), message.usage());
-                            yield live.last_call.ended(CallOutcome::Answered);
+                            yield live.last_call.ended(outcome(message.filtered()));
                         }
+                        let stopped = message.filtered();
                         for Printed { raw, block } in message.content() {
                             match block {
                                 Some(ContentBlock::ToolUse(tool_use)) => match tool_use.call() {
@@ -520,6 +524,20 @@ fn run(
                             for event in live.mirror.left_out(replaced.unrepeated()) {
                                 yield event;
                             }
+                            // Its later lines, the rest of its blocks, are
+                            // never read.
+                            if stopped {
+                                for event in filtered_message(&mut live, &request) {
+                                    yield event;
+                                }
+                                live.close().await;
+                                yield ProviderEvent::Error(ProviderFailure::ended_early(
+                                    EarlyEnd::Filter,
+                                    output::FILTER_STOP,
+                                    text,
+                                ));
+                                return;
+                            }
                             if !live.collecting.is_empty() {
                                 let batch = std::mem::take(&mut live.collecting);
                                 let events = live.hand_over(batch, &request);
@@ -552,12 +570,31 @@ fn run(
                         }
                         live.last_call.observe(&event);
                         if let StreamEvent::MessageStop(_) = &event {
-                            yield live.last_call.ended(CallOutcome::Answered);
+                            yield live.last_call.ended(outcome(filtered.is_some()));
+                        }
+                        if let StreamEvent::MessageDelta(delta) = &event
+                            && delta.filtered()
+                        {
+                            filtered = Some(text.clone());
                         }
                         match &event {
+                            StreamEvent::MessageStop(_) if filtered.is_some() => {
+                                for event in filtered_message(&mut live, &request) {
+                                    yield event;
+                                }
+                                live.close().await;
+                                let frame = filtered.take().unwrap_or_default();
+                                yield ProviderEvent::Error(ProviderFailure::ended_early(
+                                    EarlyEnd::Filter,
+                                    output::FILTER_STOP,
+                                    frame,
+                                ));
+                                return;
+                            }
                             // A new message abandons one whose stream never
                             // stopped, and the calls it collected.
                             StreamEvent::MessageStart(start) => {
+                                filtered = None;
                                 for event in live.abandoned_searches() {
                                     live.mirror.observe(&event);
                                     yield event;
@@ -715,4 +752,35 @@ fn run(
             }
         }
     }
+}
+
+/// How a call that wrote a message ended: refused with `filtered` when the
+/// vendor's filter stopped the message, answered otherwise.
+fn outcome(filtered: bool) -> CallOutcome {
+    if filtered {
+        CallOutcome::Refused(Some(ErrorCode::Filtered))
+    } else {
+        CallOutcome::Answered
+    }
+}
+
+/// What a message the vendor's filter stopped leaves before the run fails:
+/// its calls, none handed over, and its entries placed.
+///
+/// Such a message may be cut anywhere, inside a call's input too, so none of
+/// its calls runs: the run's failure ends them unrun. The CLI would go on with
+/// the turn by itself, telling the model that a call may have run while the
+/// agent runs it, so the run closes the process instead, and the turn goes on
+/// from the transcript.
+fn filtered_message(live: &mut LiveCli, request: &InferenceRequest) -> Vec<ProviderEvent> {
+    let mut events = live.abandoned_searches();
+    let batch = std::mem::take(&mut live.collecting);
+    live.writing.clear();
+    live.streaming = None;
+    events.extend(batch.into_iter().map(ProviderEvent::ToolCall));
+    for event in &events {
+        live.mirror.observe(event);
+    }
+    events.extend(live.mirror.place(request, false, None));
+    events
 }

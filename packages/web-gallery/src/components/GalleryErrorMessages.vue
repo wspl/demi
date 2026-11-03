@@ -109,6 +109,34 @@ const records: Block[] = [
     502,
     'The upstream response ended before generation completed.',
   ),
+  {
+    type: 'error',
+    id: 'filtered',
+    createdAt: '2026-09-11T12:00:00Z',
+    model: demoModel,
+    message: 'The provider\'s filter stopped the reply (refusal)',
+    code: 'filtered',
+    diagnostics: {
+      source: 'stream',
+      providerCode: 'refusal',
+      upstream: JSON.stringify({
+        type: 'stream_event',
+        event: {
+          type: 'message_delta',
+          delta: {
+            stop_reason: 'refusal',
+            stop_sequence: null,
+            stop_details: {
+              type: 'refusal',
+              category: 'cyber',
+              explanation: 'This request was blocked by a safety classifier.',
+            },
+          },
+          usage: { output_tokens: 324 },
+        },
+      }),
+    },
+  },
 ]
 /** The failed call; Run Again runs it and fails it while it is on screen, where it stays folded too. */
 const toolFailure = ref<ToolCallBlock>(errorTool)

@@ -214,6 +214,8 @@ pub(super) enum WaitStart {
     StepEnded,
     /// A compaction pass ended inside the turn.
     CompactionEnd,
+    /// The vendor's filter stopped a reply, and the turn goes on.
+    Filtered,
 }
 
 impl WaitStart {
@@ -226,6 +228,7 @@ impl WaitStart {
             Self::TextEnded => "text_ended",
             Self::StepEnded => "step_ended",
             Self::CompactionEnd => "compaction_end",
+            Self::Filtered => "filtered",
         }
     }
 }
@@ -2533,6 +2536,13 @@ impl SessionCore {
         let turn = self.turn();
         self.transcript.push_resume(turn, &self.model, reason);
         self.commit();
+    }
+
+    /// Goes on after a filtered reply: the calls it did not run end with the
+    /// failure's `message`, and a `resume` block says why.
+    pub(super) fn resume_after_filter(&mut self, message: &str) {
+        self.abort_executing_calls(&CallEnd::Failed(message));
+        self.push_resume(Some(super::turn::FILTERED_REASON.to_owned()));
     }
 
     pub(super) fn mark_abort_resumed(&mut self) {

@@ -783,7 +783,8 @@ impl VendorCall {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallOutcome {
     Answered,
-    /// The vendor refused it, with the failure's code when it has one.
+    /// The vendor refused it, or its filter stopped the reply it was
+    /// writing, with the failure's code when it has one.
     Refused(Option<ErrorCode>),
 }
 
