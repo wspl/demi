@@ -53,6 +53,17 @@ pub trait Provider: Send + Sync + 'static {
         })
     }
 
+    /// The ids of the models the key may call for a conversation, by the
+    /// vendor's own list read through `http`, the entry's client; `None` for
+    /// a provider whose vendor keeps no such list Demi trusts.
+    ///
+    /// The list only takes models out of the vendor's models.dev list
+    /// (`crates/provider-registry/src/catalog.rs`): the vendor's own keeps
+    /// no window, price or thinking facts.
+    fn offered_models<'a>(&'a self, _http: &'a crate::ProviderHttp) -> BoxFuture<'a, Option<Result<Vec<String>, String>>> {
+        Box::pin(async { None })
+    }
+
     /// What the directory [`list_models`](Self::list_models) would read depends
     /// on besides the entry, such as the client version the Codex catalog asks
     /// with.
@@ -746,6 +757,10 @@ pub struct VendorCall {
     /// no such tier.
     pub cache_write_1h_tokens: u64,
     pub outcome: CallOutcome,
+    /// The model that answered instead of the one asked, which the vendor
+    /// routes the one asked to; none for an answer of the model asked, or
+    /// of a snapshot or an alias's model, which is the model asked.
+    pub rerouted_to: Option<String>,
 }
 
 impl VendorCall {
@@ -769,6 +784,7 @@ impl VendorCall {
             usage,
             cache_write_1h_tokens: 0,
             outcome,
+            rerouted_to: None,
         })))
     }
 
@@ -780,6 +796,7 @@ impl VendorCall {
             usage: None,
             cache_write_1h_tokens: 0,
             outcome: CallOutcome::Refused(code),
+            rerouted_to: None,
         }))
     }
 }

@@ -514,6 +514,9 @@ pub struct BackendConfig {
     pub plugins: Vec<Box<dyn PluginFactory>>,
     /// Where the models.dev document is read.
     pub models_dev_url: Url,
+    /// Where LiteLLM's model table, which dates the models vendors shut
+    /// down, is read.
+    pub model_shutdowns_url: Url,
     /// Where the catalog of image and video models is downloaded: the
     /// file of the branch the backend was built from, none for a build
     /// from no branch, which keeps the release's copy
@@ -586,6 +589,9 @@ impl BackendConfig {
             models_dev_url: ModelsDevClient::DEFAULT_URL
                 .parse()
                 .expect("the models.dev address parses"),
+            model_shutdowns_url: demi_provider_registry::shutdowns::DEFAULT_URL
+                .parse()
+                .expect("LiteLLM's address parses"),
             media_catalog_url: media_catalog::branch_url(option_env!("DEMI_BUILD_BRANCH")),
             media_catalog: media_catalog::Catalog::carried(),
             claude_releases: DEFAULT_RELEASES_URL

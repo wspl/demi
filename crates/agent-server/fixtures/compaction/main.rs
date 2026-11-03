@@ -271,6 +271,7 @@ fn deepseek() -> Result<Rc<OpenAiProvider>, String> {
         makes_videos: false,
         makes_audio: false,
         cache_ttl: None,
+        lists_models: false,
     };
     Ok(Rc::new(OpenAiProvider::new(config, Arc::new(SystemClock))))
 }

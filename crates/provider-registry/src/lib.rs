@@ -24,6 +24,8 @@
 //!   families a program registers.
 //! - `vendors`: the vendors from models.dev, with each one's request
 //!   requirements.
+//! - `shutdowns`: the days vendors shut their models down, from LiteLLM's
+//!   model table.
 //! - `catalog` and `catalog_cache`: where an entry's catalog comes from, and
 //!   the cache that keeps it.
 //! - `rotation` and `quotas`: which account an agent takes, and each
@@ -48,6 +50,7 @@ pub mod entry;
 pub mod families;
 pub mod quotas;
 pub mod registry;
+pub mod shutdowns;
 pub mod rotation;
 pub mod small_model;
 pub mod store;

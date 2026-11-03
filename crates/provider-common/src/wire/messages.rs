@@ -135,6 +135,7 @@ impl CallUsage {
             usage: self.ended,
             cache_write_1h_tokens: self.ended_1h,
             outcome,
+            rerouted_to: None,
         }
     }
 }

@@ -256,6 +256,13 @@ pub enum ErrorCode {
     /// a plan without API access or a model the account may not use (HTTP
     /// 403); signing in again changes nothing, so it is not retried.
     PermissionDenied,
+    /// The vendor does not serve the model asked to the credential: an
+    /// HTTP 404 whose text names the model, as when the vendor shut it down
+    /// or no longer offers it to new users.
+    /// Asked again, it is refused again, so the agent does not retry it, and
+    /// an entry whose list comes from models.dev no longer offers the model
+    /// (`crates/provider-registry/src/catalog.rs`).
+    ModelUnavailable,
     /// The account has no credential.
     AuthMissing,
     /// The stored credential cannot be read.
@@ -289,6 +296,7 @@ impl ErrorCode {
             Self::Filtered => "filtered",
             Self::AuthExpired => "auth_expired",
             Self::PermissionDenied => "permission_denied",
+            Self::ModelUnavailable => "model_unavailable",
             Self::AuthMissing => "auth_missing",
             Self::AuthInvalid => "auth_invalid",
             Self::AuthUnsupported => "auth_unsupported",
@@ -309,6 +317,7 @@ impl ErrorCode {
         match status {
             401 => Some(Self::AuthExpired),
             403 => Some(Self::PermissionDenied),
+            404 if MODEL_GONE.is_match(message) => Some(Self::ModelUnavailable),
             429 => Some(Self::RateLimit),
             408 | 409 | 425 | 500.. => Some(Self::Overloaded),
             413 => Some(Self::RequestTooLarge),
@@ -358,6 +367,7 @@ impl FromStr for ErrorCode {
             "filtered" => Self::Filtered,
             "auth_expired" => Self::AuthExpired,
             "permission_denied" => Self::PermissionDenied,
+            "model_unavailable" => Self::ModelUnavailable,
             "auth_missing" => Self::AuthMissing,
             "auth_invalid" => Self::AuthInvalid,
             "auth_unsupported" => Self::AuthUnsupported,
@@ -378,6 +388,14 @@ impl FromStr for ErrorCode {
 /// alone matches.
 static TOO_LARGE: LazyLock<Regex> = LazyLock::new(|| {
     pattern(r"(?i)too many images|many-image|request too large|payload too large")
+});
+
+/// A 404 whose text says the vendor does not serve the model: Google's
+/// "models/… is no longer available", OpenAI's `model_not_found` or
+/// Anthropic's `not_found_error` naming the model. A 404 that names no
+/// model, such as a wrong endpoint's, says nothing of the model.
+static MODEL_GONE: LazyLock<Regex> = LazyLock::new(|| {
+    pattern(r"(?i)model_not_found|no longer available|not_found_error.*\bmodel\b|\bmodels?\b[^.]*\b(not found|does not exist)\b")
 });
 
 /// A 400 whose text says the request holds more tokens than the model takes.

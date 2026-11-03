@@ -87,4 +87,20 @@ pub trait RegistryStore: Send + Sync {
 
     /// Drops the entry's kept catalog.
     fn delete_catalog(&self, entry: ProviderId) -> BoxFuture<'_, Result<(), StoreError>>;
+
+    /// The models the entry no longer offers while it holds the key of
+    /// `key_digest` (`crate::catalog`).
+    fn retired_models(&self, entry: ProviderId, key_digest: String) -> BoxFuture<'_, Result<Vec<String>, StoreError>>;
+
+    /// Keeps `model` as retired for the entry while it holds the key of
+    /// `key_digest`, with the model that answered instead, if any; `false`
+    /// when it was retired already.
+    fn retire_model(
+        &self,
+        entry: ProviderId,
+        key_digest: String,
+        model: String,
+        answered_by: Option<String>,
+        at: Timestamp,
+    ) -> BoxFuture<'_, Result<bool, StoreError>>;
 }

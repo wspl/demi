@@ -424,6 +424,7 @@ impl Backend {
         let providers = ProviderSetup {
             families: config.families,
             models_dev_url: config.models_dev_url,
+            model_shutdowns_url: config.model_shutdowns_url,
             media_catalog_url: config.media_catalog_url,
             media_catalog: config.media_catalog,
             claude_releases: config.claude_releases,

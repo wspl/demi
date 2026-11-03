@@ -77,6 +77,7 @@ impl ProviderFamily for AnthropicFamily {
             makes_audio: settings.audio_shape == Some(AudioShape::Minimax),
         });
         let config = AnthropicConfig {
+            lists_models: settings.vendor_id.as_deref() == Some("anthropic"),
             api_key: settings.api_key,
             base_url: settings.base_url,
             models: settings.models,
@@ -159,6 +160,7 @@ impl ProviderFamily for OpenAiFamily {
             text: None,
         });
         let config = OpenAiConfig {
+            lists_models: settings.vendor_id.as_deref() == Some("openai"),
             api_key: settings.api_key,
             base_url: settings.base_url,
             // An entry that names no wire speaks Responses.

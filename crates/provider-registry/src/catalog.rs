@@ -12,12 +12,26 @@
 //! a configured list is user configuration that no fetched catalog changes and
 //! no refresh clears.
 //!
+//! A vendor's list leaves out each model that does not serve a
+//! conversation, as far as Demi can tell:
+//!
+//! - One models.dev marks deprecated or not for chat, or LiteLLM dates as
+//!   shut down (`crate::vendors`).
+//! - One the vendor's own list for the key does not hold, for a provider
+//!   that reads it ([`Provider::offered_models`]); a failed read fails the
+//!   refresh, which keeps the last list.
+//! - One retired for the entry's key: the vendor refused it to the key, or
+//!   answered with another model it routes it to
+//!   ([`ProviderRegistry::retire_model`]).
+//!
+//! A configured list and a subscription's directory are taken as they are.
+//!
 //! The module also builds the account-wide catalog `GET /api/models` answers,
 //! each model with the selection the backend builds from it.
 
 use std::sync::Arc;
 
-use demi_provider_common::Provider;
+use demi_provider_common::{Provider, is_snapshot};
 use demi_shared_types::{ModelCost, ModelSelection, ProviderModel, ProviderModelList, ServiceTier, Timestamp};
 use demi_web_api_protocol::providers::{CatalogModel, CatalogProvider, ConfiguredModel, ModelKind};
 use futures_util::future::join_all;
@@ -134,7 +148,30 @@ impl ProviderRegistry {
         let fetch: Box<dyn FnOnce() -> CatalogFetch + Send> = match (vendor, provider) {
             (Some(vendor), _) => {
                 let vendors = self.vendors().clone();
-                Box::new(move || Box::pin(async move { vendors.models(&vendor).await }))
+                let offering = provider.as_ref().ok().cloned();
+                let http = self.http_for(entry, self.http().clone());
+                let store = self.shared_store();
+                let retiring = retiring_key(entry).map(|digest| (entry.id.clone(), digest));
+                Box::new(move || {
+                    Box::pin(async move {
+                        let mut list = vendors.models(&vendor).await?;
+                        if let Some(provider) = offering
+                            && let Some(offered) = provider.offered_models(&http).await
+                        {
+                            // An alias is offered when the vendor lists a
+                            // snapshot of it, as Anthropic lists dated IDs.
+                            let offered = offered?;
+                            list.models.retain(|model| {
+                                offered.iter().any(|listed| *listed == model.id || is_snapshot(listed, &model.id))
+                            });
+                        }
+                        if let Some((id, digest)) = retiring {
+                            let retired = store.retired_models(id, digest).await.map_err(|error| error.to_string())?;
+                            list.models.retain(|model| !retired.contains(&model.id));
+                        }
+                        Ok(list)
+                    })
+                })
             }
             (None, Ok(provider)) => {
                 revision = provider.catalog_revision();
@@ -279,6 +316,63 @@ impl ProviderRegistry {
             availability: crate::details::availability(entry, &auth, &runtime),
             auth,
             runtime,
+        }
+    }
+}
+
+/// The digest of the key a model is retired for `entry` under: the SHA-256
+/// of its API key; none for an entry whose list does not come from
+/// models.dev, which retires no model.
+fn retiring_key(entry: &ProviderEntry) -> Option<String> {
+    let EntryCredential::ApiKey(config) = &entry.credential else {
+        return None;
+    };
+    if config.models.is_some() || config.is_compatible() || config.vendor_id.is_none() {
+        return None;
+    }
+    let key = config.api_key.as_ref()?;
+    Some(hex::encode(Sha256::digest(key.expose().as_bytes())))
+}
+
+impl ProviderRegistry {
+    /// Takes `model` out of `entry`'s list for as long as it holds its key:
+    /// the vendor refused it to the key, or answered with `answered_by`,
+    /// which it routes it to. The list is read again, so the pages hear of
+    /// it, unless the model was retired already. An entry whose list does
+    /// not come from models.dev keeps its models.
+    pub async fn retire_model(
+        &self,
+        entry: &ProviderEntry,
+        provider: &Result<Arc<dyn Provider>, RegistryError>,
+        model: String,
+        answered_by: Option<String>,
+    ) {
+        let Some(digest) = retiring_key(entry) else {
+            return;
+        };
+        let stored = self
+            .store()
+            .retire_model(entry.id.clone(), digest, model.clone(), answered_by.clone(), self.now())
+            .await;
+        match stored {
+            Ok(true) => {
+                tracing::info!(
+                    event = "model.retired",
+                    provider = %entry.id,
+                    model,
+                    answered_by = answered_by.as_deref(),
+                    "a model left an entry's list"
+                );
+                self.entry_catalog(entry, provider, true).await;
+            }
+            Ok(false) => {}
+            Err(error) => tracing::warn!(
+                event = "model.retire_failed",
+                provider = %entry.id,
+                model,
+                error = &error as &dyn std::error::Error,
+                "a retired model was not kept"
+            ),
         }
     }
 }

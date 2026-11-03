@@ -23,6 +23,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use demi_provider_registry::shutdowns::ModelShutdowns;
 use demi_provider_registry::vendors::VendorCatalog;
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_shared_types::SystemClock;
@@ -149,8 +150,14 @@ pub fn run(_options: Options) -> Result<(), Error> {
 /// hand nor written now.
 pub async fn refresh(client: &reqwest::Client, base: &Url, directory: &Path) -> Result<Refresh, Error> {
     let document = base.join("api.json").expect("a relative path joins");
-    // The marks need no model's thinking.
-    let catalog = VendorCatalog::new(ModelsDevClient::new(client.clone(), document, Arc::new(SystemClock), &[]));
+    // The marks need no model's thinking, and the vendor list reads no
+    // model, so no shutdown day is ever read.
+    let shutdowns = ModelShutdowns::new(
+        client.clone(),
+        demi_provider_registry::shutdowns::DEFAULT_URL.parse().expect("LiteLLM's address parses"),
+        Arc::new(SystemClock),
+    );
+    let catalog = VendorCatalog::new(ModelsDevClient::new(client.clone(), document, Arc::new(SystemClock), &[]), shutdowns);
     let vendors = catalog
         .vendors()
         .await

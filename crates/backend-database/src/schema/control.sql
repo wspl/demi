@@ -849,6 +849,19 @@ CREATE TABLE model_catalogs (
   record      TEXT NOT NULL
 ) STRICT;
 
+-- A model the vendor refused to an entry's key, or answered with another
+-- model, answered_by, which the entry no longer offers while it holds that
+-- key, named by the SHA-256 of the key: another key may be another account
+-- the vendor still serves the model to.
+CREATE TABLE retired_models (
+  provider_id TEXT NOT NULL REFERENCES providers (id) ON DELETE CASCADE,
+  key_digest  TEXT NOT NULL,
+  model_id    TEXT NOT NULL,
+  answered_by TEXT,
+  retired_at  INTEGER NOT NULL,
+  PRIMARY KEY (provider_id, key_digest, model_id)
+) STRICT;
+
 -- Usage and attachments; neither holds attachment bytes.
 -- One row per vendor call. A row written before the ledger kept a call's
 -- agent, turn, purpose, account, ids, hour-long cache write, outcome, quota

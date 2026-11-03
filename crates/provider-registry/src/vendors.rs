@@ -4,8 +4,10 @@
 //!
 //! - The vendors whose client package maps to a protocol one of the families
 //!   speaks.
-//! - Each vendor's live model list, and how each of its models wants thinking
-//!   sent and sent back, as models.dev states it per model.
+//! - Each vendor's live model list, less the models LiteLLM dates as shut
+//!   down (`crates/provider-registry/src/shutdowns.rs`), and how each of
+//!   its models wants thinking sent and sent back, as models.dev states it per
+//!   model.
 
 use demi_provider_anthropic_api::AnthropicConfig;
 use demi_provider_common::ModelWires;
@@ -13,6 +15,8 @@ use demi_provider_common::models_dev::{
     ModelsDevClient, ModelsDevError, ModelsDevMatch, ModelsDevVendor,
 };
 use demi_provider_openai_api::OpenAiConfig;
+
+use crate::shutdowns::ModelShutdowns;
 use demi_shared_types::{ProviderModelList, Timestamp, WireApi};
 use demi_web_api_protocol::providers::{ModelMatch, Vendor};
 use icu_collator::options::CollatorOptions;
@@ -43,11 +47,12 @@ const NOT_OFFERED: [&str; 1] = ["github-copilot"];
 #[derive(Clone)]
 pub struct VendorCatalog {
     models_dev: ModelsDevClient,
+    shutdowns: ModelShutdowns,
 }
 
 impl VendorCatalog {
-    pub fn new(models_dev: ModelsDevClient) -> Self {
-        Self { models_dev }
+    pub fn new(models_dev: ModelsDevClient, shutdowns: ModelShutdowns) -> Self {
+        Self { models_dev, shutdowns }
     }
 
     pub fn models_dev(&self) -> &ModelsDevClient {
@@ -114,8 +119,8 @@ impl VendorCatalog {
     }
 
     /// The live model list of vendor `vendor_id`, read again: the models an
-    /// agent can work with; a vendor the document no longer offers has an
-    /// empty list, never its family's.
+    /// agent can work with that are not shut down; a vendor the document no
+    /// longer offers has an empty list, never its family's.
     pub async fn models(&self, vendor_id: &str) -> Result<ProviderModelList, String> {
         let snapshot = self
             .models_dev
@@ -126,13 +131,15 @@ impl VendorCatalog {
             .vendor(vendor_id)
             .and_then(offered)
             .and_then(|_| snapshot.agent_models(vendor_id));
-        Ok(list.unwrap_or_else(|| ProviderModelList {
+        let mut list = list.unwrap_or_else(|| ProviderModelList {
             models: Vec::new(),
             default_model_id: None,
             warnings: snapshot.warnings.clone(),
             source_fetched_at: Timestamp::UNIX_EPOCH,
             stale: snapshot.stale,
-        }))
+        });
+        self.shutdowns.take_out(vendor_id, &mut list);
+        Ok(list)
     }
 }
 

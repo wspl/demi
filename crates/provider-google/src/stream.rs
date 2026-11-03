@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use demi_provider_common::{
-    EarlyEnd, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, VendorCall, encode_body,
+    CallEvent, EarlyEnd, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, VendorCall, encode_body,
+    is_snapshot,
     http_failure, read_http_failure,
     wire::{NonEmpty, ReportedString, decode_untagged, sse_data, undecodable},
 };
@@ -124,6 +125,8 @@ struct Mapper {
     ended: Option<(Ending, String)>,
     /// The response's id, once a chunk named it.
     id: Option<String>,
+    /// The model that answered, as a chunk's `modelVersion` named it.
+    answered: Option<String>,
 }
 
 /// Why Gemini ended a reply: a candidate's finish reason, or the reason it
@@ -142,15 +145,20 @@ impl Mapper {
             usage: None,
             ended: None,
             id: None,
+            answered: None,
         }
     }
 
     /// The run's one call ends before `out`'s last event, the run's, under
-    /// the response's id and with its counts, for the usage ledger.
+    /// the response's id and with its counts, for the usage ledger, and
+    /// with the model Google answered with instead of the one asked.
     fn end_call(&mut self, out: &mut Vec<ProviderEvent>) {
         if let Some(last) = out.last()
-            && let Some(call) = VendorCall::ended_by(self.id.take(), self.usage, last)
+            && let Some(mut call) = VendorCall::ended_by(self.id.take(), self.usage, last)
         {
+            if let ProviderEvent::Call(CallEvent::Ended(ended)) = &mut call {
+                ended.rerouted_to = self.answered.take().filter(|answered| rerouted(&self.model, answered));
+            }
             out.insert(out.len() - 1, call);
         }
     }
@@ -167,6 +175,9 @@ impl Mapper {
         };
         if let Some(id) = chunk.response_id.filter(|id| !id.is_empty()) {
             self.id = Some(id);
+        }
+        if let Some(version) = chunk.model_version.filter(|version| !version.is_empty()) {
+            self.answered = Some(version);
         }
         if let Some(error) = chunk.error {
             out.push(ProviderEvent::Error(self.failure(error, data)));
@@ -288,6 +299,17 @@ impl Mapper {
     }
 }
 
+/// Whether an answer of `answered` came from another model than `asked`.
+///
+/// A model is the one asked when it is a snapshot of it, such as
+/// `gemini-2.0-flash-001` for `gemini-2.0-flash`, or when the one asked is
+/// an alias, whose id ends in `-latest` and which answers with the model it
+/// names now
+/// ([model version patterns](https://ai.google.dev/gemini-api/docs/models#model-versions)).
+fn rerouted(asked: &str, answered: &str) -> bool {
+    answered != asked && !is_snapshot(answered, asked) && !asked.ends_with("-latest")
+}
+
 /// One `GenerateContentResponse` of the stream. Every field is optional, but
 /// a field that is present holds what it claims.
 #[derive(Deserialize)]
@@ -296,6 +318,10 @@ struct Chunk {
     /// The vendor's id of the call, which every chunk repeats.
     #[serde(default)]
     response_id: Option<String>,
+    /// The model that answered, such as `gemini-3.6-flash` for a call to
+    /// `gemini-3.5-flash`, which Google routes to its successor.
+    #[serde(default)]
+    model_version: Option<String>,
     #[serde(default)]
     candidates: Option<Vec<Candidate>>,
     #[serde(default)]
