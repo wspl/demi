@@ -1,0 +1,162 @@
+{
+  "state": {
+    "online": "Online",
+    "updating": "Atualizando",
+    "offline": "Offline",
+    "downloading": "Baixando atualização · {percent}%",
+    "updatingPercent": "Atualizando · {percent}%"
+  },
+  "route": {
+    "automatic": "Automática",
+    "direct": "Preferir P2P",
+    "server": "Somente relay",
+    "automaticDescription": "Usa o caminho mais rápido.",
+    "directDescription": "P2P sempre que conectar.",
+    "serverDescription": "Nunca usa P2P."
+  },
+  "stage": {
+    "permission": "Permissão",
+    "gathering": "Coletando endereços",
+    "checking": "Procurando um caminho",
+    "handshake": "Handshake de criptografia",
+    "channel": "Abrindo o canal",
+    "connected": "Conectado"
+  },
+  "path": {
+    "thisComputer": "Este computador",
+    "localNetwork": "LAN",
+    "internet": "P2P",
+    "relay": "Relay",
+    "sentence": "{path} · {address}"
+  },
+  "connected": {
+    "relay": "Conectado via relay",
+    "thisComputer": "Conectado via este computador",
+    "localNetwork": "Conectado via LAN",
+    "internet": "Conectado via P2P"
+  },
+  "reason": {
+    "slower": "O P2P está mais lento agora.",
+    "blocked": "Este navegador bloqueia o acesso à rede local.",
+    "unreachable": "Suas redes bloqueiam conexões P2P.",
+    "browserNetwork": "Sua rede bloqueia isso.",
+    "deviceNetwork": "A rede do dispositivo bloqueia isso.",
+    "busy": "O dispositivo tem conexões demais.",
+    "dropped": "A conexão P2P caiu.",
+    "notOffered": "O P2P só funciona na rede do dispositivo."
+  },
+  "latency": {
+    "under": "menos de 0,1 ms",
+    "path": "{path} {latency}",
+    "lost": "{path} {latency}, {loss} perdido",
+    "relay": "Relay {latency}"
+  },
+  "address": {
+    "hidden": "Oculto pelo navegador"
+  },
+  "report": {
+    "appleSilicon": "Apple silicon",
+    "arm": "ARM",
+    "intel": "Intel"
+  },
+  "runner": {
+    "current": "Atualizado",
+    "outdated": "Atualização disponível",
+    "development": "Build de desenvolvimento"
+  },
+  "page": {
+    "cloud": "Nuvem",
+    "startSentence": "Inicie o Demi no dispositivo:",
+    "noAutostart": "Este dispositivo não inicia o Demi sozinho depois de reiniciar.",
+    "connection": "Conexão",
+    "route": "Rota",
+    "p2p": "P2P",
+    "details": "Detalhes…",
+    "latency": "Latência",
+    "measure": "Medir",
+    "measuring": "Medindo…",
+    "noAnswer": "Sem resposta",
+    "notMeasured": "Não medido",
+    "measuredAt": "Medido {when}",
+    "device": "Dispositivo",
+    "name": "Nome",
+    "rename": "Renomear…",
+    "system": "Sistema",
+    "notReported": "Ainda não informado",
+    "runner": "Runner",
+    "runnerUpdates": "Ele se atualiza sozinho na próxima vez que se conectar.",
+    "paired": "Pareado",
+    "revokeThis": "Revogar este dispositivo",
+    "revoke": "Revogar…",
+    "lastSeen": "Visto por último"
+  },
+  "details": {
+    "title": "Detalhes da conexão",
+    "ran": "Executado",
+    "took": "Duração",
+    "endedAt": "Terminou às",
+    "thisBrowser": "Este navegador",
+    "theDevice": "O dispositivo",
+    "paths": "Caminhos",
+    "pathInUse": "Caminho em uso",
+    "localAccess": "Acesso à rede local",
+    "nextAttempt": "Próxima tentativa",
+    "none": "Nenhum",
+    "local": "Locais: {list}",
+    "public": "Públicos: {list}",
+    "answered": "{answered} / {tried} responderam",
+    "busy": "O dispositivo estava ocupado",
+    "dropped": "Conectou e depois caiu",
+    "unknown": "Desconhecido",
+    "ms": "{ms} ms",
+    "s": "{s} s"
+  },
+  "permission": {
+    "granted": "Permitido",
+    "prompt": "Ainda sem resposta",
+    "denied": "Bloqueado",
+    "allowInSite": "Permita nas configurações deste site.",
+    "notAsked": "Não solicitado por este navegador"
+  },
+  "pairing": {
+    "title": "Adicionar dispositivo",
+    "setupHint": "Inicie o runner no seu dispositivo para obter um código de pareamento.",
+    "doneHint": "O dispositivo está vinculado à sua conta e pronto para uso.",
+    "codeHint": "Digite o código de pareamento exibido pelo runner.",
+    "system": "Sistema",
+    "systemLabel": "Sistema do dispositivo",
+    "runInPowerShell": "Execute no PowerShell do dispositivo. Mantenha-o aberto.",
+    "runInTerminal": "Execute em um terminal do dispositivo. Mantenha-o aberto.",
+    "copyInstall": "Copiar comando de instalação",
+    "code": "Código de pareamento",
+    "paste": "Colar código",
+    "pair": "Parear dispositivo",
+    "invalidCode": "Este código não está disponível. Cole o código mais recente do runner.",
+    "rateLimited": "Tentativas demais. Aguarde um minuto antes de tentar novamente.",
+    "unavailable": "Não foi possível acessar o Demi. Verifique sua conexão e tente novamente."
+  },
+  "revoke": {
+    "title": "Revogar este dispositivo?",
+    "action": "Revogar",
+    "body": "“{device}” sai dos seus dispositivos. Se o runner dele estiver conectado, ele se remove do dispositivo.",
+    "projects": "Este projeto sai junto. Os arquivos dele ficam no dispositivo e as conversas dele na barra lateral. | Estes projetos saem junto. Os arquivos deles ficam no dispositivo e as conversas deles na barra lateral."
+  },
+  "rename": {
+    "title": "Renomear dispositivo",
+    "label": "Nome do dispositivo"
+  },
+  "startHint": {
+    "powershell": "Se o runner dele parou, execute isto no PowerShell do dispositivo.",
+    "terminal": "Se o runner dele parou, execute isto em um terminal do dispositivo.",
+    "copy": "Copiar comando de inicialização"
+  },
+  "autostart": {
+    "noSystemd": "Este sistema não executa o systemd.",
+    "noUserManager": "O gerenciador de usuário do systemd não responde: {error}",
+    "notWritten": "O Demi não conseguiu salvar {path}: {error}",
+    "lingerOff": "Ele só inicia quando {user} entra. Para iniciá-lo quando o computador ligar, execute:",
+    "refused": "O Windows recusou a tarefa agendada e o item de inicialização: {error}",
+    "unusableName": "O nome da pasta de instalação, {name}, não pode nomear um item de inicialização.",
+    "unknownAccount": "O sistema não reconhece esta conta de usuário."
+  }
+}

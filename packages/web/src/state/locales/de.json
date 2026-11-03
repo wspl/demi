@@ -1,0 +1,22 @@
+{
+  "notifications": {
+    "turnStopped": "Die Runde wurde mit einem Fehler beendet.",
+    "saveCredential": "Zugangsdaten „{name}“ speichern?"
+  },
+  "hosts": {
+    "unavailableDevice": "Nicht verfügbares Gerät"
+  },
+  "failures": {
+    "turnOnNotifications": "Benachrichtigungen konnten nicht aktiviert werden",
+    "turnOffNotifications": "Benachrichtigungen konnten nicht deaktiviert werden",
+    "dismissNotificationsCard": "Erinnerung an Benachrichtigungen konnte nicht ausgeblendet werden",
+    "updateSettings": "Einstellungen konnten nicht aktualisiert werden",
+    "changeContextLimit": "Kontextlimit konnte nicht geändert werden",
+    "updateTimeZoneLanguage": "Zeitzone und Sprache konnten nicht aktualisiert werden",
+    "readSync": "Nachricht des Synchronisierungskanals konnte nicht gelesen werden",
+    "keepOffline": "Offlinekopie konnte nicht gespeichert werden",
+    "readOffline": "Offlinekopie konnte nicht gelesen werden",
+    "createWorkspace": "Arbeitsbereich konnte nicht erstellt werden",
+    "moveToWorkspace": "Verschieben in den Arbeitsbereich nicht möglich"
+  }
+}

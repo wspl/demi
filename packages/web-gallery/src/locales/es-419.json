@@ -1,0 +1,82 @@
+{
+  "nav": {
+    "overview": "Resumen",
+    "signin": "Inicio de sesión y configuración",
+    "surfaces": "Superficies",
+    "primitives": "Elementos básicos",
+    "controlLayout": "Disposición de controles",
+    "writing": "Redacción",
+    "errors": "Errores",
+    "motion": "Movimiento",
+    "overlays": "Superposiciones",
+    "dialogs": "Diálogos",
+    "files": "Archivos",
+    "session": "Sesión",
+    "sidebar": "Barra lateral",
+    "settings": "Configuración",
+    "markdown": "Markdown",
+    "phone": "Teléfono",
+    "roadmap": "Hoja de ruta",
+    "schedules": "Programaciones"
+  },
+  "views": {
+    "errors": {
+      "primitives": "Elementos básicos",
+      "conversation": "Chat",
+      "messages": "Mensajes y cargas",
+      "forms": "Formularios y configuración",
+      "files": "Archivos"
+    },
+    "signin": {
+      "signin": "Iniciar sesión",
+      "setup": "Configuración inicial",
+      "handoff": "Traspaso al teléfono",
+      "starting": "Inicio"
+    },
+    "primitives": {
+      "buttons": "Botones",
+      "fields": "Campos",
+      "marks": "Marcas"
+    },
+    "overlays": {
+      "menus": "Menús",
+      "dialogs": "Diálogos"
+    },
+    "files": {
+      "browser": "Explorador",
+      "tree": "Árbol",
+      "dialogs": "Diálogos"
+    },
+    "session": {
+      "tabs": "Barra de pestañas",
+      "composer": "Redactor",
+      "blocks": "Bloques",
+      "lengths": "Longitudes",
+      "changes": "Cambios",
+      "turns": "Turnos",
+      "states": "Estados",
+      "session": "Sesión",
+      "panel": "Panel",
+      "windows": "Ventanas",
+      "shared": "Página compartida"
+    },
+    "dialogs": {
+      "account": "Cuenta",
+      "providers": "Proveedores",
+      "devices": "Dispositivos",
+      "project": "Proyecto",
+      "cloud": "Nube",
+      "skills": "Habilidades",
+      "search": "Búsqueda"
+    },
+    "page": "Página",
+    "schedules": {
+      "app": "App",
+      "phone": "Teléfono"
+    }
+  },
+  "chrome": {
+    "mode": "Modo",
+    "font": "Fuente"
+  }
+}

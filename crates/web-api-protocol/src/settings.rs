@@ -505,6 +505,14 @@ impl IdleLifetime {
 pub enum Language {
     #[serde(rename = "en")]
     English,
+    #[serde(rename = "de")]
+    German,
+    #[serde(rename = "es-419")]
+    LatinAmericanSpanish,
+    #[serde(rename = "fr")]
+    French,
+    #[serde(rename = "pt-BR")]
+    BrazilianPortuguese,
     #[serde(rename = "zh-Hans")]
     SimplifiedChinese,
     #[serde(rename = "zh-Hant")]
@@ -520,6 +528,10 @@ impl Language {
     pub fn tag(self) -> &'static str {
         match self {
             Self::English => "en",
+            Self::German => "de",
+            Self::LatinAmericanSpanish => "es-419",
+            Self::French => "fr",
+            Self::BrazilianPortuguese => "pt-BR",
             Self::SimplifiedChinese => "zh-Hans",
             Self::TraditionalChinese => "zh-Hant",
             Self::Japanese => "ja",
@@ -578,6 +590,14 @@ pub enum LanguageChoice {
     System,
     #[serde(rename = "en")]
     English,
+    #[serde(rename = "de")]
+    German,
+    #[serde(rename = "es-419")]
+    LatinAmericanSpanish,
+    #[serde(rename = "fr")]
+    French,
+    #[serde(rename = "pt-BR")]
+    BrazilianPortuguese,
     #[serde(rename = "zh-Hans")]
     SimplifiedChinese,
     #[serde(rename = "zh-Hant")]
@@ -595,6 +615,10 @@ impl LanguageChoice {
         match self {
             Self::System => page.unwrap_or(Language::English),
             Self::English => Language::English,
+            Self::German => Language::German,
+            Self::LatinAmericanSpanish => Language::LatinAmericanSpanish,
+            Self::French => Language::French,
+            Self::BrazilianPortuguese => Language::BrazilianPortuguese,
             Self::SimplifiedChinese => Language::SimplifiedChinese,
             Self::TraditionalChinese => Language::TraditionalChinese,
             Self::Japanese => Language::Japanese,

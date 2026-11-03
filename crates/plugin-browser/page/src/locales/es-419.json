@@ -1,0 +1,120 @@
+{
+  "reasons": {
+    "invalid_input": "El navegador abre solo páginas web, de archivo y en blanco.",
+    "tab_not_found": "Esta página ya no está abierta en el dispositivo.",
+    "tab_busy": "La pestaña está ocupada con otra solicitud. Vuelve a intentarlo en un momento.",
+    "stale_ref": "La página cambió antes de que el navegador pudiera actuar.",
+    "stale_cursor": "Los registros del navegador cambiaron antes de que se pudieran leer.",
+    "stale_inventory": "Los archivos de la página cambiaron antes de que se pudieran leer.",
+    "stale_tools": "Las herramientas de la página cambiaron antes de que se pudieran usar.",
+    "target_not_found": "El navegador no encontró eso en la página.",
+    "ambiguous_target": "Más de una parte de la página coincide.",
+    "not_actionable": "Esa parte de la página no se puede usar en este momento.",
+    "timeout": "El navegador no respondió a tiempo.",
+    "dialog_blocked": "Un diálogo de la página está esperando una respuesta.",
+    "dialog_not_found": "La página no tiene ningún diálogo esperando una respuesta.",
+    "invalid_dialog_action": "El diálogo no se puede responder de esa forma.",
+    "history_boundary": "La pestaña no tiene ninguna página en esa dirección.",
+    "navigation_failed": "El navegador no pudo cargar la página.",
+    "protected_value": "La página mantiene ese valor en privado.",
+    "side_effect_rejected": "El navegador no permitió que eso cambiara la página.",
+    "unsupported_result": "El navegador no puede transmitir lo que devolvió la página.",
+    "unsupported_capability": "El navegador del dispositivo no puede hacer eso.",
+    "cdp_method_denied": "El navegador no lo permite.",
+    "recording": "La pestaña ya está grabando.",
+    "recording_not_found": "Esa grabación se eliminó.",
+    "too_many_recordings": "Hay cinco grabaciones en curso en este chat. Detén una primero.",
+    "output_exists": "Ya existe un archivo con ese nombre en el dispositivo.",
+    "io_error": "El dispositivo no pudo leer ni escribir un archivo que necesita el navegador.",
+    "result_too_large": "La página devolvió más de lo que el navegador puede transmitir.",
+    "partial_failure": "El navegador hizo solo una parte de eso.",
+    "driver_error": "El navegador del dispositivo tuvo un problema.",
+    "browser_unavailable": "El navegador no pudo iniciarse en el dispositivo.",
+    "browser_lost": "El navegador del dispositivo se detuvo.",
+    "cancelled": "Se canceló la solicitud.",
+    "outcome_unknown": "Se interrumpió la conexión con el navegador. El resultado es desconocido.",
+    "capture_unavailable": "Este dispositivo no puede capturar las páginas del navegador.",
+    "capture_failed": "El dispositivo no pudo capturar la página. Lo está intentando de nuevo.",
+    "capture_stopped": "El dispositivo no pudo capturar la página.",
+    "conversation_not_found": "Este chat ya no existe.",
+    "conversation_archived": "Este chat está archivado.",
+    "conversation_busy": "El chat está ocupado. Vuelve a intentarlo en un momento.",
+    "host_stopped": "La nube está detenida.",
+    "device_offline": "El dispositivo está sin conexión.",
+    "device_not_found": "El dispositivo se eliminó de tu cuenta.",
+    "cloud_unavailable": "La nube no está disponible en este momento.",
+    "cloud_resetting": "La nube se está restableciendo.",
+    "cloud_capacity": "El servidor no tiene espacio para iniciar la nube.",
+    "cloud_crash_loop": "La nube dejó de iniciarse después de fallar varias veces.",
+    "host_operation_failed": "Se interrumpió la conexión con el dispositivo.",
+    "unknown_plugin_method": "Este servidor no puede ejecutar un navegador.",
+    "plugin_disabled": "El plugin Navegador está desactivado."
+  },
+  "answers": {
+    "none": "El servidor no respondió.",
+    "unreadable": "No se pudo leer la respuesta del servidor.",
+    "refused": "El servidor no pudo hacer eso ({status})."
+  },
+  "starting": {
+    "connecting": "Conectando…",
+    "cloud": "Iniciando la nube…",
+    "download": "Descargando el navegador…",
+    "browser": "Iniciando el navegador…",
+    "page": "Abriendo la página…"
+  },
+  "failures": {
+    "operate": "No se pudo controlar el navegador",
+    "reloadPage": "No se pudo volver a cargar la página",
+    "copyLink": "No se pudo copiar el enlace",
+    "paste": "No se pudo pegar",
+    "openAddress": "No se pudo abrir la dirección",
+    "goBack": "No se pudo retroceder",
+    "goForward": "No se pudo avanzar",
+    "stopLoading": "No se pudo detener la carga",
+    "openPage": "No se pudo abrir la página",
+    "saveDownload": "No se pudo guardar la descarga",
+    "hostFilesUnreachable": "No se puede acceder a los archivos del host."
+  },
+  "region": {
+    "couldntOpen": "No se pudo abrir esta página.",
+    "couldntShow": "No se pudo mostrar esta página.",
+    "noH264": "Este navegador no puede decodificar video H.264.",
+    "waiting": "Esperando el host…"
+  },
+  "menu": {
+    "copyLink": "Copiar dirección del enlace",
+    "cut": "Cortar",
+    "copy": "Copiar",
+    "paste": "Pegar",
+    "back": "Atrás",
+    "forward": "Adelante",
+    "reload": "Volver a cargar"
+  },
+  "address": {
+    "noBack": "No hay página anterior",
+    "noForward": "No hay página siguiente"
+  },
+  "downloads": {
+    "title": "Descargas",
+    "save": "Guardar",
+    "showInFiles": "Mostrar en Archivos",
+    "canceled": "Cancelada"
+  },
+  "viewport": {
+    "title": "Viewport",
+    "web": "Web",
+    "mobile": "Móvil",
+    "custom": "Personalizado {width} × {height} {scale}"
+  },
+  "dialog": {
+    "leavePage": "¿Salir de la página?",
+    "says": "{host} dice",
+    "thisPageSays": "Esta página dice",
+    "answer": "Responder",
+    "stay": "Quedarse",
+    "leave": "Salir",
+    "cancel": "Cancelar",
+    "ok": "Aceptar"
+  },
+  "browserInput": "Entrada del navegador"
+}

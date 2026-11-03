@@ -1,0 +1,433 @@
+{
+  "suggestions": {
+    "label": "Respuestas sugeridas",
+    "edit": "Editar"
+  },
+  "comments": {
+    "comment": "Comentar",
+    "placeholder": "Agrega un comentario",
+    "waitReply": "Espera a que termine esta respuesta.",
+    "count": "{count} comentario | {count} comentarios",
+    "remove": "Eliminar comentario | Eliminar comentarios",
+    "sent": "Enviado",
+    "writeFirst": "Primero escribe un comentario.",
+    "next": "Siguiente comentario",
+    "pictureFailed": "No se pudo comentar la imagen"
+  },
+  "ask": {
+    "ask": "Preguntar",
+    "placeholder": "Pregunta sobre esto",
+    "followUpPlaceholder": "Haz una pregunta de seguimiento",
+    "reply": "Responder",
+    "openFull": "Abrir el chat completo",
+    "collapse": "Contraer",
+    "expand": "Expandir",
+    "thinking": "Pensando…",
+    "retry": "Reintentar",
+    "stop": "Detener",
+    "pictureFailed": "No se pudo preguntar sobre la imagen"
+  },
+  "transcript": {
+    "accountSwitch": {
+      "usage": "{from} alcanzó su límite de uso. Se continúa con {to}.",
+      "usageReset": "{from} alcanzó su límite de uso, {reset}. Se continúa con {to}.",
+      "window": "{from} alcanzó su {window}. Se continúa con {to}.",
+      "windowReset": "{from} alcanzó su {window}, {reset}. Se continúa con {to}."
+    },
+    "notice": {
+      "titled": "{notice}:"
+    },
+    "receipt": {
+      "allowed": "Permitiste que este chat pueda {action}",
+      "denied": "Negaste a este chat el permiso para {action}",
+      "moved": "Moviste este chat a {host} · {path}",
+      "moveFailed": "No se pudo mover: {reason}",
+      "fromMain": "Mensaje de {agent}",
+      "mainAgent": "agente principal",
+      "fromAgent": "Mensaje de un agente",
+      "fromConversation": "Mensaje de un chat",
+      "finished": "El agente terminó",
+      "failed": "El agente falló",
+      "stopped": "El agente se detuvo",
+      "unnamed": "Agente {number}"
+    },
+    "report": {
+      "finished": "El comando terminó",
+      "failed": "El comando falló con el código de salida {code}",
+      "stoppedByYou": "Detuviste el comando",
+      "stoppedByAgent": "Otro agente detuvo el comando",
+      "stopped": "El comando se detuvo",
+      "lost": "Se perdió el rastro del comando",
+      "untitled": "Comando {id}"
+    },
+    "runEnd": {
+      "failed": "Falló",
+      "stopped": "Detenido",
+      "stopping": "Deteniendo…",
+      "waiting": "Esperando a {host}",
+      "lost": "Perdido",
+      "exitCode": "Código de salida {code}"
+    },
+    "commandStatus": {
+      "lost": "Perdido",
+      "lostWhy": "Perdido: {reason}",
+      "stopping": "Deteniendo…",
+      "waiting": "Esperando a {host}",
+      "running": "En ejecución desde hace {span}",
+      "exited": "Terminó después de {span}",
+      "exitedZero": "Terminó con 0 después de {span}",
+      "failed": "Falló con el código de salida {code} después de {span}",
+      "stopped": "Se detuvo después de {span}"
+    },
+    "thinking": {
+      "now": "Pensando",
+      "briefly": "Pensó brevemente",
+      "done": "Pensó",
+      "nowFor": "Pensando durante {span}",
+      "doneFor": "Pensó durante {span}",
+      "requesting": "Solicitando",
+      "requestingFor": "Solicitando durante {span}"
+    },
+    "compaction": {
+      "running": "Compactando el contexto…",
+      "done": "Contexto compactado",
+      "doneTo": "Contexto compactado a ~{tokens} tokens",
+      "doneIdle": "Contexto compactado en inactividad",
+      "doneIdleTo": "Contexto compactado en inactividad a ~{tokens} tokens"
+    },
+    "stopped": "Detenido",
+    "queued": "{count} en cola",
+    "user": {
+      "edit": "Editar",
+      "showMore": "Mostrar más",
+      "showLess": "Mostrar menos",
+      "sendingSoon": "Se enviará pronto",
+      "queuedMark": "En cola",
+      "recall": "Recuperar",
+      "recalled": "Mensaje recuperado",
+      "notDeliveredMark": "No entregado",
+      "fromSchedule": "Programación",
+      "fromConversation": "Chat"
+    },
+    "assistant": {
+      "fork": "Bifurcar",
+      "forkWait": "Podrás bifurcar cuando termine este mensaje.",
+      "share": "Compartir",
+      "shareWait": "Podrás compartir cuando termine este mensaje.",
+      "regenerate": "Regenerar",
+      "forkFailed": "No se pudo bifurcar desde este mensaje"
+    },
+    "edit": {
+      "rejected": "No se aceptó la edición.",
+      "unconfirmed": "No se pudo confirmar la edición"
+    },
+    "versions": {
+      "previous": "Versión anterior",
+      "next": "Versión siguiente",
+      "position": "Versión {index} de {count}"
+    },
+    "newFile": "Archivo nuevo",
+    "moreFiles": "+{count} archivo | +{count} archivos",
+    "fewerFiles": "Mostrar menos",
+    "picture": {
+      "open": "Abrir {name} en grande",
+      "play": "Reproducir {name}"
+    },
+    "gone": {
+      "line": "{kind} no guardado: {reason}",
+      "image": "Imagen",
+      "video": "Video",
+      "document": "Documento"
+    },
+    "shellFallback": "Ejecutar comando de shell",
+    "stepsNotShared": "{count} paso no compartido | {count} pasos no compartidos",
+    "turnFailed": "El turno falló.",
+    "failureResets": "{failure} {reset}.",
+    "apiKeyRefused": "El proveedor rechazó la clave de API.",
+    "signedOut": "{provider} cerró la sesión de {account}. Vuelve a iniciarla en Configuración › Proveedores.",
+    "deviceOffline": "{device} está sin conexión.",
+    "opaque": {
+      "other": "{name} en {vendor}",
+      "search": {
+        "web": "Búsqueda web",
+        "open_page": "Abrir página",
+        "find_in_page": "Buscar en la página",
+        "x": "Búsqueda en X",
+        "x_people": "Búsqueda de personas en X",
+        "x_post": "Publicación de X",
+        "image": "Ver imagen",
+        "x_video": "Video de X"
+      }
+    },
+    "work": {
+      "ran": "{count} comando ejecutado | {count} comandos ejecutados",
+      "checked": "{count} comando revisado | {count} comandos revisados",
+      "used": "{tool} usado",
+      "joined": "{first}, {next}",
+      "took": "{what} en {span}",
+      "command": {
+        "finished": "{count} comando terminado | {count} comandos terminados",
+        "failed": "{count} comando falló | {count} comandos fallaron",
+        "stopped": "{count} comando detenido | {count} comandos detenidos",
+        "stopping": "{count} comando deteniéndose | {count} comandos deteniéndose",
+        "lost": "{count} comando perdido | {count} comandos perdidos"
+      },
+      "agent": {
+        "finished": "{count} agente terminó | {count} agentes terminaron",
+        "failed": "{count} agente falló | {count} agentes fallaron",
+        "stopped": "{count} agente detenido | {count} agentes detenidos"
+      },
+      "heard": "mensajes de {count} agente | mensajes de {count} agentes",
+      "searchedWeb": "{count} búsqueda web | {count} búsquedas web",
+      "openedPages": "{count} página abierta | {count} páginas abiertas",
+      "searchedX": "{count} búsqueda en X | {count} búsquedas en X",
+      "viewedMedia": "{count} imagen o video visto | {count} imágenes o videos vistos"
+    },
+    "copyMessage": "Copiar mensaje",
+    "sendToConversation": "Enviar a un chat",
+    "sendToNew": "Nuevo chat",
+    "sendFailed": "No se pudo enviar al chat"
+  },
+  "subagents": {
+    "mainAgent": "Agente principal",
+    "agentNumber": "agente {number}",
+    "phase": {
+      "running": "En ejecución",
+      "completed": "Terminado",
+      "error": "Falló",
+      "aborted": "Detenido"
+    },
+    "forkedFrom": "Bifurcado de {agent}",
+    "inherited": "Heredado de este chat",
+    "fast": "Rápido",
+    "chip": "{count} agente | {count} agentes",
+    "stopAgent": "Detener agente",
+    "copyId": "Copiar ID del agente",
+    "closeTab": "Cerrar pestaña",
+    "stopAll": "Detener todos",
+    "none": "No hay agentes en ejecución",
+    "loading": "Cargando agente…",
+    "loadFailed": "No se pudo cargar este agente.",
+    "completed": "Completados",
+    "searchCompleted": "Búsqueda completada",
+    "noneCompleted": "No hay subagentes completados",
+    "thinkingOff": "Pensamiento desactivado"
+  },
+  "terminals": {
+    "endCommand": "Finalizar comando",
+    "closeTab": "Cerrar pestaña",
+    "chip": "{count} en ejecución",
+    "serviceChip": "{count} servicio | {count} servicios",
+    "loading": "Cargando terminal…",
+    "unavailable": "No se pudo cargar la terminal."
+  },
+  "session": {
+    "loading": "Cargando chat…",
+    "loadFailed": "No se pudo cargar este chat.",
+    "notFound": "No se encontró el chat",
+    "noneOpen": "No hay ningún chat abierto",
+    "empty": "No hay mensajes",
+    "start": "Iniciar un chat",
+    "conversations": "Chats",
+    "openPanel": "Abrir panel",
+    "tabs": "Pestañas",
+    "tabsOpen": "Pestañas, {count} abiertas",
+    "closePanel": "Cerrar panel",
+    "options": "{title}, opciones del chat",
+    "hostState": "{name} está {state}",
+    "renameTitle": "Cambiar nombre del chat",
+    "titleLabel": "Título del chat",
+    "runsOn": "Se ejecuta en",
+    "backToConversation": "Volver al chat",
+    "archived": "Este chat está archivado.",
+    "restore": "Restaurar chat",
+    "shareConversation": "Compartir chat…",
+    "findInConversation": "Buscar en el chat"
+  },
+  "share": {
+    "titleConversation": "Compartir chat",
+    "titleAnswer": "Compartir respuesta",
+    "whoConversation": "Cualquier persona con el enlace puede leer los mensajes de este chat, pero no el trabajo entre ellos. Los mensajes posteriores no se incluyen.",
+    "whoAnswer": "Cualquier persona con el enlace puede leer esta respuesta y el mensaje al que responde.",
+    "field": "Enlace para compartir",
+    "copyLink": "Copiar enlace",
+    "creating": "Creando enlace…",
+    "updating": "Actualizando enlace…",
+    "tryAgain": "Reintentar",
+    "updateLink": "Actualizar enlace",
+    "stopSharing": "Dejar de compartir",
+    "updated": "Enlace actualizado",
+    "updatedMessage": "El enlace ahora muestra el chat como está.",
+    "failedConversation": "No se pudo compartir el chat",
+    "failedAnswer": "No se pudo compartir la respuesta",
+    "failedUpdate": "No se pudo actualizar el enlace",
+    "failedStop": "No se pudo dejar de compartir"
+  },
+  "dock": {
+    "scrollToBottom": "Desplazarse hasta abajo",
+    "resume": "Reanudar",
+    "continue": "Continuar",
+    "continueWith": "Continuar con {label}",
+    "openProviders": "Abrir Proveedores",
+    "outputTokens": "{tokens} token | {tokens} tokens",
+    "tokenRate": "{rate} tok/s",
+    "lastTurnRate": "Último turno: {rate} tok/s"
+  },
+  "notices": {
+    "hostOffline": "{name} está sin conexión.",
+    "moveHost": "Mover a otro host…",
+    "pluginsChanged": "Los plugins cambiaron"
+  },
+  "composer": {
+    "placeholder": "Pregunta lo que quieras…",
+    "message": "Mensaje",
+    "noModels": "No hay modelos disponibles",
+    "configureModels": "Configurar modelos",
+    "attach": "Adjuntar",
+    "attachFiles": "Adjuntar archivos…",
+    "attachLocalFiles": "Adjuntar archivos locales…",
+    "attachRemoteFile": "Adjuntar archivo remoto…",
+    "cancelEdit": "Cancelar edición",
+    "editingMessage": "Editando mensaje",
+    "editingSaved": "Editando mensaje guardado",
+    "saveEdit": "Guardar",
+    "saveEditKeys": "Guardar  {keys}",
+    "saveForLater": "Guardar para después",
+    "saveForLaterKeys": "Guardar para después  {keys}",
+    "stop": "Detener",
+    "send": "Enviar",
+    "saveAndResend": "Guardar y volver a enviar",
+    "sendOtherWay": "{way} · {keys} para {other}",
+    "modelUnavailable": "Este modelo no está disponible. Elige otro para enviar.",
+    "modelsLoading": "Los modelos aún se están cargando.",
+    "couldntAttach": "No se pudo adjuntar",
+    "afterEdit": "Disponible después de la edición",
+    "saved": {
+      "count": "{count} guardados",
+      "saving": "Guardando…",
+      "edit": "Editar",
+      "send": "Enviar",
+      "delete": "Eliminar"
+    }
+  },
+  "attachments": {
+    "uploading": "Cargando {percent} % · {name}",
+    "attaching": "Adjuntando · {name}",
+    "failed": "{name} no se cargó. Reintenta o elimínalo.",
+    "refused": "{name} está vacío o supera {limit}.",
+    "retryOrRemove": "Reintenta o quita los archivos adjuntos que no se cargaron",
+    "waitForUpload": "Espera a que terminen de cargarse los archivos adjuntos",
+    "pastedNames": "{list}: se pegó el nombre en su lugar. | {list}: se pegaron los nombres en su lugar.",
+    "couldntCopyPicture": "No se pudo copiar la imagen",
+    "missing": "{name} ya no está disponible. Elimínalo o vuelve a adjuntarlo.",
+    "deleteOrAttachAgain": "Elimina los archivos adjuntos que ya no están disponibles o vuelve a adjuntarlos"
+  },
+  "models": {
+    "parent": "Modelo del agente principal",
+    "fast": "Modo rápido",
+    "reasoning": "Razonamiento",
+    "context": "Contexto",
+    "model": "Modelo",
+    "off": "Desactivado",
+    "default": "Predeterminado ({window})",
+    "effort": {
+      "minimal": "Mínimo",
+      "low": "Bajo",
+      "medium": "Medio",
+      "high": "Alto",
+      "xhigh": "Muy alto",
+      "max": "Máximo"
+    },
+    "loading": "Cargando modelos…",
+    "unavailable": "Este modelo no está disponible. Elige otro para enviar."
+  },
+  "workflows": {
+    "label": "Flujo de trabajo",
+    "labelTip": "Flujo de trabajo: {name}",
+    "default": "Flujo de trabajo global",
+    "none": "Sin subagentes",
+    "reading": "Leyendo flujos de trabajo…",
+    "failed": "No se pudieron leer los flujos de trabajo",
+    "unavailable": "Flujos de trabajo no disponibles",
+    "gone": "Este flujo de trabajo ya no está en el proyecto. Elige otro.",
+    "worktree": "Worktree {name}"
+  },
+  "context": {
+    "window": "Ventana de contexto",
+    "windowUsed": "Ventana de contexto, {percent} en uso",
+    "tip": "Contexto {figure}",
+    "compacting": "Compactando el contexto…",
+    "compact": "Compactar",
+    "untilCompaction": "{tokens} hasta la compactación",
+    "afterTurn": "Disponible cuando termine el turno",
+    "availableFrom": "Disponible a partir de {from} de contexto (ahora {now})",
+    "usageLimits": "Límites de uso",
+    "refreshUsage": "Actualizar uso",
+    "instructions": "Instrucciones",
+    "personalInstructions": "Instrucciones personales",
+    "workflowInstructions": "Flujo de trabajo: {name}",
+    "cost": {
+      "title": "Costo",
+      "price": "Precio equivalente de la API",
+      "hitRate": "Tasa de aciertos de caché",
+      "range": {
+        "hour": "1 h",
+        "day": "1 d",
+        "all": "Todo"
+      },
+      "kind": {
+        "input": "Entrada",
+        "cacheWrite": "Escritura en caché",
+        "cacheRead": "Lectura de caché",
+        "output": "Salida"
+      },
+      "profiles": "Perfiles",
+      "mainConversation": "Principal",
+      "request": "Solicitud n.º {number}",
+      "firstRequest": "Primera solicitud",
+      "afterCompaction": "Después de la compactación",
+      "miss": "Fallo de caché · {cause}",
+      "rewritten": "Tokens almacenados de nuevo en caché",
+      "cause": {
+        "model_changed": "Cambió el modelo",
+        "tools_changed": "Cambiaron las herramientas",
+        "system_prompt_changed": "Cambió el prompt del sistema",
+        "cache_expired": "La caché venció",
+        "not_cached": "El proveedor no lo almacenó en caché"
+      }
+    },
+    "row": {
+      "messages": "Mensajes",
+      "systemPrompt": "Prompt del sistema",
+      "commands": "Comandos",
+      "instructions": "Instrucciones",
+      "skills": "Habilidades",
+      "otherContext": "Otro contexto",
+      "summary": "Resumen",
+      "compactionBuffer": "Búfer de compactación",
+      "freeSpace": "Espacio libre"
+    }
+  },
+  "address": {
+    "back": "Atrás",
+    "forward": "Adelante",
+    "stop": "Detener",
+    "placeholder": "Escribe una dirección",
+    "label": "Dirección del navegador"
+  },
+  "panel": {
+    "allTabs": "Mostrar todas las pestañas",
+    "more": "Más",
+    "windowHeight": "Altura de la ventana",
+    "closeOthers": "Cerrar las demás",
+    "closeRight": "Cerrar las de la derecha",
+    "closeLeft": "Cerrar las de la izquierda",
+    "closeAll": "Cerrar todas",
+    "cannotShow": "Esta pestaña no se puede mostrar.",
+    "nothingOpen": "No hay nada abierto",
+    "noFiles": "No hay archivos ni cambios",
+    "reading": "Leyendo {name}",
+    "hostOffline": "{name} está sin conexión.",
+    "hostOfflineDetail": "Los archivos, los cambios y el navegador vuelven a aparecer cuando se reconecte."
+  }
+}

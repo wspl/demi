@@ -1,0 +1,60 @@
+{
+  "chip": "{count} planifiés",
+  "delete": "Supprimer",
+  "notYet": "Pas encore réveillée",
+  "trigger": {
+    "once": "Une fois · {when}",
+    "change": "Quand la sortie change · {interval}",
+    "url": "Quand une URL est appelée",
+    "interval": {
+      "minutes": "{count} min",
+      "hours": "{count} heure | {count} heures",
+      "days": "{count} jour | {count} jours"
+    }
+  },
+  "wake": {
+    "failed": "Le dernier réveil a échoué",
+    "skipped": "Dernier réveil ignoré"
+  },
+  "words": {
+    "interval": {
+      "minutes": "Chaque minute | Toutes les {count} min",
+      "hours": "Chaque heure | Toutes les {count} heures",
+      "days": "Chaque jour | Tous les {count} jours"
+    },
+    "daily": "Tous les jours {time}",
+    "weekdays": "En semaine {time}",
+    "weekly": "Chaque {day} {time}",
+    "days": "{days} {time}",
+    "repeat": {
+      "days": "Chaque jour | Tous les {count} jours",
+      "weeks": "Chaque semaine | Toutes les {count} semaines",
+      "months": "Chaque mois | Tous les {count} mois",
+      "years": "Chaque année | Tous les {count} ans"
+    },
+    "tasks": "{count} tâche | {count} tâches",
+    "date": "Le {date}",
+    "lastDay": "Dernier jour",
+    "week": {
+      "first": "Premier {weekday}",
+      "second": "Deuxième {weekday}",
+      "third": "Troisième {weekday}",
+      "fourth": "Quatrième {weekday}",
+      "last": "Dernier {weekday}"
+    },
+    "workingDay": {
+      "first": "Premier jour ouvré",
+      "last": "Dernier jour ouvré"
+    },
+    "moment": "{day} {time}",
+    "monthDate": "{date} {month}",
+    "dayOfMonth": "{day} de {month}"
+  },
+  "note": {
+    "offline": "{device} était hors ligne",
+    "limit": "La limite de {limit} exécutions par jour a été atteinte, {calls} appel depuis | La limite de {limit} exécutions par jour a été atteinte, {calls} appels depuis",
+    "timedOut": "La commande a duré plus de 60 secondes",
+    "commandFailed": "La commande a échoué : {message}"
+  },
+  "mark": "Des planifications réveillent cette conversation"
+}

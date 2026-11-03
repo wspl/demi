@@ -1,0 +1,162 @@
+{
+  "state": {
+    "online": "En línea",
+    "updating": "Actualizando",
+    "offline": "Sin conexión",
+    "downloading": "Descargando actualización · {percent} %",
+    "updatingPercent": "Actualizando · {percent} %"
+  },
+  "route": {
+    "automatic": "Automática",
+    "direct": "Preferir P2P",
+    "server": "Solo relay",
+    "automaticDescription": "Usa la ruta más rápida.",
+    "directDescription": "P2P siempre que conecte.",
+    "serverDescription": "Nunca usa P2P."
+  },
+  "stage": {
+    "permission": "Permiso",
+    "gathering": "Recopilando direcciones",
+    "checking": "Buscando una ruta",
+    "handshake": "Negociación de cifrado",
+    "channel": "Abriendo el canal",
+    "connected": "Conectado"
+  },
+  "path": {
+    "thisComputer": "Esta computadora",
+    "localNetwork": "LAN",
+    "internet": "P2P",
+    "relay": "Relay",
+    "sentence": "{path} · {address}"
+  },
+  "connected": {
+    "relay": "Conectado mediante relay",
+    "thisComputer": "Conectado mediante esta computadora",
+    "localNetwork": "Conectado mediante LAN",
+    "internet": "Conectado mediante P2P"
+  },
+  "reason": {
+    "slower": "P2P es más lento en este momento.",
+    "blocked": "Este navegador bloquea el acceso a la red local.",
+    "unreachable": "Tus redes bloquean las conexiones P2P.",
+    "browserNetwork": "Tu red lo bloquea.",
+    "deviceNetwork": "La red del dispositivo lo bloquea.",
+    "busy": "El dispositivo tiene demasiadas conexiones.",
+    "dropped": "Se cortó la conexión P2P.",
+    "notOffered": "P2P solo funciona en la red del dispositivo."
+  },
+  "latency": {
+    "under": "menos de 0.1 ms",
+    "path": "{path} {latency}",
+    "lost": "{path} {latency}, {loss} perdido",
+    "relay": "Relay {latency}"
+  },
+  "address": {
+    "hidden": "Oculta por el navegador"
+  },
+  "report": {
+    "appleSilicon": "Apple silicon",
+    "arm": "ARM",
+    "intel": "Intel"
+  },
+  "runner": {
+    "current": "Actualizado",
+    "outdated": "Actualización disponible",
+    "development": "Compilación de desarrollo"
+  },
+  "page": {
+    "cloud": "Nube",
+    "startSentence": "Inicia Demi en el dispositivo:",
+    "noAutostart": "Este dispositivo no iniciará Demi por sí solo después de reiniciarse.",
+    "connection": "Conexión",
+    "route": "Ruta",
+    "p2p": "P2P",
+    "details": "Detalles…",
+    "latency": "Latencia",
+    "measure": "Medir",
+    "measuring": "Midiendo…",
+    "noAnswer": "Sin respuesta",
+    "notMeasured": "Sin medir",
+    "measuredAt": "Medido {when}",
+    "device": "Dispositivo",
+    "name": "Nombre",
+    "rename": "Cambiar nombre…",
+    "system": "Sistema",
+    "notReported": "Aún no informado",
+    "runner": "Runner",
+    "runnerUpdates": "Se actualiza solo la próxima vez que se conecte.",
+    "paired": "Vinculado",
+    "revokeThis": "Revocar este dispositivo",
+    "revoke": "Revocar…",
+    "lastSeen": "Última conexión"
+  },
+  "details": {
+    "title": "Detalles de la conexión",
+    "ran": "Se ejecutó",
+    "took": "Duración",
+    "endedAt": "Terminó a las",
+    "thisBrowser": "Este navegador",
+    "theDevice": "El dispositivo",
+    "paths": "Rutas",
+    "pathInUse": "Ruta en uso",
+    "localAccess": "Acceso a la red local",
+    "nextAttempt": "Próximo intento",
+    "none": "Ninguno",
+    "local": "Locales: {list}",
+    "public": "Públicas: {list}",
+    "answered": "{answered} / {tried} respondieron",
+    "busy": "El dispositivo estaba ocupado",
+    "dropped": "Se conectó y luego se cortó",
+    "unknown": "Desconocido",
+    "ms": "{ms} ms",
+    "s": "{s} s"
+  },
+  "permission": {
+    "granted": "Permitido",
+    "prompt": "Aún sin respuesta",
+    "denied": "Bloqueado",
+    "allowInSite": "Permítelo en la configuración de este sitio.",
+    "notAsked": "Este navegador no lo preguntó"
+  },
+  "pairing": {
+    "title": "Agregar dispositivo",
+    "setupHint": "Inicia el runner en tu dispositivo para obtener un código de vinculación.",
+    "doneHint": "El dispositivo está vinculado a tu cuenta y listo para usar.",
+    "codeHint": "Escribe el código de vinculación que mostró el runner.",
+    "system": "Sistema",
+    "systemLabel": "Sistema del dispositivo",
+    "runInPowerShell": "Ejecútalo en PowerShell en el dispositivo. Mantenlo abierto.",
+    "runInTerminal": "Ejecútalo en una terminal en el dispositivo. Mantenla abierta.",
+    "copyInstall": "Copiar comando de instalación",
+    "code": "Código de vinculación",
+    "paste": "Pegar código",
+    "pair": "Vincular dispositivo",
+    "invalidCode": "Este código no está disponible. Pega el código más reciente del runner.",
+    "rateLimited": "Demasiados intentos. Espera un minuto antes de volver a intentarlo.",
+    "unavailable": "No se pudo acceder a Demi. Revisa tu conexión y vuelve a intentarlo."
+  },
+  "revoke": {
+    "title": "¿Revocar este dispositivo?",
+    "action": "Revocar",
+    "body": "“{device}” sale de tus dispositivos. Si su runner está conectado, se elimina del dispositivo.",
+    "projects": "Este proyecto se va con él. Sus archivos se quedan en el dispositivo y sus chats en la barra lateral. | Estos proyectos se van con él. Sus archivos se quedan en el dispositivo y sus chats en la barra lateral."
+  },
+  "rename": {
+    "title": "Cambiar nombre del dispositivo",
+    "label": "Nombre del dispositivo"
+  },
+  "startHint": {
+    "powershell": "Si su runner se detuvo, ejecuta esto en PowerShell en el dispositivo.",
+    "terminal": "Si su runner se detuvo, ejecuta esto en una terminal en el dispositivo.",
+    "copy": "Copiar comando de inicio"
+  },
+  "autostart": {
+    "noSystemd": "Este sistema no ejecuta systemd.",
+    "noUserManager": "El administrador de usuario de systemd no responde: {error}",
+    "notWritten": "Demi no pudo guardar {path}: {error}",
+    "lingerOff": "Solo se inicia cuando {user} inicia sesión. Para iniciarlo cuando se inicie la computadora, ejecuta:",
+    "refused": "Windows rechazó la tarea programada y el elemento de inicio: {error}",
+    "unusableName": "El nombre de la carpeta de instalación, {name}, no puede nombrar un elemento de inicio.",
+    "unknownAccount": "El sistema no reconoce esta cuenta de usuario."
+  }
+}

@@ -1,9 +1,10 @@
 # Localization
 
-Demi is available in English, Simplified Chinese, Traditional Chinese,
-Japanese and Korean, each complete. A user who picks 简体中文 in Settings › General sees
-every control, message and email in Chinese at once, without a reload. What a
-model reads and what people wrote stay as they are.
+Demi is available in English, German, Latin American Spanish, French,
+Brazilian Portuguese, Simplified Chinese, Traditional Chinese, Japanese and
+Korean, each complete. A user who picks 简体中文 in Settings › General sees every
+control, message and email in Chinese at once, without a reload. What a model
+reads and what people wrote stay as they are.
 
 This page says what is translated and how a word is chosen. The gallery's
 Writing page says how each language is written, its glossary included.

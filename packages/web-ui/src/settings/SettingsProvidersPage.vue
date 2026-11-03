@@ -943,16 +943,23 @@ function endpointCheck(value: string) {
             /></template>
           </SettingsListItem>
           </div>
-          <!-- Adding belongs to this group alone, so its button sits in the group's caption. -->
-          <div class="flex h-8 select-none items-center pl-1 pt-2">
+          <!-- Adding belongs to this group alone, so its button sits in the group's caption,
+               an icon alone as in Finder's and Mail's sidebars: the caption keeps its one line
+               in every language. -->
+          <div class="flex h-8 select-none items-center gap-2 pl-1 pt-2">
             <span
-              class="text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
+              class="min-w-0 truncate text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
               >{{ t('providers.apiKeys') }}</span
             >
             <!-- data-add-provider: the product checks open Add Provider through it in any language (`browse.md`). -->
-            <Button v-if="!sharedApiKeys" size="xs" class="ml-auto" data-add-provider @click="addOpen = true"
-              ><Plus :size="12" /> {{ uiText('common.add') }}</Button
-            >
+            <Tooltip v-if="!sharedApiKeys" :content="t('addProvider.title')" class="ml-auto shrink-0"
+              ><IconButton
+                size="xs"
+                :icon="Plus"
+                :aria-label="t('addProvider.title')"
+                data-add-provider
+                @click="addOpen = true"
+            /></Tooltip>
           </div>
           <p v-if="sharedApiKeys" class="select-none px-1 py-1 text-xs text-fg-subtle">
             {{ t('providers.apiKeysShared') }}

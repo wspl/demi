@@ -1,0 +1,433 @@
+{
+  "suggestions": {
+    "label": "Antwortvorschläge",
+    "edit": "Bearbeiten"
+  },
+  "comments": {
+    "comment": "Kommentieren",
+    "placeholder": "Kommentar hinzufügen",
+    "waitReply": "Warte, bis diese Antwort fertig ist.",
+    "count": "{count} Kommentar | {count} Kommentare",
+    "remove": "Kommentar entfernen | Kommentare entfernen",
+    "sent": "Gesendet",
+    "writeFirst": "Schreibe zuerst einen Kommentar.",
+    "next": "Nächster Kommentar",
+    "pictureFailed": "Bild konnte nicht kommentiert werden"
+  },
+  "ask": {
+    "ask": "Fragen",
+    "placeholder": "Dazu fragen",
+    "followUpPlaceholder": "Nachfrage stellen",
+    "reply": "Antworten",
+    "openFull": "Ganzen Chat öffnen",
+    "collapse": "Einklappen",
+    "expand": "Ausklappen",
+    "thinking": "Denkt nach …",
+    "retry": "Wiederholen",
+    "stop": "Stoppen",
+    "pictureFailed": "Frage zum Bild konnte nicht gestellt werden"
+  },
+  "transcript": {
+    "accountSwitch": {
+      "usage": "{from} hat sein Nutzungslimit erreicht. Weiter mit {to}.",
+      "usageReset": "{from} hat sein Nutzungslimit erreicht, {reset}. Weiter mit {to}.",
+      "window": "{from} hat sein {window} erreicht. Weiter mit {to}.",
+      "windowReset": "{from} hat sein {window} erreicht, {reset}. Weiter mit {to}."
+    },
+    "notice": {
+      "titled": "{notice}:"
+    },
+    "receipt": {
+      "allowed": "Du hast diesem Chat erlaubt, {action}",
+      "denied": "Du hast diesem Chat verweigert, {action}",
+      "moved": "Du hast diesen Chat nach {host} · {path} verschoben",
+      "moveFailed": "Verschieben fehlgeschlagen: {reason}",
+      "fromMain": "Nachricht von {agent}",
+      "mainAgent": "Hauptagent",
+      "fromAgent": "Nachricht von einem Agenten",
+      "fromConversation": "Nachricht aus einem Chat",
+      "finished": "Agent fertig",
+      "failed": "Agent fehlgeschlagen",
+      "stopped": "Agent gestoppt",
+      "unnamed": "Agent {number}"
+    },
+    "report": {
+      "finished": "Befehl beendet",
+      "failed": "Befehl mit Exit-Code {code} fehlgeschlagen",
+      "stoppedByYou": "Befehl von dir gestoppt",
+      "stoppedByAgent": "Befehl von einem anderen Agenten gestoppt",
+      "stopped": "Befehl gestoppt",
+      "lost": "Befehl aus den Augen verloren",
+      "untitled": "Befehl {id}"
+    },
+    "runEnd": {
+      "failed": "Fehlgeschlagen",
+      "stopped": "Gestoppt",
+      "stopping": "Wird gestoppt …",
+      "waiting": "Warten auf {host}",
+      "lost": "Verloren",
+      "exitCode": "Exit-Code {code}"
+    },
+    "commandStatus": {
+      "lost": "Verloren",
+      "lostWhy": "Verloren: {reason}",
+      "stopping": "Wird gestoppt …",
+      "waiting": "Warten auf {host}",
+      "running": "Läuft seit {span}",
+      "exited": "Beendet nach {span}",
+      "exitedZero": "Mit 0 beendet nach {span}",
+      "failed": "Mit Exit-Code {code} fehlgeschlagen nach {span}",
+      "stopped": "Gestoppt nach {span}"
+    },
+    "thinking": {
+      "now": "Denkt nach",
+      "briefly": "Kurz nachgedacht",
+      "done": "Nachgedacht",
+      "nowFor": "Denkt seit {span} nach",
+      "doneFor": "Nachgedacht für {span}",
+      "requesting": "Anfrage läuft",
+      "requestingFor": "Anfrage läuft seit {span}"
+    },
+    "compaction": {
+      "running": "Kontext wird komprimiert …",
+      "done": "Kontext komprimiert",
+      "doneTo": "Kontext auf ~{tokens} Tokens komprimiert",
+      "doneIdle": "Kontext im Leerlauf komprimiert",
+      "doneIdleTo": "Kontext im Leerlauf auf ~{tokens} Tokens komprimiert"
+    },
+    "stopped": "Gestoppt",
+    "queued": "{count} in Warteschlange",
+    "user": {
+      "edit": "Bearbeiten",
+      "showMore": "Mehr anzeigen",
+      "showLess": "Weniger anzeigen",
+      "sendingSoon": "Wird gleich gesendet",
+      "queuedMark": "In Warteschlange",
+      "recall": "Zurückholen",
+      "recalled": "Nachricht zurückgeholt",
+      "notDeliveredMark": "Nicht zugestellt",
+      "fromSchedule": "Zeitplan",
+      "fromConversation": "Chat"
+    },
+    "assistant": {
+      "fork": "Abzweigen",
+      "forkWait": "Abzweigen ist verfügbar, wenn diese Nachricht fertig ist.",
+      "share": "Teilen",
+      "shareWait": "Teilen ist verfügbar, wenn diese Nachricht fertig ist.",
+      "regenerate": "Neu generieren",
+      "forkFailed": "Von dieser Nachricht konnte nicht abgezweigt werden"
+    },
+    "edit": {
+      "rejected": "Die Bearbeitung wurde nicht angenommen.",
+      "unconfirmed": "Bearbeitung konnte nicht bestätigt werden"
+    },
+    "versions": {
+      "previous": "Vorherige Version",
+      "next": "Nächste Version",
+      "position": "Version {index} von {count}"
+    },
+    "newFile": "Neue Datei",
+    "moreFiles": "+{count} Datei | +{count} Dateien",
+    "fewerFiles": "Weniger anzeigen",
+    "picture": {
+      "open": "{name} groß öffnen",
+      "play": "{name} abspielen"
+    },
+    "gone": {
+      "line": "{kind} nicht gespeichert: {reason}",
+      "image": "Bild",
+      "video": "Video",
+      "document": "Dokument"
+    },
+    "shellFallback": "Shell-Befehl ausführen",
+    "stepsNotShared": "{count} Schritt nicht geteilt | {count} Schritte nicht geteilt",
+    "turnFailed": "Die Runde ist fehlgeschlagen.",
+    "failureResets": "{failure} {reset}.",
+    "apiKeyRefused": "Der Anbieter hat den API-Schlüssel abgelehnt.",
+    "signedOut": "{provider} hat {account} abgemeldet. Melde es unter Einstellungen › Anbieter erneut an.",
+    "deviceOffline": "{device} ist offline.",
+    "opaque": {
+      "other": "{name} bei {vendor}",
+      "search": {
+        "web": "Websuche",
+        "open_page": "Seite öffnen",
+        "find_in_page": "Auf Seite suchen",
+        "x": "X-Suche",
+        "x_people": "X-Personensuche",
+        "x_post": "X-Beitrag",
+        "image": "Bild ansehen",
+        "x_video": "X-Video"
+      }
+    },
+    "work": {
+      "ran": "{count} Befehl ausgeführt | {count} Befehle ausgeführt",
+      "checked": "{count} Befehl geprüft | {count} Befehle geprüft",
+      "used": "{tool} verwendet",
+      "joined": "{first}, {next}",
+      "took": "{what} in {span}",
+      "command": {
+        "finished": "{count} Befehl beendet | {count} Befehle beendet",
+        "failed": "{count} Befehl fehlgeschlagen | {count} Befehle fehlgeschlagen",
+        "stopped": "{count} Befehl gestoppt | {count} Befehle gestoppt",
+        "stopping": "{count} Befehl wird gestoppt | {count} Befehle werden gestoppt",
+        "lost": "{count} Befehl verloren | {count} Befehle verloren"
+      },
+      "agent": {
+        "finished": "{count} Agent fertig | {count} Agenten fertig",
+        "failed": "{count} Agent fehlgeschlagen | {count} Agenten fehlgeschlagen",
+        "stopped": "{count} Agent gestoppt | {count} Agenten gestoppt"
+      },
+      "heard": "Nachricht von {count} Agent | Nachrichten von {count} Agenten",
+      "searchedWeb": "{count}-mal im Web gesucht | {count}-mal im Web gesucht",
+      "openedPages": "{count} Seite geöffnet | {count} Seiten geöffnet",
+      "searchedX": "{count}-mal auf X gesucht | {count}-mal auf X gesucht",
+      "viewedMedia": "{count} Bild oder Video angesehen | {count} Bilder oder Videos angesehen"
+    },
+    "copyMessage": "Nachricht kopieren",
+    "sendToConversation": "An Chat senden",
+    "sendToNew": "Neuer Chat",
+    "sendFailed": "Senden an Chat nicht möglich"
+  },
+  "subagents": {
+    "mainAgent": "Hauptagent",
+    "agentNumber": "Agent {number}",
+    "phase": {
+      "running": "Läuft",
+      "completed": "Fertig",
+      "error": "Fehlgeschlagen",
+      "aborted": "Gestoppt"
+    },
+    "forkedFrom": "Abgezweigt von {agent}",
+    "inherited": "Von diesem Chat übernommen",
+    "fast": "Schnell",
+    "chip": "{count} Agent | {count} Agenten",
+    "stopAgent": "Agent stoppen",
+    "copyId": "Agent-ID kopieren",
+    "closeTab": "Tab schließen",
+    "stopAll": "Alle stoppen",
+    "none": "Keine Agenten aktiv",
+    "loading": "Agent wird geladen …",
+    "loadFailed": "Dieser Agent konnte nicht geladen werden.",
+    "completed": "Abgeschlossen",
+    "searchCompleted": "Suche abgeschlossen",
+    "noneCompleted": "Keine abgeschlossenen Subagenten",
+    "thinkingOff": "Denken aus"
+  },
+  "terminals": {
+    "endCommand": "Befehl beenden",
+    "closeTab": "Tab schließen",
+    "chip": "{count} aktiv",
+    "serviceChip": "{count} Dienst | {count} Dienste",
+    "loading": "Terminal wird geladen …",
+    "unavailable": "Das Terminal konnte nicht geladen werden."
+  },
+  "session": {
+    "loading": "Chat wird geladen …",
+    "loadFailed": "Dieser Chat konnte nicht geladen werden.",
+    "notFound": "Chat nicht gefunden",
+    "noneOpen": "Kein Chat geöffnet",
+    "empty": "Keine Nachrichten",
+    "start": "Chat beginnen",
+    "conversations": "Chats",
+    "openPanel": "Panel öffnen",
+    "tabs": "Tabs",
+    "tabsOpen": "Tabs, {count} geöffnet",
+    "closePanel": "Panel schließen",
+    "options": "{title}, Chat-Optionen",
+    "hostState": "{name} ist {state}",
+    "renameTitle": "Chat umbenennen",
+    "titleLabel": "Chat-Titel",
+    "runsOn": "Läuft auf",
+    "backToConversation": "Zurück zum Chat",
+    "archived": "Dieser Chat ist archiviert.",
+    "restore": "Chat wiederherstellen",
+    "shareConversation": "Chat teilen …",
+    "findInConversation": "Im Chat suchen"
+  },
+  "share": {
+    "titleConversation": "Chat teilen",
+    "titleAnswer": "Antwort teilen",
+    "whoConversation": "Alle mit dem Link können die Nachrichten dieses Chats lesen, nicht die Arbeit dazwischen. Spätere Nachrichten sind nicht enthalten.",
+    "whoAnswer": "Alle mit dem Link können diese Antwort und die Nachricht lesen, auf die sie antwortet.",
+    "field": "Link zum Teilen",
+    "copyLink": "Link kopieren",
+    "creating": "Link wird erstellt …",
+    "updating": "Link wird aktualisiert …",
+    "tryAgain": "Erneut versuchen",
+    "updateLink": "Link aktualisieren",
+    "stopSharing": "Teilen beenden",
+    "updated": "Link aktualisiert",
+    "updatedMessage": "Der Link zeigt den Chat jetzt im aktuellen Stand.",
+    "failedConversation": "Chat konnte nicht geteilt werden",
+    "failedAnswer": "Antwort konnte nicht geteilt werden",
+    "failedUpdate": "Link konnte nicht aktualisiert werden",
+    "failedStop": "Teilen konnte nicht beendet werden"
+  },
+  "dock": {
+    "scrollToBottom": "Nach unten scrollen",
+    "resume": "Fortsetzen",
+    "continue": "Fortfahren",
+    "continueWith": "Mit {label} fortfahren",
+    "openProviders": "Anbieter öffnen",
+    "outputTokens": "{tokens} Token | {tokens} Tokens",
+    "tokenRate": "{rate} Tok./s",
+    "lastTurnRate": "Letzte Runde: {rate} Tok./s"
+  },
+  "notices": {
+    "hostOffline": "{name} ist offline.",
+    "moveHost": "Zu einem anderen Host verschieben …",
+    "pluginsChanged": "Plug-ins geändert"
+  },
+  "composer": {
+    "placeholder": "Frag irgendwas …",
+    "message": "Nachricht",
+    "noModels": "Keine Modelle verfügbar",
+    "configureModels": "Modelle konfigurieren",
+    "attach": "Anhängen",
+    "attachFiles": "Dateien anhängen …",
+    "attachLocalFiles": "Lokale Dateien anhängen …",
+    "attachRemoteFile": "Entfernte Datei anhängen …",
+    "cancelEdit": "Bearbeitung abbrechen",
+    "editingMessage": "Nachricht wird bearbeitet",
+    "editingSaved": "Gespeicherte Nachricht wird bearbeitet",
+    "saveEdit": "Speichern",
+    "saveEditKeys": "Speichern  {keys}",
+    "saveForLater": "Für später speichern",
+    "saveForLaterKeys": "Für später speichern  {keys}",
+    "stop": "Stoppen",
+    "send": "Senden",
+    "saveAndResend": "Speichern und erneut senden",
+    "sendOtherWay": "{way} · {keys} zum {other}",
+    "modelUnavailable": "Dieses Modell ist nicht verfügbar. Wähle zum Senden ein anderes.",
+    "modelsLoading": "Die Modelle werden noch geladen.",
+    "couldntAttach": "Anhängen nicht möglich",
+    "afterEdit": "Nach der Bearbeitung verfügbar",
+    "saved": {
+      "count": "{count} gespeichert",
+      "saving": "Wird gespeichert …",
+      "edit": "Bearbeiten",
+      "send": "Senden",
+      "delete": "Löschen"
+    }
+  },
+  "attachments": {
+    "uploading": "Wird hochgeladen {percent} % · {name}",
+    "attaching": "Wird angehängt · {name}",
+    "failed": "{name} wurde nicht hochgeladen. Versuche es erneut oder lösche die Datei.",
+    "refused": "{name} ist leer oder größer als {limit}.",
+    "retryOrRemove": "Wiederhole oder entferne die Anhänge, die nicht hochgeladen wurden",
+    "waitForUpload": "Warte, bis die Anhänge hochgeladen sind",
+    "pastedNames": "{list}: stattdessen wurde der Name eingefügt. | {list}: stattdessen wurden die Namen eingefügt.",
+    "couldntCopyPicture": "Bild konnte nicht kopiert werden",
+    "missing": "{name} ist nicht mehr verfügbar. Lösche es oder hänge es erneut an.",
+    "deleteOrAttachAgain": "Lösche die nicht mehr verfügbaren Anhänge oder hänge sie erneut an"
+  },
+  "models": {
+    "parent": "Modell des übergeordneten Agenten",
+    "fast": "Schnellmodus",
+    "reasoning": "Denken",
+    "context": "Kontext",
+    "model": "Modell",
+    "off": "Aus",
+    "default": "Standard ({window})",
+    "effort": {
+      "minimal": "Minimal",
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch",
+      "xhigh": "Sehr hoch",
+      "max": "Maximal"
+    },
+    "loading": "Modelle werden geladen …",
+    "unavailable": "Dieses Modell ist nicht verfügbar. Wähle zum Senden ein anderes."
+  },
+  "workflows": {
+    "label": "Workflow",
+    "labelTip": "Workflow: {name}",
+    "default": "Globaler Workflow",
+    "none": "Keine Subagenten",
+    "reading": "Workflows werden gelesen …",
+    "failed": "Workflows konnten nicht gelesen werden",
+    "unavailable": "Workflows nicht verfügbar",
+    "gone": "Dieser Workflow ist nicht mehr im Projekt. Wähle einen anderen.",
+    "worktree": "Worktree {name}"
+  },
+  "context": {
+    "window": "Kontextfenster",
+    "windowUsed": "Kontextfenster, {percent} belegt",
+    "tip": "Kontext {figure}",
+    "compacting": "Kontext wird komprimiert …",
+    "compact": "Komprimieren",
+    "untilCompaction": "{tokens} bis zur Komprimierung",
+    "afterTurn": "Nach Ende der Runde verfügbar",
+    "availableFrom": "Verfügbar ab {from} Kontext (jetzt {now})",
+    "usageLimits": "Nutzungslimits",
+    "refreshUsage": "Nutzung aktualisieren",
+    "instructions": "Anweisungen",
+    "personalInstructions": "Persönliche Anweisungen",
+    "workflowInstructions": "Workflow: {name}",
+    "cost": {
+      "title": "Kosten",
+      "price": "Entsprechender API-Preis",
+      "hitRate": "Cache-Trefferquote",
+      "range": {
+        "hour": "1 Std.",
+        "day": "1 Tag",
+        "all": "Alle"
+      },
+      "kind": {
+        "input": "Eingabe",
+        "cacheWrite": "Cache-Schreiben",
+        "cacheRead": "Cache-Lesen",
+        "output": "Ausgabe"
+      },
+      "profiles": "Profile",
+      "mainConversation": "Haupt",
+      "request": "Anfrage #{number}",
+      "firstRequest": "Erste Anfrage",
+      "afterCompaction": "Nach der Komprimierung",
+      "miss": "Cache-Fehltreffer · {cause}",
+      "rewritten": "Tokens neu zwischengespeichert",
+      "cause": {
+        "model_changed": "Modell geändert",
+        "tools_changed": "Werkzeuge geändert",
+        "system_prompt_changed": "Systemprompt geändert",
+        "cache_expired": "Cache abgelaufen",
+        "not_cached": "Vom Anbieter nicht zwischengespeichert"
+      }
+    },
+    "row": {
+      "messages": "Nachrichten",
+      "systemPrompt": "Systemprompt",
+      "commands": "Befehle",
+      "instructions": "Anweisungen",
+      "skills": "Skills",
+      "otherContext": "Weiterer Kontext",
+      "summary": "Zusammenfassung",
+      "compactionBuffer": "Komprimierungspuffer",
+      "freeSpace": "Freier Platz"
+    }
+  },
+  "address": {
+    "back": "Zurück",
+    "forward": "Vorwärts",
+    "stop": "Stoppen",
+    "placeholder": "Adresse eingeben",
+    "label": "Browseradresse"
+  },
+  "panel": {
+    "allTabs": "Alle Tabs anzeigen",
+    "more": "Mehr",
+    "windowHeight": "Fensterhöhe",
+    "closeOthers": "Andere schließen",
+    "closeRight": "Rechts schließen",
+    "closeLeft": "Links schließen",
+    "closeAll": "Alle schließen",
+    "cannotShow": "Dieser Tab kann nicht angezeigt werden.",
+    "nothingOpen": "Nichts geöffnet",
+    "noFiles": "Keine Dateien oder Änderungen",
+    "reading": "{name} wird gelesen",
+    "hostOffline": "{name} ist offline.",
+    "hostOfflineDetail": "Dateien, Änderungen und der Browser erscheinen wieder, sobald die Verbindung wieder besteht."
+  }
+}

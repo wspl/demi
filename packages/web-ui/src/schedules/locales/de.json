@@ -1,0 +1,60 @@
+{
+  "chip": "{count} geplant",
+  "delete": "Löschen",
+  "notYet": "Noch nicht geweckt",
+  "trigger": {
+    "once": "Einmal · {when}",
+    "change": "Bei geänderter Ausgabe · {interval}",
+    "url": "Beim Aufruf einer URL",
+    "interval": {
+      "minutes": "{count} Min.",
+      "hours": "{count} Stunde | {count} Stunden",
+      "days": "{count} Tag | {count} Tage"
+    }
+  },
+  "wake": {
+    "failed": "Letztes Wecken fehlgeschlagen",
+    "skipped": "Letztes Wecken übersprungen"
+  },
+  "words": {
+    "interval": {
+      "minutes": "Jede Minute | Alle {count} Min.",
+      "hours": "Jede Stunde | Alle {count} Stunden",
+      "days": "Jeden Tag | Alle {count} Tage"
+    },
+    "daily": "Jeden Tag {time}",
+    "weekdays": "Werktags {time}",
+    "weekly": "Jeden {day} {time}",
+    "days": "{days} {time}",
+    "repeat": {
+      "days": "Jeden Tag | Alle {count} Tage",
+      "weeks": "Jede Woche | Alle {count} Wochen",
+      "months": "Jeden Monat | Alle {count} Monate",
+      "years": "Jedes Jahr | Alle {count} Jahre"
+    },
+    "tasks": "{count} Aufgabe | {count} Aufgaben",
+    "date": "Am {date}.",
+    "lastDay": "Letzter Tag",
+    "week": {
+      "first": "Erster {weekday}",
+      "second": "Zweiter {weekday}",
+      "third": "Dritter {weekday}",
+      "fourth": "Vierter {weekday}",
+      "last": "Letzter {weekday}"
+    },
+    "workingDay": {
+      "first": "Erster Werktag",
+      "last": "Letzter Werktag"
+    },
+    "moment": "{day} {time}",
+    "monthDate": "{date}. {month}",
+    "dayOfMonth": "{day} im {month}"
+  },
+  "note": {
+    "offline": "{device} war offline",
+    "limit": "Das Limit von {limit} Ausführungen pro Tag wurde erreicht, seitdem {calls} Aufruf | Das Limit von {limit} Ausführungen pro Tag wurde erreicht, seitdem {calls} Aufrufe",
+    "timedOut": "Der Befehl lief länger als 60 Sekunden",
+    "commandFailed": "Der Befehl ist fehlgeschlagen: {message}"
+  },
+  "mark": "Zeitpläne wecken diesen Chat"
+}

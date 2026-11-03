@@ -1,0 +1,92 @@
+{
+  "title": "Compétences",
+  "description": "Des flux de travail empaquetés que l’agent peut suivre.",
+  "keywords": "compétence,skill,flux de travail,git,SKILL.md",
+  "places": {
+    "global": "Global",
+    "globalDescription": "Disponible dans tous les espaces de travail.",
+    "workspaceDescription": "Disponible uniquement dans cet espace de travail."
+  },
+  "sources": {
+    "add": "Ajouter une source…",
+    "none": "Aucune source",
+    "adding": "Ajout",
+    "updating": "Mise à jour",
+    "failed": "Échec",
+    "updateAvailable": "Mise à jour disponible",
+    "enableAll": "Activer toutes les compétences de {name}",
+    "update": "Mettre à jour",
+    "remove": "Supprimer"
+  },
+  "fetcher": {
+    "label": "Récupérer avec",
+    "hint": "Un appareil récupère avec son propre Git, ses clés et son réseau, ce dont une adresse SSH a besoin.",
+    "server": "Serveur",
+    "via": "via {name}",
+    "waiting": "En attente de {name}",
+    "offline": "{name} est hors ligne.",
+    "removed": "Appareil supprimé",
+    "removedLabel": "Appareil supprimé",
+    "removedDetail": "L’appareil qui l’a récupérée n’est plus jumelé. Choisissez-en un autre pour la récupérer."
+  },
+  "skill": {
+    "warning": "Avertissement",
+    "nameTaken": "Nom déjà pris",
+    "nameTakenDetail": "Une compétence nommée « {name} » de {origin} ({place}) est activée. Désactivez-la pour utiliser celle-ci.",
+    "neverOffered": "Jamais proposée",
+    "neverOfferedDetail": "Elle définit disable-model-invocation.",
+    "notASkill": "Pas une compétence : {reason}"
+  },
+  "removeSource": {
+    "title": "Supprimer « {name} » ?",
+    "withSkills": "Ses compétences sont supprimées avec elle. Vous pourrez ajouter le dépôt de nouveau plus tard.",
+    "empty": "La source quitte vos compétences. Vous pourrez ajouter le dépôt de nouveau plus tard.",
+    "more": "et {count} de plus"
+  },
+  "addSource": {
+    "title": "Ajouter une source",
+    "hint": "Un dépôt Git. Chaque SKILL.md qu’il contient est une compétence.",
+    "repository": "Dépôt",
+    "repositoryHint": "propriétaire/dépôt, une URL Git ou une adresse SSH.",
+    "browse": "Parcourir skills.sh",
+    "cancel": "Annuler"
+  },
+  "failures": {
+    "add": "Impossible d’ajouter la source",
+    "update": "Impossible de mettre à jour la source",
+    "remove": "Impossible de supprimer la source",
+    "switchSkill": "Impossible de basculer la compétence",
+    "switchSkills": "Impossible de basculer les compétences",
+    "setFetcher": "Impossible de modifier ce qui récupère la source"
+  },
+  "permissions": {
+    "skills_manage": {
+      "action": "gérer les compétences",
+      "description": "Permet aux agents de cette conversation d’ajouter, de mettre à jour et de supprimer des sources de compétences, et d’activer ou de désactiver des compétences. Les compétences globales atteignent toutes les conversations et celles d’un espace de travail les conversations de cet espace, et les compétences activées sont installées sur les hôtes qu’utilisent ces conversations."
+    }
+  },
+  "problems": {
+    "fetch": {
+      "repository_too_large": "Le dépôt dépasse {limit}.",
+      "no_commit": "Le dépôt n’a aucun commit.",
+      "files_too_large": "Les fichiers des compétences dépassent {limit}.",
+      "no_skill": "Le dépôt ne contient aucune compétence."
+    },
+    "skip": {
+      "too_large": "SKILL.md dépasse {limit}.",
+      "not_utf8": "SKILL.md n’est pas en UTF-8.",
+      "no_front_matter": "SKILL.md n’a pas de front matter.",
+      "front_matter_invalid": "Le front matter n’est pas du YAML valide.",
+      "no_description": "Le front matter n’a pas de description."
+    }
+  },
+  "refusals": {
+    "invalid_origin": "Saisissez propriétaire/dépôt, une URL Git ou une adresse SSH.",
+    "source_exists": "{origin} est déjà ajouté.",
+    "source_exists_in": "{origin} est déjà ajouté, dans {place}.",
+    "workspace_not_found": "Cet espace de travail n’existe plus.",
+    "ssh_needs_device": "Une adresse SSH nécessite l’un de vos appareils pour la récupérer.",
+    "fetcher_offline": "{name} est hors ligne.",
+    "fetcher_not_found": "Cet appareil n’est plus jumelé."
+  }
+}

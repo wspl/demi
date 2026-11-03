@@ -1,0 +1,18 @@
+{
+  "title": "Buscar",
+  "placeholder": "Buscar chats",
+  "failed": "No se pudo buscar.",
+  "searching": "Buscando…",
+  "list": "Chats",
+  "archived": "Archivados",
+  "noConversations": "No hay chats",
+  "noResults": "No hay resultados",
+  "placeholderIn": "Buscar mensajes",
+  "scope": "Este chat",
+  "scopeRemove": "Buscar en todos los chats",
+  "typeToSearch": "Escribe para buscar en este chat",
+  "messages": "Mensajes",
+  "you": "Tú",
+  "agent": "Agente",
+  "limited": "Se muestra la coincidencia más reciente | Se muestran las {count} coincidencias más recientes"
+}

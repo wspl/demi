@@ -1,0 +1,82 @@
+{
+  "toolbar": {
+    "model": "({model})",
+    "rotateLeft": "Girar a la izquierda",
+    "rotateRight": "Girar a la derecha",
+    "appearance": "Cambiar apariencia",
+    "home": "Inicio",
+    "lock": "Bloquear",
+    "volumeUp": "Subir volumen",
+    "volumeDown": "Bajar volumen",
+    "back": "Atrás",
+    "screenshot": "Captura de pantalla",
+    "record": "Grabar",
+    "stopRecording": "Detener grabación",
+    "more": "Más"
+  },
+  "fold": {
+    "closed": "Cerrado",
+    "halfOpen": "Medio abierto",
+    "open": "Abierto",
+    "hinge": "Ángulo de la bisagra",
+    "degrees": "{degrees}°",
+    "reset": "Poner el dispositivo de frente"
+  },
+  "activity": "El agente está usando este dispositivo",
+  "keyboard": "Teclado del simulador",
+  "screenOff": {
+    "title": "Pantalla apagada",
+    "wake": "Activar"
+  },
+  "region": {
+    "connecting": "Conectando con el simulador…",
+    "reconnecting": "Reconectando con el simulador…",
+    "downloading": "Descargando…",
+    "frame": "Cargando el marco del dispositivo…",
+    "screen": "Esperando la pantalla…",
+    "waiting": "Esperando el dispositivo…",
+    "couldntShow": "No se pudo mostrar el simulador",
+    "frameFailed": "No se pudo mostrar el marco del dispositivo.",
+    "unsupported": "Este navegador no puede mostrar video en vivo."
+  },
+  "failures": {
+    "control": "El simulador no pudo hacer eso",
+    "save": "No se pudo guardar el archivo",
+    "hostFilesUnreachable": "No se puede acceder a los archivos del dispositivo en este momento."
+  },
+  "reasons": {
+    "invalid_input": "El simulador no puede aceptar eso.",
+    "device_not_found": "Ese simulador ya no está en este dispositivo.",
+    "ambiguous_device": "Hay más de un simulador con ese nombre.",
+    "device_busy": "Otro chat está usando ese simulador. Ciérralo allí primero.",
+    "stale_ref": "La pantalla cambió antes de que el simulador pudiera actuar.",
+    "timeout": "El simulador no respondió a tiempo.",
+    "unavailable": "No hay simuladores disponibles en este dispositivo.",
+    "recording": "El simulador ya está grabando.",
+    "recording_not_found": "El simulador no está grabando.",
+    "too_many_recordings": "Hay cinco grabaciones en curso en este chat. Detén una primero.",
+    "output_exists": "Ya existe un archivo con ese nombre.",
+    "io_error": "No se pudo escribir el archivo en el dispositivo.",
+    "driver_error": "El simulador no pudo hacer eso.",
+    "device_lost": "El simulador se detuvo.",
+    "cancelled": "Se canceló la solicitud.",
+    "mobile_unavailable": "Los simuladores no pudieron iniciarse en este dispositivo.",
+    "capture_failed": "No se pudo mostrar la pantalla del simulador.",
+    "capture_unavailable": "Este dispositivo no puede mostrar la pantalla del simulador.",
+    "input_failed": "Tu entrada no llegó al simulador.",
+    "no_focused_field": "No hay ningún campo de texto seleccionado al que agregar “{text}”.",
+    "conversation_not_found": "Este chat ya no existe.",
+    "conversation_archived": "Este chat está archivado.",
+    "conversation_busy": "El chat está ocupado. Vuelve a intentarlo en un momento.",
+    "host_stopped": "El dispositivo está detenido.",
+    "device_offline": "El dispositivo está sin conexión.",
+    "cloud_unavailable": "La nube no está disponible en este momento.",
+    "cloud_resetting": "La nube se está restableciendo.",
+    "cloud_capacity": "La nube no tiene espacio en este momento.",
+    "cloud_crash_loop": "La nube se sigue deteniendo.",
+    "host_operation_failed": "El dispositivo no pudo hacer eso.",
+    "unknown_plugin_method": "Esta página está desactualizada. Vuelve a cargarla.",
+    "plugin_disabled": "Los simuladores están desactivados."
+  },
+  "status": "El dispositivo respondió con el estado {status}."
+}

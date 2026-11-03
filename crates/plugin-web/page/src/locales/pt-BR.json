@@ -1,0 +1,43 @@
+{
+  "settings": {
+    "title": "Busca",
+    "keywords": "web, busca, obter, Exa, chave de API, entrar, search, fetch"
+  },
+  "features": {
+    "search": "Busca na web",
+    "searchDescription": "O modelo busca na web com o Exa, usando sua conta ou chave, ou dentro de um limite compartilhado por todos os usuários.",
+    "fetch": "Leitura da web",
+    "fetchDescription": "O modelo lê uma página ou baixa um arquivo a partir do host da conversa."
+  },
+  "account": {
+    "label": "Conta do Exa",
+    "signedIn": "Conectado",
+    "notConnected": "Não conectado",
+    "signOut": "Sair",
+    "signIn": "Entrar"
+  },
+  "key": {
+    "label": "Chave de API",
+    "description": "Oferece todos os filtros, como domínios e datas.",
+    "unchecked": "Não verificada: {reason}",
+    "remove": "Remover",
+    "placeholder": "Chave de API do Exa",
+    "save": "Salvar"
+  },
+  "inUse": {
+    "label": "Em uso",
+    "key": "Sua chave de API",
+    "account": "Sua conta do Exa",
+    "anonymous": "Anônimo, limitado"
+  },
+  "refusals": {
+    "keyRefused": "O Exa recusou esta chave. Verifique se ela foi copiada inteira.",
+    "exaUnavailable": "O Exa não respondeu à busca que verifica a chave. Tente novamente."
+  },
+  "errors": {
+    "signIn": "Não foi possível iniciar o login no Exa",
+    "signOut": "Não foi possível sair do Exa",
+    "saveKey": "Não foi possível salvar a chave",
+    "removeKey": "Não foi possível remover a chave"
+  }
+}

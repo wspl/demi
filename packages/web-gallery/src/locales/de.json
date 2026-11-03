@@ -1,0 +1,82 @@
+{
+  "nav": {
+    "overview": "Übersicht",
+    "signin": "Anmeldung & Einrichtung",
+    "surfaces": "Oberflächen",
+    "primitives": "Grundelemente",
+    "controlLayout": "Layout der Bedienelemente",
+    "writing": "Texte",
+    "errors": "Fehler",
+    "motion": "Bewegung",
+    "overlays": "Overlays",
+    "dialogs": "Dialoge",
+    "files": "Dateien",
+    "session": "Sitzung",
+    "sidebar": "Seitenleiste",
+    "settings": "Einstellungen",
+    "markdown": "Markdown",
+    "phone": "Telefon",
+    "roadmap": "Roadmap",
+    "schedules": "Zeitpläne"
+  },
+  "views": {
+    "errors": {
+      "primitives": "Grundelemente",
+      "conversation": "Chat",
+      "messages": "Nachrichten & Uploads",
+      "forms": "Formulare & Einstellungen",
+      "files": "Dateien"
+    },
+    "signin": {
+      "signin": "Anmelden",
+      "setup": "Einrichtung",
+      "handoff": "Übergabe ans Telefon",
+      "starting": "Start"
+    },
+    "primitives": {
+      "buttons": "Schaltflächen",
+      "fields": "Felder",
+      "marks": "Markierungen"
+    },
+    "overlays": {
+      "menus": "Menüs",
+      "dialogs": "Dialoge"
+    },
+    "files": {
+      "browser": "Browser",
+      "tree": "Baum",
+      "dialogs": "Dialoge"
+    },
+    "session": {
+      "tabs": "Tableiste",
+      "composer": "Eingabefeld",
+      "blocks": "Blöcke",
+      "lengths": "Längen",
+      "changes": "Änderungen",
+      "turns": "Runden",
+      "states": "Zustände",
+      "session": "Sitzung",
+      "panel": "Panel",
+      "windows": "Fenster",
+      "shared": "Geteilte Seite"
+    },
+    "dialogs": {
+      "account": "Konto",
+      "providers": "Anbieter",
+      "devices": "Geräte",
+      "project": "Projekt",
+      "cloud": "Cloud",
+      "skills": "Skills",
+      "search": "Suche"
+    },
+    "page": "Seite",
+    "schedules": {
+      "app": "App",
+      "phone": "Telefon"
+    }
+  },
+  "chrome": {
+    "mode": "Modus",
+    "font": "Schrift"
+  }
+}

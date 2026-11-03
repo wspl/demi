@@ -1,0 +1,15 @@
+{
+  "files": {
+    "offline": "L’appareil est hors ligne.",
+    "notFound": "Il n’existe plus.",
+    "permission": "L’hôte n’autorise pas l’accès.",
+    "exists": "Un élément portant ce nom existe déjà.",
+    "binary": "Ce n’est pas du texte.",
+    "tooLarge": "Il est trop volumineux.",
+    "notRepository": "Il ne se trouve pas dans un dépôt Git.",
+    "other": "L’hôte n’a pas répondu.",
+    "conversationBusy": "La conversation est en train de changer d’hôte.",
+    "selectDevice": "Sélectionnez un appareil connecté.",
+    "searchCut": "La recherche s’est arrêtée avant la fin."
+  }
+}

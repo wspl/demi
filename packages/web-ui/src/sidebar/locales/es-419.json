@@ -1,0 +1,132 @@
+{
+  "nav": {
+    "new": "Nuevo",
+    "search": "Buscar",
+    "archived": "Archivados"
+  },
+  "groups": {
+    "conversations": "Chats",
+    "projects": "Proyectos",
+    "addProject": "Agregar proyecto",
+    "newConversation": "Nuevo chat"
+  },
+  "list": {
+    "loading": "Cargando chats…",
+    "failed": "No se pudieron cargar los chats."
+  },
+  "foot": {
+    "handOff": "Pasar al teléfono",
+    "settings": "Configuración",
+    "updateAvailable": "Demi {version} está disponible",
+    "updating": "Actualizando Demi"
+  },
+  "account": {
+    "label": "Cuenta",
+    "settings": "Configuración",
+    "signOut": "Cerrar sesión"
+  },
+  "row": {
+    "unpin": "Dejar de fijar",
+    "archive": "Archivar"
+  },
+  "project": {
+    "newConversation": "Nuevo chat"
+  },
+  "device": {
+    "removed": "Dispositivo eliminado",
+    "cloud": "Nube"
+  },
+  "dot": {
+    "needsYou": "Necesita tu decisión"
+  },
+  "tab": {
+    "danger": "{count} con errores",
+    "attention": "{count} pendientes",
+    "success": "{count} listos"
+  },
+  "selection": {
+    "open": "Abrir",
+    "rename": "Cambiar nombre",
+    "copyId": "Copiar ID del chat",
+    "pin": "Fijar",
+    "pinMany": "Fijar {count} chats",
+    "unpin": "Dejar de fijar",
+    "unpinMany": "Dejar de fijar {count} chats",
+    "archive": "Archivar",
+    "archiveMany": "Archivar {count} chats",
+    "delete": "Eliminar…",
+    "deleteMany": "Eliminar {count} chats…"
+  },
+  "projectMenu": {
+    "newHere": "Nuevo chat aquí",
+    "fold": "Contraer",
+    "unfold": "Expandir",
+    "select": "Seleccionar chats",
+    "saved": "Mensajes guardados",
+    "savedPerConversation": "Por chat",
+    "savedPerProject": "Por proyecto",
+    "savedNoConversation": "El proyecto no tiene ningún chat que guarde sus mensajes guardados.",
+    "delete": "Eliminar proyecto…"
+  },
+  "delete": {
+    "title": "¿Eliminar “{title}”?",
+    "titleMany": "¿Eliminar {count} chats?",
+    "one": "Se eliminan sus mensajes y archivos. Esta acción no se puede deshacer.",
+    "many": "Se eliminan sus mensajes y archivos. Esta acción no se puede deshacer.",
+    "filesOne": "Los archivos que cambió se quedan en el proyecto.",
+    "filesMany": "Los archivos que cambiaron se quedan en sus proyectos."
+  },
+  "deleteProject": {
+    "title": "¿Eliminar “{name}”?",
+    "archived": "Su chat se archivará. | Sus {count} chats se archivarán.",
+    "files": "Los archivos en {host} no se eliminan."
+  },
+  "savedScope": {
+    "title": "¿Guardar los mensajes guardados por chat?",
+    "body": "El mensaje guardado del proyecto pasa a un chat. | Los {count} mensajes guardados del proyecto pasan a un chat.",
+    "to": "Mover a",
+    "action": "Mover"
+  },
+  "archivedToast": {
+    "title": "Chat archivado | {count} chats archivados",
+    "undo": "Deshacer"
+  },
+  "refused": {
+    "quote": "“{name}”",
+    "line": "{name}: {reasons}",
+    "deleteProject": "No se pudo eliminar el proyecto",
+    "savedScope": "No se pudo cambiar cómo se guardan los mensajes guardados",
+    "reorderProjects": "No se pudieron reordenar los proyectos",
+    "archive": {
+      "one": "No se pudo archivar {name}",
+      "many": "No se pudieron archivar {count} chats"
+    },
+    "restore": {
+      "one": "No se pudo restaurar {name}",
+      "many": "No se pudieron restaurar {count} chats"
+    },
+    "pin": {
+      "one": "No se pudo fijar {name}",
+      "many": "No se pudieron fijar {count} chats"
+    },
+    "unpin": {
+      "one": "No se pudo dejar de fijar {name}",
+      "many": "No se pudo dejar de fijar {count} chats"
+    },
+    "delete": {
+      "one": "No se pudo eliminar {name}",
+      "many": "No se pudieron eliminar {count} chats"
+    },
+    "move": {
+      "one": "No se pudo mover {name}",
+      "many": "No se pudieron mover {count} chats"
+    }
+  },
+  "layout": {
+    "sidebarWidth": "Ancho de la barra lateral",
+    "openSidebar": "Abrir barra lateral",
+    "hideSidebar": "Ocultar barra lateral",
+    "showSidebar": "Mostrar barra lateral",
+    "workPanelWidth": "Ancho del panel de trabajo"
+  }
+}

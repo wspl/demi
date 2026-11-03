@@ -1,0 +1,16 @@
+{
+  "handoff": {
+    "wrongPassword": "Essa não é a sua senha.",
+    "signOutFailed": "Não foi possível desconectar o navegador"
+  },
+  "passkeys": {
+    "held": "Este gerenciador de senhas já tem uma chave-senha para a sua conta.",
+    "renameFailed": "Não foi possível renomear a chave-senha",
+    "removeFailed": "Não foi possível remover a chave-senha"
+  },
+  "login": {
+    "invalidCredentials": "O e-mail ou a senha estão incorretos.",
+    "accountDisabled": "Esta conta está desativada. Peça ao seu administrador para ativá-la.",
+    "signOutFailed": "Não foi possível sair"
+  }
+}

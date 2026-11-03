@@ -1,0 +1,5 @@
+{
+  "failures": {
+    "readChannel": "Impossible de lire un message du canal direct"
+  }
+}

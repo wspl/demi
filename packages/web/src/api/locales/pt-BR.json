@@ -1,0 +1,15 @@
+{
+  "files": {
+    "offline": "O dispositivo está offline.",
+    "notFound": "Não existe mais.",
+    "permission": "O host não permite acesso a ele.",
+    "exists": "Já existe um item com esse nome.",
+    "binary": "Não é texto.",
+    "tooLarge": "É grande demais.",
+    "notRepository": "Não está em um repositório Git.",
+    "other": "O host não respondeu.",
+    "conversationBusy": "A conversa está trocando de host.",
+    "selectDevice": "Selecione um dispositivo conectado.",
+    "searchCut": "A busca parou antes de terminar."
+  }
+}

@@ -15,7 +15,8 @@ import { z } from 'zod'
  * characters: one Han character looks different in Chinese, Japanese and Korean.
  */
 
-export const LANGUAGES = ['en', 'zh-Hans', 'zh-Hant', 'ja', 'ko'] as const
+/** In the language menu's order: English, the languages in Latin letters by their own names, then the others. */
+export const LANGUAGES = ['en', 'de', 'es-419', 'fr', 'pt-BR', 'zh-Hans', 'zh-Hant', 'ja', 'ko'] as const
 
 /** A language Demi speaks, by its BCP 47 tag, as the `language` preference and the catalogues name it. */
 export type Language = (typeof LANGUAGES)[number]
@@ -26,6 +27,10 @@ export type LanguageChoice = 'system' | Language
 /** Each language named in its own language, as the language menu lists it. */
 export const LANGUAGE_NAMES: Readonly<Record<Language, string>> = {
   'en': 'English',
+  'de': 'Deutsch',
+  'es-419': 'Español (Latinoamérica)',
+  'fr': 'Français',
+  'pt-BR': 'Português (Brasil)',
   'zh-Hans': '简体中文',
   'zh-Hant': '繁體中文',
   'ja': '日本語',
@@ -42,6 +47,8 @@ const TRADITIONAL_REGIONS = new Set(['TW', 'HK', 'MO'])
  *   Macao.
  * - Simplified for any other `zh`.
  * - A script the tag names wins over its region.
+ * - Every Spanish is Latin America's and every Portuguese Brazil's, the one
+ *   variant Demi speaks of each, which a reader of another region reads too.
  * - A tag that is not one speaks none.
  */
 function spokenFor(tag: string): Language | null {
@@ -53,9 +60,15 @@ function spokenFor(tag: string): Language | null {
   }
   switch (locale.language) {
     case 'en':
+    case 'de':
+    case 'fr':
     case 'ja':
     case 'ko':
       return locale.language
+    case 'es':
+      return 'es-419'
+    case 'pt':
+      return 'pt-BR'
     case 'zh':
       if (locale.script !== undefined) {
         return locale.script === 'Hant' ? 'zh-Hant' : 'zh-Hans'

@@ -1,0 +1,94 @@
+{
+  "password": {
+    "hint": "Mindestens {count} Zeichen.",
+    "tooShort": "Ein Passwort hat mindestens {count} Zeichen.",
+    "differ": "Die beiden Passwörter stimmen nicht überein.",
+    "required": "Erforderlich"
+  },
+  "page": {
+    "tagline": "Ein Ort zum Denken und Bauen",
+    "taglineBody": "Alles beginnt mit einem Chat."
+  },
+  "account": {
+    "fallback": "Konto"
+  },
+  "signIn": {
+    "title": "Anmelden",
+    "message": "Melde dich mit deiner E-Mail-Adresse an.",
+    "expired": "Deine Sitzung ist abgelaufen. Melde dich erneut an.",
+    "email": "E-Mail-Adresse",
+    "password": "Passwort",
+    "passkey": "Mit Passkey anmelden",
+    "forgot": "Passwort vergessen? Bitte deinen Administrator, es zurückzusetzen.",
+    "locked": "Zu viele fehlgeschlagene Anmeldungen. Versuche es in {time} erneut."
+  },
+  "setup": {
+    "title": "Demi einrichten",
+    "message": "Erstelle das Hauptkonto, das Demi verwaltet.",
+    "taken": "Demi ist bereits eingerichtet. Melde dich mit dem Hauptkonto an.",
+    "name": "Name",
+    "email": "E-Mail-Adresse",
+    "password": "Passwort",
+    "confirm": "Passwort bestätigen",
+    "create": "Konto erstellen",
+    "passkeyTitle": "Passkey hinzufügen",
+    "passkeyMessage": "Melde dich mit Touch ID, Face ID oder deinem Passwort-Manager an. Du kannst ihn auch später in den Einstellungen hinzufügen.",
+    "addPasskey": "Passkey hinzufügen",
+    "skip": "Überspringen"
+  },
+  "choose": {
+    "title": "Wähle dein Passwort",
+    "message": "Wähle ein eigenes Passwort, um fortzufahren.",
+    "new": "Neues Passwort",
+    "confirm": "Neues Passwort bestätigen",
+    "signOut": "Abmelden",
+    "choose": "Passwort festlegen"
+  },
+  "offer": {
+    "label": "Passkey hinzufügen",
+    "title": "Beim nächsten Mal einen Passkey verwenden?",
+    "notNow": "Nicht jetzt",
+    "add": "Passkey hinzufügen",
+    "passwordTitle": "Gib dein Passwort ein",
+    "passwordMessage": "Bestätige deine Identität, um den Passkey hinzuzufügen.",
+    "password": "Passwort",
+    "readyTitle": "Passkey bereit",
+    "readyMessage": "Dein Passwort-Manager hat bereits einen Passkey für Demi."
+  },
+  "unlock": {
+    "ios": "Melde dich mit Face ID oder Touch ID statt mit deinem Passwort an.",
+    "mac": "Melde dich mit Touch ID statt mit deinem Passwort an.",
+    "windows": "Melde dich mit Windows Hello statt mit deinem Passwort an.",
+    "android": "Melde dich mit Fingerabdruck, Gesicht oder Displaysperre statt mit deinem Passwort an.",
+    "other": "Melde dich mit der Bildschirmsperre deines Geräts statt mit deinem Passwort an."
+  },
+  "handoff": {
+    "title": "An dein Telefon übergeben",
+    "confirm": "Bestätige deine Identität. Dein Telefon öffnet dann diese Seite, angemeldet mit diesem Konto.",
+    "scan": "Scanne mit der Kamera deines Telefons.",
+    "done": "An {browser} übergeben.",
+    "codeTitle": "Anmeldecode",
+    "codeConfirm": "Bestätige deine Identität. Ein Code meldet dann das Telefon von {name} mit dem eigenen Konto an.",
+    "codeScan": "Scanne mit der Kamera dieses Telefons.",
+    "codeDone": "Angemeldet auf {browser}.",
+    "readyScan": "Oder scanne mit der Kamera dieses Telefons, um es anzumelden.",
+    "making": "Code wird erstellt",
+    "qr": "QR-Code",
+    "expires": "Läuft ab in {left}",
+    "expired": "Dieser Code ist abgelaufen.",
+    "usePasskey": "Passkey verwenden",
+    "showNew": "Neuen Code anzeigen"
+  },
+  "verify": {
+    "title": "Bestätige deine Identität",
+    "password": "Passwort"
+  },
+  "handoffPage": {
+    "openingTitle": "Übergabe",
+    "openingMessage": "Die Seite deines anderen Geräts wird geöffnet.",
+    "opening": "Wird geöffnet …",
+    "failedTitle": "Übergabe nicht möglich",
+    "expired": "Dieser Code ist abgelaufen oder wurde bereits verwendet. Zeige einen neuen Code an oder melde dich hier an.",
+    "failed": "Der Code hat nicht funktioniert. Zeige einen neuen Code an oder melde dich hier an."
+  }
+}

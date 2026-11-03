@@ -1,0 +1,76 @@
+{
+  "corrections": {
+    "invalidCredentials": "Ce n’est pas votre mot de passe actuel.",
+    "invalidCode": "Ce code est incorrect ou a expiré. Utilisez le plus récent."
+  },
+  "devices": {
+    "revokeFailed": "Impossible de révoquer l’appareil",
+    "renameFailed": "Impossible de renommer l’appareil",
+    "routeFailed": "Impossible de modifier l’itinéraire",
+    "resetNotStarted": "La réinitialisation n’a pas démarré. Vérifiez votre connexion et réessayez."
+  },
+  "portForwards": {
+    "addFailed": "Impossible d’ajouter la redirection",
+    "saveFailed": "Impossible de modifier la redirection",
+    "removeFailed": "Impossible de supprimer la redirection",
+    "retryFailed": "Impossible de réessayer"
+  },
+  "plugins": {
+    "turnOnFailed": "Impossible d’activer le plug-in",
+    "turnOffFailed": "Impossible de désactiver le plug-in",
+    "featureOnFailed": "Impossible d’activer la fonctionnalité",
+    "featureOffFailed": "Impossible de désactiver la fonctionnalité"
+  },
+  "providers": {
+    "saveFailed": "Impossible d’enregistrer le fournisseur",
+    "testFailed": "Impossible de tester le fournisseur",
+    "refreshModelsFailed": "Impossible d’actualiser les modèles",
+    "removeFailed": "Impossible de supprimer le fournisseur",
+    "cliUpdateFailed": "Impossible de mettre à jour l’outil en ligne de commande",
+    "removeAccountFailed": "Impossible de supprimer le compte",
+    "testAccountFailed": "Impossible de tester le compte",
+    "addFailed": "Impossible d’ajouter le fournisseur",
+    "cliReadFailed": "Impossible de lire l’outil en ligne de commande",
+    "checkUpdatesFailed": "Impossible de rechercher des mises à jour",
+    "cliInstallFailed": "Impossible d’installer l’outil en ligne de commande",
+    "usageFailed": "Impossible d’actualiser l’utilisation",
+    "reorderFailed": "Impossible de réorganiser les comptes",
+    "reorderProvidersFailed": "Impossible de réorganiser les fournisseurs",
+    "switchFailed": "Impossible de changer de compte",
+    "cancelLoginFailed": "Impossible d’annuler la connexion",
+    "loginStopped": "Cette connexion n’est plus en cours.",
+    "removeModelFailed": "Impossible de supprimer le modèle"
+  },
+  "subagents": {
+    "turnOnFailed": "Impossible d’activer les sous-agents",
+    "turnOffFailed": "Impossible de désactiver les sous-agents",
+    "limitFailed": "Impossible de modifier la limite",
+    "enableFailed": "Impossible d’activer le profil",
+    "disableFailed": "Impossible de désactiver le profil"
+  },
+  "users": {
+    "newPasswordFailed": "Impossible de créer un nouveau mot de passe",
+    "roleFailed": "Impossible de modifier le rôle",
+    "sharingFailed": "Impossible de modifier le partage des fournisseurs",
+    "cloudStorageFailed": "Impossible de modifier le stockage cloud",
+    "disableFailed": "Impossible de désactiver le compte",
+    "enableFailed": "Impossible d’activer le compte",
+    "signOutFailed": "Impossible de déconnecter le compte",
+    "loading": "Chargement des utilisateurs…",
+    "loadFailed": "Impossible de charger les utilisateurs."
+  },
+  "about": {
+    "acknowledgementsFailed": "Impossible de charger les remerciements."
+  },
+  "updates": {
+    "channelFailed": "Impossible de changer le canal de mise à jour",
+    "prepareAheadFailed": "Impossible de modifier les téléchargements automatiques",
+    "checkFailed": "Impossible de rechercher des mises à jour",
+    "updateFailed": "Impossible de lancer la mise à jour"
+  },
+  "dialog": {
+    "nameFailed": "Impossible de modifier votre nom",
+    "emailFailed": "Impossible de modifier l’adresse e-mail",
+    "passwordFailed": "Impossible de modifier le mot de passe"
+  }
+}

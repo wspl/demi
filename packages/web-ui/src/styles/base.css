@@ -45,6 +45,12 @@
   overflow-wrap: break-word;
 }
 
+/* German joins words into long compounds, which break at a syllable rather
+   than overflow their line. */
+:root:lang(de) {
+  hyphens: auto;
+}
+
 /* Japanese has no spaces, so a line may break between any two characters;
    auto-phrase breaks it between phrases instead, and a word such as
    ワークスペース stays whole. Strict line breaking keeps small kana and the

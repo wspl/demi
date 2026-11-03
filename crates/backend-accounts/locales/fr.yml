@@ -1,0 +1,4 @@
+_version: 1
+verification:
+  subject: "Votre code de vérification Demi"
+  body: "Saisissez %{code} dans Demi pour remplacer l’adresse e-mail de votre compte par %{email}. Le code expire dans %{minutes} minutes.\n\nSi vous n’avez pas demandé cette modification, ignorez cet e-mail."

@@ -1,0 +1,120 @@
+{
+  "reasons": {
+    "invalid_input": "Der Browser öffnet nur Web-, Datei- und leere Seiten.",
+    "tab_not_found": "Diese Seite ist auf dem Gerät nicht mehr geöffnet.",
+    "tab_busy": "Der Tab ist mit einer anderen Anfrage beschäftigt. Versuche es gleich noch einmal.",
+    "stale_ref": "Die Seite hat sich geändert, bevor der Browser reagieren konnte.",
+    "stale_cursor": "Die Aufzeichnungen des Browsers haben sich geändert, bevor sie gelesen werden konnten.",
+    "stale_inventory": "Die Dateien der Seite haben sich geändert, bevor sie gelesen werden konnten.",
+    "stale_tools": "Die Werkzeuge der Seite haben sich geändert, bevor sie verwendet werden konnten.",
+    "target_not_found": "Der Browser konnte das auf der Seite nicht finden.",
+    "ambiguous_target": "Mehr als ein Teil der Seite passt.",
+    "not_actionable": "Dieser Teil der Seite kann gerade nicht verwendet werden.",
+    "timeout": "Der Browser hat nicht rechtzeitig geantwortet.",
+    "dialog_blocked": "Ein Dialog auf der Seite wartet auf eine Antwort.",
+    "dialog_not_found": "Auf der Seite wartet kein Dialog auf eine Antwort.",
+    "invalid_dialog_action": "Der Dialog kann so nicht beantwortet werden.",
+    "history_boundary": "Der Tab hat in dieser Richtung keine Seite.",
+    "navigation_failed": "Der Browser konnte die Seite nicht laden.",
+    "protected_value": "Die Seite hält diesen Wert geheim.",
+    "side_effect_rejected": "Der Browser hat diese Änderung der Seite nicht zugelassen.",
+    "unsupported_result": "Der Browser kann nicht weitergeben, was die Seite geliefert hat.",
+    "unsupported_capability": "Der Browser auf dem Gerät kann das nicht.",
+    "cdp_method_denied": "Der Browser erlaubt das nicht.",
+    "recording": "Der Tab nimmt bereits auf.",
+    "recording_not_found": "Diese Aufnahme wurde entfernt.",
+    "too_many_recordings": "In diesem Chat laufen fünf Aufnahmen. Stoppe zuerst eine.",
+    "output_exists": "Auf dem Gerät gibt es bereits eine Datei mit diesem Namen.",
+    "io_error": "Das Gerät konnte eine Datei, die der Browser braucht, nicht lesen oder schreiben.",
+    "result_too_large": "Die Seite hat mehr geliefert, als der Browser weitergeben kann.",
+    "partial_failure": "Der Browser hat das nur teilweise ausgeführt.",
+    "driver_error": "Beim Browser auf dem Gerät ist ein Problem aufgetreten.",
+    "browser_unavailable": "Der Browser konnte auf dem Gerät nicht starten.",
+    "browser_lost": "Der Browser auf dem Gerät wurde beendet.",
+    "cancelled": "Die Anfrage wurde abgebrochen.",
+    "outcome_unknown": "Die Verbindung zum Browser ist abgebrochen. Das Ergebnis ist unbekannt.",
+    "capture_unavailable": "Dieses Gerät kann die Seiten des Browsers nicht aufzeichnen.",
+    "capture_failed": "Das Gerät konnte die Seite nicht aufzeichnen. Es versucht es erneut.",
+    "capture_stopped": "Das Gerät konnte die Seite nicht aufzeichnen.",
+    "conversation_not_found": "Dieser Chat existiert nicht mehr.",
+    "conversation_archived": "Dieser Chat ist archiviert.",
+    "conversation_busy": "Der Chat ist beschäftigt. Versuche es gleich noch einmal.",
+    "host_stopped": "Die Cloud ist gestoppt.",
+    "device_offline": "Das Gerät ist offline.",
+    "device_not_found": "Das Gerät wurde aus deinem Konto entfernt.",
+    "cloud_unavailable": "Die Cloud ist gerade nicht verfügbar.",
+    "cloud_resetting": "Die Cloud wird zurückgesetzt.",
+    "cloud_capacity": "Auf dem Server ist kein Platz, um die Cloud zu starten.",
+    "cloud_crash_loop": "Die Cloud startet nach wiederholten Fehlern nicht mehr.",
+    "host_operation_failed": "Die Verbindung zum Gerät ist abgebrochen.",
+    "unknown_plugin_method": "Dieser Server kann keinen Browser ausführen.",
+    "plugin_disabled": "Das Browser-Plug-in ist deaktiviert."
+  },
+  "answers": {
+    "none": "Der Server hat nicht geantwortet.",
+    "unreadable": "Die Antwort des Servers konnte nicht gelesen werden.",
+    "refused": "Der Server konnte das nicht ausführen ({status})."
+  },
+  "starting": {
+    "connecting": "Verbindung wird hergestellt …",
+    "cloud": "Cloud wird gestartet …",
+    "download": "Browser wird heruntergeladen …",
+    "browser": "Browser wird gestartet …",
+    "page": "Seite wird geöffnet …"
+  },
+  "failures": {
+    "operate": "Browser konnte nicht bedient werden",
+    "reloadPage": "Seite konnte nicht neu geladen werden",
+    "copyLink": "Link konnte nicht kopiert werden",
+    "paste": "Einsetzen nicht möglich",
+    "openAddress": "Adresse konnte nicht geöffnet werden",
+    "goBack": "Zurück nicht möglich",
+    "goForward": "Vorwärts nicht möglich",
+    "stopLoading": "Laden konnte nicht gestoppt werden",
+    "openPage": "Seite konnte nicht geöffnet werden",
+    "saveDownload": "Download konnte nicht gespeichert werden",
+    "hostFilesUnreachable": "Die Dateien des Hosts sind nicht erreichbar."
+  },
+  "region": {
+    "couldntOpen": "Diese Seite konnte nicht geöffnet werden.",
+    "couldntShow": "Diese Seite konnte nicht angezeigt werden.",
+    "noH264": "Dieser Browser kann kein H.264-Video decodieren.",
+    "waiting": "Warten auf den Host …"
+  },
+  "menu": {
+    "copyLink": "Linkadresse kopieren",
+    "cut": "Ausschneiden",
+    "copy": "Kopieren",
+    "paste": "Einsetzen",
+    "back": "Zurück",
+    "forward": "Vorwärts",
+    "reload": "Neu laden"
+  },
+  "address": {
+    "noBack": "Keine vorherige Seite",
+    "noForward": "Keine nächste Seite"
+  },
+  "downloads": {
+    "title": "Downloads",
+    "save": "Speichern",
+    "showInFiles": "In Dateien anzeigen",
+    "canceled": "Abgebrochen"
+  },
+  "viewport": {
+    "title": "Viewport",
+    "web": "Web",
+    "mobile": "Mobil",
+    "custom": "Eigene {width} × {height} {scale}"
+  },
+  "dialog": {
+    "leavePage": "Seite verlassen?",
+    "says": "{host} meldet",
+    "thisPageSays": "Diese Seite meldet",
+    "answer": "Antworten",
+    "stay": "Bleiben",
+    "leave": "Verlassen",
+    "cancel": "Abbrechen",
+    "ok": "OK"
+  },
+  "browserInput": "Browsereingabe"
+}

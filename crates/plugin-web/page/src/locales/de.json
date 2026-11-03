@@ -1,0 +1,43 @@
+{
+  "settings": {
+    "title": "Suche",
+    "keywords": "Web, Suche, Abruf, Exa, API-Schlüssel, Anmelden, search, fetch"
+  },
+  "features": {
+    "search": "Websuche",
+    "searchDescription": "Das Modell durchsucht das Web mit Exa, mit deinem Konto oder Schlüssel oder innerhalb eines Limits, das alle Benutzer teilen.",
+    "fetch": "Webabruf",
+    "fetchDescription": "Das Modell liest eine Seite oder lädt eine Datei vom Host des Chats herunter."
+  },
+  "account": {
+    "label": "Exa-Konto",
+    "signedIn": "Angemeldet",
+    "notConnected": "Nicht verbunden",
+    "signOut": "Abmelden",
+    "signIn": "Anmelden"
+  },
+  "key": {
+    "label": "API-Schlüssel",
+    "description": "Bietet alle Filter, etwa nach Domains und Daten.",
+    "unchecked": "Nicht geprüft: {reason}",
+    "remove": "Entfernen",
+    "placeholder": "Exa-API-Schlüssel",
+    "save": "Speichern"
+  },
+  "inUse": {
+    "label": "Verwendet",
+    "key": "Dein API-Schlüssel",
+    "account": "Dein Exa-Konto",
+    "anonymous": "Anonym, begrenzt"
+  },
+  "refusals": {
+    "keyRefused": "Exa hat diesen Schlüssel abgelehnt. Prüfe, ob er vollständig kopiert wurde.",
+    "exaUnavailable": "Exa hat nicht auf die Suche geantwortet, die den Schlüssel prüft. Versuche es erneut."
+  },
+  "errors": {
+    "signIn": "Exa-Anmeldung konnte nicht gestartet werden",
+    "signOut": "Abmelden von Exa nicht möglich",
+    "saveKey": "Schlüssel konnte nicht gespeichert werden",
+    "removeKey": "Schlüssel konnte nicht entfernt werden"
+  }
+}

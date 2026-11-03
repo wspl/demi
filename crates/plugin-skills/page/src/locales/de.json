@@ -1,0 +1,92 @@
+{
+  "title": "Skills",
+  "description": "Gebündelte Workflows, denen der Agent folgen kann.",
+  "keywords": "Skill,Workflow,Git,SKILL.md,Fähigkeit",
+  "places": {
+    "global": "Global",
+    "globalDescription": "In jedem Arbeitsbereich verfügbar.",
+    "workspaceDescription": "Nur in diesem Arbeitsbereich verfügbar."
+  },
+  "sources": {
+    "add": "Quelle hinzufügen …",
+    "none": "Keine Quellen",
+    "adding": "Wird hinzugefügt",
+    "updating": "Wird aktualisiert",
+    "failed": "Fehlgeschlagen",
+    "updateAvailable": "Update verfügbar",
+    "enableAll": "Alle Skills in {name} aktivieren",
+    "update": "Aktualisieren",
+    "remove": "Entfernen"
+  },
+  "fetcher": {
+    "label": "Abrufen mit",
+    "hint": "Ein Gerät ruft mit seinem eigenen Git, seinen Schlüsseln und seinem Netzwerk ab, was eine SSH-Adresse braucht.",
+    "server": "Server",
+    "via": "über {name}",
+    "waiting": "Warten auf {name}",
+    "offline": "{name} ist offline.",
+    "removed": "Entferntes Gerät",
+    "removedLabel": "Gerät entfernt",
+    "removedDetail": "Das Gerät, das die Quelle abgerufen hat, ist nicht mehr gekoppelt. Wähle ein anderes zum Abrufen."
+  },
+  "skill": {
+    "warning": "Warnung",
+    "nameTaken": "Name vergeben",
+    "nameTakenDetail": "Ein Skill namens „{name}“ aus {origin} ({place}) ist aktiviert. Deaktiviere ihn, um diesen zu verwenden.",
+    "neverOffered": "Nie angeboten",
+    "neverOfferedDetail": "Er setzt disable-model-invocation.",
+    "notASkill": "Kein Skill: {reason}"
+  },
+  "removeSource": {
+    "title": "„{name}“ entfernen?",
+    "withSkills": "Seine Skills werden mit entfernt. Du kannst das Repository später erneut hinzufügen.",
+    "empty": "Die Quelle verschwindet aus deinen Skills. Du kannst das Repository später erneut hinzufügen.",
+    "more": "und {count} weitere"
+  },
+  "addSource": {
+    "title": "Quelle hinzufügen",
+    "hint": "Ein Git-Repository. Jede SKILL.md darin ist ein Skill.",
+    "repository": "Repository",
+    "repositoryHint": "besitzer/repository, eine Git-URL oder eine SSH-Adresse.",
+    "browse": "skills.sh durchsuchen",
+    "cancel": "Abbrechen"
+  },
+  "failures": {
+    "add": "Quelle konnte nicht hinzugefügt werden",
+    "update": "Quelle konnte nicht aktualisiert werden",
+    "remove": "Quelle konnte nicht entfernt werden",
+    "switchSkill": "Skill konnte nicht umgeschaltet werden",
+    "switchSkills": "Skills konnten nicht umgeschaltet werden",
+    "setFetcher": "Abrufendes Gerät konnte nicht geändert werden"
+  },
+  "permissions": {
+    "skills_manage": {
+      "action": "Skills zu verwalten",
+      "description": "Damit können die Agenten dieses Chats Skill-Quellen hinzufügen, aktualisieren und entfernen sowie Skills aktivieren und deaktivieren. Globale Skills erreichen jeden Chat, die Skills eines Arbeitsbereichs die Chats dieses Arbeitsbereichs, und aktivierte Skills werden auf den Hosts installiert, die diese Chats verwenden."
+    }
+  },
+  "problems": {
+    "fetch": {
+      "repository_too_large": "Das Repository ist größer als {limit}.",
+      "no_commit": "Das Repository hat keine Commits.",
+      "files_too_large": "Die Dateien der Skills sind größer als {limit}.",
+      "no_skill": "Das Repository enthält keine Skills."
+    },
+    "skip": {
+      "too_large": "SKILL.md ist größer als {limit}.",
+      "not_utf8": "SKILL.md ist nicht UTF-8.",
+      "no_front_matter": "SKILL.md hat keinen Front Matter.",
+      "front_matter_invalid": "Der Front Matter ist kein gültiges YAML.",
+      "no_description": "Der Front Matter hat keine Beschreibung."
+    }
+  },
+  "refusals": {
+    "invalid_origin": "Gib besitzer/repository, eine Git-URL oder eine SSH-Adresse ein.",
+    "source_exists": "{origin} ist bereits hinzugefügt.",
+    "source_exists_in": "{origin} ist bereits hinzugefügt, in {place}.",
+    "workspace_not_found": "Dieser Arbeitsbereich existiert nicht mehr.",
+    "ssh_needs_device": "Eine SSH-Adresse braucht eines deiner Geräte zum Abrufen.",
+    "fetcher_offline": "{name} ist offline.",
+    "fetcher_not_found": "Dieses Gerät ist nicht mehr gekoppelt."
+  }
+}

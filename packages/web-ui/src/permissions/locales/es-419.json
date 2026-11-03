@@ -1,0 +1,60 @@
+{
+  "request": {
+    "allowTitle": "¿Permitir a este chat {action}?",
+    "agentRan": "El agente ejecutó",
+    "subagentRan": "El subagente {number}, “{description}”, ejecutó",
+    "deny": "Denegar",
+    "allowConversation": "Permitir en este chat",
+    "decline": "Rechazar",
+    "save": "Guardar",
+    "updateCredential": "Actualizar la credencial",
+    "saveCredential": "Guardar una credencial",
+    "kept": {
+      "1h": "Se conserva 1 hora",
+      "1d": "Se conserva 1 día",
+      "30d": "Se conserva 30 días",
+      "always": "Se conserva hasta que la elimines"
+    },
+    "needsValues": "Todos los campos necesitan un valor.",
+    "progress": "{position} / {count}"
+  },
+  "useCredential": "usar la credencial “{name}”",
+  "host": {
+    "reach": "acceder a {host}",
+    "pair": "vincular una computadora y acceder a ella"
+  },
+  "categories": {
+    "credentials_use": {
+      "action": "usar tus credenciales",
+      "description": "Permite que los agentes de este chat enumeren, lean, guarden, reemplacen y eliminen tus credenciales guardadas, y que te pidan otras nuevas."
+    },
+    "host_use": {
+      "action": "usar tus dispositivos",
+      "description": "Permite que los agentes de este chat ejecuten comandos en tu nombre en cualquiera de tus dispositivos y en la nube, muevan este chat a uno de ellos, vinculen una computadora con tu cuenta y agreguen o eliminen reenvíos de puertos, que siguen activos después de este chat."
+    },
+    "providers_manage": {
+      "action": "administrar proveedores",
+      "description": "Agregar, cambiar y eliminar tus entradas de proveedores y sus modelos, que todos tus chats pueden usar."
+    },
+    "conversation_use": {
+      "action": "usar tus otros chats",
+      "description": "Permite que los agentes de este chat enumeren tus chats, lean lo que contiene cualquiera de ellos, les envíen mensajes y empiecen chats nuevos. Lo que leen se envía al proveedor del modelo de este chat."
+    },
+    "agent_profiles": {
+      "action": "cambiar los perfiles de subagentes",
+      "description": "Crear, editar y eliminar los perfiles de subagentes que todos tus chats pueden usar."
+    },
+    "agent_workflow": {
+      "action": "cambiar su flujo de trabajo",
+      "description": "Elegir el flujo de trabajo con el que trabaja este chat, como lo hace el menú Flujo de trabajo del redactor."
+    }
+  },
+  "notificationsCard": {
+    "title": "El agente no puede notificarte",
+    "body": "Ninguno de tus navegadores tiene las notificaciones activadas. Actívalas para saber cuándo el agente termina o te necesita, incluso con Demi cerrado.",
+    "blocked": "Las notificaciones están bloqueadas en la configuración del sitio de este navegador.",
+    "unsupported": "Este navegador no admite notificaciones.",
+    "dismiss": "Descartar",
+    "turnOn": "Activar notificaciones"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "title": "Rechercher",
+  "placeholder": "Rechercher dans les conversations",
+  "failed": "Impossible de lancer la recherche.",
+  "searching": "Recherche…",
+  "list": "Conversations",
+  "archived": "Archivées",
+  "noConversations": "Aucune conversation",
+  "noResults": "Aucun résultat",
+  "placeholderIn": "Rechercher dans les messages",
+  "scope": "Cette conversation",
+  "scopeRemove": "Rechercher dans toutes les conversations",
+  "typeToSearch": "Saisissez du texte pour rechercher dans cette conversation",
+  "messages": "Messages",
+  "you": "Vous",
+  "agent": "Agent",
+  "limited": "Affichage du résultat le plus récent | Affichage des {count} résultats les plus récents"
+}

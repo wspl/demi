@@ -129,6 +129,8 @@ fn page_language(headers: &HeaderMap) -> Language {
 ///   Macao.
 /// - Simplified for any other `zh`.
 /// - A script the tag names wins over its region.
+/// - Every Spanish is Latin America's and every Portuguese Brazil's, the one
+///   variant Demi speaks of each.
 ///
 /// The page resolves its own language; this reads only a request's
 /// `Accept-Language`.
@@ -136,6 +138,10 @@ fn spoken_for(tag: &str) -> Option<Language> {
     let mut subtags = tag.split(['-', '_']);
     match subtags.next()?.to_ascii_lowercase().as_str() {
         "en" => Some(Language::English),
+        "de" => Some(Language::German),
+        "es" => Some(Language::LatinAmericanSpanish),
+        "fr" => Some(Language::French),
+        "pt" => Some(Language::BrazilianPortuguese),
         "ja" => Some(Language::Japanese),
         "ko" => Some(Language::Korean),
         "zh" => {

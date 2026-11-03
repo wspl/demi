@@ -1,0 +1,43 @@
+{
+  "settings": {
+    "title": "Recherche",
+    "keywords": "web, recherche, récupération, Exa, clé API, connexion, search, fetch"
+  },
+  "features": {
+    "search": "Recherche web",
+    "searchDescription": "Le modèle effectue des recherches sur le web avec Exa, avec votre compte ou votre clé, ou dans une limite partagée par tous les utilisateurs.",
+    "fetch": "Récupération web",
+    "fetchDescription": "Le modèle lit une page ou télécharge un fichier depuis l’hôte de la conversation."
+  },
+  "account": {
+    "label": "Compte Exa",
+    "signedIn": "Connecté",
+    "notConnected": "Non connecté",
+    "signOut": "Se déconnecter",
+    "signIn": "Se connecter"
+  },
+  "key": {
+    "label": "Clé API",
+    "description": "Propose tous les filtres, comme les domaines et les dates.",
+    "unchecked": "Non vérifiée : {reason}",
+    "remove": "Supprimer",
+    "placeholder": "Clé API Exa",
+    "save": "Enregistrer"
+  },
+  "inUse": {
+    "label": "Utilisé",
+    "key": "Votre clé API",
+    "account": "Votre compte Exa",
+    "anonymous": "Anonyme, limité"
+  },
+  "refusals": {
+    "keyRefused": "Exa a refusé cette clé. Vérifiez qu’elle a été copiée en entier.",
+    "exaUnavailable": "Exa n’a pas répondu à la recherche qui vérifie la clé. Réessayez."
+  },
+  "errors": {
+    "signIn": "Impossible de lancer la connexion à Exa",
+    "signOut": "Impossible de se déconnecter d’Exa",
+    "saveKey": "Impossible d’enregistrer la clé",
+    "removeKey": "Impossible de supprimer la clé"
+  }
+}

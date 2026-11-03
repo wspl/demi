@@ -1,0 +1,60 @@
+{
+  "failures": {
+    "uploadAttachment": "No se pudo cargar el archivo adjunto",
+    "answerRequest": "No se pudo responder la solicitud",
+    "changeWorkPanel": "No se pudo cambiar el panel de trabajo",
+    "saveDraft": "No se pudo guardar el borrador",
+    "sendComment": "No se pudo enviar el comentario",
+    "saveMessage": "No se pudo guardar el mensaje",
+    "deleteMessage": "No se pudo eliminar el mensaje",
+    "saveDrafts": "No se pudieron guardar los borradores",
+    "restoreDrafts": "No se pudieron restaurar los borradores",
+    "readDraft": "No se pudo leer el borrador",
+    "readSaved": "No se pudieron leer los mensajes guardados",
+    "readRecentCost": "No se pudo leer el costo reciente",
+    "readAgents": "No se pudieron leer los agentes",
+    "readMessages": "No se pudieron leer los mensajes",
+    "updateConversations": "No se pudieron actualizar los chats",
+    "deleteConversations": "No se pudieron eliminar los chats",
+    "renameConversation": "No se pudo cambiar el nombre del chat",
+    "reorderConversations": "No se pudieron reordenar los chats",
+    "updateReadStatus": "No se pudo actualizar el estado de lectura",
+    "reloadConversation": "No se pudo volver a cargar el chat",
+    "detachDevice": "No se pudo desconectar el dispositivo",
+    "changeModel": "No se pudo cambiar el modelo",
+    "changeWorkflow": "No se pudo cambiar el flujo de trabajo",
+    "pauseSchedule": "No se pudo cambiar la programación",
+    "deleteSchedule": "No se pudo eliminar la programación",
+    "clearDraft": "No se pudo borrar el borrador",
+    "recallMessage": "No se pudo recuperar el mensaje",
+    "connectionLost": "Se perdió la conexión",
+    "connectionLostMessage": "Es posible que Demi no haya recibido tu solicitud. Revisa el chat cuando se vuelva a conectar.",
+    "requestNotAccepted": "El chat no aceptó la solicitud.",
+    "fieldsNotUpdated": "Algunos campos no se actualizaron.",
+    "readFileWatch": "No se pudo leer un mensaje de la supervisión de archivos",
+    "readSideQuestions": "No se pudieron leer las preguntas al margen",
+    "askSideQuestion": "No se pudo preguntar",
+    "sendFollowUp": "No se pudo enviar la pregunta de seguimiento",
+    "retrySideQuestion": "No se pudo reintentar",
+    "stopSideQuestion": "No se pudo detener",
+    "deleteSideQuestion": "No se pudo eliminar",
+    "foldSideQuestion": "No se pudo cambiar la pregunta al margen"
+  },
+  "drafts": {
+    "storeFailed": "Este navegador no pudo guardar tus borradores.",
+    "readFailed": "Este navegador no pudo leer los borradores guardados.",
+    "missingFile": "Archivo"
+  },
+  "commentsReplaced": "Se eliminó {count} comentario con su respuesta | Se eliminaron {count} comentarios con sus respuestas",
+  "savedDeleted": "Mensaje guardado eliminado",
+  "composer": {
+    "cloudResetting": "La nube se está restableciendo."
+  },
+  "workflows": {
+    "hostSilent": "El host no respondió."
+  },
+  "uploads": {
+    "notUploaded": "{name} no se cargó. {reason}",
+    "notKept": "{name} no está cargado. Vuelve a adjuntarlo."
+  }
+}

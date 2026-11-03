@@ -1,0 +1,60 @@
+{
+  "request": {
+    "allowTitle": "Diesem Chat erlauben, {action}?",
+    "agentRan": "Der Agent hat ausgeführt",
+    "subagentRan": "Subagent {number}, „{description}“, hat ausgeführt",
+    "deny": "Ablehnen",
+    "allowConversation": "Für diesen Chat erlauben",
+    "decline": "Ablehnen",
+    "save": "Speichern",
+    "updateCredential": "Zugangsdaten aktualisieren",
+    "saveCredential": "Zugangsdaten speichern",
+    "kept": {
+      "1h": "1 Stunde behalten",
+      "1d": "1 Tag behalten",
+      "30d": "30 Tage behalten",
+      "always": "Behalten, bis du sie entfernst"
+    },
+    "needsValues": "Jedes Feld braucht einen Wert.",
+    "progress": "{position} / {count}"
+  },
+  "useCredential": "die Zugangsdaten „{name}“ zu verwenden",
+  "host": {
+    "reach": "{host} zu erreichen",
+    "pair": "einen Computer zu koppeln und ihn zu erreichen"
+  },
+  "categories": {
+    "credentials_use": {
+      "action": "deine Zugangsdaten zu verwenden",
+      "description": "Damit können die Agenten dieses Chats deine gespeicherten Zugangsdaten auflisten, lesen, speichern, ersetzen und entfernen und dich nach neuen fragen."
+    },
+    "host_use": {
+      "action": "deine Geräte zu verwenden",
+      "description": "Damit können die Agenten dieses Chats auf jedem deiner Geräte und in der Cloud Befehle in deinem Namen ausführen, diesen Chat auf eines davon verschieben, einen Computer mit deinem Konto koppeln und Portweiterleitungen hinzufügen und entfernen, die über diesen Chat hinaus bestehen bleiben."
+    },
+    "providers_manage": {
+      "action": "Anbieter zu verwalten",
+      "description": "Deine Anbietereinträge und ihre Modelle hinzufügen, ändern und entfernen, die jeder deiner Chats verwenden kann."
+    },
+    "conversation_use": {
+      "action": "deine anderen Chats zu verwenden",
+      "description": "Damit können die Agenten dieses Chats deine Chats auflisten, lesen, was jeder davon enthält, ihnen Nachrichten senden und neue starten. Was sie lesen, geht an den Modellanbieter dieses Chats."
+    },
+    "agent_profiles": {
+      "action": "Subagent-Profile zu ändern",
+      "description": "Die Subagent-Profile erstellen, bearbeiten und löschen, die jeder deiner Chats verwenden kann."
+    },
+    "agent_workflow": {
+      "action": "seinen Workflow zu ändern",
+      "description": "Den Workflow wählen, mit dem dieser Chat arbeitet, wie es das Workflow-Menü des Eingabefelds tut."
+    }
+  },
+  "notificationsCard": {
+    "title": "Der Agent kann dich nicht benachrichtigen",
+    "body": "In keinem deiner Browser sind Benachrichtigungen aktiviert. Aktiviere sie, um zu erfahren, wenn der Agent fertig ist oder dich braucht, auch wenn Demi geschlossen ist.",
+    "blocked": "Benachrichtigungen sind in den Website-Einstellungen dieses Browsers blockiert.",
+    "unsupported": "Dieser Browser unterstützt keine Benachrichtigungen.",
+    "dismiss": "Ausblenden",
+    "turnOn": "Benachrichtigungen aktivieren"
+  }
+}

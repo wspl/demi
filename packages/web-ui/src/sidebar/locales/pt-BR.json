@@ -1,0 +1,132 @@
+{
+  "nav": {
+    "new": "Nova",
+    "search": "Buscar",
+    "archived": "Arquivadas"
+  },
+  "groups": {
+    "conversations": "Conversas",
+    "projects": "Projetos",
+    "addProject": "Adicionar projeto",
+    "newConversation": "Nova conversa"
+  },
+  "list": {
+    "loading": "Carregando conversas…",
+    "failed": "Não foi possível carregar as conversas."
+  },
+  "foot": {
+    "handOff": "Passar para o celular",
+    "settings": "Configurações",
+    "updateAvailable": "O Demi {version} está disponível",
+    "updating": "Atualizando o Demi"
+  },
+  "account": {
+    "label": "Conta",
+    "settings": "Configurações",
+    "signOut": "Sair"
+  },
+  "row": {
+    "unpin": "Desafixar",
+    "archive": "Arquivar"
+  },
+  "project": {
+    "newConversation": "Nova conversa"
+  },
+  "device": {
+    "removed": "Dispositivo removido",
+    "cloud": "Nuvem"
+  },
+  "dot": {
+    "needsYou": "Precisa da sua decisão"
+  },
+  "tab": {
+    "danger": "{count} com falha",
+    "attention": "{count} a fazer",
+    "success": "{count} concluídas"
+  },
+  "selection": {
+    "open": "Abrir",
+    "rename": "Renomear",
+    "copyId": "Copiar ID da conversa",
+    "pin": "Fixar",
+    "pinMany": "Fixar {count} conversas",
+    "unpin": "Desafixar",
+    "unpinMany": "Desafixar {count} conversas",
+    "archive": "Arquivar",
+    "archiveMany": "Arquivar {count} conversas",
+    "delete": "Excluir…",
+    "deleteMany": "Excluir {count} conversas…"
+  },
+  "projectMenu": {
+    "newHere": "Nova conversa aqui",
+    "fold": "Recolher",
+    "unfold": "Expandir",
+    "select": "Selecionar conversas",
+    "saved": "Mensagens salvas",
+    "savedPerConversation": "Por conversa",
+    "savedPerProject": "Por projeto",
+    "savedNoConversation": "O projeto não tem nenhuma conversa para guardar as mensagens salvas.",
+    "delete": "Excluir projeto…"
+  },
+  "delete": {
+    "title": "Excluir “{title}”?",
+    "titleMany": "Excluir {count} conversas?",
+    "one": "As mensagens e os arquivos dela são excluídos. Não é possível desfazer.",
+    "many": "As mensagens e os arquivos delas são excluídos. Não é possível desfazer.",
+    "filesOne": "Os arquivos que ela alterou permanecem no projeto.",
+    "filesMany": "Os arquivos que elas alteraram permanecem nos projetos delas."
+  },
+  "deleteProject": {
+    "title": "Excluir “{name}”?",
+    "archived": "A conversa dele será arquivada. | As {count} conversas dele serão arquivadas.",
+    "files": "Os arquivos em {host} não são excluídos."
+  },
+  "savedScope": {
+    "title": "Guardar as mensagens salvas por conversa?",
+    "body": "A mensagem salva do projeto vai para uma conversa. | As {count} mensagens salvas do projeto vão para uma conversa.",
+    "to": "Mover para",
+    "action": "Mover"
+  },
+  "archivedToast": {
+    "title": "Conversa arquivada | {count} conversas arquivadas",
+    "undo": "Desfazer"
+  },
+  "refused": {
+    "quote": "“{name}”",
+    "line": "{name}: {reasons}",
+    "deleteProject": "Não foi possível excluir o projeto",
+    "savedScope": "Não foi possível alterar como as mensagens salvas são guardadas",
+    "reorderProjects": "Não foi possível reordenar os projetos",
+    "archive": {
+      "one": "Não foi possível arquivar {name}",
+      "many": "Não foi possível arquivar {count} conversas"
+    },
+    "restore": {
+      "one": "Não foi possível restaurar {name}",
+      "many": "Não foi possível restaurar {count} conversas"
+    },
+    "pin": {
+      "one": "Não foi possível fixar {name}",
+      "many": "Não foi possível fixar {count} conversas"
+    },
+    "unpin": {
+      "one": "Não foi possível desafixar {name}",
+      "many": "Não foi possível desafixar {count} conversas"
+    },
+    "delete": {
+      "one": "Não foi possível excluir {name}",
+      "many": "Não foi possível excluir {count} conversas"
+    },
+    "move": {
+      "one": "Não foi possível mover {name}",
+      "many": "Não foi possível mover {count} conversas"
+    }
+  },
+  "layout": {
+    "sidebarWidth": "Largura da barra lateral",
+    "openSidebar": "Abrir barra lateral",
+    "hideSidebar": "Ocultar barra lateral",
+    "showSidebar": "Mostrar barra lateral",
+    "workPanelWidth": "Largura do painel de trabalho"
+  }
+}

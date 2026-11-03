@@ -1,0 +1,60 @@
+{
+  "request": {
+    "allowTitle": "Permitir que esta conversa possa {action}?",
+    "agentRan": "O agente executou",
+    "subagentRan": "O subagente {number}, “{description}”, executou",
+    "deny": "Negar",
+    "allowConversation": "Permitir nesta conversa",
+    "decline": "Recusar",
+    "save": "Salvar",
+    "updateCredential": "Atualizar a credencial",
+    "saveCredential": "Salvar uma credencial",
+    "kept": {
+      "1h": "Mantida por 1 hora",
+      "1d": "Mantida por 1 dia",
+      "30d": "Mantida por 30 dias",
+      "always": "Mantida até você removê-la"
+    },
+    "needsValues": "Todos os campos precisam de um valor.",
+    "progress": "{position} / {count}"
+  },
+  "useCredential": "usar a credencial “{name}”",
+  "host": {
+    "reach": "acessar {host}",
+    "pair": "parear um computador e acessá-lo"
+  },
+  "categories": {
+    "credentials_use": {
+      "action": "usar suas credenciais",
+      "description": "Permite que os agentes desta conversa listem, leiam, salvem, substituam e removam suas credenciais salvas, e peçam novas a você."
+    },
+    "host_use": {
+      "action": "usar seus dispositivos",
+      "description": "Permite que os agentes desta conversa executem comandos em seu nome em qualquer um dos seus dispositivos e na nuvem, movam esta conversa para um deles, pareiem um computador com sua conta e adicionem ou removam encaminhamentos de porta, que continuam depois desta conversa."
+    },
+    "providers_manage": {
+      "action": "gerenciar provedores",
+      "description": "Adicionar, alterar e remover suas entradas de provedores e os modelos delas, que todas as suas conversas podem usar."
+    },
+    "conversation_use": {
+      "action": "usar suas outras conversas",
+      "description": "Permite que os agentes desta conversa listem suas conversas, leiam o que qualquer uma delas contém, enviem mensagens a elas e iniciem novas. O que eles leem vai para o provedor do modelo desta conversa."
+    },
+    "agent_profiles": {
+      "action": "alterar os perfis de subagentes",
+      "description": "Criar, editar e excluir os perfis de subagentes que todas as suas conversas podem usar."
+    },
+    "agent_workflow": {
+      "action": "alterar o fluxo de trabalho dela",
+      "description": "Escolher o fluxo de trabalho com que esta conversa trabalha, como faz o menu Fluxo de trabalho do campo de mensagem."
+    }
+  },
+  "notificationsCard": {
+    "title": "O agente não pode notificar você",
+    "body": "Nenhum dos seus navegadores tem as notificações ativadas. Ative-as para saber quando o agente terminar ou precisar de você, mesmo com o Demi fechado.",
+    "blocked": "As notificações estão bloqueadas nas configurações do site neste navegador.",
+    "unsupported": "Este navegador não é compatível com notificações.",
+    "dismiss": "Dispensar",
+    "turnOn": "Ativar notificações"
+  }
+}

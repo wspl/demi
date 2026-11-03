@@ -1,0 +1,60 @@
+{
+  "chip": "{count} agendados",
+  "delete": "Excluir",
+  "notYet": "Ainda não foi ativado",
+  "trigger": {
+    "once": "Uma vez · {when}",
+    "change": "Quando a saída muda · {interval}",
+    "url": "Quando uma URL é chamada",
+    "interval": {
+      "minutes": "{count} min",
+      "hours": "{count} hora | {count} horas",
+      "days": "{count} dia | {count} dias"
+    }
+  },
+  "wake": {
+    "failed": "A última ativação falhou",
+    "skipped": "A última ativação foi ignorada"
+  },
+  "words": {
+    "interval": {
+      "minutes": "A cada minuto | A cada {count} min",
+      "hours": "A cada hora | A cada {count} horas",
+      "days": "Todo dia | A cada {count} dias"
+    },
+    "daily": "Todo dia {time}",
+    "weekdays": "Dias úteis {time}",
+    "weekly": "A cada {day} {time}",
+    "days": "{days} {time}",
+    "repeat": {
+      "days": "Todo dia | A cada {count} dias",
+      "weeks": "Toda semana | A cada {count} semanas",
+      "months": "Todo mês | A cada {count} meses",
+      "years": "Todo ano | A cada {count} anos"
+    },
+    "tasks": "{count} tarefa | {count} tarefas",
+    "date": "Dia {date}",
+    "lastDay": "Último dia",
+    "week": {
+      "first": "{weekday} da primeira semana",
+      "second": "{weekday} da segunda semana",
+      "third": "{weekday} da terceira semana",
+      "fourth": "{weekday} da quarta semana",
+      "last": "{weekday} da última semana"
+    },
+    "workingDay": {
+      "first": "Primeiro dia útil",
+      "last": "Último dia útil"
+    },
+    "moment": "{day} {time}",
+    "monthDate": "{date} de {month}",
+    "dayOfMonth": "{day} de {month}"
+  },
+  "note": {
+    "offline": "{device} estava offline",
+    "limit": "O limite de {limit} execuções por dia foi atingido, com {calls} chamada desde então | O limite de {limit} execuções por dia foi atingido, com {calls} chamadas desde então",
+    "timedOut": "O comando passou de 60 segundos",
+    "commandFailed": "O comando falhou: {message}"
+  },
+  "mark": "Agendamentos ativam esta conversa"
+}

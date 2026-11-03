@@ -1,0 +1,120 @@
+{
+  "reasons": {
+    "invalid_input": "Le navigateur n’ouvre que des pages web, des fichiers et des pages vierges.",
+    "tab_not_found": "Cette page n’est plus ouverte sur l’appareil.",
+    "tab_busy": "L’onglet traite une autre demande. Réessayez dans un instant.",
+    "stale_ref": "La page a changé avant que le navigateur puisse agir.",
+    "stale_cursor": "Les enregistrements du navigateur ont changé avant de pouvoir être lus.",
+    "stale_inventory": "Les fichiers de la page ont changé avant de pouvoir être lus.",
+    "stale_tools": "Les outils de la page ont changé avant de pouvoir être utilisés.",
+    "target_not_found": "Le navigateur n’a pas trouvé cet élément sur la page.",
+    "ambiguous_target": "Plusieurs parties de la page correspondent.",
+    "not_actionable": "Cette partie de la page ne peut pas être utilisée pour le moment.",
+    "timeout": "Le navigateur n’a pas répondu à temps.",
+    "dialog_blocked": "Une boîte de dialogue de la page attend une réponse.",
+    "dialog_not_found": "Aucune boîte de dialogue de la page n’attend de réponse.",
+    "invalid_dialog_action": "La boîte de dialogue ne peut pas recevoir cette réponse.",
+    "history_boundary": "L’onglet n’a aucune page dans cette direction.",
+    "navigation_failed": "Le navigateur n’a pas pu charger la page.",
+    "protected_value": "La page garde cette valeur privée.",
+    "side_effect_rejected": "Le navigateur n’a pas laissé cette action modifier la page.",
+    "unsupported_result": "Le navigateur ne peut pas transmettre ce que la page a renvoyé.",
+    "unsupported_capability": "Le navigateur de l’appareil ne peut pas le faire.",
+    "cdp_method_denied": "Le navigateur ne l’autorise pas.",
+    "recording": "L’onglet enregistre déjà.",
+    "recording_not_found": "Cet enregistrement a été supprimé.",
+    "too_many_recordings": "Cinq enregistrements sont en cours dans cette conversation. Arrêtez-en un d’abord.",
+    "output_exists": "Un fichier portant ce nom existe déjà sur l’appareil.",
+    "io_error": "L’appareil n’a pas pu lire ou écrire un fichier dont le navigateur a besoin.",
+    "result_too_large": "La page a renvoyé plus que ce que le navigateur peut transmettre.",
+    "partial_failure": "Le navigateur n’en a fait qu’une partie.",
+    "driver_error": "Le navigateur de l’appareil a rencontré un problème.",
+    "browser_unavailable": "Le navigateur n’a pas pu démarrer sur l’appareil.",
+    "browser_lost": "Le navigateur de l’appareil s’est arrêté.",
+    "cancelled": "La demande a été annulée.",
+    "outcome_unknown": "La connexion au navigateur a été coupée. Le résultat est inconnu.",
+    "capture_unavailable": "Cet appareil ne peut pas capturer les pages du navigateur.",
+    "capture_failed": "L’appareil n’a pas pu capturer la page. Nouvel essai en cours.",
+    "capture_stopped": "L’appareil n’a pas pu capturer la page.",
+    "conversation_not_found": "Cette conversation n’existe plus.",
+    "conversation_archived": "Cette conversation est archivée.",
+    "conversation_busy": "La conversation est occupée. Réessayez dans un instant.",
+    "host_stopped": "Le cloud est arrêté.",
+    "device_offline": "L’appareil est hors ligne.",
+    "device_not_found": "L’appareil a été supprimé de votre compte.",
+    "cloud_unavailable": "Le cloud n’est pas disponible pour le moment.",
+    "cloud_resetting": "Le cloud est en cours de réinitialisation.",
+    "cloud_capacity": "Le serveur n’a pas de place pour démarrer le cloud.",
+    "cloud_crash_loop": "Le cloud ne démarre plus après des échecs répétés.",
+    "host_operation_failed": "La connexion à l’appareil a été coupée.",
+    "unknown_plugin_method": "Ce serveur ne peut pas exécuter de navigateur.",
+    "plugin_disabled": "Le plug-in Navigateur est désactivé."
+  },
+  "answers": {
+    "none": "Le serveur n’a pas répondu.",
+    "unreadable": "La réponse du serveur n’a pas pu être lue.",
+    "refused": "Le serveur n’a pas pu le faire ({status})."
+  },
+  "starting": {
+    "connecting": "Connexion…",
+    "cloud": "Démarrage du cloud…",
+    "download": "Téléchargement du navigateur…",
+    "browser": "Démarrage du navigateur…",
+    "page": "Ouverture de la page…"
+  },
+  "failures": {
+    "operate": "Impossible de piloter le navigateur",
+    "reloadPage": "Impossible de recharger la page",
+    "copyLink": "Impossible de copier le lien",
+    "paste": "Impossible de coller",
+    "openAddress": "Impossible d’ouvrir l’adresse",
+    "goBack": "Impossible de revenir en arrière",
+    "goForward": "Impossible d’avancer",
+    "stopLoading": "Impossible d’arrêter le chargement",
+    "openPage": "Impossible d’ouvrir la page",
+    "saveDownload": "Impossible d’enregistrer le téléchargement",
+    "hostFilesUnreachable": "Les fichiers de l’hôte sont inaccessibles."
+  },
+  "region": {
+    "couldntOpen": "Impossible d’ouvrir cette page.",
+    "couldntShow": "Impossible d’afficher cette page.",
+    "noH264": "Ce navigateur ne peut pas décoder la vidéo H.264.",
+    "waiting": "En attente de l’hôte…"
+  },
+  "menu": {
+    "copyLink": "Copier l’adresse du lien",
+    "cut": "Couper",
+    "copy": "Copier",
+    "paste": "Coller",
+    "back": "Précédent",
+    "forward": "Suivant",
+    "reload": "Recharger"
+  },
+  "address": {
+    "noBack": "Aucune page précédente",
+    "noForward": "Aucune page suivante"
+  },
+  "downloads": {
+    "title": "Téléchargements",
+    "save": "Enregistrer",
+    "showInFiles": "Afficher dans Fichiers",
+    "canceled": "Annulé"
+  },
+  "viewport": {
+    "title": "Fenêtre d’affichage",
+    "web": "Web",
+    "mobile": "Mobile",
+    "custom": "Personnalisé {width} × {height} {scale}"
+  },
+  "dialog": {
+    "leavePage": "Quitter la page ?",
+    "says": "{host} indique",
+    "thisPageSays": "Cette page indique",
+    "answer": "Répondre",
+    "stay": "Rester",
+    "leave": "Quitter",
+    "cancel": "Annuler",
+    "ok": "OK"
+  },
+  "browserInput": "Saisie du navigateur"
+}

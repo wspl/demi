@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <b>English</b> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a>
+  <b>English</b> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español (Latinoamérica)</a> · <a href="README.fr.md">Français</a> · <a href="README.pt-BR.md">Português (Brasil)</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a>
 </p>
 
 <p align="center">
@@ -110,8 +110,8 @@ Demi's features fall into four groups.
 
 - **Works in any browser**: Desktop, tablet or phone, with nothing to install.
   Add it to your Home Screen, and it adapts to phones, tablets and foldables.
-- **Five languages**: English, Simplified Chinese, Traditional Chinese, Japanese
-  and Korean.
+- **Nine languages**: English, German, Spanish, French, Portuguese, Simplified
+  Chinese, Traditional Chinese, Japanese and Korean.
 - **Always on**: Tasks keep running on the server after you close the tab.
 - **Notifications**: Get notified on your phone and computers when a task
   finishes or needs you, even with Demi closed.

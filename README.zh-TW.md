@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <b>繁體中文</b> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a>
+  <a href="README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español (Latinoamérica)</a> · <a href="README.fr.md">Français</a> · <a href="README.pt-BR.md">Português (Brasil)</a> · <a href="README.zh-CN.md">简体中文</a> · <b>繁體中文</b> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a>
 </p>
 
 <p align="center">
@@ -89,7 +89,7 @@ Demi 的特色分為四組。
 ### 隨時隨地，任何機器
 
 - **瀏覽器即可使用**：電腦、平板、手機皆可使用，不需安裝任何軟體。也能加入主畫面，並適配手機、平板和摺疊機。
-- **五種語言**：英文、簡體中文、繁體中文、日文和韓文。
+- **九種語言**：英文、德文、西班牙文、法文、葡萄牙文、簡體中文、繁體中文、日文和韓文。
 - **背景執行**：關掉網頁後，任務仍在伺服器上繼續執行。
 - **通知**：任務完成或需要你處理時，手機和電腦都會收到通知，Demi 關著也一樣。
 - **對話集中管理**：對話統一儲存在伺服器上，不會散落在智慧體工作過的各台機器裡。在筆電上開始，在手機上繼續，即時同步。更換 AI 服務商，歷史紀錄也都還在。

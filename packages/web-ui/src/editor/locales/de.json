@@ -1,0 +1,22 @@
+{
+  "search": {
+    "label": "Suchen",
+    "matchCase": "Groß-/Kleinschreibung beachten",
+    "wholeWord": "Nur ganzes Wort",
+    "regexp": "Regulären Ausdruck verwenden",
+    "previous": "Vorheriger Treffer",
+    "next": "Nächster Treffer"
+  },
+  "syntaxColorsUnavailable": "Syntaxfarben sind nicht verfügbar",
+  "unavailable": "Code-Editor konnte nicht geladen werden.",
+  "diff": {
+    "unchanged": "{count} unveränderte Zeile | {count} unveränderte Zeilen",
+    "noNewline": "Kein Zeilenumbruch am Dateiende"
+  },
+  "fold": {
+    "folded": "Eingeklappter Code",
+    "unfold": "Ausklappen",
+    "foldLine": "Zeile einklappen",
+    "unfoldLine": "Zeile ausklappen"
+  }
+}

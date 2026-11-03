@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <b>简体中文</b> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a>
+  <a href="README.md">English</a> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español (Latinoamérica)</a> · <a href="README.fr.md">Français</a> · <a href="README.pt-BR.md">Português (Brasil)</a> · <b>简体中文</b> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a>
 </p>
 
 <p align="center">
@@ -89,7 +89,7 @@ Demi 的特性分为四组。
 ### 随时随地，任意机器
 
 - **浏览器即用**：电脑、平板、手机均可使用，无需安装任何软件。还能添加到主屏幕，并适配手机、平板和折叠屏。
-- **五种语言**：英语、简体中文、繁体中文、日语和韩语。
+- **九种语言**：英语、德语、西班牙语、法语、葡萄牙语、简体中文、繁体中文、日语和韩语。
 - **后台运行**：关掉网页后，任务仍在服务器上继续执行。
 - **通知**：任务完成或需要你处理时，手机和电脑都会收到通知，Demi 关着也一样。
 - **对话集中管理**：对话统一保存在服务器上，不会散落在 Agent 工作过的各台机器里。在笔记本上开始，在手机上继续，实时同步。更换 AI 服务商，历史记录也都还在。

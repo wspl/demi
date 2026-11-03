@@ -1,0 +1,16 @@
+{
+  "handoff": {
+    "wrongPassword": "Ce n’est pas votre mot de passe.",
+    "signOutFailed": "Impossible de déconnecter le navigateur"
+  },
+  "passkeys": {
+    "held": "Ce gestionnaire de mots de passe a déjà une clé d’accès pour votre compte.",
+    "renameFailed": "Impossible de renommer la clé d’accès",
+    "removeFailed": "Impossible de supprimer la clé d’accès"
+  },
+  "login": {
+    "invalidCredentials": "L’adresse e-mail ou le mot de passe est incorrect.",
+    "accountDisabled": "Ce compte est désactivé. Demandez à votre administrateur de l’activer.",
+    "signOutFailed": "Impossible de se déconnecter"
+  }
+}

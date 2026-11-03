@@ -1,0 +1,132 @@
+{
+  "nav": {
+    "new": "Nouveau",
+    "search": "Rechercher",
+    "archived": "Archivées"
+  },
+  "groups": {
+    "conversations": "Conversations",
+    "projects": "Projets",
+    "addProject": "Ajouter un projet",
+    "newConversation": "Nouvelle conversation"
+  },
+  "list": {
+    "loading": "Chargement des conversations…",
+    "failed": "Impossible de charger les conversations."
+  },
+  "foot": {
+    "handOff": "Passer sur le téléphone",
+    "settings": "Paramètres",
+    "updateAvailable": "Demi {version} est disponible",
+    "updating": "Mise à jour de Demi"
+  },
+  "account": {
+    "label": "Compte",
+    "settings": "Paramètres",
+    "signOut": "Se déconnecter"
+  },
+  "row": {
+    "unpin": "Désépingler",
+    "archive": "Archiver"
+  },
+  "project": {
+    "newConversation": "Nouvelle conversation"
+  },
+  "device": {
+    "removed": "Appareil supprimé",
+    "cloud": "Cloud"
+  },
+  "dot": {
+    "needsYou": "Attend votre décision"
+  },
+  "tab": {
+    "danger": "{count} en échec",
+    "attention": "{count} à faire",
+    "success": "{count} terminées"
+  },
+  "selection": {
+    "open": "Ouvrir",
+    "rename": "Renommer",
+    "copyId": "Copier l’ID de la conversation",
+    "pin": "Épingler",
+    "pinMany": "Épingler {count} conversations",
+    "unpin": "Désépingler",
+    "unpinMany": "Désépingler {count} conversations",
+    "archive": "Archiver",
+    "archiveMany": "Archiver {count} conversations",
+    "delete": "Supprimer…",
+    "deleteMany": "Supprimer {count} conversations…"
+  },
+  "projectMenu": {
+    "newHere": "Nouvelle conversation ici",
+    "fold": "Replier",
+    "unfold": "Déplier",
+    "select": "Sélectionner des conversations",
+    "saved": "Messages enregistrés",
+    "savedPerConversation": "Par conversation",
+    "savedPerProject": "Par projet",
+    "savedNoConversation": "Le projet n’a aucune conversation pour conserver ses messages enregistrés.",
+    "delete": "Supprimer le projet…"
+  },
+  "delete": {
+    "title": "Supprimer « {title} » ?",
+    "titleMany": "Supprimer {count} conversations ?",
+    "one": "Ses messages et fichiers sont supprimés. Cette action est irréversible.",
+    "many": "Leurs messages et fichiers sont supprimés. Cette action est irréversible.",
+    "filesOne": "Les fichiers qu’elle a modifiés restent dans le projet.",
+    "filesMany": "Les fichiers qu’elles ont modifiés restent dans leurs projets."
+  },
+  "deleteProject": {
+    "title": "Supprimer « {name} » ?",
+    "archived": "Sa conversation sera archivée. | Ses {count} conversations seront archivées.",
+    "files": "Les fichiers sur {host} ne sont pas supprimés."
+  },
+  "savedScope": {
+    "title": "Conserver les messages enregistrés par conversation ?",
+    "body": "Le message enregistré du projet est déplacé vers une conversation. | Les {count} messages enregistrés du projet sont déplacés vers une conversation.",
+    "to": "Déplacer vers",
+    "action": "Déplacer"
+  },
+  "archivedToast": {
+    "title": "Conversation archivée | {count} conversations archivées",
+    "undo": "Annuler"
+  },
+  "refused": {
+    "quote": "« {name} »",
+    "line": "{name} : {reasons}",
+    "deleteProject": "Impossible de supprimer le projet",
+    "savedScope": "Impossible de modifier la conservation des messages enregistrés",
+    "reorderProjects": "Impossible de réorganiser les projets",
+    "archive": {
+      "one": "Impossible d’archiver {name}",
+      "many": "Impossible d’archiver {count} conversations"
+    },
+    "restore": {
+      "one": "Impossible de restaurer {name}",
+      "many": "Impossible de restaurer {count} conversations"
+    },
+    "pin": {
+      "one": "Impossible d’épingler {name}",
+      "many": "Impossible d’épingler {count} conversations"
+    },
+    "unpin": {
+      "one": "Impossible de désépingler {name}",
+      "many": "Impossible de désépingler {count} conversations"
+    },
+    "delete": {
+      "one": "Impossible de supprimer {name}",
+      "many": "Impossible de supprimer {count} conversations"
+    },
+    "move": {
+      "one": "Impossible de déplacer {name}",
+      "many": "Impossible de déplacer {count} conversations"
+    }
+  },
+  "layout": {
+    "sidebarWidth": "Largeur de la barre latérale",
+    "openSidebar": "Ouvrir la barre latérale",
+    "hideSidebar": "Masquer la barre latérale",
+    "showSidebar": "Afficher la barre latérale",
+    "workPanelWidth": "Largeur du panneau de travail"
+  }
+}

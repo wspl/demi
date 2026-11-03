@@ -1,0 +1,60 @@
+{
+  "failures": {
+    "uploadAttachment": "Não foi possível enviar o anexo",
+    "answerRequest": "Não foi possível responder à solicitação",
+    "changeWorkPanel": "Não foi possível alterar o painel de trabalho",
+    "saveDraft": "Não foi possível salvar o rascunho",
+    "sendComment": "Não foi possível enviar o comentário",
+    "saveMessage": "Não foi possível salvar a mensagem",
+    "deleteMessage": "Não foi possível excluir a mensagem",
+    "saveDrafts": "Não foi possível salvar os rascunhos",
+    "restoreDrafts": "Não foi possível restaurar os rascunhos",
+    "readDraft": "Não foi possível ler o rascunho",
+    "readSaved": "Não foi possível ler as mensagens salvas",
+    "readRecentCost": "Não foi possível ler o custo recente",
+    "readAgents": "Não foi possível ler os agentes",
+    "readMessages": "Não foi possível ler as mensagens",
+    "updateConversations": "Não foi possível atualizar as conversas",
+    "deleteConversations": "Não foi possível excluir as conversas",
+    "renameConversation": "Não foi possível renomear a conversa",
+    "reorderConversations": "Não foi possível reordenar as conversas",
+    "updateReadStatus": "Não foi possível atualizar o status de leitura",
+    "reloadConversation": "Não foi possível recarregar a conversa",
+    "detachDevice": "Não foi possível desanexar o dispositivo",
+    "changeModel": "Não foi possível alterar o modelo",
+    "changeWorkflow": "Não foi possível alterar o fluxo de trabalho",
+    "pauseSchedule": "Não foi possível alterar o agendamento",
+    "deleteSchedule": "Não foi possível excluir o agendamento",
+    "clearDraft": "Não foi possível limpar o rascunho",
+    "recallMessage": "Não foi possível recuperar a mensagem",
+    "connectionLost": "Conexão perdida",
+    "connectionLostMessage": "O Demi pode não ter recebido sua solicitação. Verifique a conversa quando a conexão voltar.",
+    "requestNotAccepted": "A conversa não aceitou a solicitação.",
+    "fieldsNotUpdated": "Alguns campos não foram atualizados.",
+    "readFileWatch": "Não foi possível ler uma mensagem do monitoramento de arquivos",
+    "readSideQuestions": "Não foi possível ler as perguntas paralelas",
+    "askSideQuestion": "Não foi possível perguntar",
+    "sendFollowUp": "Não foi possível enviar a pergunta de acompanhamento",
+    "retrySideQuestion": "Não foi possível tentar novamente",
+    "stopSideQuestion": "Não foi possível parar",
+    "deleteSideQuestion": "Não foi possível excluir",
+    "foldSideQuestion": "Não foi possível alterar a pergunta paralela"
+  },
+  "drafts": {
+    "storeFailed": "Este navegador não conseguiu armazenar seus rascunhos.",
+    "readFailed": "Este navegador não conseguiu ler os rascunhos armazenados.",
+    "missingFile": "Arquivo"
+  },
+  "commentsReplaced": "{count} comentário removido com sua resposta | {count} comentários removidos com suas respostas",
+  "savedDeleted": "Mensagem salva excluída",
+  "composer": {
+    "cloudResetting": "A nuvem está sendo redefinida."
+  },
+  "workflows": {
+    "hostSilent": "O host não respondeu."
+  },
+  "uploads": {
+    "notUploaded": "{name} não foi enviado. {reason}",
+    "notKept": "{name} não está enviado. Anexe-o novamente."
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "search": {
+    "label": "Buscar",
+    "matchCase": "Coincidir mayúsculas y minúsculas",
+    "wholeWord": "Solo palabras completas",
+    "regexp": "Usar expresión regular",
+    "previous": "Coincidencia anterior",
+    "next": "Coincidencia siguiente"
+  },
+  "syntaxColorsUnavailable": "Los colores de sintaxis no están disponibles",
+  "unavailable": "No se pudo cargar el editor de código.",
+  "diff": {
+    "unchanged": "{count} línea sin cambios | {count} líneas sin cambios",
+    "noNewline": "No hay salto de línea al final del archivo"
+  },
+  "fold": {
+    "folded": "Código contraído",
+    "unfold": "Expandir",
+    "foldLine": "Contraer línea",
+    "unfoldLine": "Expandir línea"
+  }
+}

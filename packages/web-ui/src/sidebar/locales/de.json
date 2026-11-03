@@ -1,0 +1,132 @@
+{
+  "nav": {
+    "new": "Neu",
+    "search": "Suchen",
+    "archived": "Archiviert"
+  },
+  "groups": {
+    "conversations": "Chats",
+    "projects": "Projekte",
+    "addProject": "Projekt hinzufügen",
+    "newConversation": "Neuer Chat"
+  },
+  "list": {
+    "loading": "Chats werden geladen …",
+    "failed": "Chats konnten nicht geladen werden."
+  },
+  "foot": {
+    "handOff": "An Telefon übergeben",
+    "settings": "Einstellungen",
+    "updateAvailable": "Demi {version} ist verfügbar",
+    "updating": "Demi wird aktualisiert"
+  },
+  "account": {
+    "label": "Konto",
+    "settings": "Einstellungen",
+    "signOut": "Abmelden"
+  },
+  "row": {
+    "unpin": "Lösen",
+    "archive": "Archivieren"
+  },
+  "project": {
+    "newConversation": "Neuer Chat"
+  },
+  "device": {
+    "removed": "Entferntes Gerät",
+    "cloud": "Cloud"
+  },
+  "dot": {
+    "needsYou": "Wartet auf deine Entscheidung"
+  },
+  "tab": {
+    "danger": "{count} fehlgeschlagen",
+    "attention": "{count} zu erledigen",
+    "success": "{count} erledigt"
+  },
+  "selection": {
+    "open": "Öffnen",
+    "rename": "Umbenennen",
+    "copyId": "Chat-ID kopieren",
+    "pin": "Anheften",
+    "pinMany": "{count} Chats anheften",
+    "unpin": "Lösen",
+    "unpinMany": "{count} Chats lösen",
+    "archive": "Archivieren",
+    "archiveMany": "{count} Chats archivieren",
+    "delete": "Löschen …",
+    "deleteMany": "{count} Chats löschen …"
+  },
+  "projectMenu": {
+    "newHere": "Neuer Chat hier",
+    "fold": "Einklappen",
+    "unfold": "Ausklappen",
+    "select": "Chats auswählen",
+    "saved": "Gespeicherte Nachrichten",
+    "savedPerConversation": "Pro Chat",
+    "savedPerProject": "Pro Projekt",
+    "savedNoConversation": "Das Projekt hat keinen Chat, der seine gespeicherten Nachrichten aufnehmen kann.",
+    "delete": "Projekt löschen …"
+  },
+  "delete": {
+    "title": "„{title}“ löschen?",
+    "titleMany": "{count} Chats löschen?",
+    "one": "Seine Nachrichten und Dateien werden gelöscht. Dies kann nicht widerrufen werden.",
+    "many": "Ihre Nachrichten und Dateien werden gelöscht. Dies kann nicht widerrufen werden.",
+    "filesOne": "Dateien, die er geändert hat, bleiben im Projekt.",
+    "filesMany": "Dateien, die sie geändert haben, bleiben in ihren Projekten."
+  },
+  "deleteProject": {
+    "title": "„{name}“ löschen?",
+    "archived": "Sein Chat wird archiviert. | Seine {count} Chats werden archiviert.",
+    "files": "Dateien auf {host} werden nicht gelöscht."
+  },
+  "savedScope": {
+    "title": "Gespeicherte Nachrichten pro Chat behalten?",
+    "body": "Die gespeicherte Nachricht des Projekts wird in einen Chat verschoben. | Die {count} gespeicherten Nachrichten des Projekts werden in einen Chat verschoben.",
+    "to": "Verschieben nach",
+    "action": "Verschieben"
+  },
+  "archivedToast": {
+    "title": "Chat archiviert | {count} Chats archiviert",
+    "undo": "Widerrufen"
+  },
+  "refused": {
+    "quote": "„{name}“",
+    "line": "{name}: {reasons}",
+    "deleteProject": "Projekt konnte nicht gelöscht werden",
+    "savedScope": "Speicherart gespeicherter Nachrichten konnte nicht geändert werden",
+    "reorderProjects": "Projekte konnten nicht neu angeordnet werden",
+    "archive": {
+      "one": "{name} konnte nicht archiviert werden",
+      "many": "{count} Chats konnten nicht archiviert werden"
+    },
+    "restore": {
+      "one": "{name} konnte nicht wiederhergestellt werden",
+      "many": "{count} Chats konnten nicht wiederhergestellt werden"
+    },
+    "pin": {
+      "one": "{name} konnte nicht angeheftet werden",
+      "many": "{count} Chats konnten nicht angeheftet werden"
+    },
+    "unpin": {
+      "one": "{name} konnte nicht gelöst werden",
+      "many": "{count} Chats konnten nicht gelöst werden"
+    },
+    "delete": {
+      "one": "{name} konnte nicht gelöscht werden",
+      "many": "{count} Chats konnten nicht gelöscht werden"
+    },
+    "move": {
+      "one": "{name} konnte nicht verschoben werden",
+      "many": "{count} Chats konnten nicht verschoben werden"
+    }
+  },
+  "layout": {
+    "sidebarWidth": "Breite der Seitenleiste",
+    "openSidebar": "Seitenleiste öffnen",
+    "hideSidebar": "Seitenleiste ausblenden",
+    "showSidebar": "Seitenleiste einblenden",
+    "workPanelWidth": "Breite des Arbeitspanels"
+  }
+}
