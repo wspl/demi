@@ -328,7 +328,7 @@ onMounted(async () => {
         @retry="flow.resume()"
         @retry-undelivered="(id) => flow.retrySubmission(id)"
         @edit-submission="flow.editSubmission"
-        @delete-submission="flow.deleteSubmission"
+        @delete-unsent="flow.deleteUnsent"
         @abort-subagents="flow.abortSubagents"
         @abort-subagent="flow.abortSubagent"
         @abort-terminal="flow.abortTerminal"

@@ -247,8 +247,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   const deliveries = new Map<string, number>()
   /** When the last message on its way is delivered, as `Date.now()`: the next one goes after it, never ahead. */
   let deliveredBy = 0
-  /** Recall or Steer pressed on a steer or queued message on its way, by id, carried out once it is held. */
-  const wishes = new Map<string, 'recall' | 'sendNow'>()
+  /** Recall, Delete or Steer pressed on a steer or queued message on its way, by id, carried out once it is held. */
+  const wishes = new Map<string, 'recall' | 'delete' | 'sendNow'>()
   let token = 0
   let sequence = 0
   /** The call of the turn that runs now, whose command a stop ends. */
@@ -924,7 +924,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    *
    * - With nothing running, it goes as a message, which starts a turn, as the
    *   product's session takes it.
-   * - Recall or Steer pressed meanwhile is carried out then.
+   * - Recall, Delete or Steer pressed meanwhile is carried out then.
    */
   function deliverWaiting(
     content: UserContentBlock[],
@@ -951,6 +951,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         giveBack(withdrawSubmission(id), pending.way === 'steer' ? 'steer' : 'queue')
         return
       }
+      if (wished === 'delete') {
+        // A message deleted before it went goes.
+        removing.value = removing.value.filter((each) => each !== id)
+        withdrawSubmission(id)
+        return
+      }
       changeSubmission(id, { way: 'send' })
       deliver(token, false)
       return
@@ -966,6 +972,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       recallSteer(id)
     } else if (wished === 'recall') {
       recallQueued(id)
+    } else if (wished === 'delete') {
+      deleteUnsent(id)
     } else if (wished === 'sendNow' && pending.way === 'steer') {
       interruptPendingSteer(id)
     } else if (wished === 'sendNow') {
@@ -973,8 +981,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
   }
 
-  /** Keeps Recall or Steer pressed on a message on its way as the wish; false for any other message. */
-  function keepWish(id: string, wished: 'recall' | 'sendNow'): boolean {
+  /** Keeps Recall, Delete or Steer pressed on a message on its way as the wish; false for any other message. */
+  function keepWish(id: string, wished: 'recall' | 'delete' | 'sendNow'): boolean {
     if (!deliveries.has(id)) {
       return false
     }
@@ -1079,11 +1087,24 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
   }
 
-  /** Delete on the undelivered message: its row goes at once. */
-  function deleteSubmission(id: string): void {
+  /**
+   * Delete on a message the agent has not read, as the product's: one not
+   * delivered goes at once; one on its way goes once it is held; a steer or
+   * a queued one leaves the simulated server, and nothing goes back to the
+   * user.
+   */
+  function deleteUnsent(id: string): void {
     if (pendingSubmissions.value.some((pending) => pending.id === id && pending.error)) {
       withdrawSubmission(id)
+      return
     }
+    if (keepWish(id, 'delete')) {
+      removing.value = [...removing.value, id]
+      return
+    }
+    drop(id)
+    removing.value = removing.value.filter((each) => each !== id)
+    withdrawFromOrder(id)
   }
 
   /**
@@ -1598,7 +1619,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     turn,
     retrySubmission,
     editSubmission,
-    deleteSubmission,
+    deleteUnsent,
     undelivered,
     resume,
     stop,

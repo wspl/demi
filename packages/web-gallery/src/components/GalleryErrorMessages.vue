@@ -315,7 +315,7 @@ loseFile()
             :persisted-scroll-state="undefined"
             read-only
             @edit-submission="undeliveredFlow.editSubmission"
-            @delete-submission="undeliveredFlow.deleteSubmission"
+            @delete-unsent="undeliveredFlow.deleteUnsent"
             @retry-undelivered="(id) => undeliveredFlow.retrySubmission(id)"
           />
         </div>
@@ -340,7 +340,7 @@ loseFile()
             :persisted-scroll-state="undefined"
             read-only
             @edit-submission="uploadingFlow.editSubmission"
-            @delete-submission="uploadingFlow.deleteSubmission"
+            @delete-unsent="uploadingFlow.deleteUnsent"
             @retry-undelivered="(id) => uploadingFlow.retrySubmission(id)"
           />
         </div>
@@ -364,7 +364,7 @@ loseFile()
             :persisted-scroll-state="undefined"
             read-only
             @edit-submission="uploadFailedFlow.editSubmission"
-            @delete-submission="uploadFailedFlow.deleteSubmission"
+            @delete-unsent="uploadFailedFlow.deleteUnsent"
             @retry-undelivered="(id) => uploadFailedFlow.retrySubmission(id, () => uploadCapture(failedCapture))"
           />
         </div>
@@ -388,7 +388,7 @@ loseFile()
             :persisted-scroll-state="undefined"
             read-only
             @edit-submission="goneFlow.editSubmission"
-            @delete-submission="goneFlow.deleteSubmission"
+            @delete-unsent="goneFlow.deleteUnsent"
             @retry-undelivered="(id) => goneFlow.retrySubmission(id)"
           />
         </div>

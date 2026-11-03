@@ -81,7 +81,7 @@ switchBack()
       @retry="flow.resume()"
       @retry-undelivered="(id) => flow.retrySubmission(id)"
       @edit-submission="flow.editSubmission"
-      @delete-submission="flow.deleteSubmission"
+      @delete-unsent="flow.deleteUnsent"
       @recall-queued="flow.recallQueued"
       @send-queued="flow.sendQueued"
       @recall-steer="flow.recallSteer"

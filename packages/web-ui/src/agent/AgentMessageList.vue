@@ -117,7 +117,7 @@ const props = withDefaults(defineProps<{
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions?: readonly PendingSubmissionState[]
   /**
-   * The waiting messages whose Recall is on its way, by id, which show nowhere.
+   * The waiting messages whose Recall or Delete is on its way, by id, which show nowhere.
    */
   removing?: readonly string[]
   /**
@@ -187,8 +187,11 @@ const emit = defineEmits<{
    * composer.
    */
   editSubmission: [id: string]
-  /** Delete on the message `id`, whose delivery failed: it goes at once. */
-  deleteSubmission: [id: string]
+  /**
+   * Delete on the message `id`, which the agent has not read: not
+   * delivered, on its way, a steer or a queued one. It goes at once.
+   */
+  deleteUnsent: [id: string]
   revealed: []
   /**
    * The reader nears the start of the window, which does not reach the
@@ -832,7 +835,7 @@ defineExpose({
                   @send-queued="(id) => emit('sendQueued', id)"
                   @edit-user="(id) => emit('editUser', id)"
                   @edit-submission="(id) => emit('editSubmission', id)"
-                  @delete-submission="(id) => emit('deleteSubmission', id)"
+                  @delete-unsent="(id) => emit('deleteUnsent', id)"
                   @retry-load="emit('retryLoad')"
                 >
                 </AgentMessageVirtualBlock>

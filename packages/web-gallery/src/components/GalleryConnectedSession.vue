@@ -187,7 +187,7 @@ function detach(id: string): void {
         :removing="flow.removing.value"
         @retry-undelivered="(id) => flow.retrySubmission(id)"
         @edit-submission="flow.editSubmission"
-        @delete-submission="flow.deleteSubmission"
+        @delete-unsent="flow.deleteUnsent"
         @retry="flow.resume()"
         @abort-subagents="flow.abortSubagents"
         @abort-subagent="flow.abortSubagent"
