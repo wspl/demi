@@ -147,6 +147,9 @@ pub struct Attribution {
     pub device: Option<DeviceId>,
     /// The integration whose conversation it was; none for the user's own.
     pub integration: Option<IntegrationId>,
+    /// The id of the integration's message the call's work descends from
+    /// (`crate::tree::turn_message`); none for none.
+    pub message_id: Option<String>,
 }
 
 /// What each kind of a call's tokens would cost on the vendor's API, in
@@ -318,13 +321,15 @@ pub enum UsageKey {
     Device,
     Conversation,
     Model,
+    Turn,
+    Message,
 }
 
 /// One group of an integration's usage.
 #[derive(Debug, Clone, PartialEq)]
 pub struct KeyedUsage {
-    /// The group's device, conversation or model; none for calls of no
-    /// device.
+    /// The group's device, conversation, model, turn or message; none
+    /// for calls of no device, turn or message.
     pub key: Option<String>,
     pub requests: u64,
     pub input_tokens: u64,
@@ -351,6 +356,8 @@ impl ControlService {
                 UsageKey::Device => "device_id",
                 UsageKey::Conversation => "conversation_id",
                 UsageKey::Model => "model_id",
+                UsageKey::Turn => "turn_id",
+                UsageKey::Message => "message_id",
             };
             // A call priced has all four prices or none (`api_price_input`).
             let mut statement = connection.prepare_cached(&format!(
@@ -1119,9 +1126,9 @@ pub(crate) fn write_usage(transaction: &rusqlite::Transaction<'_>, row: &UsageRo
            input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
            cache_write_1h_tokens, outcome, quota, started_at, ended_at, media_seconds, cost, cost_currency,
            api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
-           system_hash, tools_hash, call_number, after_compaction, miss, media_digest, device_id, integration_id)
+           system_hash, tools_hash, call_number, after_compaction, miss, media_digest, device_id, integration_id, message_id)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-           ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35)",
+           ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36)",
         params![
             id,
             row.user.as_str(),
@@ -1158,6 +1165,7 @@ pub(crate) fn write_usage(transaction: &rusqlite::Transaction<'_>, row: &UsageRo
             row.media_digest,
             row.attribution.device.as_ref().map(DeviceId::as_str),
             row.attribution.integration.as_ref().map(IntegrationId::as_str),
+            row.attribution.message_id,
         ],
     )?;
     // Asked after the insert: a transaction that has read cannot wait for

@@ -288,7 +288,7 @@ impl demi_agent_tools::ContextSource for Told {
         node: demi_agent_tools::NodeContext<'a>,
         _: &'a demi_shared_types::TurnId,
         seen: &'a [&'a str],
-    ) -> futures_util::future::LocalBoxFuture<'a, Result<Option<demi_agent_tools::ContextAnswer>, String>> {
+    ) -> futures_util::future::LocalBoxFuture<'a, Result<Option<demi_agent_tools::ContextAnswer>, demi_agent_tools::ContextFailure>> {
         Box::pin(async move {
             let Some(shard) = self.shard.upgrade() else {
                 return Ok(None);

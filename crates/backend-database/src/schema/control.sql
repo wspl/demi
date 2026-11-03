@@ -969,6 +969,9 @@ CREATE TABLE usage_ledger (
   -- row written before the ledger kept them.
   device_id             TEXT,
   integration_id        TEXT,
+  -- The id of the integration's message the call's work descends from, as
+  -- the row was written; null for none.
+  message_id            TEXT,
   CHECK ((cost IS NULL) = (cost_currency IS NULL))
 ) STRICT;
 CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);

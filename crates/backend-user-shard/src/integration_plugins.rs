@@ -16,20 +16,29 @@
 //!
 //! A call while no socket serves the plugin waits for one as long as the
 //! backend waits for a runner that dropped, then fails, telling the model the
-//! integration is unreachable. A context request does not wait: an agent asks
-//! its model without the block.
+//! integration is unreachable. A context request of an optional context does
+//! not wait for a socket, and waits for its answer only so long: an agent then
+//! asks its model without the block. One of a required context waits for a
+//! socket as a call does and for its answer as long, and then fails the
+//! agent's request.
+//!
+//! Each request names the turn its work is in and the program's message that
+//! work descends from (`demi_backend_database::tree::turn_message`), which the
+//! program finds its own data by: Demi keeps none of it.
 
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
-use demi_agent_tools::{ContextAnswer, ContextSource, NodeContext};
+use demi_agent_tools::{ContextAnswer, ContextFailure, ContextSource, NodeContext};
 use demi_backend_database::integrations::IntegrationRecord;
 use demi_backend_host_access::conversation_of;
 use demi_command_declarations::{LeafKind, NativeOperation, Node};
 use demi_host_interface::{Declared, RpcError, RpcHandler, RpcInvocation, RpcPort};
 use demi_integration_api_protocol as api;
-use demi_shared_types::TurnId;
-use demi_web_api_protocol::ids::IntegrationId;
+use demi_backend_database::tree;
+use demi_backend_host_access::root_of;
+use demi_shared_types::{NodeId, TurnId};
+use demi_web_api_protocol::ids::{ConversationId, IntegrationId};
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::oneshot;
 
@@ -40,8 +49,9 @@ use crate::shard::Shard;
 pub(crate) const INTEGRATION_CONTEXT: &str = "integration";
 
 /// How long a context request waits for its reply before the agent asks its
-/// model without the block: a program that is slow to answer never holds an
-/// agent back longer.
+/// model without the block, or fails its request when it cannot go without,
+/// unless the declaration names its own wait: a program that never answers
+/// would otherwise hold the agent back for good.
 const CONTEXT_WAIT: Duration = Duration::from_secs(10);
 
 /// A plugin request that waits for its reply.
@@ -79,6 +89,40 @@ impl Shard {
             .iter()
             .map(|tree| Declared::served(tree.clone(), handler.clone()))
             .collect()
+    }
+
+    /// The id of the program's message the work of `node`'s turn `turn` in
+    /// the conversation `conversation` descends from; none when it descends
+    /// from none, or the conversation cannot be read.
+    ///
+    /// The node's rows are saved first: a turn's first block is saved a
+    /// moment after it is written, and the turn's first request asks before
+    /// then. The rows of the turns it descends from were saved before their
+    /// calls ran.
+    pub(crate) async fn turn_message(&self, conversation: &ConversationId, node: &NodeId, turn: &TurnId) -> Option<String> {
+        if let Some(live) = self.agent().node(&root_of(conversation), node) {
+            // A save that fails leaves the rows to the next: the turn's
+            // first block may then be missing, and its message with it.
+            let _ = live.session().flush().await;
+        }
+        let (node, turn) = (node.clone(), turn.clone());
+        match self
+            .services()
+            .conversations
+            .read(conversation, move |connection| tree::turn_message(connection, &node, &turn))
+            .await
+        {
+            Ok(message) => message.flatten(),
+            Err(error) => {
+                tracing::warn!(
+                    event = "turn_message.read_failed",
+                    conversation = %conversation,
+                    error = &error as &dyn std::error::Error,
+                    "the message a turn descends from could not be read"
+                );
+                None
+            }
+        }
     }
 
     /// Takes a message of the integration's socket `socket`.
@@ -134,8 +178,7 @@ impl Shard {
     async fn declare(
         self: &Rc<Self>,
         integration: &IntegrationRecord,
-        commands: Vec<Node<NativeOperation>>,
-        context: bool,
+        declaration: api::Declaration,
     ) -> Result<(), String> {
         let taken: Vec<String> = self
             .agent()
@@ -171,15 +214,16 @@ impl Shard {
     }
 
     /// Sends `request` to the socket that serves the integration's plugin and
-    /// answers its reply; with `wait`, a call waits for such a socket as long
-    /// as the backend waits for a runner that dropped. `port` is a command's,
-    /// whose stop cancels the request.
+    /// answers its reply; it waits `wait` for such a socket, and `answer` for
+    /// the reply, without end for none. `port` is a command's, whose stop
+    /// cancels the request.
     async fn request_plugin(
         self: &Rc<Self>,
         integration: &IntegrationId,
         request: api::PluginRequest,
         port: Option<RpcPort>,
         wait: Duration,
+        answer: Option<Duration>,
     ) -> Result<api::PluginReply, String> {
         let events = &self.integration_events;
         let deadline = tokio::time::Instant::now() + wait;
@@ -222,9 +266,16 @@ impl Shard {
                 None => std::future::pending().await,
             }
         };
+        let late = async {
+            match answer {
+                Some(answer) => tokio::time::sleep(answer).await,
+                None => std::future::pending().await,
+            }
+        };
         tokio::select! {
             answered = answered => answered.map_err(|_| "the integration's program went away".to_owned()),
             () = stopped => Err("the call was stopped".to_owned()),
+            () = late => Err("the integration did not answer in time".to_owned()),
         }
     }
 }
@@ -284,10 +335,19 @@ impl RpcHandler for IntegrationCommand {
                 .await
                 .map_err(|error| RpcError::Failed(error.to_string()))?
                 .and_then(|kept| kept.key);
+            let caller = invocation.caller.as_ref();
+            let turn = caller.and_then(|caller| caller.turn.clone());
+            let message_id = match (caller, &turn) {
+                (Some(caller), Some(turn)) => shard.turn_message(&conversation, &caller.node, turn).await,
+                _ => None,
+            };
             let request = api::PluginRequest::Command {
                 conversation,
                 key,
+                agent: caller.map(|caller| caller.node.clone()),
                 agent_number: invocation.context.caller.agent_number(),
+                turn: turn.map(|turn| turn.as_str().to_owned()),
+                message_id,
                 cloud: invocation.host,
                 path: invocation.path,
                 argv: invocation.argv,
@@ -298,7 +358,7 @@ impl RpcHandler for IntegrationCommand {
             };
             // As long as a runner that dropped is awaited.
             let wait = shard.services().runners.returning;
-            match shard.request_plugin(&self.integration, request, Some(port), wait).await {
+            match shard.request_plugin(&self.integration, request, Some(port), wait, None).await {
                 Ok(api::PluginReply::Exit { code }) => Ok(code),
                 Ok(api::PluginReply::Failed { message }) => Err(RpcError::Failed(message)),
                 Ok(api::PluginReply::Context { .. }) => {
@@ -330,9 +390,9 @@ impl ContextSource for IntegrationContext {
     fn context<'a>(
         &'a self,
         node: NodeContext<'a>,
-        _turn: &'a TurnId,
+        turn: &'a TurnId,
         seen: &'a [&'a str],
-    ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, String>> {
+    ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, ContextFailure>> {
         Box::pin(async move {
             let Some(shard) = self.shard.upgrade() else {
                 return Ok(None);
@@ -347,25 +407,45 @@ impl ContextSource for IntegrationContext {
             else {
                 return Ok(None);
             };
-            if !shard.declaration(&kept.integration).await.is_some_and(|declaration| declaration.context) {
+            let Some(declaration) = shard.declaration(&kept.integration).await else {
+                return Ok(None);
+            };
+            let mode = declaration.context;
+            if mode == api::ContextMode::None {
                 return Ok(None);
             }
             let answer_wait = declaration
                 .context_wait_seconds
                 .map_or(CONTEXT_WAIT, |seconds| Duration::from_secs(seconds.get().into()));
             let request = api::PluginRequest::Context {
+                message_id: shard.turn_message(&conversation, node.node, turn).await,
                 conversation,
                 key: kept.key,
                 agent: node.node.clone(),
+                turn: turn.as_str().to_owned(),
                 seen: seen.iter().map(|text| (*text).to_owned()).collect(),
             };
-            let asked = shard.request_plugin(&kept.integration, request, None, Duration::ZERO);
-            match tokio::time::timeout(CONTEXT_WAIT, asked).await {
-                Ok(Ok(api::PluginReply::Context { text })) => Ok(text.map(ContextAnswer::from)),
-                Ok(Ok(api::PluginReply::Failed { message })) => Err(message),
-                Ok(Ok(api::PluginReply::Exit { .. })) => Err("the integration answered a context request with an exit".to_owned()),
+            if mode == api::ContextMode::Required {
+                // A socket as long as a runner that dropped is awaited, as a
+                // call waits for one.
+                let wait = shard.services().runners.returning;
+                return match shard.request_plugin(&kept.integration, request, None, wait, Some(answer_wait)).await {
+                    Ok(api::PluginReply::Context { text }) => Ok(text.map(ContextAnswer::from)),
+                    Ok(api::PluginReply::Failed { message }) => Err(ContextFailure::Required(message)),
+                    Ok(api::PluginReply::Exit { .. }) => Err(ContextFailure::Required(
+                        "the integration answered a context request with an exit".to_owned(),
+                    )),
+                    Err(message) => Err(ContextFailure::Required(message)),
+                };
+            }
+            match shard.request_plugin(&kept.integration, request, None, Duration::ZERO, Some(answer_wait)).await {
+                Ok(api::PluginReply::Context { text }) => Ok(text.map(ContextAnswer::from)),
+                Ok(api::PluginReply::Failed { message }) => Err(ContextFailure::Skipped(message)),
+                Ok(api::PluginReply::Exit { .. }) => Err(ContextFailure::Skipped(
+                    "the integration answered a context request with an exit".to_owned(),
+                )),
                 // No program connected, or none answered in time: no block.
-                Ok(Err(_)) | Err(_) => Ok(None),
+                Err(_) => Ok(None),
             }
         })
     }

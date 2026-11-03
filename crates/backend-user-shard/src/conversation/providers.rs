@@ -936,12 +936,12 @@ fn metered(
     let attribution: Attributions = {
         let shard = scope.shard.clone();
         let conversation = conversation.clone();
-        Rc::new(move |agent: Option<u64>| {
+        Rc::new(move |agent: Option<u64>, turn: Option<String>| {
             let shard = shard.clone();
             let conversation = conversation.clone();
             Box::pin(async move {
                 match shard.upgrade() {
-                    Some(shard) => shard.attribution(&conversation, agent).await,
+                    Some(shard) => shard.attribution(&conversation, agent, turn.as_deref()).await,
                     None => Default::default(),
                 }
             })

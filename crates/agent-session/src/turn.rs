@@ -539,7 +539,14 @@ async fn request(
         .iter()
         .map(|(source, text)| SeenContext { source, text })
         .collect();
-    let news = cancel.guard(s.runtime.context(&seen, &turn)).await?;
+    let news = match cancel.guard(s.runtime.context(&seen, &turn)).await? {
+        Ok(news) => news,
+        Err(message) => {
+            let report = ErrorReport::agent(AgentCode::ContextUnavailable, message);
+            s.update(|core| core.record_failure(&report));
+            return Err(TurnError::Failed(Box::new(report)));
+        }
+    };
     if !news.is_empty() {
         s.update(|core| {
             for news in news {

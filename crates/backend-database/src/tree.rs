@@ -20,7 +20,7 @@
 //! path (`path`) is derived from them and stored beside them for page reads:
 //! with the search index, one of the two stored copies of derived data.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::ops::{ControlFlow, Range};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -2108,6 +2108,128 @@ fn ended_turn(
         turn,
         cause,
     })
+}
+
+/// The id of the message the work of `node`'s turn `turn` descends from, as
+/// the rows stored say: none when it descends from none, as a schedule's
+/// turn does, or when the turn's rows are not stored.
+///
+/// - A subagent's turn descends from the parent's turn whose call spawned it.
+/// - A turn a message started, or a steer into an idle agent, descends from
+///   it: its id is the turn's.
+/// - A turn a wakeup started descends from the turn whose call ran the
+///   command of its first report.
+/// - A turn a subagent's message started descends from that subagent.
+///
+/// Each step reads an earlier row, or one of a node nearer the root, so the
+/// walk ends; a row read twice, which no stored tree holds, answers none.
+pub fn turn_message(connection: &Connection, node: &NodeId, turn: &TurnId) -> Result<Option<String>, StorageError> {
+    let codec = Codec::new(connection);
+    let mut node = node.as_str().to_owned();
+    let mut turn = turn.as_str().to_owned();
+    let mut visited = HashSet::new();
+    loop {
+        if !visited.insert((node.clone(), turn.clone())) {
+            return Ok(None);
+        }
+        let Some((parent, started_by)) = node_parent(connection, &node)? else {
+            return Ok(None);
+        };
+        if let Some(parent) = parent {
+            let Some(call) = started_by else {
+                return Ok(None);
+            };
+            let Some(spawned) = turn_of_row(connection, &parent, "id", &call)? else {
+                return Ok(None);
+            };
+            (node, turn) = (parent, spawned);
+            continue;
+        }
+        let first: Option<(String, Stored)> = connection
+            .query_row(
+                // Only blocks of these types carry a turn: `blocks_by_type`
+                // finds them without reading the node's other rows.
+                "SELECT type, format, dictionary, body FROM blocks
+                 WHERE node_id = ?1 AND type IN ('user', 'context', 'wakeup', 'steer', 'agent_message', 'resume')
+                   AND turn_id = ?2
+                 ORDER BY idx LIMIT 1",
+                params![node, turn],
+                |row| Ok((row.get(0)?, Stored::of(row, 1)?)),
+            )
+            .optional()?;
+        let Some((kind, stored)) = first else {
+            return Ok(None);
+        };
+        match kind.as_str() {
+            "steer" => return Ok(Some(turn)),
+            "user" => {
+                return Ok(match codec.block("blocks", &stored)? {
+                    Block::User(block) if block.schedule.is_some() => None,
+                    _ => Some(turn),
+                });
+            }
+            "wakeup" => {
+                let Block::Wakeup(wakeup) = codec.block("blocks", &stored)? else {
+                    return Ok(None);
+                };
+                let Some(report) = wakeup.reports.first() else {
+                    return Ok(None);
+                };
+                let Some(ran) = turn_of_row(connection, &node, "command", report.command_id.as_str())? else {
+                    return Ok(None);
+                };
+                turn = ran;
+            }
+            "agent_message" => {
+                let Block::AgentMessage(block) = codec.block("blocks", &stored)? else {
+                    return Ok(None);
+                };
+                // A message of another conversation's agent, or none of an
+                // agent's, descends from no message of this one.
+                match block.message.sender {
+                    Some(sender) if sender.conversation.is_none() => node = sender.id.as_str().to_owned(),
+                    _ => return Ok(None),
+                }
+            }
+            _ => return Ok(None),
+        }
+    }
+}
+
+/// `node`'s parent and the call that spawned it; none when no such node is
+/// stored.
+fn node_parent(connection: &Connection, node: &str) -> Result<Option<(Option<String>, Option<String>)>, StorageError> {
+    Ok(connection
+        .query_row(
+            "SELECT parent_id, started_by FROM nodes WHERE id = ?1",
+            [node],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?)
+}
+
+/// The turn of `node`'s first row whose `column`, `id` or `command`, is
+/// `value`: the turn of the nearest row at or before it on its path that
+/// carries one.
+fn turn_of_row(connection: &Connection, node: &str, column: &str, value: &str) -> Result<Option<String>, StorageError> {
+    debug_assert!(matches!(column, "id" | "command"));
+    Ok(connection
+        .query_row(
+            &format!(
+                "WITH RECURSIVE up (idx, follows, turn_id) AS (
+                   SELECT * FROM (SELECT idx, follows, turn_id FROM blocks WHERE node_id = ?1 AND {column} = ?2
+                     ORDER BY idx LIMIT 1)
+                   UNION ALL
+                   SELECT row.idx, row.follows, row.turn_id FROM blocks AS row JOIN up
+                     ON row.node_id = ?1 AND row.idx = up.follows
+                   WHERE up.turn_id IS NULL
+                 )
+                 SELECT turn_id FROM up WHERE turn_id IS NOT NULL LIMIT 1"
+            ),
+            params![node, value],
+            |row| row.get(0),
+        )
+        .optional()?)
 }
 
 /// The stored body of the block row `at`.

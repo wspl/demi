@@ -396,6 +396,8 @@ async fn usage(
         api::UsageGrouping::Cloud => UsageKey::Device,
         api::UsageGrouping::Conversation => UsageKey::Conversation,
         api::UsageGrouping::Model => UsageKey::Model,
+        api::UsageGrouping::Turn => UsageKey::Turn,
+        api::UsageGrouping::Message => UsageKey::Message,
     };
     let rows = state
         .services

@@ -552,12 +552,28 @@ pub trait ContextSource {
     /// What the node must learn now, or nothing.
     ///
     /// `seen` is the text of the source's own blocks the model receives, oldest
-    /// first, and `turn` the input turn the request belongs to. A failure adds
-    /// no block; the source is asked again before the next request.
+    /// first, and `turn` the input turn the request belongs to.
     fn context<'a>(
         &'a self,
         node: NodeContext<'a>,
         turn: &'a TurnId,
         seen: &'a [&'a str],
-    ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, String>>;
+    ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, ContextFailure>>;
+}
+
+/// Why a context source told the node nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContextFailure {
+    /// The request goes without the block; the source is asked again before
+    /// the next one.
+    Skipped(String),
+    /// The request cannot go without it: it fails, as a provider's failure
+    /// does.
+    Required(String),
+}
+
+impl From<String> for ContextFailure {
+    fn from(message: String) -> Self {
+        Self::Skipped(message)
+    }
 }

@@ -1059,8 +1059,8 @@ impl SessionRuntime for CopyRuntime {
         &'a self,
         _seen: &'a [SeenContext<'a>],
         _turn: &'a TurnId,
-    ) -> LocalBoxFuture<'a, Vec<NewContext>> {
-        Box::pin(async { Vec::new() })
+    ) -> LocalBoxFuture<'a, Result<Vec<NewContext>, String>> {
+        Box::pin(async { Ok(Vec::new()) })
     }
 
     fn tools(&self) -> Arc<[ToolDefinition]> {

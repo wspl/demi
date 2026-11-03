@@ -1342,10 +1342,10 @@ impl Shard {
 }
 
 impl Shard {
-    /// Whose work a call of the conversation's agent numbered `agent` is:
-    /// the device it works on now, and the integration whose conversation it
-    /// is.
-    pub(crate) async fn attribution(&self, conversation: &ConversationId, agent: Option<u64>) -> Attribution {
+    /// Whose work a call of the conversation's agent numbered `agent`, in
+    /// its turn `turn`, is: the device it works on now, the integration whose
+    /// conversation it is, and the program's message it descends from.
+    pub(crate) async fn attribution(&self, conversation: &ConversationId, agent: Option<u64>, turn: Option<&str>) -> Attribution {
         let control = &self.services().control;
         let integration = control
             .integration_conversation(conversation.clone())
@@ -1357,7 +1357,31 @@ impl Shard {
             Some(number) => self.agent_device(conversation, number).await,
             None => None,
         };
-        Attribution { device, integration }
+        // Only an integration's program has messages its work descends from.
+        let message_id = match (&integration, agent, turn.and_then(|turn| TurnId::try_from(turn.to_owned()).ok())) {
+            (Some(_), Some(number), Some(turn)) => match self.agent_node(conversation, number) {
+                Some(node) => self.turn_message(conversation, &node, &turn).await,
+                None => None,
+            },
+            _ => None,
+        };
+        Attribution {
+            device,
+            integration,
+            message_id,
+        }
+    }
+
+    /// The live node of the conversation's agent numbered `number`; none
+    /// when the conversation is not open.
+    fn agent_node(&self, conversation: &ConversationId, number: u64) -> Option<NodeId> {
+        self.agent()
+            .tree(&root_of(conversation))?
+            .nodes()
+            .into_iter()
+            .map(|node| node.record())
+            .find(|record| record.number == number)
+            .map(|record| record.id)
     }
 
     /// The device the conversation's agent numbered `number` works on: its

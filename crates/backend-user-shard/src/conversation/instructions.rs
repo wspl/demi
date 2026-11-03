@@ -15,7 +15,7 @@
 use std::rc::{Rc, Weak};
 
 use demi_agent_server::instructions::{self, NONE_LEFT, ProjectFile, WorkflowText, render};
-use demi_agent_tools::{ContextAnswer, ContextSource, NodeContext, WORKFLOW_EXTENSION, Workflow, parse_workflow};
+use demi_agent_tools::{ContextAnswer, ContextFailure, ContextSource, NodeContext, WORKFLOW_EXTENSION, Workflow, parse_workflow};
 use demi_backend_host_access::conversation_of;
 use demi_backend_host_access::kept::Found;
 use demi_backend_host_access::plugin_files::ReadFilesError;
@@ -137,7 +137,7 @@ impl ContextSource for Instructions {
         node: NodeContext<'a>,
         _: &'a TurnId,
         seen: &'a [&'a str],
-    ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, String>> {
+    ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, ContextFailure>> {
         Box::pin(async move {
             let Some(shard) = self.shard.upgrade() else {
                 return Ok(None);

@@ -245,7 +245,9 @@ async fn generate(
 impl Shard {
     /// Titles the user's conversation `record` after its first message, when
     /// its title is still the placeholder: the message's start at once, and
-    /// a request beside the first turn to the user's small model.
+    /// a request beside the first turn to the user's small model. An
+    /// integration's conversation makes the request only while its
+    /// integration has titles on; its program may name it either way.
     pub(crate) async fn title_first_message(
         &self,
         record: &ConversationRecord,
@@ -268,21 +270,37 @@ impl Shard {
             .control
             .title_from_first_message(record.id.clone(), title.clone())
             .await?;
-        if let (true, Some(selection)) = (titled, &record.model) {
-            let request = TitleRequest {
-                message: text.to_owned(),
-                from: title,
-            };
-            // An integration's sockets hear the title.
-            let shard = Rc::downgrade(&self.this());
-            let ended = move |id: &ConversationId| {
-                if let Some(shard) = shard.upgrade() {
-                    shard.integration_conversation_changed(id);
-                }
-            };
-            self.titles()
-                .start(self.tasks(), record.id.clone(), selection.clone(), request, ended);
+        let Some(selection) = record.model.as_ref().filter(|_| titled) else {
+            return Ok(());
+        };
+        let control = &self.services().control;
+        let integration = control.integration_conversation(record.id.clone()).await?;
+        if let Some(conversation) = &integration {
+            // Its sockets hear the first message's start as a title.
+            self.this().integration_conversation_changed(&record.id);
+            let titles = control
+                .integration(conversation.integration.clone())
+                .await?
+                .is_some_and(|integration| integration.capabilities.titles);
+            if !titles {
+                return Ok(());
+            }
         }
+        let request = TitleRequest {
+            message: text.to_owned(),
+            from: title,
+        };
+        // An integration's sockets hear the title too.
+        let shard = Rc::downgrade(&self.this());
+        let ended = move |id: &ConversationId| {
+            if integration.is_some()
+                && let Some(shard) = shard.upgrade()
+            {
+                shard.integration_conversation_changed(id);
+            }
+        };
+        self.titles()
+            .start(self.tasks(), record.id.clone(), selection.clone(), request, ended);
         Ok(())
     }
 }

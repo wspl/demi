@@ -12,7 +12,7 @@
 use std::rc::{Rc, Weak};
 
 use demi_agent_tools::{
-    ContextAnswer, ContextSource, ConversationProfiles, HostResolver, NewProfileDraft, NodeContext, Profile, WorkflowListing,
+    ContextAnswer, ContextFailure, ContextSource, ConversationProfiles, HostResolver, NewProfileDraft, NodeContext, Profile, WorkflowListing,
     ProfileEdit, ProfileModel, SubagentSettings, SubagentSource, Toolset, ToolsetSource,
     runs_on as job_model,
 };
@@ -504,7 +504,7 @@ impl ContextSource for ExecutionContext {
         node: NodeContext<'a>,
         _turn: &'a TurnId,
         seen: &'a [&'a str],
-    ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, String>> {
+    ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, ContextFailure>> {
         Box::pin(async move {
             let Some(shard) = self.shard.upgrade() else {
                 return Ok(None);
@@ -513,7 +513,7 @@ impl ContextSource for ExecutionContext {
                 .execution_context(&conversation_of(node.root), seen)
                 .await
                 .map(|text| text.map(ContextAnswer::from))
-                .map_err(|error| format!("the execution context cannot be read: {error}"))
+                .map_err(|error| ContextFailure::Skipped(format!("the execution context cannot be read: {error}")))
         })
     }
 }
@@ -535,7 +535,7 @@ impl ContextSource for PluginContext {
         node: NodeContext<'a>,
         turn: &'a TurnId,
         seen: &'a [&'a str],
-    ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, String>> {
+    ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, ContextFailure>> {
         Box::pin(async move {
             let Some(shard) = self.shard.upgrade() else {
                 return Ok(None);
@@ -584,7 +584,7 @@ impl ContextSource for PluginContext {
                 .context(&self.plugin, asked, CancellationToken::new())
                 .await
                 .map(|text| text.map(ContextAnswer::from))
-                .map_err(|error| format!("the plugin {} gave no context: {error}", self.plugin))
+                .map_err(|error| ContextFailure::Skipped(format!("the plugin {} gave no context: {error}", self.plugin)))
         })
     }
 }

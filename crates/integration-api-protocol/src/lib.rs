@@ -164,6 +164,8 @@ pub struct Conversation {
     pub key: Option<String>,
     /// The Cloud its main agent works on; null for one whose Cloud is gone.
     pub cloud: Option<DeviceId>,
+    /// The title the integration gave it; until it gives one, the start of
+    /// its first message, and empty before that. Demi writes none of its own.
     pub title: String,
     /// `running` or `compacting` while more is coming: a turn, a subagent
     /// that is live, a command that is not a service, or a report the main
@@ -365,6 +367,11 @@ pub enum UsageGrouping {
     Cloud,
     Conversation,
     Model,
+    /// The turn, as a request's `turn` gives it.
+    Turn,
+    /// The program's message the work descends from, as a request's
+    /// `messageId` gives it.
+    Message,
 }
 
 /// The integration's usage, a row per group, most expensive first.
@@ -378,8 +385,8 @@ pub struct Usage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageRow {
-    /// The group: a Cloud's or a conversation's id, or a model's id; null
-    /// for requests of no Cloud, such as a title's.
+    /// The group: a Cloud's, a conversation's, a model's, a turn's or a
+    /// message's id; null for requests of none, such as a title's.
     pub key: Option<String>,
     pub requests: u64,
     pub input_tokens: u64,
@@ -603,8 +610,15 @@ pub enum PluginRequest {
     Command {
         conversation: ConversationId,
         key: Option<String>,
+        /// The agent that ran it.
+        agent: Option<NodeId>,
         /// The number of the agent that ran it, as `Agent.number` gives it.
         agent_number: Option<u64>,
+        /// The turn the agent ran it in: its id, as `lastTurn.id` gives it.
+        turn: Option<String>,
+        /// The id of the program's message the agent's work descends from;
+        /// null when it descends from none, as a schedule's turn does.
+        message_id: Option<String>,
         /// The Cloud it ran on.
         cloud: String,
         /// The command's path, its root first, such as `["chatbot", "post"]`.
@@ -627,8 +641,30 @@ pub enum PluginRequest {
         conversation: ConversationId,
         key: Option<String>,
         agent: NodeId,
+        /// The turn the agent asks its model in, as `lastTurn.id` gives it.
+        turn: String,
+        /// The id of the program's message the agent's work descends from;
+        /// null when it descends from none.
+        message_id: Option<String>,
         seen: Vec<String>,
     },
+}
+
+/// Whether an integration's plugin adds context, and whether an agent may ask
+/// its model without it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextMode {
+    /// It adds none.
+    #[default]
+    None,
+    /// A request it does not answer within the declaration's wait is
+    /// skipped: the agent asks its model without the block.
+    Optional,
+    /// Each request waits for a socket as a command does, and for its
+    /// answer within the declaration's wait; when none comes, the agent's
+    /// turn ends with an error.
+    Required,
 }
 
 /// What the socket takes from the integration's program.
@@ -641,7 +677,11 @@ pub enum ClientMessage {
     Declare {
         commands: Vec<Node<NativeOperation>>,
         #[serde(default)]
-        context: bool,
+        context: ContextMode,
+        /// How long a context request waits for its answer, in seconds;
+        /// none for 10.
+        #[serde(default)]
+        context_wait_seconds: Option<NonZeroU32>,
     },
     /// The reply to the request `id`.
     Reply { id: u64, reply: PluginReply },
@@ -672,7 +712,9 @@ pub enum PluginReply {
 #[serde(rename_all = "camelCase")]
 pub struct Declaration {
     pub commands: Vec<Node<NativeOperation>>,
-    pub context: bool,
+    pub context: ContextMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_wait_seconds: Option<NonZeroU32>,
 }
 
 /// A model a conversation may run on: one of its integration's user's.

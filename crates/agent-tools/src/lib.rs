@@ -116,7 +116,7 @@ pub use result::{
     Look, Moved, interrupted_look, look_text, report_media, report_output, whole_look_text, whole_status,
 };
 pub use product::{
-    ChosenWorkflow, ContextAnswer, ContextSource, ConversationProfiles, EFFORT_OFF, HostResolver,
+    ChosenWorkflow, ContextAnswer, ContextFailure, ContextSource, ConversationProfiles, EFFORT_OFF, HostResolver,
     ListedWorkflow, WorkflowChild, WorkflowListing,
     ModelChoice, ModelEdit, NewProfileDraft, NodeContext, Profile, ProfileEdit, ProfileModel,
     SubagentSettings, SubagentSource, TIER_DEFAULT, Toolset, ToolsetSource, Unavailable, runs_on,

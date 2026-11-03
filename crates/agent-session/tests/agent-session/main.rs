@@ -160,7 +160,7 @@ impl SessionRuntime for TestRuntime {
         &'a self,
         seen: &'a [SeenContext<'a>],
         _turn: &'a TurnId,
-    ) -> LocalBoxFuture<'a, Vec<NewContext>> {
+    ) -> LocalBoxFuture<'a, Result<Vec<NewContext>, String>> {
         self.seen.borrow_mut().push(
             seen.iter()
                 .map(|seen| format!("{}: {}", seen.source, seen.text))
@@ -177,7 +177,7 @@ impl SessionRuntime for TestRuntime {
             .chain(self.context.iter().cloned())
             .filter(|news| !seen.iter().any(|seen| seen.text == news.text))
             .collect();
-        Box::pin(async move { news })
+        Box::pin(async move { Ok(news) })
     }
 
     fn agent(&self) -> Option<u64> {

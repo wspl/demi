@@ -101,12 +101,13 @@ pub trait SessionRuntime {
     ///
     /// `seen` is each context block the model receives, from the last
     /// compaction boundary on, oldest first, and `turn` the input turn the
-    /// request belongs to.
+    /// request belongs to. A failure is a source's the request cannot go
+    /// without, and fails it.
     fn context<'a>(
         &'a self,
         seen: &'a [SeenContext<'a>],
         turn: &'a TurnId,
-    ) -> LocalBoxFuture<'a, Vec<NewContext>>;
+    ) -> LocalBoxFuture<'a, Result<Vec<NewContext>, String>>;
 
     /// The tools the model may call.
     fn tools(&self) -> Arc<[ToolDefinition]>;

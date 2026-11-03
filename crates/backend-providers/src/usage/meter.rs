@@ -48,9 +48,9 @@ pub struct Ledger {
     pub attribution: Attributions,
 }
 
-/// Whose work a call of the agent numbered is, none for a call outside a
-/// session.
-pub type Attributions = Rc<dyn Fn(Option<u64>) -> LocalBoxFuture<'static, Attribution>>;
+/// Whose work a call of the agent numbered, in the turn named, is; none
+/// for a call outside a session, or of no turn.
+pub type Attributions = Rc<dyn Fn(Option<u64>, Option<String>) -> LocalBoxFuture<'static, Attribution>>;
 
 /// The catalog's prices of the model named, at the moment it is asked;
 /// none when the catalog has none.
@@ -411,7 +411,7 @@ impl ProviderRuntime for MeteredRuntime {
         let mut calls = Calls::new(self.ledger.clone(), &request, span.clone());
         let mut events = span.in_scope(|| self.inner.run(request));
         let run = async_stream::stream! {
-            calls.attribution = (calls.ledger.attribution)(calls.agent).await;
+            calls.attribution = (calls.ledger.attribution)(calls.agent, calls.turn.clone()).await;
             while let Some(event) = events.next().await {
                 calls.output(&event);
                 match event {

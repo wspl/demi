@@ -62,7 +62,7 @@ use demi_agent_store::{
     media::store_result,
 };
 use demi_agent_tools::{
-    CallError, ContextSource, EndOf, Environments, HostResolver, ModelIdentity, NodeContext, OwnPlacement,
+    CallError, ContextFailure, ContextSource, EndOf, Environments, HostResolver, ModelIdentity, NodeContext, OwnPlacement,
     ShellAccess, ShellEnvironmentFactory, Stopper, StoreNumbers, definitions, end_report,
     fill_output, interrupted_look, progress_report, report_media, runs_together, stored_running_commands,
     system_prompt, whole_status,
@@ -880,12 +880,13 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     /// answers in the sources' order.
     ///
     /// A source that reads a Host does not make the others wait. A source that
-    /// fails adds nothing: it is asked again before the next request.
+    /// fails adds nothing: it is asked again before the next request, unless
+    /// the request cannot go without it, which fails the request.
     fn context<'a>(
         &'a self,
         seen: &'a [SeenContext<'a>],
         turn: &'a TurnId,
-    ) -> LocalBoxFuture<'a, Vec<NewContext>> {
+    ) -> LocalBoxFuture<'a, Result<Vec<NewContext>, String>> {
         Box::pin(async move {
             let placement = self.record.borrow().placement.clone();
             let host = self.host_elsewhere().await;
@@ -909,7 +910,8 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                         cwd: None,
                     }),
                     Ok(None) => {}
-                    Err(error) => tracing::warn!(
+                    Err(ContextFailure::Required(error)) => return Err(error),
+                    Err(ContextFailure::Skipped(error)) => tracing::warn!(
                         event = "context_source.failed",
                         conversation = %self.root,
                         node = %self.node,
@@ -921,7 +923,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 }
             }
             news.extend(working_directory(placement.map(|placement| placement.directory), host.as_deref(), seen));
-            news
+            Ok(news)
         })
     }
 

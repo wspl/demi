@@ -474,6 +474,9 @@ pub enum AgentCode {
     /// The system prompt of the conversation's model could not be made, as
     /// when its provider entry is gone.
     PromptUnavailable,
+    /// A context source the request cannot go without told the node
+    /// nothing, as an integration whose program did not answer.
+    ContextUnavailable,
 }
 
 serde_plain::derive_display_from_serialize!(AgentCode);

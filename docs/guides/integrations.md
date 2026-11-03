@@ -100,6 +100,11 @@ The following steps start a conversation and read its reply.
 A real program doesn't poll: it listens on the socket, as
 [Hear what happens](#hear-what-happens) describes.
 
+A conversation's `title` is the start of its first message, until the user's
+small model writes one, as in the web app. Turn off the `titles` capability
+to keep the start of the message instead. Either way, you can give it a title
+with `PATCH /v1/conversations/{conversation}` and a `title`.
+
 ## Clouds
 
 A Cloud is a Linux machine that Demi runs and keeps: the agents run their
@@ -331,7 +336,7 @@ commands are `rpc` leaves, and each leaf's `input` is a JSON Schema object:
 ```json
 {
   "type": "declare",
-  "context": true,
+  "context": "optional",
   "commands": [{
     "name": "chatbot",
     "summary": "Post to the chat this conversation answers.",
@@ -369,8 +374,18 @@ Requests arrive as `request` events:
   and end it with a `reply` of `{"type": "exit", "code": 0}`. A `cancel`
   event means the agent stopped the command, and Demi doesn't read the reply.
 - A `context` request comes before an agent asks its model, when you declared
-  `context: true`. Reply with `{"type": "context", "text": "..."}`, or with
-  `null` text to add nothing. `seen` holds the context you added before.
+  `context` as `optional` or `required`. Reply with
+  `{"type": "context", "text": "..."}`, or with `null` text to add nothing.
+  `seen` holds the context you added before.
+
+Each request also names the agent, the `turn` it works in, and its
+`messageId`: the id of your message that the work descends from. When alex asks the bot to
+deploy, the main agent's command carries the id of alex's message. So does
+the command of the subagent it spawns for the build, and the command it runs
+again when a background command ends, even after sam has written something
+else. Look up who sent that message to decide what the command may do, or
+whom the context should name. `messageId` is null for work that descends
+from none of your messages, such as a schedule's.
 
 The following TypeScript program, for Bun or Node.js, serves the command
 above:
@@ -404,15 +419,20 @@ this in a server program.
 
 While no socket serves your commands, an agent's command waits for one to
 connect for a short while and then fails, telling the model that the
-integration is unreachable. A context request doesn't wait: the agent asks
-its model without your context.
+integration is unreachable. An `optional` context request waits 10 seconds at
+most for your answer: then the agent asks its model without your context. A
+`required` one waits for your program to connect as a command does, and 10
+seconds for its answer; then the agent's turn ends with an error, which
+`lastTurn` shows.
 
 ## Usage
 
-`GET /v1/usage?by=cloud`, `by=conversation` or `by=model` returns the
-integration's requests, tokens and the cost they would have on the vendors'
-APIs, one row for each group, most expensive first. `from` and `to` limit the
-period.
+`GET /v1/usage?by=cloud`, `by=conversation`, `by=model`, `by=turn` or
+`by=message` returns the integration's requests, tokens and the cost they
+would have on the vendors' APIs, one row for each group, most expensive
+first. `by=message` groups the work by the message it descends from, as
+requests name it, so you can count it to the person who sent it. `from` and
+`to` limit the period.
 
 ## Delete
 

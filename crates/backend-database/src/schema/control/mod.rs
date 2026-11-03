@@ -90,6 +90,7 @@ mod from_0_1_65_dev_one_cloud;
 mod from_0_1_65_dev_no_integrations;
 mod from_0_1_65_dev_undeclared_integrations;
 mod from_0_1_65_dev_uninitialized_integrations;
+mod from_0_1_65_dev_usage_without_messages;
 
 pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
@@ -414,5 +415,9 @@ pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
         sql: include_str!("from_0_1_65_dev_uninitialized_integrations.sql"),
         migration: from_0_1_65_dev_uninitialized_integrations::MIGRATION,
+    },
+    Shipped {
+        sql: include_str!("from_0_1_65_dev_usage_without_messages.sql"),
+        migration: from_0_1_65_dev_usage_without_messages::MIGRATION,
     },
 ];

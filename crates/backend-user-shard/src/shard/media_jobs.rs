@@ -154,7 +154,8 @@ impl Shard {
         };
         for mut job in jobs {
             // A kept row does not keep whose work the call is.
-            job.usage.attribution = self.attribution(&job.usage.conversation, job.usage.agent).await;
+            let usage = &job.usage;
+            job.usage.attribution = self.attribution(&usage.conversation, usage.agent, usage.turn.as_deref()).await;
             self.follow_media_job(job, None);
         }
     }

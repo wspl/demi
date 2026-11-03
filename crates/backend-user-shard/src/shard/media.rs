@@ -1793,8 +1793,8 @@ impl OpenRow {
     /// Finds whose work the call is, which its row carries however it
     /// ends, dropped included.
     async fn attribute(&mut self) {
-        let (conversation, agent) = (self.row().conversation.clone(), self.row().agent);
-        let attribution = self.shard.attribution(&conversation, agent).await;
+        let (conversation, agent, turn) = (self.row().conversation.clone(), self.row().agent, self.row().turn.clone());
+        let attribution = self.shard.attribution(&conversation, agent, turn.as_deref()).await;
         self.row().attribution = attribution;
     }
 
