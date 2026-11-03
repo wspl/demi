@@ -49,7 +49,7 @@ use demi_provider_common::{
     media_catalog::{Catalog, MediaKind},
     videos::{self, Content, Done, JobRef, JobState, VideoMaker, VideoOption, VideoRequest, content, unsent_of},
 };
-use demi_shared_types::{Clock, VendorTrace, VideoResolution, VideoShape};
+use demi_shared_types::{Clock, VendorTrace, VideoResolution};
 use futures_util::future::BoxFuture;
 use reqwest::{Url, header::HeaderMap};
 use serde::{Deserialize, Serialize};
@@ -168,10 +168,6 @@ impl MediaMaker for Hailuo {
 }
 
 impl VideoMaker for Hailuo {
-    fn shape(&self) -> VideoShape {
-        VideoShape::Hailuo
-    }
-
     fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, catalog: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         Box::pin(async move {
             let api = match self.api(catalog, &request.model) {

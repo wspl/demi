@@ -23,7 +23,7 @@ use demi_provider_common::{
     media::{Ask, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, catalog_models, unreadable},
     media_catalog::{Catalog, MediaKind},
 };
-use demi_shared_types::{AudioShape, Clock};
+use demi_shared_types::Clock;
 use futures_util::future::BoxFuture;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -82,10 +82,6 @@ impl AudioMaker for MinimaxSpeech {
 
     fn shape_name(&self, _: &Catalog, _: &AudioRequest) -> String {
         "MiniMax speech".to_owned()
-    }
-
-    fn shape(&self) -> AudioShape {
-        AudioShape::Minimax
     }
 
     fn needs_voice(&self) -> bool {

@@ -13,7 +13,7 @@
 
 use bytes::Bytes;
 use demi_shared_types::audio::Pcm;
-use demi_shared_types::{AudioKind, AudioShape, Cost, TokenUsage};
+use demi_shared_types::{AudioKind, Cost, TokenUsage};
 use futures_util::future::BoxFuture;
 
 use crate::media::{MediaAnswer, MediaFailure, MediaMaker};
@@ -21,10 +21,6 @@ use crate::media_catalog::Catalog;
 
 /// A provider's audio role.
 pub trait AudioMaker: MediaMaker {
-    /// The shape its requests take, which says the kinds it makes and the
-    /// options it sends ([`unsent`]).
-    fn shape(&self) -> AudioShape;
-
     /// Whether speech needs a voice named, for a vendor that has no default
     /// voice: a call without `--voice` then fails before it is sent.
     fn needs_voice(&self) -> bool {

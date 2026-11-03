@@ -16,7 +16,7 @@ use demi_provider_common::media_catalog::Catalog;
 use demi_provider_common::videos::{self, Done, JobRef, JobState, VideoMaker, VideoOption, VideoRequest};
 use demi_provider_common::{ErrorCode, ProviderHttp, RequestBuilder};
 use demi_shared_types::audio::Pcm;
-use demi_shared_types::{AudioKind, AudioShape, MediaKind, MediaShapes, VendorTrace, VideoShape};
+use demi_shared_types::{AudioKind, MediaKind, MediaShapes, VendorTrace};
 use futures_util::future::BoxFuture;
 use http::Method;
 use serde::de::DeserializeOwned;
@@ -187,10 +187,6 @@ impl ImageMaker for Relayed {
 }
 
 impl VideoMaker for Relayed {
-    fn shape(&self) -> VideoShape {
-        self.shapes.video.expect("a relayed maker of videos has the lender's shape")
-    }
-
     fn ask<'a>(&'a self, http: &'a ProviderHttp, _: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         Box::pin(Self::answered(async move {
             let asked: WireAskedVideo = self.answer(self.post(http, "video", &WireVideoRequest::from(&request)), "answer").await?;
@@ -246,10 +242,6 @@ impl VideoMaker for Relayed {
 }
 
 impl AudioMaker for Relayed {
-    fn shape(&self) -> AudioShape {
-        self.shapes.audio.expect("a relayed maker of audio has the lender's shape")
-    }
-
     fn needs_voice(&self) -> bool {
         self.said().is_some_and(|said| said.needs_voice)
     }

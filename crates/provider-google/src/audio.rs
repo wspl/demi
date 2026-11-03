@@ -22,7 +22,7 @@ use demi_provider_common::{
     media_catalog::Catalog,
 };
 use demi_shared_types::audio::Pcm;
-use demi_shared_types::{AudioKind, AudioShape, B64Bytes, TokenUsage};
+use demi_shared_types::{AudioKind, B64Bytes, TokenUsage};
 use futures_util::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 
@@ -91,10 +91,6 @@ impl AudioMaker for KeyAudio {
             _ => "Gemini",
         };
         name.to_owned()
-    }
-
-    fn shape(&self) -> AudioShape {
-        AudioShape::Gemini
     }
 
     fn make<'a>(
