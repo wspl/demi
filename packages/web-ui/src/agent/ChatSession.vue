@@ -469,13 +469,19 @@ const latestVisible = computed(() => getVisibleBlocks(latest.value))
 // Relative paths resolve against the directory the conversation works in.
 provideMessageFiles(() => props.files && { ...props.files, cwd: props.conversation.cwd })
 const surface = ref<{ dockHeight: number }>()
-// The title is the last thing in the header to be cut short, up to its greatest
-// width. The controls beside it give up their labels before a title narrower
-// than that is cut, and keep them while a longer one is cut to it.
-const TITLE_MAX_PX = 260
+// The title shows whole while the header holds it. A longer one is cut first,
+// down to this width, while the controls beside it keep their labels; below
+// it, the controls give up their labels before the title is cut further.
+const TITLE_KEPT_PX = 260
 /** The Rename button beside the title, and the gap before it. */
 const TITLE_ACTION_PX = 28 + 4
 const renaming = ref(false)
+/**
+ * The rename field's width: the room the title and its Rename button took, so
+ * the controls past them stay put, or the title's kept width when that is
+ * wider, which may take a label beside it.
+ */
+const renameWidth = ref(TITLE_KEPT_PX)
 
 // A phone shows one top bar (`SidebarLayout`), with three controls:
 //
@@ -545,6 +551,7 @@ const iconPx = useIconPx()
 /** The Rename button, or a double-click on the title, names it in place. */
 function beginRename(): void {
   if (!props.conversation.archived) {
+    renameWidth.value = Math.max(TITLE_KEPT_PX, (title.value?.offsetWidth ?? 0) + TITLE_ACTION_PX)
     renaming.value = true
   }
 }
@@ -570,11 +577,10 @@ watch(
     if (titleCellWidth.value === undefined) {
       return
     }
-    // The input a rename swaps in is as wide as a title gets, and leaves no
-    // button beside it.
+    // The input a rename swaps in leaves no button beside it.
     const need = title.value
-      ? Math.min(title.value.scrollWidth, TITLE_MAX_PX) + TITLE_ACTION_PX
-      : TITLE_MAX_PX
+      ? Math.min(title.value.scrollWidth, TITLE_KEPT_PX) + TITLE_ACTION_PX
+      : renameWidth.value
     titleRoom.value = titleCellWidth.value - need
   },
   { flush: 'post' },
@@ -943,7 +949,7 @@ watch(
         <SidebarToggle placement="bar" />
         <TitleInput
           v-if="renaming"
-          :style="{ width: `${TITLE_MAX_PX}px` }"
+          :style="{ width: `${renameWidth}px` }"
           :title="shownTitle"
           @submit="renaming = false; emit('rename', $event)"
           @cancel="renaming = false"
@@ -952,7 +958,6 @@ watch(
           <h1
             ref="title"
             class="min-w-0 select-none truncate text-chrome font-normal leading-5 text-fg"
-            :style="{ maxWidth: `${TITLE_MAX_PX}px` }"
             @dblclick="beginRename"
           >
             {{ shownTitle }}
