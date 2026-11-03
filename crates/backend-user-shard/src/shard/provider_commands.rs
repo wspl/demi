@@ -31,7 +31,7 @@ use demi_web_api_protocol::error::problems;
 use demi_web_api_protocol::providers::{
     Availability, ConfiguredModel, ConfiguredModels, CreateProvider,
     AudioMedia, AudioMediaPatch, CredentialKind, ImageMedia, ImageMediaPatch, MediaPatch, ModelKind, ModelMatch,
-    VideoMedia, VideoMediaPatch,
+    ProviderHeader, VideoMedia, VideoMediaPatch,
     ProviderPatch, SetupPart,
 };
 use demi_web_api_protocol::text::{EndpointUrl, Trimmed};
@@ -59,7 +59,7 @@ const ENTRY: &str = "The user's model providers and their models.";
 
 const LIST_SUMMARY: &str = "List each provider entry: its id, its name in Settings, its kind, its count of models and its status (Ready, or what it still needs); demi providers show lists an entry's models. --all adds the entries and models the user turned off. A read.";
 
-const SHOW_SUMMARY: &str = "Show every setting of one entry: name, kind, vendor or family and wire, endpoint, the device its requests go out from, whether a key is saved (never the key), accounts by label, status, and each model with every field: context window and output limit in tokens, default effort and efforts (off when thinking can be turned off), service tiers, the files it reads, and whether you run on it. A read.";
+const SHOW_SUMMARY: &str = "Show every setting of one entry: name, kind, vendor or family and wire, endpoint, the device its requests go out from, a compatible API's headers, whether a key is saved (never the key), accounts by label, status, and each model with every field: context window and output limit in tokens, default effort and efforts (off when thinking can be turned off), service tiers, the files it reads, and whether you run on it. A read.";
 
 const ADD_SUMMARY: &str = "Add a provider entry: --vendor, a models.dev vendor; --family alone, the family's own vendor; or --family with --wire and --base-url, a compatible API. Without --name it is named after its vendor or family, or Compatible API, with (2), (3) when that name is taken. A vendor's entry without a key joins the list incomplete until the user adds the key in Settings > Providers; a compatible API's key is optional. Needs the user's permission.";
 
@@ -261,6 +261,9 @@ struct ShownEntry {
     /// The device its requests go out from, by name, or by id once removed;
     /// null for the server.
     through: Option<String>,
+    /// The headers every request of a compatible entry carries, in order;
+    /// `{conversation}` in a value stands for the conversation's ID.
+    headers: Vec<ProviderHeader>,
     /// Whether a key is saved; null for a subscription.
     key_saved: Option<bool>,
     /// The labels of a subscription's accounts, for a user who configures
@@ -1226,6 +1229,7 @@ async fn shown(
             ),
             None => None,
         },
+        headers: entry.headers().to_vec(),
         key_saved: config.map(|config| config.api_key.is_some()),
         accounts,
         availability: catalog.map_or_else(
@@ -1332,6 +1336,10 @@ impl ShownEntry {
         for account in &self.accounts {
             accounts.row([account.as_str()]);
         }
+        let mut headers = Table::new(["header", "value"]);
+        for header in &self.headers {
+            headers.row([header.name.as_str(), header.value.as_str()]);
+        }
         let mut models = Table::new([
             "id",
             "context (tokens)",
@@ -1372,6 +1380,9 @@ impl ShownEntry {
                 (self.kind == CredentialKind::ApiKey).then(|| self.through.as_deref().unwrap_or("Server")),
             )
             .field("Key saved", self.key_saved);
+        if !self.headers.is_empty() {
+            fields.table("Headers", &headers);
+        }
         if self.kind == CredentialKind::Subscription {
             fields.table("Accounts", &accounts);
         }

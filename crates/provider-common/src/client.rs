@@ -5,12 +5,20 @@
 //! request to the backend's [`DeviceRoute`], which hands it to that device's
 //! runner; the runner makes it as any program on the device would. Every other
 //! entry's requests go to the network from the backend.
+//!
+//! Every request to the entry's endpoint carries the entry's own headers
+//! ([`ProviderHeader`]) after the ones its provider sets, which a header of
+//! the same name replaces; a request built for a conversation
+//! ([`RequestBuilder::for_conversation`]) fills in that conversation's ID. A
+//! request to another origin, such as a redirect to a storage bucket or a
+//! file's download, carries none, as it carries none of the entry's key.
 
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
+use demi_shared_types::ProviderHeader;
 use futures_util::future::BoxFuture;
 use futures_util::stream::BoxStream;
 use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
@@ -91,6 +99,16 @@ pub struct ProviderHttp {
     /// the device's runner follows none, so a request through it follows
     /// them here.
     follows: bool,
+    /// The entry's own headers, in its user's order, and the origin of the
+    /// endpoint they are for.
+    headers: Option<OwnHeaders>,
+}
+
+/// An entry's own headers and the endpoint whose origin they go to.
+#[derive(Clone)]
+struct OwnHeaders {
+    list: Arc<[ProviderHeader]>,
+    endpoint: Url,
 }
 
 /// The device of the entry's owner that its requests go out from.
@@ -112,7 +130,17 @@ impl fmt::Debug for ProviderHttp {
 impl ProviderHttp {
     /// A client whose requests go to the network from the backend.
     pub fn new(client: reqwest::Client) -> Self {
-        Self { client, through: None, follows: true }
+        Self { client, through: None, follows: true, headers: None }
+    }
+
+    /// The same client, whose requests to `endpoint`'s origin carry
+    /// `headers` as well.
+    pub fn with_headers(self, headers: &[ProviderHeader], endpoint: &Url) -> Self {
+        let headers = (!headers.is_empty()).then(|| OwnHeaders {
+            list: headers.into(),
+            endpoint: endpoint.clone(),
+        });
+        Self { headers, ..self }
     }
 
     /// A client whose requests go out from `owner`'s device `device`, through
@@ -126,6 +154,7 @@ impl ProviderHttp {
                 device: device.into(),
             }),
             follows: true,
+            headers: None,
         }
     }
 
@@ -141,6 +170,7 @@ impl ProviderHttp {
             client,
             through: self.through.clone(),
             follows: false,
+            headers: self.headers.clone(),
         })
     }
 
@@ -160,6 +190,8 @@ impl ProviderHttp {
         RequestBuilder {
             through: self.through.clone(),
             follows: self.follows,
+            headers: self.headers.clone(),
+            conversation: None,
             inner: self.client.request(method, url),
         }
     }
@@ -169,10 +201,21 @@ impl ProviderHttp {
 pub struct RequestBuilder {
     through: Option<Through>,
     follows: bool,
+    headers: Option<OwnHeaders>,
+    /// The conversation the request serves; none for one that serves none,
+    /// such as a model list.
+    conversation: Option<String>,
     inner: reqwest::RequestBuilder,
 }
 
 impl RequestBuilder {
+    /// Names the conversation the request serves, whose ID the entry's
+    /// headers fill in.
+    pub fn for_conversation(mut self, conversation: Option<&str>) -> Self {
+        self.conversation = conversation.map(str::to_owned);
+        self
+    }
+
     pub fn header<K, V>(self, key: K, value: V) -> Self
     where
         HeaderName: TryFrom<K>,
@@ -203,6 +246,8 @@ impl RequestBuilder {
         Self {
             through: self.through,
             follows: self.follows,
+            headers: self.headers,
+            conversation: self.conversation,
             inner: change(self.inner),
         }
     }
@@ -211,7 +256,10 @@ impl RequestBuilder {
     /// through one, otherwise to the network.
     pub async fn send(self) -> Result<reqwest::Response, SendError> {
         let (client, request) = self.inner.build_split();
-        let request = request?;
+        let mut request = request?;
+        if let Some(own) = self.headers.as_ref().filter(|own| request.url().origin() == own.endpoint.origin()) {
+            add_headers(request.headers_mut(), &own.list, self.conversation.as_deref());
+        }
         let Some(through) = &self.through else {
             return Ok(client.execute(request).await?);
         };
@@ -259,6 +307,24 @@ impl RequestBuilder {
         Err(SendError::Device(DeviceRefusal::Failed(format!(
             "The address redirected more than {REDIRECTS} times"
         ))))
+    }
+}
+
+/// Puts the entry's `headers` on a request serving `conversation`, each in
+/// place of one of the same name. The entry's settings refused a name or a
+/// value no request carries, so one that does not parse is one stored
+/// before that check, and is left out.
+fn add_headers(request: &mut HeaderMap, headers: &[ProviderHeader], conversation: Option<&str>) {
+    for header in headers {
+        let Some(value) = header.value_for(conversation) else {
+            continue;
+        };
+        match (HeaderName::from_bytes(header.name.as_bytes()), HeaderValue::from_str(&value)) {
+            (Ok(name), Ok(value)) => {
+                request.insert(name, value);
+            }
+            _ => tracing::warn!(event = "provider_header.unsent", header = %header.name, "a provider entry's header is no HTTP header and was not sent"),
+        }
     }
 }
 

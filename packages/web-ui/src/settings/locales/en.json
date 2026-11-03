@@ -721,6 +721,20 @@
       "throughRemoved": "Removed Device",
       "throughRemovedDescription": "The device was removed: requests fail until you choose another."
     },
+    "headers": {
+      "title": "Headers",
+      "description": "Sent with every request. In a value, {token} stands for the conversation’s ID.",
+      "add": "Add Header",
+      "namePlaceholder": "Name",
+      "valuePlaceholder": "Value",
+      "nameOf": "Name of header {n}",
+      "valueOf": "Value of header {n}",
+      "remove": "Remove Header",
+      "removeOf": "Remove header {n}",
+      "invalidName": "Enter a name without spaces or symbols such as a colon, like X-Session-Id.",
+      "takenName": "Another header already has this name.",
+      "invalidValue": "Remove the line break from the value."
+    },
     "cli": {
       "title": "Command-Line Tool",
       "version": "Version",

@@ -34,6 +34,7 @@ import ProgressBar from '@demicodes/web-ui/ui/ProgressBar.vue'
 import { formatByteRatio } from '@demicodes/web-ui/files/format'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import ProviderCacheTtl from './ProviderCacheTtl.vue'
+import ProviderHeaders from './ProviderHeaders.vue'
 import ProviderQuota from './ProviderQuota.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
@@ -1321,6 +1322,13 @@ function endpointCheck(value: string) {
                   :overlay-store="overlayStore"
                   :disabled="fieldsLocked(selected)"
                   @change="emit('change', selected, { cacheTtl: $event })"
+                />
+                <ProviderHeaders
+                  v-if="selected.compatible"
+                  :key="selected.id"
+                  :headers="selected.headers ?? []"
+                  :busy="fieldsLocked(selected)"
+                  @change="emit('change', selected, { headers: $event })"
                 />
               </template>
               <!-- A key's test has a row of its own; a subscription's sits on its active account. -->

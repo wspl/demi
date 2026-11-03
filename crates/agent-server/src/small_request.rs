@@ -53,6 +53,7 @@ pub async fn run_small_request(
     let inference = InferenceRequest {
         session_id: session.to_owned(),
         affinity: None,
+        conversation: Some(session.to_owned()),
         turn_id: format!("{}:{request_id}", request.purpose.as_str()),
         request_id,
         model_id: selection.model.id.clone(),

@@ -393,6 +393,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         ...(changes.wireApi !== undefined ? protocol(changes.wireApi) : {}),
         ...(changes.baseUrl !== undefined ? { baseUrl: changes.baseUrl || null } : {}),
         ...(changes.throughDevice !== undefined ? { throughDevice: changes.throughDevice } : {}),
+        ...(changes.headers !== undefined ? { headers: changes.headers } : {}),
         ...(changes.apiKey !== undefined ? { apiKey: changes.apiKey || null } : {}),
         ...(changes.rotation !== undefined ? { rotation: changes.rotation } : {}),
         ...(changes.cacheTtl !== undefined ? { cacheTtl: changes.cacheTtl.value } : {}),

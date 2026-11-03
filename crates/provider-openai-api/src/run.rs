@@ -32,6 +32,7 @@ pub(crate) fn run(
         let wire = shared.wire;
         let policy = shared.policy;
         let model = request.model_id.clone();
+        let conversation = request.conversation.clone();
         let tag = shared.signature_tag.clone();
         // Only a session's request asks for a lifetime.
         let lifetime = shared
@@ -60,7 +61,7 @@ pub(crate) fn run(
                 return;
             }
         };
-        let mut send = http.post(shared.url.clone());
+        let mut send = http.post(shared.url.clone()).for_conversation(conversation.as_deref());
         if let Some(authorization) = &shared.authorization {
             send = send.header(AUTHORIZATION, authorization.clone());
         }

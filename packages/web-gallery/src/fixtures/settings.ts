@@ -980,6 +980,19 @@ export function mockProviders(): MockProvider[] {
       models: [model({ id: 'qwen3:32b', contextWindow: 40_000, tools: true, extensions: [] })],
     }),
     provider({
+      // A gateway that keeps a conversation's requests on one upstream account
+      // when they name it, and turns a beta on by its header.
+      id: 'gateway', name: 'Team gateway', kind: 'api_key', family: 'anthropic', vendorId: null, compatible: true,
+      baseUrl: 'https://llm.example.com/v1', wireApi: 'anthropic-messages', apiKey: '', keyConfigured: true,
+      headers: [
+        { name: 'User-Agent', value: 'alex-agent/1.0' },
+        { name: 'x-session-id', value: '{conversation}' },
+        { name: 'anthropic-beta', value: 'context-1m-2025-08-07' },
+      ],
+      modelSource: 'manual', testedWith: 'claude-sonnet-5',
+      models: [model({ id: 'claude-sonnet-5', contextWindow: 1_000_000, tools: true, extensions: [] })],
+    }),
+    provider({
       // Ollama on alex-mbp itself: its requests go out from alex-mbp, whose
       // own 127.0.0.1 the endpoint names.
       id: 'mac-ollama', name: 'Ollama on alex-mbp', kind: 'api_key', family: 'openai', vendorId: null, compatible: true,

@@ -5,7 +5,8 @@ use demi_provider_common::{Searches, Secret};
 use demi_shared_types::{AudioShape, CacheTtl, ImageShape, MediaKind, MediaShapes, Timestamp, VideoShape, WireApi};
 use demi_web_api_protocol::ids::{CredentialId, DeviceId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{
-    AudioMedia, ConfiguredModels, CredentialKind, EntryMedia, EntrySearch, ImageMedia, ProviderDto, Rotation, SetupPart, VideoMedia,
+    AudioMedia, ConfiguredModels, CredentialKind, EntryMedia, EntrySearch, ImageMedia, ProviderDto, ProviderHeader, Rotation,
+    SetupPart, VideoMedia,
 };
 use demi_web_api_protocol::text::EndpointUrl;
 use garde::Validate;
@@ -135,6 +136,11 @@ pub struct ApiKeyConfig {
     )]
     #[garde(skip)]
     pub audio_shape: Option<AudioShape>,
+    /// A compatible entry's headers, which every request of it carries;
+    /// always none for a vendor entry.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(skip)]
+    pub headers: Vec<ProviderHeader>,
 }
 
 impl ApiKeyConfig {
@@ -151,6 +157,15 @@ impl ApiKeyConfig {
 }
 
 impl ProviderEntry {
+    /// The headers every request of the entry carries: a compatible entry's
+    /// own, none for any other.
+    pub fn headers(&self) -> &[ProviderHeader] {
+        match &self.credential {
+            EntryCredential::ApiKey(config) if config.is_compatible() => &config.headers,
+            _ => &[],
+        }
+    }
+
     pub fn kind(&self) -> CredentialKind {
         match self.credential {
             EntryCredential::ApiKey(_) => CredentialKind::ApiKey,
@@ -296,6 +311,7 @@ impl ProviderEntry {
             cache_ttl: self.cache_ttl.clone(),
             cache_ttl_presets,
             through_device: self.through_device.clone(),
+            headers: self.headers().to_vec(),
             created_at: self.created_at,
         }
     }

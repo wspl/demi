@@ -416,6 +416,12 @@ export interface SettingsProviderEntry {
    * endpoint as it reaches any address; null for the server. Absent, the server.
    */
   throughDevice?: string | null
+  /**
+   * The headers every request of a compatible API carries, in the user's
+   * order; `{conversation}` in a value is the conversation's ID. Absent for
+   * any other entry.
+   */
+  headers?: SettingsProviderHeader[]
   wireApi: SettingsWireApi
   apiKey: string
   keyConfigured?: boolean
@@ -465,6 +471,12 @@ export interface SettingsProviderEntry {
    * absent shows no such row, as for every subscription.
    */
   cacheTtl?: SettingsCacheTtl
+}
+
+/** One of a compatible API's headers; a name left empty sends nothing. */
+export interface SettingsProviderHeader {
+  name: string
+  value: string
 }
 
 /**

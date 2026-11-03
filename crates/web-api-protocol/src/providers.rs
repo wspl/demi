@@ -1,6 +1,7 @@
 //! Provider entries, their accounts and logins, and the account-wide model
 //! catalog. No body the backend answers carries key or token material.
 
+pub use demi_shared_types::ProviderHeader;
 use demi_shared_types::{
     AccountInfo, AudioKind, AudioShape, AuthState, CacheTtl, DownloadProgress, FileExtension, ImageShape, LoginStage, MediaKind, ModelSelection, VideoShape,
     Nullable, ProviderModel, QuotaSnapshot, RequestId, RuntimeState, Timestamp, WireApi,
@@ -275,6 +276,11 @@ pub struct ProviderPatch {
     #[schemars(with = "Option<Nullable<DeviceId>>")]
     #[garde(skip)]
     pub through_device: Option<Option<DeviceId>>,
+    /// A compatible entry's whole new list of headers.
+    #[serde(default, with = "unwrap_or_skip")]
+    #[schemars(with = "Vec<ProviderHeader>")]
+    #[garde(skip)]
+    pub headers: Option<Vec<ProviderHeader>>,
 }
 
 /// A change of an entry's media, by kind.
@@ -491,6 +497,9 @@ pub struct ProviderDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<DeviceId>")]
     pub through_device: Option<DeviceId>,
+    /// The headers every request of a compatible entry carries, in the
+    /// user's order; empty for any other entry.
+    pub headers: Vec<ProviderHeader>,
     pub created_at: Timestamp,
 }
 
