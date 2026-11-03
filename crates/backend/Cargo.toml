@@ -55,6 +55,7 @@ demi-provider-bytedance = { path = "../provider-bytedance" }
 demi-provider-minimax = { path = "../provider-minimax" }
 demi-provider-grok-build = { path = "../provider-grok-build" }
 demi-provider-openai-api = { path = "../provider-openai-api" }
+demi-provider-relay = { path = "../provider-relay" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 # The management socket's name and default (`crates/server/src/main.rs`), and
 # the record of a server update's steps.

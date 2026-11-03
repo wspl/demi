@@ -25,6 +25,9 @@ use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_grok_build::{GrokConfig, GrokProvider, GrokReleases};
 use demi_provider_minimax::{MinimaxConfig, MinimaxProvider, Region};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
+use demi_provider_relay::borrow::{Borrowed, server_name};
+use demi_provider_relay::key::ShareKey;
+use demi_backend_runners::public_url::PublicUrl;
 use demi_shared_types::{AudioShape, CacheTtl, ImageShape, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 
@@ -49,6 +52,38 @@ pub fn builtin(machine: MachineSlot) -> FamilyRegistry {
         .with("grok-build", GrokBuildFamily::new())
         .with(MEDIA_FAMILY, MediaFamily)
         .with("openai", OpenAiFamily)
+}
+
+/// The `relay` family: an entry another server lends
+/// (`crates/provider-relay/src/lib.rs`). Its endpoint is the lender's public
+/// URL and its key the share key's token, which the page split from the key
+/// the user pasted. The backend registers it as it starts, with the URL it
+/// is reached at, which the lender shows beside the key.
+pub(crate) struct RelayFamily(pub(crate) PublicUrl);
+
+impl ProviderFamily for RelayFamily {
+    fn credential(&self) -> CredentialKind {
+        CredentialKind::ApiKey
+    }
+
+    fn reads_directory(&self) -> bool {
+        true
+    }
+
+    fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
+        let FamilyCredential::ApiKey(settings) = args.credential else {
+            return Err(FamilyError::WrongCredential);
+        };
+        let (Some(url), Some(token)) = (settings.base_url, settings.api_key) else {
+            return Err(FamilyError::Invalid("The share key is missing".into()));
+        };
+        let key = ShareKey {
+            url,
+            token: token.expose().to_owned(),
+        };
+        let server = server_name(self.0.get().map(|url| url.url()));
+        Ok(Arc::new(Borrowed::new(key, server, args.http)))
+    }
 }
 
 /// The `anthropic` family: the Anthropic Messages API with an API key.

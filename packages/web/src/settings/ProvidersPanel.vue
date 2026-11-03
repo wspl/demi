@@ -26,6 +26,8 @@ const {
   change,
   addProvider,
   addCompatible,
+  addBorrowed,
+  shareService,
   removeProvider,
   beginLogin,
   closeLogin,
@@ -109,6 +111,8 @@ watch(
     "
     @add="addProvider"
     @add-compatible="addCompatible"
+    @add-borrowed="addBorrowed"
+    :share-service="shareService"
     @remove="removeProvider"
     @sign-in="beginLogin"
     @test="test"

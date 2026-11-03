@@ -188,6 +188,8 @@ pub fn web() -> Vec<Root> {
         receives::<providers::ProviderDetails>(),
         sends::<providers::QuotaRequest>(),
         receives::<providers::QuotaAnswer>(),
+        receives::<providers::ShareKeys>(),
+        receives::<providers::NewShareKey>(),
         sends::<providers::TestRequest>(),
         receives::<providers::TestResult>(),
         receives::<providers::VendorCatalog>(),

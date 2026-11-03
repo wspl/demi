@@ -73,6 +73,13 @@ pub trait ProviderFamily: Send + Sync + 'static {
         None
     }
 
+    /// Whether an API-key entry of the family lists the models its
+    /// provider's directory reads, as an entry another server lends lists
+    /// its lender's, rather than a vendor's or its own configured ones.
+    fn reads_directory(&self) -> bool {
+        false
+    }
+
     /// Whether the family's entries make text: false for the family of the
     /// vendors that make media alone, whose entries have no text models
     /// and are never in the model menu (`crates/backend/src/families.rs`).

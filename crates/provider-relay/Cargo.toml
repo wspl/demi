@@ -1,0 +1,30 @@
+[package]
+name = "demi-provider-relay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# No doc examples.
+doctest = false
+test = false
+bench = false
+
+[dependencies]
+demi-shared-types = { path = "../shared-types" }
+demi-provider-common = { path = "../provider-common" }
+async-stream = "0.3"
+base64.workspace = true
+futures-util.workspace = true
+hostname = "0.4"
+http.workspace = true
+reqwest = { workspace = true, features = ["rustls", "json"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+tokio-util.workspace = true
+tracing.workspace = true
+url = "2"

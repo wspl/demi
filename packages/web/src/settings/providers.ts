@@ -10,6 +10,7 @@ import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { canTest, testedModel } from '@demicodes/web-ui/settings/tested-model'
 import { providerOperation, providerTarget } from '@demicodes/web-ui/settings/provider-operations'
+import type { ProviderShareService } from '@demicodes/web-ui/settings/provider-sharing'
 import { operations } from '@demicodes/web-ui/ui/operations'
 import {
   SETTINGS_MEDIA_KINDS,
@@ -28,7 +29,9 @@ import {
   codeTakenSchema,
   loginStartedSchema,
   modelSearchResultsSchema,
+  newShareKeySchema,
   providerAnswerSchema,
+  shareKeysSchema,
   providerCliSchema,
   testResultSchema,
   type AccountOrder,
@@ -279,6 +282,26 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     create({ source: 'compatible' })
   }
 
+  /** Another Demi's provider, which its share key names once it is pasted. */
+  function addBorrowed(): void {
+    create({ source: 'borrowed' })
+  }
+
+  /** Share's keys of an entry, over its share-key routes. */
+  const shareService: ProviderShareService = {
+    async list(providerId) {
+      const response = await apiRequest(`/providers/${encodeURIComponent(providerId)}/share-keys`)
+      return (await readResponse(response, shareKeysSchema)).keys
+    },
+    async create(providerId) {
+      const response = await apiRequest(`/providers/${encodeURIComponent(providerId)}/share-keys`, { method: 'POST' })
+      return readResponse(response, newShareKeySchema)
+    },
+    async revoke(providerId, keyId) {
+      await apiRequest(`/providers/${encodeURIComponent(providerId)}/share-keys/${encodeURIComponent(keyId)}`, { method: 'DELETE' })
+    },
+  }
+
   /** A protocol as the backend names it: the family that speaks it, and its wire. */
   function protocol(wireApi: SettingsWireApi): Pick<ProviderPatch, 'providerType' | 'wireApi'> {
     return { ...PROTOCOLS[wireApi] }
@@ -388,6 +411,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         ...(changes.throughDevice !== undefined ? { throughDevice: changes.throughDevice } : {}),
         ...(changes.headers !== undefined ? { headers: changes.headers } : {}),
         ...(changes.apiKey !== undefined ? { apiKey: changes.apiKey || null } : {}),
+        ...(changes.shareKey ? { shareKey: changes.shareKey } : {}),
         ...(changes.rotation !== undefined ? { rotation: changes.rotation } : {}),
         ...(changes.cacheTtl !== undefined ? { cacheTtl: changes.cacheTtl.value } : {}),
         ...(changes.media !== undefined ? { media: mediaPatch(changes.media) } : {}),
@@ -1048,6 +1072,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     change,
     addProvider,
     addCompatible,
+    addBorrowed,
+    shareService,
     removeProvider,
     beginLogin,
     closeLogin,

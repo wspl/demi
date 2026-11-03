@@ -40,6 +40,7 @@ import CloudResetDialog from '@demicodes/web-ui/cloud/CloudResetDialog.vue'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
 import GalleryDialogFrame from '../components/GalleryDialogFrame.vue'
 import GalleryShareDialog from '../components/GalleryShareDialog.vue'
+import GalleryProviderShareDialog from '../components/GalleryProviderShareDialog.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { mockModelMatches, mockVendors, searchMockModels } from '../fixtures/settings'
@@ -665,6 +666,22 @@ const resetPhases: {
                 @delete="finish(close, `Ask Before Deleting ${editor.model.name || editor.model.id}`)"
               />
             </GalleryDialogFrame>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+      <GallerySection
+        title="Share Provider"
+        note="Share beside a provider’s name in Settings › Providers opens this dialog. A share key lets another Demi server use the provider: that server’s user adds Another Demi and pastes the key, and only model requests come here. A provider without keys gets its first at once, as Share Conversation makes its link: the field shows Creating key… with a spinner until the key stands there, already copied, with Copy Key turned to Copied. The key’s text is shown only by the dialog that made it, so a dialog opened again shows an empty field and the list. New Key makes another. The list, with room for three keys whatever it holds, shows each key newest first: a used one names the server that used it last and when, an unused one when it expires, a week after it was made. Revoke removes an unused key at once; Revoke… on a used one asks first, since that server loses the provider. A failure to make a key says why under the field, and Try Again takes Copy Key’s place. The new-key specimens start at Open, which stands for Share, since only a click may write the clipboard."
+      >
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+          <GallerySpecimen variant="a provider with keys" wide>
+            <GalleryProviderShareDialog state="keys" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="a first key" wide>
+            <GalleryProviderShareDialog state="new" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="a key that fails first" wide>
+            <GalleryProviderShareDialog state="failing" />
           </GallerySpecimen>
         </div>
       </GallerySection>

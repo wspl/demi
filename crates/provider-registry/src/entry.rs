@@ -181,12 +181,14 @@ impl ProviderEntry {
     /// - A vendor entry's key.
     /// - A compatible entry's endpoint. Its key is optional.
     /// - A model, when its catalog is its configured list and the list is
-    ///   empty. A compatible entry's catalog always is its configured list.
+    ///   empty. A compatible entry's catalog always is its configured list,
+    ///   unless its family `reads_directory`, whose catalog is what its
+    ///   provider's directory reads.
     /// - A subscription's account.
     ///
     /// A vendor entry's address is never missing: it uses its vendor's. The
     /// result is empty for a complete entry.
-    pub fn missing(&self) -> Vec<SetupPart> {
+    pub fn missing(&self, reads_directory: bool) -> Vec<SetupPart> {
         match &self.credential {
             EntryCredential::ApiKey(config) => [
                 (
@@ -198,10 +200,11 @@ impl ProviderEntry {
                     SetupPart::Endpoint,
                 ),
                 (
-                    config
-                        .models
-                        .as_ref()
-                        .map_or(config.is_compatible(), |models| models.0.is_empty()),
+                    !reads_directory
+                        && config
+                            .models
+                            .as_ref()
+                            .map_or(config.is_compatible(), |models| models.0.is_empty()),
                     SetupPart::Models,
                 ),
             ]

@@ -844,6 +844,21 @@ CREATE TABLE provider_credentials (
 CREATE UNIQUE INDEX provider_credentials_identity ON provider_credentials (provider_id, identity_key)
   WHERE identity_key IS NOT NULL;
 
+-- The keys another server borrows an entry with: each one's SHA-256, and
+-- once it was used, the server that used it last, by the host it gave, and
+-- when.
+CREATE TABLE provider_share_keys (
+  token_hash  TEXT PRIMARY KEY,
+  id          TEXT NOT NULL UNIQUE,
+  provider_id TEXT NOT NULL REFERENCES providers (id) ON DELETE CASCADE,
+  created_by  TEXT NOT NULL REFERENCES users (id),
+  created_at  INTEGER NOT NULL,
+  used_by     TEXT,
+  used_at     INTEGER,
+  CHECK ((used_by IS NULL) = (used_at IS NULL))
+) STRICT;
+CREATE INDEX provider_share_keys_provider ON provider_share_keys (provider_id, created_at);
+
 CREATE TABLE model_catalogs (
   provider_id TEXT PRIMARY KEY REFERENCES providers (id) ON DELETE CASCADE,
   record      TEXT NOT NULL

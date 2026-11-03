@@ -2,7 +2,7 @@
 import { t as uiText } from '../locales/text'
 import { t } from './locales/text'
 import { computed, ref } from 'vue'
-import { Terminal } from '@lucide/vue'
+import { Server, Terminal } from '@lucide/vue'
 import { vendorsInListOrder } from './provider-defaults'
 import type { OverlayStore } from '../overlay/overlayStore'
 import AsyncRegion from '../ui/AsyncRegion.vue'
@@ -21,6 +21,8 @@ import { WIRE_API_LABELS, type SettingsVendor } from './types'
  *
  * - A compatible API, for any proxy or server that speaks one of the protocols,
  *   comes first. Its protocol, endpoint and key are set on its page.
+ * - Another Demi, a provider another Demi server shares, comes beside it. Its
+ *   page asks for the share key.
  * - A vendor, Anthropic, OpenAI, Google or one models.dev lists, brings its
  *   endpoint and catalog, and its page asks for the key.
  *
@@ -39,6 +41,8 @@ const emit = defineEmits<{
   add: [vendor: SettingsVendor]
   /** A compatible API, created at once as Anthropic Messages. */
   addCompatible: []
+  /** Another Demi's provider, created at once without its share key. */
+  addBorrowed: []
 }>()
 
 const query = ref('')
@@ -53,6 +57,17 @@ const COMPATIBLE_WORDS = computed(() => [
   ...Object.values(WIRE_API_LABELS).map((label) => label.toLowerCase()),
 ])
 const compatibleShown = computed(() => !q.value || COMPATIBLE_WORDS.value.some((words) => words.includes(q.value)))
+const BORROWED_WORDS = computed(() => ['another demi', 'share key', t('addProvider.borrowed').toLowerCase(), t('providers.connection.shareKey').toLowerCase()])
+const borrowedShown = computed(() => !q.value || BORROWED_WORDS.value.some((words) => words.includes(q.value)))
+/** The rows above the vendors, each a kind of entry rather than a vendor. */
+const kinds = computed(() => [
+  ...(compatibleShown.value
+    ? [{ key: 'compatible', icon: Terminal, label: t('addProvider.compatible'), hint: t('addProvider.compatibleHint'), add: () => emit('addCompatible') }]
+    : []),
+  ...(borrowedShown.value
+    ? [{ key: 'borrowed', icon: Server, label: t('addProvider.borrowed'), hint: t('addProvider.borrowedHint'), add: () => emit('addBorrowed') }]
+    : []),
+])
 const ordered = computed(() => vendorsInListOrder(props.vendors))
 const results = computed(() =>
   q.value
@@ -73,25 +88,27 @@ const results = computed(() =>
     :label="t('addProvider.title')"
     @close="emit('close')"
   >
-    <div v-if="compatibleShown">
+    <div v-if="kinds.length">
       <div
         class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float"
       >
         <button
+          v-for="kind in kinds"
+          :key="kind.key"
           type="button"
           class="flex h-10 w-full cursor-default select-none items-center gap-3 px-3 text-left hover:bg-hover phone:h-auto phone:min-h-row phone:py-1.5"
-          @click="emit('addCompatible')"
+          @click="kind.add()"
         >
           <span
             class="inline-flex size-6 items-center justify-center rounded-md bg-overlay/8 text-fg-muted"
-            ><Terminal :size="ICON_PX.in24"
+            ><component :is="kind.icon" :size="ICON_PX.in24"
           /></span>
           <!-- On a phone what the row is stands under its name, as a list's subtitle, so neither is cut short. -->
           <span class="flex min-w-0 flex-1 items-center gap-3 phone:flex-col phone:items-start phone:gap-0.5">
             <span class="min-w-0 truncate text-chrome text-fg phone:max-w-full"
-              ><HighlightText :text="t('addProvider.compatible')" :query="query"
+              ><HighlightText :text="kind.label" :query="query"
             /></span>
-            <span class="ml-auto shrink-0 truncate text-detail text-fg-subtle phone:ml-0 phone:max-w-full phone:shrink">{{ t('addProvider.compatibleHint') }}</span>
+            <span class="ml-auto shrink-0 truncate text-detail text-fg-subtle phone:ml-0 phone:max-w-full phone:shrink">{{ kind.hint }}</span>
           </span>
         </button>
       </div>
@@ -133,7 +150,7 @@ const results = computed(() =>
         </div>
       </div>
       <div
-        v-if="!compatibleShown && !results.length"
+        v-if="!kinds.length && !results.length"
         class="select-none py-6 text-center text-[13px] text-fg-subtle"
       >
         {{ t('addProvider.noResults') }}

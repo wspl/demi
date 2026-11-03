@@ -5,7 +5,8 @@
 //! - entries with their configuration still sealed;
 //! - subscription accounts with their sealed secrets, versions and quota
 //!   snapshots;
-//! - each entry's model catalog record.
+//! - each entry's model catalog record;
+//! - each entry's share keys, by their SHA-256.
 //!
 //! Sealing and opening belong to the vault; these operations store and read the
 //! sealed bytes.
@@ -16,6 +17,7 @@ use demi_web_api_protocol::providers::{CredentialKind, Rotation};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
+use super::accounts::TokenHash;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
 
@@ -173,6 +175,20 @@ const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kin
 const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, cache_ttl, position";
 const CREDENTIAL_COLUMNS: &str =
     "id, identity_key, label, detail, source, secret, version, quota, updated_at, signed_out";
+const SHARE_KEY_COLUMNS: &str = "id, provider_id, created_by, created_at, used_by, used_at";
+
+/// A share key of an entry, without its hash.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShareKeyRow {
+    pub id: String,
+    pub provider: ProviderId,
+    /// Who made it, whose management of the entry it lasts by.
+    pub created_by: UserId,
+    pub created_at: Timestamp,
+    /// The server that used it last, by the host it gave, and when; none
+    /// until it is used.
+    pub used: Option<(String, Timestamp)>,
+}
 
 impl ControlService {
     /// The master account, which a shared instance's entries belong to.
@@ -617,6 +633,83 @@ impl ControlService {
         .await
     }
 
+    /// Stores a new share key of `key.provider`; false when the entry is
+    /// gone.
+    pub async fn insert_share_key(&self, token: TokenHash, key: ShareKeyRow) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            let inserted = connection.execute(
+                "INSERT INTO provider_share_keys (token_hash, id, provider_id, created_by, created_at)
+                 SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM providers WHERE id = ?3)",
+                params![
+                    token.as_str(),
+                    key.id,
+                    key.provider.as_str(),
+                    key.created_by.as_str(),
+                    key.created_at.as_millisecond()
+                ],
+            )?;
+            Ok(inserted == 1)
+        })
+        .await
+    }
+
+    /// The entry's share keys, newest first, once the keys never used and
+    /// made before `unused_since` are deleted.
+    pub async fn share_keys(
+        &self,
+        provider: ProviderId,
+        unused_since: Timestamp,
+    ) -> Result<Vec<ShareKeyRow>, StorageError> {
+        self.call(move |connection, _| {
+            prune_share_keys(connection, unused_since)?;
+            let mut statement = connection.prepare_cached(&format!(
+                "SELECT {SHARE_KEY_COLUMNS} FROM provider_share_keys WHERE provider_id = ?1
+                 ORDER BY created_at DESC, id"
+            ))?;
+            let mut rows = statement.query([provider.as_str()])?;
+            let mut keys = Vec::new();
+            while let Some(row) = rows.next()? {
+                keys.push(share_key_row(row)?);
+            }
+            Ok(keys)
+        })
+        .await
+    }
+
+    /// The share key whose SHA-256 is `token`, marked as used by `server` at
+    /// `now`; none for an unknown key, and for one never used and made
+    /// before `unused_since`, which is deleted.
+    pub async fn use_share_key(
+        &self,
+        token: TokenHash,
+        server: String,
+        now: Timestamp,
+        unused_since: Timestamp,
+    ) -> Result<Option<ShareKeyRow>, StorageError> {
+        self.call(move |connection, _| {
+            prune_share_keys(connection, unused_since)?;
+            let mut statement = connection.prepare_cached(&format!(
+                "UPDATE provider_share_keys SET used_by = ?2, used_at = ?3 WHERE token_hash = ?1
+                 RETURNING {SHARE_KEY_COLUMNS}"
+            ))?;
+            let mut rows = statement.query(params![token.as_str(), server, now.as_millisecond()])?;
+            rows.next()?.map(share_key_row).transpose()
+        })
+        .await
+    }
+
+    /// Deletes the entry's share key `id`; false when it has none.
+    pub async fn delete_share_key(&self, provider: ProviderId, id: String) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            let deleted = connection.execute(
+                "DELETE FROM provider_share_keys WHERE provider_id = ?1 AND id = ?2",
+                params![provider.as_str(), id],
+            )?;
+            Ok(deleted == 1)
+        })
+        .await
+    }
+
     /// The entry's catalog record, validated.
     pub async fn catalog_record(
         &self,
@@ -813,6 +906,38 @@ fn provider_row(row: &Row<'_>) -> Result<ProviderRow, StorageError> {
             .map(|device| decode("providers", "through_device_id", DeviceId::try_from(device)))
             .transpose()?,
     })
+}
+
+fn share_key_row(row: &Row<'_>) -> Result<ShareKeyRow, StorageError> {
+    let used_by: Option<String> = row.get("used_by")?;
+    let used = match used_by {
+        Some(server) => Some((server, instant(row, "provider_share_keys", "used_at")?)),
+        None => None,
+    };
+    Ok(ShareKeyRow {
+        id: row.get("id")?,
+        provider: decode(
+            "provider_share_keys",
+            "provider_id",
+            ProviderId::try_from(row.get::<_, String>("provider_id")?),
+        )?,
+        created_by: decode(
+            "provider_share_keys",
+            "created_by",
+            UserId::try_from(row.get::<_, String>("created_by")?),
+        )?,
+        created_at: instant(row, "provider_share_keys", "created_at")?,
+        used,
+    })
+}
+
+/// Deletes the share keys never used and made before `unused_since`.
+fn prune_share_keys(connection: &Connection, unused_since: Timestamp) -> Result<(), StorageError> {
+    connection.execute(
+        "DELETE FROM provider_share_keys WHERE used_at IS NULL AND created_at < ?1",
+        [unused_since.as_millisecond()],
+    )?;
+    Ok(())
 }
 
 fn credential_row(row: &Row<'_>) -> Result<CredentialRow, StorageError> {

@@ -108,8 +108,12 @@ pub struct Services {
     /// The machine manager's client, the Cloud capacity across users and
     /// the Cloud's settings.
     pub cloud: CloudServices,
-    /// Where runners and Cloud guests reach this backend.
+    /// Where runners and Cloud guests reach this backend, and where a
+    /// borrowing server reaches an entry this one lends.
     pub public_url: PublicUrl,
+    /// The sessions other servers borrow this one's entries in, by share
+    /// key, which revoking a key closes.
+    pub lent: crate::provider_sharing::LentSessions,
     /// The build of the web app the backend serves, if it serves one.
     pub web_build: Option<String>,
     /// The runner releases paired devices follow.
@@ -172,6 +176,8 @@ pub struct ServiceKeys {
 /// What the services are configured with besides storage, the keys and the
 /// providers.
 pub struct ServiceSettings {
+    /// Where the backend is reached, once it listens.
+    pub public_url: PublicUrl,
     pub shared_subscriptions: bool,
     pub log: ServerLog,
     /// The build of the web app the backend serves, if it serves one.
@@ -487,7 +493,8 @@ impl Services {
             native: settings.native,
             plugins: Arc::new(plugins),
             cloud: settings.cloud,
-            public_url: PublicUrl::default(),
+            public_url: settings.public_url,
+            lent: Default::default(),
             web_build: settings.web_build,
             runner_releases: settings.runner_releases,
             prefetches: Prefetches::default(),

@@ -8,8 +8,11 @@
 //! and builds a new one, closing the old, when either changes. A running request
 //! finishes with the runtime it started with.
 //!
-//! Every runtime is metered: the user's rate limit applies before each run, and
-//! each response is a usage ledger row before the agent sees it.
+//! A conversation's runtime is metered: the user's rate limit applies before
+//! each run, and each response is a usage ledger row before the agent sees
+//! it. A session another server borrows an entry in has the same runtime,
+//! unmetered: the borrower meters it in its own conversation
+//! (`crates/backend-user-shard/src/provider_sharing.rs`).
 
 use std::num::NonZeroU32;
 use std::rc::{Rc, Weak};
@@ -131,7 +134,7 @@ impl ProviderResolver for ConversationProviders {
                 shard: self.shard.clone(),
                 services: self.services.clone(),
                 user: self.user.clone(),
-                conversation: conversation_of(root),
+                work: Work::Conversation(conversation_of(root)),
                 provider,
                 http: self.http.clone(),
             });
@@ -302,9 +305,116 @@ struct Scope {
     shard: Weak<Shard>,
     services: Arc<Services>,
     user: UserId,
-    conversation: ConversationId,
+    work: Work,
     provider: ProviderId,
     http: reqwest::Client,
+}
+
+/// What a session's requests serve.
+enum Work {
+    Conversation(ConversationId),
+    /// A session another server borrows the entry in with the share key of
+    /// this id (`crates/provider-relay/src/lib.rs`): its requests are
+    /// metered there, in the borrower's conversation, and its process is
+    /// the entry's work here, as a connection test's is.
+    Lent { key: String },
+}
+
+impl Work {
+    fn conversation(&self) -> Option<&ConversationId> {
+        match self {
+            Self::Conversation(conversation) => Some(conversation),
+            Self::Lent { .. } => None,
+        }
+    }
+
+    fn share_key(&self) -> Option<&str> {
+        match self {
+            Self::Conversation(_) => None,
+            Self::Lent { key } => Some(key),
+        }
+    }
+}
+
+/// A runtime of `provider`, an entry of `user`'s, for a session another
+/// server borrows with the share key `key`: a conversation's, under the
+/// entry's rotation, but unmetered. Its first request makes its runtime.
+pub(crate) fn lent_runtime(
+    shard: &Rc<Shard>,
+    services: Arc<Services>,
+    user: UserId,
+    provider: ProviderId,
+    key: String,
+) -> Box<dyn ProviderRuntime> {
+    let scope = Rc::new(Scope {
+        shard: Rc::downgrade(shard),
+        services,
+        user,
+        work: Work::Lent { key },
+        provider: provider.clone(),
+        http: shard.http().clone(),
+    });
+    Box::new(ConversationRuntime {
+        scope,
+        selection: ModelSelection {
+            provider_id: provider.to_string(),
+            model: Model {
+                id: String::new(),
+                name: String::new(),
+                context_window: 0,
+                output_limit: None,
+                thinking: Vec::new(),
+                accepted_extensions: None,
+            },
+            thinking: None,
+            service_tier_id: None,
+        },
+        current: None,
+        prepares_ahead: false,
+        account: None,
+        running: None,
+    })
+}
+
+/// What one request of each of `models` of `entry` may hold, as the runtime
+/// of a session lent with the share key `key` would say.
+pub(crate) async fn lent_limits(
+    shard: &Rc<Shard>,
+    services: Arc<Services>,
+    user: UserId,
+    entry: &ProviderEntry,
+    models: &[ModelSelection],
+    key: String,
+) -> Result<Vec<(String, RequestLimits)>, String> {
+    let Some(first) = models.first() else {
+        return Ok(Vec::new());
+    };
+    let scope = Rc::new(Scope {
+        shard: Rc::downgrade(shard),
+        services,
+        user,
+        work: Work::Lent { key },
+        provider: entry.id.clone(),
+        http: shard.http().clone(),
+    });
+    let mut runtime = ConversationRuntime {
+        scope,
+        selection: first.clone(),
+        current: None,
+        prepares_ahead: false,
+        account: None,
+        running: None,
+    };
+    runtime
+        .serve(entry, first.clone(), entry.active())
+        .await
+        .map_err(|failure| failure.message)?;
+    let limits = models
+        .iter()
+        .map(|model| (model.model.id.clone(), runtime.request_limits(&model.model)))
+        .collect();
+    runtime.close().await;
+    Ok(limits)
 }
 
 /// A session's runtime.
@@ -496,7 +606,8 @@ impl ConversationRuntime {
             .take_account(entry, model, &[])
             .instrument(tracing::info_span!(
                 "account_choice",
-                conversation = %self.scope.conversation,
+                conversation = self.scope.work.conversation().map(tracing::field::display),
+                share_key = self.scope.work.share_key(),
                 user = %self.scope.user
             ))
             .await
@@ -512,7 +623,8 @@ impl ConversationRuntime {
                     });
                     tracing::info!(
                         event = "account.rotated",
-                        conversation = %self.scope.conversation,
+                        conversation = self.scope.work.conversation().map(tracing::field::display),
+                        share_key = self.scope.work.share_key(),
                         provider = %entry.id,
                         from = previous,
                         to = %account,
@@ -612,7 +724,8 @@ impl ConversationRuntime {
             .take_account(&entry, &model, tried)
             .instrument(tracing::info_span!(
                 "account_choice",
-                conversation = %self.scope.conversation,
+                conversation = self.scope.work.conversation().map(tracing::field::display),
+                share_key = self.scope.work.share_key(),
                 user = %self.scope.user
             ))
             .await
@@ -623,7 +736,8 @@ impl ConversationRuntime {
         let next = running.account().clone();
         tracing::info!(
             event = "account.rotated",
-            conversation = %self.scope.conversation,
+            conversation = self.scope.work.conversation().map(tracing::field::display),
+            share_key = self.scope.work.share_key(),
             provider = %entry.id,
             from = %used_up,
             to = %next,
@@ -693,7 +807,10 @@ impl ConversationRuntime {
             // machine, whatever the conversation's target
             // (`crates/provider-claude-code/src/placement.rs`).
             let runtime = if provider.capabilities().cli_package.is_some() {
-                let work = ProcessWork::Conversation(scope.conversation.clone());
+                let work = match &scope.work {
+                    Work::Conversation(conversation) => ProcessWork::Conversation(conversation.clone()),
+                    Work::Lent { .. } => ProcessWork::Account(entry.id.clone()),
+                };
                 CrossPlacement::runtime(scope.shard.clone(), provider_registry, entry, account.or(entry.active()), work)
                     .await
                     .map_err(|error| refused(error, None))?
@@ -704,56 +821,17 @@ impl ConversationRuntime {
                     })
                     .map_err(|error| refused(error.to_string(), None))?
             };
-            // Each row is priced at the catalog's prices as it is written.
-            let prices: ModelPrices = {
-                let provider_registry = scope.services.provider_registry.clone();
-                let entry = entry.clone();
-                let provider = provider.clone();
-                Rc::new(move |model: String| {
-                    let provider_registry = provider_registry.clone();
-                    let entry = entry.clone();
-                    let provider = provider.clone();
-                    Box::pin(async move { provider_registry.model_price(&entry, &Ok(provider), &model).await })
-                })
+            let runtime = match &scope.work {
+                Work::Conversation(conversation) => {
+                    metered(&scope, conversation, entry, &provider, account, runtime)
+                }
+                Work::Lent { .. } => runtime,
             };
-            // A model the vendor no longer serves leaves the entry's list
-            // in a task of the shard's, apart from the run, which goes on
-            // at once.
-            let retire: RetireModel = {
-                let shard = scope.shard.clone();
-                let provider_registry = scope.services.provider_registry.clone();
-                let entry = entry.clone();
-                let provider = provider.clone();
-                Rc::new(move |model: String, answered_by: Option<String>| {
-                    if let Some(shard) = shard.upgrade() {
-                        let provider_registry = provider_registry.clone();
-                        let entry = entry.clone();
-                        let provider = provider.clone();
-                        shard.tasks().spawn_local(async move {
-                            provider_registry.retire_model(&entry, &Ok(provider), model, answered_by).await;
-                        });
-                    }
-                    Box::pin(std::future::ready(()))
-                })
-            };
-            let ledger = Ledger {
-                control: scope.services.control.clone(),
-                clock: scope.services.clock.clone(),
-                user: scope.user.clone(),
-                conversation: scope.conversation.clone(),
-                provider: scope.provider.clone(),
-                // The account the provider calls with: the agent's, else
-                // the entry's active one; none for an API key.
-                account: account.or(entry.active()).cloned(),
-                prices,
-                retire,
-            };
-            let metered = MeteredRuntime::new(runtime, ledger);
             self.close_current().await;
             self.current = Some(Current {
                 provider,
                 model: selection.model.id.clone(),
-                runtime: Box::new(metered),
+                runtime,
             });
         }
         self.selection = selection;
@@ -765,6 +843,61 @@ impl ConversationRuntime {
             current.runtime.close().await;
         }
     }
+}
+
+/// `runtime` with the usage ledger of `conversation` around it.
+fn metered(
+    scope: &Scope,
+    conversation: &ConversationId,
+    entry: &ProviderEntry,
+    provider: &Arc<dyn Provider>,
+    account: Option<&CredentialId>,
+    runtime: Box<dyn ProviderRuntime>,
+) -> Box<dyn ProviderRuntime> {
+    // Each row is priced at the catalog's prices as it is written.
+    let prices: ModelPrices = {
+        let provider_registry = scope.services.provider_registry.clone();
+        let entry = entry.clone();
+        let provider = provider.clone();
+        Rc::new(move |model: String| {
+            let provider_registry = provider_registry.clone();
+            let entry = entry.clone();
+            let provider = provider.clone();
+            Box::pin(async move { provider_registry.model_price(&entry, &Ok(provider), &model).await })
+        })
+    };
+    // A model the vendor no longer serves leaves the entry's list in a task
+    // of the shard's, apart from the run, which goes on at once.
+    let retire: RetireModel = {
+        let shard = scope.shard.clone();
+        let provider_registry = scope.services.provider_registry.clone();
+        let entry = entry.clone();
+        let provider = provider.clone();
+        Rc::new(move |model: String, answered_by: Option<String>| {
+            if let Some(shard) = shard.upgrade() {
+                let provider_registry = provider_registry.clone();
+                let entry = entry.clone();
+                let provider = provider.clone();
+                shard.tasks().spawn_local(async move {
+                    provider_registry.retire_model(&entry, &Ok(provider), model, answered_by).await;
+                });
+            }
+            Box::pin(std::future::ready(()))
+        })
+    };
+    let ledger = Ledger {
+        control: scope.services.control.clone(),
+        clock: scope.services.clock.clone(),
+        user: scope.user.clone(),
+        conversation: conversation.clone(),
+        provider: scope.provider.clone(),
+        // The account the provider calls with: the agent's, else
+        // the entry's active one; none for an API key.
+        account: account.or(entry.active()).cloned(),
+        prices,
+        retire,
+    };
+    Box::new(MeteredRuntime::new(runtime, ledger))
 }
 
 /// The account an agent took under `rotation`, as its session keeps it.
@@ -987,7 +1120,8 @@ impl ProviderRuntime for ConversationRuntime {
                 Err(failure) => {
                     tracing::debug!(
                         event = "ahead_preparation.skipped",
-                        conversation = %self.scope.conversation,
+                        conversation = self.scope.work.conversation().map(tracing::field::display),
+                        share_key = self.scope.work.share_key(),
                         reason = failure.code.as_ref().map(|code| code.as_str()),
                         "nothing was readied ahead"
                     );

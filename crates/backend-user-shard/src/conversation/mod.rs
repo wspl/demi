@@ -73,6 +73,7 @@ pub use self::idle_compaction::arm_idle_compactions;
 pub use self::restart_resume::resume_after_restart;
 pub use self::announcement::AgentsError;
 pub(crate) use self::product::ShardHosts;
+pub(crate) use self::providers::{lent_limits, lent_runtime};
 use self::product::{
     ExecutionContext, HARNESS_GUIDE, INSTRUCTIONS, PluginContext, ShardAgents, ShardReplyFiles, ShardSubagents, ShardToolsets,
 };

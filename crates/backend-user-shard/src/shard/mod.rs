@@ -312,6 +312,11 @@ impl Shard {
         &self.services
     }
 
+    /// The services, for work the shard builds that keeps them.
+    pub(crate) fn shared_services(&self) -> Arc<Services> {
+        self.services.clone()
+    }
+
     pub fn http(&self) -> &reqwest::Client {
         &self.http
     }

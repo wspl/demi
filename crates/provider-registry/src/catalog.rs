@@ -127,6 +127,7 @@ impl ProviderRegistry {
             return unfetched(Vec::new(), Vec::new());
         }
         let vendor = match &entry.credential {
+            EntryCredential::ApiKey(_) if self.reads_directory(entry) => None,
             EntryCredential::ApiKey(config) => {
                 // The model menu's are the text models; an image model of
                 // the list is `demi image`'s
@@ -313,7 +314,7 @@ impl ProviderRegistry {
             source_fetched_at: catalog.source_fetched_at,
             stale: catalog.stale,
             warnings: catalog.warnings,
-            availability: crate::details::availability(entry, &auth, &runtime),
+            availability: crate::details::availability(self.missing(entry), &auth, &runtime),
             auth,
             runtime,
         }

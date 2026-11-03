@@ -84,6 +84,11 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
             return ApiError::invalid_body(message);
         }
         ProviderRefusal::ShapeFixed(_) => (StatusCode::BAD_REQUEST, ErrorCode::ShapeFixed),
+        ProviderRefusal::Borrowed(_)
+        | ProviderRefusal::BorrowedFixed(_)
+        | ProviderRefusal::NotBorrowed(_) => (StatusCode::BAD_REQUEST, ErrorCode::Borrowed),
+        ProviderRefusal::ShareKey(_) => (StatusCode::BAD_REQUEST, ErrorCode::ShareKey),
+        ProviderRefusal::Unlendable(_) => (StatusCode::SERVICE_UNAVAILABLE, ErrorCode::Unlendable),
         ProviderRefusal::UnknownFamily(_) => {
             (StatusCode::BAD_REQUEST, ErrorCode::UnknownProviderType)
         }

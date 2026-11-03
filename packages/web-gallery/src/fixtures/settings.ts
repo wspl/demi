@@ -1002,6 +1002,17 @@ export function mockProviders(): MockProvider[] {
       models: [model({ id: 'claude-sonnet-5', contextWindow: 1_000_000, tools: true, extensions: [] })],
     }),
     provider({
+      // A provider another Demi server shares: its page has the share key
+      // alone, and its models are the ones that server lists.
+      id: 'studio-relay', name: 'Studio Claude', kind: 'api_key', family: 'relay', vendorId: null,
+      baseUrl: 'https://studio.example.com', lender: 'studio.example.com', wireApi: 'anthropic-messages',
+      cacheTtl: undefined, testedWith: 'claude-sonnet-5', catalogFetched: ago(3 * HOUR),
+      models: [
+        model({ id: 'claude-sonnet-5', name: 'Claude Sonnet 5', contextWindow: 1_000_000, tools: true, extensions: [] }),
+        model({ id: 'claude-haiku-5', name: 'Claude Haiku 5', contextWindow: 200_000, tools: true, extensions: [] }),
+      ],
+    }),
+    provider({
       // Ollama on alex-mbp itself: its requests go out from alex-mbp, whose
       // own 127.0.0.1 the endpoint names.
       id: 'mac-ollama', name: 'Ollama on alex-mbp', kind: 'api_key', family: 'openai', vendorId: null, compatible: true,
@@ -1100,6 +1111,9 @@ export function incompleteProviders(): MockProvider[] {
 export function isIncomplete(entry: SettingsProviderEntry): boolean {
   if (entry.kind === 'subscription') {
     return !entry.accounts.length
+  }
+  if (entry.lender !== undefined) {
+    return entry.lender === null
   }
   const reaches = entry.compatible ? entry.baseUrl !== '' : entry.keyConfigured === true
   const keepsList = entry.compatible || entry.modelSource === 'manual'

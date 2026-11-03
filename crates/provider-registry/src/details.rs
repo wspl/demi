@@ -11,7 +11,7 @@ use demi_provider_common::quota::ProbeCost;
 use demi_shared_types::{AuthState, RuntimeState};
 use demi_web_api_protocol::providers::{
     AccountDto, Availability, ProbeCost as ProbeCostDto, ProviderDetails, QuotaCapability,
-    UnavailableReason,
+    SetupPart, UnavailableReason,
 };
 
 use crate::entry::{EntryCredential, ProviderEntry};
@@ -147,15 +147,15 @@ fn for_inference_only(details: ProviderDetails) -> ProviderDetails {
 
 /// Whether the entry's models can be used now.
 ///
-/// They cannot while the entry lacks a part it needs, all of which it names.
-/// Otherwise the entry's health decides: a credential that is refused or a
-/// provider that cannot run makes them unavailable.
+/// They cannot while the entry lacks a part it needs, `missing`
+/// ([`ProviderEntry::missing`]), all of which it names. Otherwise the
+/// entry's health decides: a credential that is refused or a provider that
+/// cannot run makes them unavailable.
 pub fn availability(
-    entry: &ProviderEntry,
+    missing: Vec<SetupPart>,
     auth: &AuthState,
     runtime: &RuntimeState,
 ) -> Availability {
-    let missing = entry.missing();
     if !missing.is_empty() {
         return Availability::setup(missing);
     }

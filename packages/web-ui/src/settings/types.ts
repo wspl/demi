@@ -429,6 +429,14 @@ export interface SettingsProviderEntry {
   wireApi: SettingsWireApi
   apiKey: string
   keyConfigured?: boolean
+  /**
+   * For a provider another Demi server shares: that server, by its host,
+   * once a share key names it, else null; absent for any other provider. Its
+   * page has a Share Key in place of the endpoint and key, and no Share.
+   */
+  lender?: string | null
+  /** A borrowed provider's share key, as pasted; only a change carries it. */
+  shareKey?: string
   configured?: boolean
   /**
    * The CLI its requests start on a machine, which Demi installs there, once
@@ -475,6 +483,16 @@ export interface SettingsProviderEntry {
    * absent shows no such row, as for every subscription.
    */
   cacheTtl?: SettingsCacheTtl
+}
+
+/** A share key of a provider, without the key itself. */
+export interface SettingsShareKey {
+  id: string
+  createdAt: string
+  /** The server that used it last, by its host, and when; null until it is used. */
+  used: { server: string; at: string } | null
+  /** When a key nobody used stops working; null once it is used. */
+  expiresAt: string | null
 }
 
 /**
