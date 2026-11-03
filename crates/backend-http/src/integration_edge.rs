@@ -42,7 +42,7 @@ use demi_shared_types::{BlockId, CommandId, NodeId, TurnId};
 use super::AppState;
 use super::body::{JsonBody, OptionalJsonBody};
 use super::error::ApiError;
-use super::files;
+use super::files::{self, FileHost};
 use super::listener::Peer;
 use super::query::{CheckedQuery, QueryParams};
 
@@ -57,6 +57,15 @@ pub(super) fn routes() -> Router<AppState> {
             .route("/clouds", get(clouds).post(create_cloud))
             .route("/clouds/{cloud}", get(cloud).delete(delete_cloud))
             .route("/clouds/{cloud}/reset", post(reset_cloud))
+            .route("/clouds/{cloud}/commands", post(start_cloud_command))
+            .route(
+                "/clouds/{cloud}/fs",
+                get(list_cloud_files).post(make_cloud_directory).delete(remove_cloud_file),
+            )
+            .route("/clouds/{cloud}/fs/raw", get(read_cloud_file).put(write_cloud_file))
+            .route("/clouds/{cloud}/fs/search", post(search_cloud_files))
+            .route("/clouds/{cloud}/commands/{command}", get(cloud_command))
+            .route("/clouds/{cloud}/commands/{command}/stop", post(stop_cloud_command))
             .route("/conversations", get(conversations).post(create_conversation))
             .route(
                 "/conversations/{conversation}",
@@ -130,9 +139,7 @@ pub(crate) fn refused(refusal: IntegrationRefusal) -> ApiError {
         refusal @ IntegrationRefusal::CloudDiffers => {
             ApiError::new(StatusCode::CONFLICT, ErrorCode::CloudDiffers, refusal.to_string())
         }
-        refusal @ IntegrationRefusal::Running => {
-            ApiError::new(StatusCode::CONFLICT, ErrorCode::ConversationRunning, refusal.to_string())
-        }
+        IntegrationRefusal::Cloud(error) => error.into(),
         IntegrationRefusal::Storage(error) => error.into(),
     }
 }
@@ -281,6 +288,61 @@ async fn reset_cloud(
         .await?
         .map_err(refused)?;
     Ok(Json(cloud))
+}
+
+/// `POST /v1/clouds/:cloud/commands`: a script run on the Cloud outside any
+/// conversation, answered at once with its start.
+async fn start_cloud_command(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(cloud): Path<String>,
+    JsonBody(start): JsonBody<api::StartCloudCommand>,
+) -> Result<(StatusCode, Json<api::CloudCommand>), ApiError> {
+    let record = authenticated(&state, &headers).await?;
+    let device = device_id(cloud)?;
+    let command = state
+        .shards
+        .of(&record.user.clone())
+        .call(move |shard, _| async move { shard.start_cloud_command(&record, &device, start).await })
+        .await?
+        .map_err(refused)?;
+    Ok((StatusCode::CREATED, Json(command)))
+}
+
+/// `GET /v1/clouds/:cloud/commands/:command?after=`: the command, with its
+/// output from a byte on.
+async fn cloud_command(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((cloud, command)): Path<(String, String)>,
+    CheckedQuery(query): CheckedQuery<api::CloudCommandQuery>,
+) -> Result<Json<api::CloudCommand>, ApiError> {
+    let record = authenticated(&state, &headers).await?;
+    let device = device_id(cloud)?;
+    let answer = state
+        .shards
+        .of(&record.user.clone())
+        .call(move |shard, _| async move { shard.cloud_command(&record, &device, &command, query.after).await })
+        .await?
+        .map_err(refused)?;
+    Ok(Json(answer))
+}
+
+/// `POST /v1/clouds/:cloud/commands/:command/stop`.
+async fn stop_cloud_command(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((cloud, command)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    let record = authenticated(&state, &headers).await?;
+    let device = device_id(cloud)?;
+    state
+        .shards
+        .of(&record.user.clone())
+        .call(move |shard, _| async move { shard.stop_cloud_command(&record, &device, &command) })
+        .await?
+        .map_err(refused)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `DELETE /v1/clouds/:cloud`: the Cloud, once no conversation works on it.
@@ -798,7 +860,7 @@ async fn list_files(
     QueryParams(query): QueryParams<DirectoryQuery>,
 ) -> Result<Response, ApiError> {
     let (user, id) = files_of(&state, &headers, conversation).await?;
-    files::list_on(&state, &user, &id, None, query).await
+    files::list_on(&state, &user, FileHost::conversation(&id, None), query).await
 }
 
 /// `GET /v1/conversations/:conversation/hosts/:device/fs`: a directory's
@@ -810,7 +872,7 @@ async fn list_files_on(
     QueryParams(query): QueryParams<DirectoryQuery>,
 ) -> Result<Response, ApiError> {
     let (user, id) = files_of(&state, &headers, conversation).await?;
-    files::list_on(&state, &user, &id, Some(&device), query).await
+    files::list_on(&state, &user, FileHost::conversation(&id, Some(&device)), query).await
 }
 
 /// `POST /v1/conversations/:conversation/fs`: a directory, with its parents.
@@ -821,7 +883,7 @@ async fn make_directory(
     JsonBody(body): JsonBody<CreateDirectory>,
 ) -> Result<(StatusCode, Json<CreatedDirectory>), ApiError> {
     let (user, id) = files_of(&state, &headers, conversation).await?;
-    files::make_directory_on(&state, &user, &id, None, body).await
+    files::make_directory_on(&state, &user, FileHost::conversation(&id, None), body).await
 }
 
 /// `POST /v1/conversations/:conversation/hosts/:device/fs`.
@@ -832,7 +894,7 @@ async fn make_directory_on(
     JsonBody(body): JsonBody<CreateDirectory>,
 ) -> Result<(StatusCode, Json<CreatedDirectory>), ApiError> {
     let (user, id) = files_of(&state, &headers, conversation).await?;
-    files::make_directory_on(&state, &user, &id, Some(&device), body).await
+    files::make_directory_on(&state, &user, FileHost::conversation(&id, Some(&device)), body).await
 }
 
 /// `DELETE /v1/conversations/:conversation/fs`: a file, or a directory with
@@ -844,7 +906,7 @@ async fn remove_file(
     QueryParams(query): QueryParams<RemoveQuery>,
 ) -> Result<StatusCode, ApiError> {
     let (user, id) = files_of(&state, &headers, conversation).await?;
-    files::remove_of(&state, &user, &id, query).await
+    files::remove_of(&state, &user, FileHost::conversation(&id, None), query).await
 }
 
 /// `GET /v1/conversations/:conversation/fs/raw`: a file's bytes.
@@ -857,7 +919,7 @@ async fn read_file(
     QueryParams(query): QueryParams<RawFileQuery>,
 ) -> Result<Response, ApiError> {
     let (user, id) = files_of(&state, &headers, conversation).await?;
-    files::raw_of(&state, &user, &peer, method, &headers, &id, query).await
+    files::raw_of(&state, &user, &peer, method, &headers, FileHost::conversation(&id, None), query).await
 }
 
 /// `PUT /v1/conversations/:conversation/fs/raw`: a file's bytes, written
@@ -871,7 +933,7 @@ async fn write_file(
     body: Body,
 ) -> Result<StatusCode, ApiError> {
     let (user, id) = files_of(&state, &headers, conversation).await?;
-    files::upload_of(&state, &user, &peer, &id, query, body).await
+    files::upload_of(&state, &user, &peer, FileHost::conversation(&id, None), query, body).await
 }
 
 /// `POST /v1/conversations/:conversation/fs/search`: the names and text
@@ -884,7 +946,88 @@ async fn search_files(
     JsonBody(request): JsonBody<SearchRequest>,
 ) -> Result<Response, ApiError> {
     let (user, id) = files_of(&state, &headers, conversation).await?;
-    files::search_of(&state, &user, &peer, &id, request).await
+    files::search_of(&state, &user, &peer, FileHost::conversation(&id, None), request).await
+}
+
+/// The user and the Cloud of a Cloud's file route.
+async fn cloud_files_of(state: &AppState, headers: &HeaderMap, cloud: String) -> Result<(UserId, FileHost<'static>), ApiError> {
+    let record = authenticated(state, headers).await?;
+    let cloud = device_id(cloud)?;
+    Ok((record.user.clone(), FileHost::Cloud { integration: record, cloud }))
+}
+
+/// `GET /v1/clouds/:cloud/fs`: a directory's entries on the Cloud, its home
+/// when the query names none.
+async fn list_cloud_files(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(cloud): Path<String>,
+    QueryParams(query): QueryParams<DirectoryQuery>,
+) -> Result<Response, ApiError> {
+    let (user, file_host) = cloud_files_of(&state, &headers, cloud).await?;
+    files::list_on(&state, &user, file_host, query).await
+}
+
+/// `POST /v1/clouds/:cloud/fs`: a directory, with its parents.
+async fn make_cloud_directory(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(cloud): Path<String>,
+    JsonBody(body): JsonBody<CreateDirectory>,
+) -> Result<(StatusCode, Json<CreatedDirectory>), ApiError> {
+    let (user, file_host) = cloud_files_of(&state, &headers, cloud).await?;
+    files::make_directory_on(&state, &user, file_host, body).await
+}
+
+/// `DELETE /v1/clouds/:cloud/fs`: a file, or a directory with what it holds.
+async fn remove_cloud_file(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(cloud): Path<String>,
+    QueryParams(query): QueryParams<RemoveQuery>,
+) -> Result<StatusCode, ApiError> {
+    let (user, file_host) = cloud_files_of(&state, &headers, cloud).await?;
+    files::remove_of(&state, &user, file_host, query).await
+}
+
+/// `GET /v1/clouds/:cloud/fs/raw`: a file's bytes.
+async fn read_cloud_file(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<Peer>,
+    method: Method,
+    headers: HeaderMap,
+    Path(cloud): Path<String>,
+    QueryParams(query): QueryParams<RawFileQuery>,
+) -> Result<Response, ApiError> {
+    let (user, file_host) = cloud_files_of(&state, &headers, cloud).await?;
+    files::raw_of(&state, &user, &peer, method, &headers, file_host, query).await
+}
+
+/// `PUT /v1/clouds/:cloud/fs/raw`: a file's bytes, written whole or not at
+/// all.
+async fn write_cloud_file(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<Peer>,
+    headers: HeaderMap,
+    Path(cloud): Path<String>,
+    QueryParams(query): QueryParams<FileUploadQuery>,
+    body: Body,
+) -> Result<StatusCode, ApiError> {
+    let (user, file_host) = cloud_files_of(&state, &headers, cloud).await?;
+    files::upload_of(&state, &user, &peer, file_host, query, body).await
+}
+
+/// `POST /v1/clouds/:cloud/fs/search`: the names and text that match, one
+/// JSON object per line.
+async fn search_cloud_files(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<Peer>,
+    headers: HeaderMap,
+    Path(cloud): Path<String>,
+    JsonBody(request): JsonBody<SearchRequest>,
+) -> Result<Response, ApiError> {
+    let (user, file_host) = cloud_files_of(&state, &headers, cloud).await?;
+    files::search_of(&state, &user, &peer, file_host, request).await
 }
 
 /// `GET /v1/socket`: every change of the integration's conversations, as

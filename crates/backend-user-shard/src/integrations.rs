@@ -164,9 +164,9 @@ pub enum IntegrationRefusal {
     /// works on.
     #[error("the conversation is running on another Cloud: send the message without `steer`")]
     CloudDiffers,
-    /// A move while the conversation runs.
-    #[error("the conversation is running: it moves while idle, or to the Cloud its next message names")]
-    Running,
+    /// The Cloud a request reaches did not start.
+    #[error(transparent)]
+    Cloud(#[from] demi_backend_cloud::machine::CloudError),
     #[error(transparent)]
     Storage(#[from] StorageError),
 }
@@ -286,6 +286,7 @@ impl Shard {
             .await?
             .ok_or(IntegrationRefusal::NotFound("Cloud"))?;
         let operation = OperationId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
+        self.end_cloud_commands(device).await;
         self.cloud_shard()
             .reset_machine(&record, operation)
             .await
@@ -671,7 +672,9 @@ impl Shard {
         let Some(record) = control.device(device.clone()).await? else {
             return Ok(());
         };
-        self.cloud_shard()
+        self.end_cloud_commands(device).await;
+        let _held = self
+            .cloud_shard()
             .delete_machine(&record)
             .await
             .map_err(|error| IntegrationRefusal::Refused(error.to_string()))?;
@@ -1094,7 +1097,7 @@ impl IntegrationEvents {
 
     /// Tells every socket of `integration`'s; a socket whose receiver went
     /// is dropped, and one that is full is marked behind.
-    fn publish(&self, integration: &IntegrationId, event: api::Event) {
+    pub(crate) fn publish(&self, integration: &IntegrationId, event: api::Event) {
         let mut sockets = self.sockets.borrow_mut();
         let Some(list) = sockets.get_mut(integration) else {
             return;

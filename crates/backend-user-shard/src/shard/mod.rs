@@ -189,6 +189,7 @@ pub struct Shard {
     /// conversations' changes.
     pub(crate) integration_events: crate::integrations::IntegrationEvents,
     pub(crate) init_runs: crate::integration_inits::InitRuns,
+    pub(crate) integration_commands: crate::integration_commands::IntegrationCommands,
     pub(crate) integration_deletions: crate::integrations::Deletions,
 }
 
@@ -284,6 +285,7 @@ impl Shard {
             media_jobs: media_jobs::MediaJobs::default(),
             integration_events: crate::integrations::IntegrationEvents::default(),
             init_runs: crate::integration_inits::InitRuns::default(),
+            integration_commands: crate::integration_commands::IntegrationCommands::default(),
             integration_deletions: crate::integrations::Deletions::default(),
         }
     }

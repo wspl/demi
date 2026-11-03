@@ -4,7 +4,9 @@
 //! Each reaches the conversation's Host through its host access
 //! (`crates/backend-host-access/src/access.rs`), in the user's shard, which
 //! also checks that the conversation is the caller's. The bytes of a download
-//! or an upload move here while the shard holds their admission.
+//! or an upload move here while the shard holds their admission. An
+//! integration reaches its Cloud the same way with no conversation, through
+//! the Cloud's own access, which keeps it awake while it holds it.
 
 use axum::Json;
 use axum::body::Body;
@@ -34,9 +36,11 @@ use super::body::JsonBody;
 use super::content::content_headers;
 use super::error::{ApiError, READ_AT, read_at_value};
 use super::gate::AuthUser;
+use super::integration_edge::refused;
 use super::listener::Peer;
 use super::query::QueryParams;
 use super::transfer::{TRANSFER_IDLE, UploadEnd, copy_upload, paced_body};
+use demi_backend_database::integrations::IntegrationRecord;
 use demi_backend_host_access::access::{ConversationHost, HostAccessError, Refusal};
 use demi_backend_host_access::transfer::{
     Download, DownloadPath, DownloadRequest, OpenSearch, RangeAnswer,
@@ -48,7 +52,7 @@ pub(super) async fn list(
     Path(id): Path<String>,
     QueryParams(query): QueryParams<DirectoryQuery>,
 ) -> Result<Response, ApiError> {
-    list_on(&state, &user.id, &id, None, query).await
+    list_on(&state, &user.id, FileHost::conversation(&id, None), query).await
 }
 
 /// A directory on one of the conversation's attached Hosts.
@@ -58,7 +62,7 @@ pub(super) async fn list_on_host(
     Path((id, device)): Path<(String, String)>,
     QueryParams(query): QueryParams<DirectoryQuery>,
 ) -> Result<Response, ApiError> {
-    list_on(&state, &user.id, &id, Some(&device), query).await
+    list_on(&state, &user.id, FileHost::conversation(&id, Some(&device)), query).await
 }
 
 /// A directory's entries, the Host's starting directory when the query
@@ -66,12 +70,11 @@ pub(super) async fn list_on_host(
 pub(super) async fn list_on(
     state: &AppState,
     user: &UserId,
-    id: &str,
-    device: Option<&str>,
+    file_host: FileHost<'_>,
     query: DirectoryQuery,
 ) -> Result<Response, ApiError> {
     let requested = query.path.map(|path| path.as_str().to_owned());
-    let (directory, read_at) = on_host(state, user, id, device, async move |host| {
+    let (directory, read_at) = on_file_host(state, user, file_host, async move |host| {
         let path = requested.map_or_else(|| host.root.clone(), |path| host.path(&path));
         let (entries, read_at) = browse_directory(&host.host, &path)
             .await
@@ -141,7 +144,7 @@ pub(super) async fn make_directory(
     Path(id): Path<String>,
     JsonBody(body): JsonBody<CreateDirectory>,
 ) -> Result<(StatusCode, Json<CreatedDirectory>), ApiError> {
-    make_directory_on(&state, &user.id, &id, None, body).await
+    make_directory_on(&state, &user.id, FileHost::conversation(&id, None), body).await
 }
 
 pub(super) async fn make_directory_on_host(
@@ -150,18 +153,17 @@ pub(super) async fn make_directory_on_host(
     Path((id, device)): Path<(String, String)>,
     JsonBody(body): JsonBody<CreateDirectory>,
 ) -> Result<(StatusCode, Json<CreatedDirectory>), ApiError> {
-    make_directory_on(&state, &user.id, &id, Some(&device), body).await
+    make_directory_on(&state, &user.id, FileHost::conversation(&id, Some(&device)), body).await
 }
 
 /// Makes a directory, with its parents.
 pub(super) async fn make_directory_on(
     state: &AppState,
     user: &UserId,
-    id: &str,
-    device: Option<&str>,
+    file_host: FileHost<'_>,
     CreateDirectory { path }: CreateDirectory,
 ) -> Result<(StatusCode, Json<CreatedDirectory>), ApiError> {
-    let made = on_host(state, user, id, device, async move |host| {
+    let made = on_file_host(state, user, file_host, async move |host| {
         let path = host.path(&path);
         HostFs::mkdir(&host.host, &path, MkdirOptions { recursive: true })
             .await
@@ -180,17 +182,17 @@ pub(super) async fn remove(
     Path(id): Path<String>,
     QueryParams(query): QueryParams<RemoveQuery>,
 ) -> Result<StatusCode, ApiError> {
-    remove_of(&state, &user.id, &id, query).await
+    remove_of(&state, &user.id, FileHost::conversation(&id, None), query).await
 }
 
-/// A delete of `user`'s conversation `id`, as [`remove`] answers it.
+/// A delete at `user`'s `file_host`, as [`remove`] answers it.
 pub(super) async fn remove_of(
     state: &AppState,
     user: &UserId,
-    id: &str,
+    file_host: FileHost<'_>,
     RemoveQuery { path }: RemoveQuery,
 ) -> Result<StatusCode, ApiError> {
-    on_host(state, user, id, None, async move |host| {
+    on_file_host(state, user, file_host, async move |host| {
         let kept = [host.home.as_deref(), Some(host.root.as_str())];
         let path = host.rooted(path.as_str()).map_err(HostAccessError::from)?;
         if protected_path(&path, kept.into_iter().flatten()) {
@@ -290,21 +292,20 @@ pub(super) async fn raw(
     Path(id): Path<String>,
     QueryParams(query): QueryParams<RawFileQuery>,
 ) -> Result<Response, ApiError> {
-    raw_of(&state, &user.id, &peer, method, &headers, &id, query).await
+    raw_of(&state, &user.id, &peer, method, &headers, FileHost::conversation(&id, None), query).await
 }
 
-/// A read of a file's bytes on `user`'s conversation `id`, as [`raw`]
-/// answers it.
+/// A read of a file's bytes at `user`'s `file_host`, as [`raw`] answers it.
 pub(super) async fn raw_of(
     state: &AppState,
     user: &UserId,
     peer: &Peer,
     method: Method,
     headers: &HeaderMap,
-    id: &str,
+    file_host: FileHost<'_>,
     query: RawFileQuery,
 ) -> Result<Response, ApiError> {
-    let conversation = conversation_id(id)?;
+    let file_host = file_host.checked()?;
     let path = query.path.as_str().to_owned();
     // The bytes of a version a request names can only be that version's.
     let versioned = query.version.is_some();
@@ -319,10 +320,15 @@ pub(super) async fn raw_of(
         .shards
         .of(user)
         .call(move |shard, cancel| async move {
-            shard
-                .host_shard()
-                .open_download(&conversation, request, &cancel)
-                .await
+            Ok::<_, ApiError>(match file_host {
+                CheckedFileHost::Conversation(conversation) => {
+                    shard.host_shard().open_download(&conversation, request, &cancel).await?
+                }
+                CheckedFileHost::Cloud(integration, cloud) => {
+                    let held = shard.integration_cloud_host(&integration, &cloud).await.map_err(refused)?;
+                    shard.host_shard().open_download_held(held, request, &cancel).await?
+                }
+            })
         })
         .await??;
     let content = content_headers(
@@ -414,27 +420,32 @@ pub(super) async fn search(
     Path(id): Path<String>,
     JsonBody(request): JsonBody<SearchRequest>,
 ) -> Result<Response, ApiError> {
-    search_of(&state, &user.id, &peer, &id, request).await
+    search_of(&state, &user.id, &peer, FileHost::conversation(&id, None), request).await
 }
 
-/// A search on `user`'s conversation `id`, as [`search`] answers it.
+/// A search at `user`'s `file_host`, as [`search`] answers it.
 pub(super) async fn search_of(
     state: &AppState,
     user: &UserId,
     peer: &Peer,
-    id: &str,
+    file_host: FileHost<'_>,
     SearchRequest { root, query }: SearchRequest,
 ) -> Result<Response, ApiError> {
-    let conversation = conversation_id(id)?;
+    let file_host = file_host.checked()?;
     let root = root.map(|root| root.as_str().to_owned());
     let opened = state
         .shards
         .of(user)
         .call(move |shard, cancel| async move {
-            shard
-                .host_shard()
-                .open_search(&conversation, root, query, &cancel)
-                .await
+            Ok::<_, ApiError>(match file_host {
+                CheckedFileHost::Conversation(conversation) => {
+                    shard.host_shard().open_search(&conversation, root, query, &cancel).await?
+                }
+                CheckedFileHost::Cloud(integration, cloud) => {
+                    let held = shard.integration_cloud_host(&integration, &cloud).await.map_err(refused)?;
+                    shard.host_shard().open_search_held(held, root, query, &cancel).await?
+                }
+            })
         })
         .await?;
     let OpenSearch { body, lease } = opened?;
@@ -457,28 +468,33 @@ pub(super) async fn upload(
     QueryParams(query): QueryParams<UploadQuery>,
     body: Body,
 ) -> Result<StatusCode, ApiError> {
-    upload_of(&state, &user.id, &peer, &id, query, body).await
+    upload_of(&state, &user.id, &peer, FileHost::conversation(&id, None), query, body).await
 }
 
-/// An upload to `user`'s conversation `id`, as [`upload`] answers it.
+/// An upload to `user`'s `file_host`, as [`upload`] answers it.
 pub(super) async fn upload_of(
     state: &AppState,
     user: &UserId,
     peer: &Peer,
-    id: &str,
+    file_host: FileHost<'_>,
     UploadQuery { path, replace }: UploadQuery,
     body: Body,
 ) -> Result<StatusCode, ApiError> {
-    let conversation = conversation_id(id)?;
+    let file_host = file_host.checked()?;
     let path = path.as_str().to_owned();
     let open = state
         .shards
         .of(user)
         .call(move |shard, cancel| async move {
-            shard
-                .host_shard()
-                .open_upload(&conversation, path, replace.0, &cancel)
-                .await
+            Ok::<_, ApiError>(match file_host {
+                CheckedFileHost::Conversation(conversation) => {
+                    shard.host_shard().open_upload(&conversation, path, replace.0, &cancel).await?
+                }
+                CheckedFileHost::Cloud(integration, cloud) => {
+                    let held = shard.integration_cloud_host(&integration, &cloud).await.map_err(refused)?;
+                    shard.host_shard().open_upload_held(held, path, replace.0)?
+                }
+            })
         })
         .await??;
     match copy_upload(body, open).await {
@@ -765,38 +781,82 @@ pub(super) async fn committed(
     }
 }
 
-/// Runs `operation` on the conversation's Host through its host access: the
-/// primary Host, or the bound device `device` names. The conversation's file
-/// gate is let go once the Host is resolved, so the call holds nothing a
-/// transition waits behind.
-async fn on_host<T, F>(
-    state: &AppState,
-    user: &UserId,
-    id: &str,
-    device: Option<&str>,
-    operation: F,
-) -> Result<T, ApiError>
+/// Where a file operation reaches a Host: a conversation's, the primary Host
+/// or the bound device `device` names; or an integration's Cloud, with no
+/// conversation.
+pub(super) enum FileHost<'a> {
+    Conversation { id: &'a str, device: Option<&'a str> },
+    Cloud { integration: IntegrationRecord, cloud: DeviceId },
+}
+
+impl<'a> FileHost<'a> {
+    pub(super) fn conversation(id: &'a str, device: Option<&'a str>) -> Self {
+        Self::Conversation { id, device }
+    }
+
+    /// The Host with its ids checked, for a transfer, which reaches a
+    /// conversation's primary Host only.
+    fn checked(self) -> Result<CheckedFileHost, ApiError> {
+        Ok(match self {
+            Self::Conversation { id, .. } => CheckedFileHost::Conversation(conversation_id(id)?),
+            Self::Cloud { integration, cloud } => CheckedFileHost::Cloud(integration, cloud),
+        })
+    }
+}
+
+/// A [`FileHost`] whose ids were checked.
+enum CheckedFileHost {
+    Conversation(ConversationId),
+    Cloud(IntegrationRecord, DeviceId),
+}
+
+/// Runs `operation` on the conversation's Host, as [`on_file_host`] does.
+async fn on_host<T, F>(state: &AppState, user: &UserId, id: &str, device: Option<&str>, operation: F) -> Result<T, ApiError>
 where
     T: Send + 'static,
     F: AsyncFnOnce(&ConversationHost) -> Result<T, ApiError> + Send + 'static,
 {
-    let conversation = conversation_id(id)?;
-    let device = device
-        .map(|device| {
-            DeviceId::try_from(device)
-                .map_err(|_| ApiError::from(HostAccessError::from(Refusal::NotAttached)))
-        })
-        .transpose()?;
-    state
-        .shards
-        .of(user)
-        .call(move |shard, cancel| async move {
-            shard
-                .host_shard()
-                .with_unheld_host(&conversation, device.as_ref(), &cancel, operation)
+    on_file_host(state, user, FileHost::conversation(id, device), operation).await
+}
+
+/// Runs `operation` on `file_host`. A conversation's file gate is let
+/// go once the Host is resolved, so the call holds nothing a transition waits
+/// behind; a Cloud stays awake until `operation` ends.
+async fn on_file_host<T, F>(state: &AppState, user: &UserId, file_host: FileHost<'_>, operation: F) -> Result<T, ApiError>
+where
+    T: Send + 'static,
+    F: AsyncFnOnce(&ConversationHost) -> Result<T, ApiError> + Send + 'static,
+{
+    match file_host {
+        FileHost::Conversation { id, device } => {
+            let conversation = conversation_id(id)?;
+            let device = device
+                .map(|device| {
+                    DeviceId::try_from(device).map_err(|_| ApiError::from(HostAccessError::from(Refusal::NotAttached)))
+                })
+                .transpose()?;
+            state
+                .shards
+                .of(user)
+                .call(move |shard, cancel| async move {
+                    shard
+                        .host_shard()
+                        .with_unheld_host(&conversation, device.as_ref(), &cancel, operation)
+                        .await?
+                })
                 .await?
-        })
-        .await?
+        }
+        FileHost::Cloud { integration, cloud } => {
+            state
+                .shards
+                .of(user)
+                .call(move |shard, _| async move {
+                    let held = shard.integration_cloud_host(&integration, &cloud).await.map_err(refused)?;
+                    operation(&held.host).await
+                })
+                .await?
+        }
+    }
 }
 
 /// The path's conversation id; one that is not an id names no conversation.

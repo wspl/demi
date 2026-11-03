@@ -1,6 +1,7 @@
 //! A script the backend runs on a Host on its own account, as the agent's
 //! shell would: a schedule's change watch, an integration Cloud's init
-//! script. No page follows its job, and its output is read once it ends.
+//! script, a command an integration runs on its Cloud. No page follows its
+//! job.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -50,30 +51,25 @@ impl Numbers for Count {
     }
 }
 
-/// Runs `script` in `cwd` on `host` as the agent's shell would, titled
-/// `title`, at most `limit` when one is given, until `stop`; once it exits,
-/// `read` reads its exit code and its whole output.
-pub(crate) async fn run_script<T>(
-    host: RemoteHost,
-    cwd: Option<String>,
-    context: CommandContext,
-    script: String,
-    title: &str,
-    limit: Option<Duration>,
-    stop: &CancellationToken,
-    read: impl FnOnce(i32, Option<&WholeOutput>) -> T,
-) -> ScriptEnd<T> {
+/// A shell environment on `host` for the backend's own scripts, in
+/// `context`, which no page follows.
+pub(crate) fn script_environment(host: RemoteHost, context: CommandContext) -> RemoteShellEnvironment {
     let source: ContextSource = Rc::new(move || {
         let context = context.clone();
         Box::pin(async move { Ok(context) })
     });
-    let environment = RemoteShellEnvironment::new(EnvironmentOptions::new(
+    RemoteShellEnvironment::new(EnvironmentOptions::new(
         host,
         source,
         Rc::new(NoPage(watch::Sender::new(false))),
         Rc::new(Count::default()),
-    ));
-    let request = ExecRequest {
+    ))
+}
+
+/// The start of `script` in `cwd`, titled `title`, as the backend's own: a
+/// service, so it runs until it ends whatever watches it.
+pub(crate) fn script_request(script: String, cwd: Option<String>, title: &str) -> ExecRequest {
+    ExecRequest {
         script,
         cwd,
         caller: JobCaller {
@@ -87,7 +83,24 @@ pub(crate) async fn run_script<T>(
             model: "none".into(),
             media_types: Some(Vec::new()),
         },
-    };
+    }
+}
+
+/// Runs `script` in `cwd` on `host` as the agent's shell would, titled
+/// `title`, at most `limit` when one is given, until `stop`; once it exits,
+/// `read` reads its exit code and its whole output.
+pub(crate) async fn run_script<T>(
+    host: RemoteHost,
+    cwd: Option<String>,
+    context: CommandContext,
+    script: String,
+    title: &str,
+    limit: Option<Duration>,
+    stop: &CancellationToken,
+    read: impl FnOnce(i32, Option<&WholeOutput>) -> T,
+) -> ScriptEnd<T> {
+    let environment = script_environment(host, context);
+    let request = script_request(script, cwd, title);
     let cancel = CancellationToken::new();
     let command = match environment.start(request, cancel.clone()).await {
         Ok(command) => command,

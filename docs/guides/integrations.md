@@ -170,6 +170,38 @@ A program that watches the folder for changes, such as with `inotify`, sees
 only the changes made on its own Cloud, not another Cloud's. An agent that
 waits for another Cloud's file has to look for it.
 
+### Commands and files outside a conversation
+
+Your program can work on a Cloud without any conversation, for example to
+update a tool every morning or to copy a person's saved files in when they
+join. Send the script to run:
+
+```json
+POST /v1/clouds/{cloud}/commands
+{"script": "npm install -g example-cli@latest", "cwd": "~/tools"}
+```
+
+Demi answers at once with the command's `id` and `state: "running"`. The
+command runs as the user `demi`, where `sudo` works, in `cwd` (`~` when you
+name none), after the Cloud wakes and its init script ends. A `stdin` in the
+body is its standard input; without one, its input is empty. It has no time
+limit, and it keeps the Cloud awake while it runs.
+
+- `GET /v1/clouds/{cloud}/commands/{id}?after=` answers its `state` and its
+  output from byte `after`. Pass the `next` of the previous read to read on.
+- `state` becomes `exited` with an `exitCode`, or `failed` with a `failure`
+  that says why it didn't run to its end, such as a stop.
+- `POST /v1/clouds/{cloud}/commands/{id}/stop` stops it.
+- The socket sends a `command` event when it ends.
+
+Demi keeps an ended command for an hour, and forgets every command when the
+server restarts: a command you can no longer read is gone, and a running one
+ended with the server.
+
+The Cloud's files have the same routes as a conversation's
+([Files](#files)), under `/v1/clouds/{cloud}/fs`, starting at the Cloud's
+home. They wake a sleeping Cloud and don't wait for its init script.
+
 ## Conversations
 
 A conversation's key is the thing of yours that it answers, such as a chat, a
@@ -317,6 +349,8 @@ JSON event:
   said.
 - `retry_scheduled`: the main agent's request failed for a reason that
   passes, and it retries after `delayMs`. Tell your users it's still working.
+- `command`: a command your program ran on a Cloud ended
+  ([Commands and files outside a conversation](#commands-and-files-outside-a-conversation)).
 - `behind`: your program read too slowly, and events after the ones it read
   were dropped. Reconcile, as below. Your commands' requests are never
   dropped.

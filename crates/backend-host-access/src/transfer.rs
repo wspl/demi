@@ -47,7 +47,7 @@ use std::future::Future;
 use std::rc::Rc;
 
 use bytes::Bytes;
-use demi_runner_client::{ConditionalRead, OpenedRead, PipeReader, PipeWriter};
+use demi_runner_client::{ConditionalRead, OpenedRead, PipeReader, PipeWriter, RemoteHost};
 use demi_host_interface::{ByteRange, FileStat, Host as _, HostError, WhenExists, WriteOptions};
 use demi_runner_protocol::search::SearchQuery;
 use demi_runner_protocol::wire::ReadAt;
@@ -160,11 +160,41 @@ impl dyn HostShard + '_ {
         // From the check to the registration nothing awaits, so a transition
         // that closes the conversation's transfers never misses this one.
         let open = slot.transfers.open().map_err(|_| Refusal::Busy)?;
-        let waits = Waits::until_ended(cancel, &open.ended);
-        let admitted = self.admit_host(&record.id, None, waits).await?;
+        let ended = open.ended.clone();
+        let admitted = self.admit_host(&record.id, None, Waits::until_ended(cancel, &ended)).await?;
         bind_to(&open, &admitted)?;
+        let host = admitted.host.host.clone();
         let request = request.from_home(&admitted.host);
-        let host = &admitted.host.host;
+        self.download_from(&host, admitted, open, request, cancel).await
+    }
+
+    /// A download from the Host `held` reaches, outside any conversation, as
+    /// an integration's program reads its Cloud: nothing but `cancel` and
+    /// the lease ends it.
+    pub async fn open_download_held(
+        &self,
+        held: HeldHost,
+        request: DownloadRequest,
+        cancel: &CancellationToken,
+    ) -> Result<Download, HostAccessError> {
+        let open = TransferSet::new().open().map_err(|_| Refusal::Busy)?;
+        let host = held.host.host.clone();
+        let request = request.from_home(&held.host);
+        self.download_from(&host, held, open, request, cancel).await
+    }
+
+    /// The download of `request` from `host`, which `held` holds, admitted
+    /// and registered as `open`.
+    async fn download_from(
+        &self,
+        host: &RemoteHost,
+        held: impl Sized + 'static,
+        open: OpenTransfer,
+        request: DownloadRequest,
+        cancel: &CancellationToken,
+    ) -> Result<Download, HostAccessError> {
+        let ended = open.ended.clone();
+        let waits = Waits::until_ended(cancel, &ended);
         let path = match &request.path {
             DownloadPath::Named(path) => path.clone(),
             DownloadPath::Place(place) => match host.identity().paths.at_place(place) {
@@ -250,7 +280,7 @@ impl dyn HostShard + '_ {
             body = part.body;
         }
         // The bytes move at the edge; the shard only holds the admission.
-        let lease = self.lease_transfer(admitted, open, std::future::pending(), || {});
+        let lease = self.lease_transfer(held, open, std::future::pending(), || {});
         Ok(Download::Stream {
             stat,
             version,
@@ -290,15 +320,49 @@ impl dyn HostShard + '_ {
         let slot = self.conversations().slot(&record.id);
         // From the check to the registration nothing awaits, as a download's.
         let open = slot.transfers.open().map_err(|_| Refusal::Busy)?;
-        let waits = Waits::until_ended(cancel, &open.ended);
-        let admitted = self.admit_host(&record.id, None, waits).await?;
+        let ended = open.ended.clone();
+        let admitted = self.admit_host(&record.id, None, Waits::until_ended(cancel, &ended)).await?;
         bind_to(&open, &admitted)?;
+        let host = admitted.host.host.clone();
         let root = match root {
             Some(root) => admitted.host.rooted(&root)?,
             None => admitted.host.root.clone(),
         };
-        let body = waits.wait(admitted.host.host.search(&root, query)).await??;
-        let lease = self.lease_transfer(admitted, open, std::future::pending(), || {});
+        self.search_on(&host, root, admitted, open, query, cancel).await
+    }
+
+    /// A search on the Host `held` reaches, outside any conversation, under
+    /// `root`, its home when none.
+    pub async fn open_search_held(
+        &self,
+        held: HeldHost,
+        root: Option<String>,
+        query: SearchQuery,
+        cancel: &CancellationToken,
+    ) -> Result<OpenSearch, HostAccessError> {
+        let open = TransferSet::new().open().map_err(|_| Refusal::Busy)?;
+        let host = held.host.host.clone();
+        let root = match root {
+            Some(root) => held.host.rooted(&root)?,
+            None => held.host.root.clone(),
+        };
+        self.search_on(&host, root, held, open, query, cancel).await
+    }
+
+    /// The search of `query` under `root` on `host`, which `held` holds,
+    /// admitted and registered as `open`.
+    async fn search_on(
+        &self,
+        host: &RemoteHost,
+        root: String,
+        held: impl Sized + 'static,
+        open: OpenTransfer,
+        query: SearchQuery,
+        cancel: &CancellationToken,
+    ) -> Result<OpenSearch, HostAccessError> {
+        let waits = Waits::until_ended(cancel, &open.ended);
+        let body = waits.wait(host.search(&root, query)).await??;
+        let lease = self.lease_transfer(held, open, std::future::pending(), || {});
         Ok(OpenSearch { body, lease })
     }
 
@@ -319,11 +383,32 @@ impl dyn HostShard + '_ {
         // As for a download: no await between the check and the
         // registration.
         let open = slot.transfers.open().map_err(|_| Refusal::Busy)?;
-        let waits = Waits::until_ended(cancel, &open.ended);
-        let admitted = self.admit_host(&record.id, None, waits).await?;
+        let ended = open.ended.clone();
+        let admitted = self.admit_host(&record.id, None, Waits::until_ended(cancel, &ended)).await?;
         bind_to(&open, &admitted)?;
         let host = admitted.host.host.clone();
         let path = admitted.host.path(&path);
+        self.upload_to(host, admitted, open, path, replace)
+    }
+
+    /// An upload to the Host `held` reaches, outside any conversation.
+    pub fn open_upload_held(&self, held: HeldHost, path: String, replace: bool) -> Result<OpenUpload, HostAccessError> {
+        let open = TransferSet::new().open().map_err(|_| Refusal::Busy)?;
+        let host = held.host.host.clone();
+        let path = held.host.path(&path);
+        self.upload_to(host, held, open, path, replace)
+    }
+
+    /// The upload to `path` on `host`, which `held` holds, admitted and
+    /// registered as `open`.
+    fn upload_to(
+        &self,
+        host: RemoteHost,
+        held: impl Sized + 'static,
+        open: OpenTransfer,
+        path: String,
+        replace: bool,
+    ) -> Result<OpenUpload, HostAccessError> {
         let pipe = host.write_pipe()?;
         let writer = pipe.writer().expect("a pipe just made has its source free");
         let (done, written) = oneshot::channel();
@@ -341,7 +426,7 @@ impl dyn HostShard + '_ {
             let _ = done.send(outcome.map(|_| ()));
         };
         let stop = move || pipe.fail("the upload ended before its last byte");
-        let lease = self.lease_transfer(admitted, open, write, stop);
+        let lease = self.lease_transfer(held, open, write, stop);
         Ok(OpenUpload {
             writer,
             written,
@@ -358,7 +443,7 @@ impl dyn HostShard + '_ {
     /// for the transfer finds the file gate free.
     fn lease_transfer(
         &self,
-        admitted: Admitted,
+        admitted: impl Sized + 'static,
         open: OpenTransfer,
         work: impl Future<Output = ()> + 'static,
         stop: impl FnOnce() + 'static,
@@ -378,6 +463,13 @@ impl dyn HostShard + '_ {
         .in_current_span());
         lease
     }
+}
+
+/// A Host that a transfer reaches outside any conversation, with what keeps
+/// it reachable until the transfer ends, such as a Cloud's admission.
+pub struct HeldHost {
+    pub host: ConversationHost,
+    pub held: Box<dyn std::any::Any>,
 }
 
 /// Binds `open` to the device `admitted` reaches, so a detach of it ends the

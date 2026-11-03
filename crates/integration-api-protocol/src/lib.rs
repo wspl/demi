@@ -419,6 +419,63 @@ pub struct UsageRow {
     pub api_cost: Option<f64>,
 }
 
+/// `POST /clouds/:cloud/commands`: a script to run on the Cloud as `demi`,
+/// as an agent's shell runs one, outside any conversation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StartCloudCommand {
+    #[schemars(length(min = 1))]
+    #[garde(length(min = 1))]
+    pub script: String,
+    /// The directory it runs in, `~` for the home, which it is when none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(length(min = 1))]
+    #[garde(inner(length(chars, min = 1)))]
+    pub cwd: Option<String>,
+    /// Its standard input; none for an empty one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub stdin: Option<String>,
+}
+
+/// `GET /clouds/:cloud/commands/:id?after=`: its output from the byte
+/// `after`, the `next` an earlier read answered; from its start when none.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[garde(allow_unvalidated)]
+pub struct CloudCommandQuery {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<u64>,
+}
+
+/// A command the integration runs on a Cloud.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudCommand {
+    pub id: String,
+    pub cloud: DeviceId,
+    /// `running` until it ends: `exited` with its exit code, or `failed`
+    /// with why it did not run to its end.
+    pub state: CloudCommandState,
+    pub exit_code: Option<i32>,
+    pub failure: Option<String>,
+    /// Its standard output and error as they came, from the query's
+    /// `after`, as text; a stretch the Cloud did not keep reads as a line
+    /// that says how many bytes it left out.
+    pub output: String,
+    /// The byte the next read starts `after`.
+    pub next: u64,
+}
+
+/// Where a command on a Cloud is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CloudCommandState {
+    Running,
+    Exited,
+    Failed,
+}
+
 /// What a sent message became.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -628,6 +685,15 @@ pub enum Event {
     },
     /// The agent stopped the call of the request `id`: its reply is not read.
     Cancel { id: u64 },
+    /// A command the integration ran on its Cloud `cloud` ended, as
+    /// `GET /clouds/:cloud/commands/:id` reads it.
+    Command {
+        cloud: DeviceId,
+        id: String,
+        state: CloudCommandState,
+        exit_code: Option<i32>,
+        failure: Option<String>,
+    },
 }
 
 /// A request of an integration's plugin.

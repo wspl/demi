@@ -77,6 +77,13 @@ enum Content {
     Bytes,
 }
 
+/// A route that reaches a Cloud's files, which wakes the Cloud for it.
+fn cloud_files(route: Route) -> Route {
+    route
+        .refuses(409, "The Cloud is being reset (`cloud_resetting`).")
+        .refuses(503, "The Cloud did not start, as the message says (`cloud_unavailable`, `cloud_capacity`, `cloud_crash_loop`).")
+}
+
 fn of<T: JsonSchema>(generator: &mut SchemaGenerator) -> Schema {
     generator.subschema_for::<T>()
 }
@@ -107,6 +114,32 @@ fn routes() -> Vec<Route> {
         json("get", "/clouds/{cloud}", "A Cloud", None, (200, Some(of::<Cloud>))),
         json("delete", "/clouds/{cloud}", "Delete a Cloud no conversation works on", None, (204, None)).refuses(409, "A conversation works on the Cloud, and the message names each; or the Cloud is being deleted, or its machine refused (`integration_refused`)."),
         json("post", "/clouds/{cloud}/reset", "Reset a Cloud's system; /home stays", None, (200, Some(of::<Cloud>))).refuses(409, "The Cloud's machine refused the reset, as the message says (`integration_refused`)."),
+        json("post", "/clouds/{cloud}/commands", "Run a script on a Cloud as `demi`, outside any conversation, once its init script ends; it answers at once", Some(of::<StartCloudCommand>), (201, Some(of::<CloudCommand>))),
+        json("get", "/clouds/{cloud}/commands/{command}", "A command on a Cloud, with its output from `after`; an hour after it ends, or once the server restarts, it is gone", None, (200, Some(of::<CloudCommand>)))
+            .query(of::<CloudCommandQuery>),
+        json("post", "/clouds/{cloud}/commands/{command}/stop", "Stop a command on a Cloud; one that ended stays as it is", None, (204, None)),
+        cloud_files(json("get", "/clouds/{cloud}/fs", "A directory's entries on a Cloud, its home without `path`", None, (200, Some(of::<files::Directory>)))
+            .query(of::<files::DirectoryQuery>)),
+        cloud_files(json("post", "/clouds/{cloud}/fs", "Make a directory on a Cloud, with its parents", Some(of::<files::CreateDirectory>), (201, Some(of::<files::CreatedDirectory>)))),
+        cloud_files(json("delete", "/clouds/{cloud}/fs", "Delete a file on a Cloud, or a directory with what it holds", None, (204, None))
+            .query(of::<files::RemoveQuery>)
+            .refuses(409, "The path is the root or the home directory, or holds one (`protected_path`).")),
+        cloud_files(json("get", "/clouds/{cloud}/fs/raw", "A file's bytes on a Cloud: 206 with the part a `Range` names, 304 when `If-None-Match` names its ETag", None, (200, None))
+            .query(of::<files::RawFileQuery>)
+            .bytes(200)
+            .refuses(404, "Nothing, or no file, is at the path (`fs_error`, `not_found`).")),
+        cloud_files(Route {
+            method: "put",
+            path: "/clouds/{cloud}/fs/raw",
+            summary: "Write a file's bytes on a Cloud, whole or not at all",
+            query: Some(of::<files::UploadQuery>),
+            body: Some(Content::Bytes),
+            answer: (204, None),
+            refusals: vec![(409, "A directory is at the path (`is_directory`), or a file and `replace` is false (`file_exists`).")],
+            owned_ids: true,
+            body_optional: false,
+        }),
+        cloud_files(json("post", "/clouds/{cloud}/fs/search", "Search the names and the text of the files under a directory of a Cloud, its home without `root`: one JSON object per line", Some(of::<files::SearchRequest>), (200, None)).bytes(200)),
         json("get", "/conversations", "A page of the integration's conversations, newest first; or with `key`, the one of that key, `limit` and `after` aside", None, (200, Some(of::<ConversationList>)))
             .query(of::<ConversationQuery>)
             .refuses(400, "`after` is no page's `next` (`integration_refused`)."),
