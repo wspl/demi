@@ -88,7 +88,11 @@ function createInstance() {
     legacy: false,
     locale: FIRST_LANGUAGE,
     fallbackLocale: 'en',
-    messages: Object.fromEntries(LANGUAGES.map(language => [language, {}])) as Record<Language, object>,
+    // Keyed by Language, so the locale reads as one. Each table is typed `{}`,
+    // which an index signature accepts and whose keys vue-i18n's paths do not
+    // recurse into; `object` matches no overload, and a record of strings
+    // recurses without end.
+    messages: Object.fromEntries(LANGUAGES.map(language => [language, {}])) as Record<Language, {}>,
     pluralRules: Object.fromEntries(LANGUAGES.map(language => [language, pluralForm(language)])),
   })
 }
