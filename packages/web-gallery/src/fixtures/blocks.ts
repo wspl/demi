@@ -896,11 +896,10 @@ export const binaryStdoutTool = toolCall({
 })
 
 /**
- * Pills of one name and one count are equally wide; this many fill the two
- * lines of the 360px (phone) specimen exactly, so all show and none is
- * counted.
+ * Pills of one name and one count are equally wide; this many fill the line
+ * of the 360px (phone) specimen exactly, so all show and none is counted.
  */
-const EXACT_FIT = 6
+const EXACT_FIT = 3
 
 /** A call that removed screenshots, rewrote some pages and added a few files, seventy in all. */
 function seventyFiles(id: string): ToolCallBlock {
@@ -981,7 +980,7 @@ export const fileChangeCases: { variant: string, width?: number, block: ToolCall
     ]),
   },
   {
-    variant: 'forty files, two lines and the rest counted',
+    variant: 'forty files, one line and the rest counted',
     block: fileChangeCase('many', 'Rename the prop across every widget', Array.from({ length: 40 }, (_, i) => editedFile({
       path: `packages/web/src/components/Widget${i + 1}.vue`,
       kind: i % 9 === 0 ? 'added' : 'modified',
@@ -999,7 +998,7 @@ export const fileChangeCases: { variant: string, width?: number, block: ToolCall
     block: seventyFiles('seventy-phone'),
   },
   {
-    variant: 'fits in two lines exactly · phone width',
+    variant: 'fits in one line exactly · phone width',
     width: 360,
     block: fileChangeCase('exact', 'Rename the cookie in the auth modules', Array.from({ length: EXACT_FIT }, (_, i) => editedFile({
       path: `${String.fromCharCode(97 + i)}/auth.ts`,
@@ -1060,7 +1059,7 @@ export function changesDemoBlocks(): Block[] {
   const loginInRun = { ...loginTest!, lines: { added: 3, removed: 3 }, edits: [...loginTest!.edits, ...twice!.edits] }
   const firstRun = [loginInRun, session!, ...listed('contents unavailable')]
   const [mixedTest, mixedSession, ...mixedRest] = listed('a few, mixed')
-  const secondRun = [...listed('forty files, two lines and the rest counted'), mixedTest!, mixedSession!, ...mixedRest, ...listed('long names'), ...listed('append only, not new')]
+  const secondRun = [...listed('forty files, one line and the rest counted'), mixedTest!, mixedSession!, ...mixedRest, ...listed('long names'), ...listed('append only, not new')]
   const thirdRun = listedFiles(snapshotDiff)
   // The request lists the login test and the session helper once, where
   // its first run put them, with the second run's edits of them.
@@ -1101,7 +1100,7 @@ export function changesDemoBlocks(): Block[] {
     ),
     text('changes-text-1', 150_000, 'The helper now writes `session`. Sweeping the widgets next; each one reads the cookie name from a prop.'),
     ...inRun(
-      caseBlock('forty files, two lines and the rest counted'),
+      caseBlock('forty files, one line and the rest counted'),
       caseBlock('a few, mixed'),
       caseBlock('no files'),
       caseBlock('long names'),

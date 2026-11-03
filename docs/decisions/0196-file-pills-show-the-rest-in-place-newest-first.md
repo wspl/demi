@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0242
 ---
 
 # File pills show the rest in place, newest first
