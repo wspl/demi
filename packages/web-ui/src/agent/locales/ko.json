@@ -40,6 +40,7 @@
     "receipt": {
       "allowed": "이 대화에서 다음 작업을 허용했습니다: {action}",
       "denied": "이 대화에서 다음 작업을 거부했습니다: {action}",
+      "reached": "다른 대화가 이 대화에 연락해 다음 작업이 허용되었습니다: {action}",
       "moved": "이 대화를 이동했습니다: {host} · {path}",
       "moveFailed": "이동하지 못했습니다: {reason}",
       "fromMain": "{agent}의 메시지",

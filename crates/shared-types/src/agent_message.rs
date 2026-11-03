@@ -118,8 +118,8 @@ pub enum AgentMessageEvent {
         #[garde(skip)]
         outcome: CompletionOutcome,
     },
-    /// The user's decision on a permission request the recipient, or a
-    /// subagent of it that closed since, raised.
+    /// The decision on a permission request the recipient, or a subagent of
+    /// it that closed since, raised.
     Permission {
         #[garde(skip)]
         outcome: PermissionOutcome,
@@ -188,12 +188,17 @@ impl AgentMessageEvent {
     }
 }
 
-/// How the user decided a permission request.
+/// How a permission request was decided.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PermissionOutcome {
+    /// The user allowed it.
     Allowed,
+    /// The user denied it.
     Denied,
+    /// Another conversation's agent reached the conversation, which grants
+    /// the category it asked for without the user.
+    Reached,
 }
 
 serde_plain::derive_display_from_serialize!(PermissionOutcome);

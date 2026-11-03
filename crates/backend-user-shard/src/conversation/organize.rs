@@ -7,7 +7,9 @@
 //! sending a message to another's main agent and starting a conversation need
 //! the user's Use Your Other Conversations ([`CONVERSATIONS`]), given once for
 //! the conversation: what they read goes to this conversation's model
-//! provider, and what they send wakes another conversation. An archived conversation is listed nowhere and receives
+//! provider, and what they send wakes another conversation. The conversation
+//! a message reaches holds the category from then on ([`deliver`]), so it
+//! answers without asking. An archived conversation is listed nowhere and receives
 //! nothing, so an archive keeps it out of the way. Where the
 //! conversation runs decides its project, so an agent moves it into or out of
 //! one with `demi host move` (`host_commands.rs`).
@@ -49,7 +51,7 @@ pub(crate) const CONVERSATIONS: &str = "conversation.use";
 
 const CONVERSATIONS_ACTION: &str = "use your other conversations";
 
-const CONVERSATIONS_DESCRIPTION: &str = "Use Your Other Conversations lets the agents of this conversation list your conversations, read what any of them holds, send messages to them and start new ones. What they read goes to this conversation’s model provider.";
+const CONVERSATIONS_DESCRIPTION: &str = "Use Your Other Conversations lets the agents of this conversation list your conversations, read what any of them holds, send messages to them and start new ones. A conversation they send to or start can do the same. What they read goes to this conversation’s model provider.";
 
 const SUMMARY: &str = "This conversation in the user's sidebar: rename it, and list the user's projects and conversations; send a message to another conversation, or start a new one; and transcripts, which history searches and reads: an agent's of this conversation, or of another conversation of the user.";
 
@@ -262,7 +264,15 @@ struct Sender {
 
 /// Admits `content` into the main agent of the user's conversation `to`, an
 /// agent's message from `sender`, as `send` and `new` deliver one.
+///
+/// The conversation it reaches holds [`CONVERSATIONS`] from then on, as the
+/// sending one does, so its agent answers and reads without asking. The grant
+/// comes first, so the agent the message wakes already holds it; a message
+/// that then fails to arrive leaves the grant in place.
 async fn deliver(shard: &Shard, sender: &Sender, to: &ConversationId, content: &str) -> Result<(), String> {
+    demi_backend_permissions::grant(shard.permission_shard(), to, CONVERSATIONS)
+        .await
+        .map_err(|error| format!("the grant was not recorded: {error}"))?;
     let id = BlockId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
     let timestamp = shard.services().clock.now();
     let message = |recipient: &NodeId| AgentMessage {

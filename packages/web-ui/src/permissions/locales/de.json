@@ -38,7 +38,7 @@
     },
     "conversation_use": {
       "action": "deine anderen Chats zu verwenden",
-      "description": "Damit können die Agenten dieses Chats deine Chats auflisten, lesen, was jeder davon enthält, ihnen Nachrichten senden und neue starten. Was sie lesen, geht an den Modellanbieter dieses Chats."
+      "description": "Damit können die Agenten dieses Chats deine Chats auflisten, lesen, was jeder davon enthält, ihnen Nachrichten senden und neue starten. Ein Chat, dem sie schreiben oder den sie starten, kann dasselbe. Was sie lesen, geht an den Modellanbieter dieses Chats."
     },
     "agent_profiles": {
       "action": "Subagent-Profile zu ändern",

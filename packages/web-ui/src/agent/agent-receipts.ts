@@ -42,13 +42,18 @@ export function receiptRow(message: AgentMessage): ReceiptRow {
   const named = (notice: string, tag: ReceiptRow['tag'] = null): ReceiptRow =>
     ({ notice, title: senderName(message), inline: false, after: '', tag })
   switch (event.type) {
-    // The user's decision on a permission request, which reached the agent as
-    // this message.
+    // The decision on a permission request, which reached the agent as this
+    // message.
     case 'permission': {
       const action = permissionAction(event)
-      return plain(event.outcome === 'allowed'
-        ? t('transcript.receipt.allowed', { action })
-        : t('transcript.receipt.denied', { action }))
+      switch (event.outcome) {
+        case 'allowed':
+          return plain(t('transcript.receipt.allowed', { action }))
+        case 'denied':
+          return plain(t('transcript.receipt.denied', { action }))
+        case 'reached':
+          return plain(t('transcript.receipt.reached', { action }))
+      }
     }
     // The user's move of the conversation, which the user told the agent of.
     case 'moved':
