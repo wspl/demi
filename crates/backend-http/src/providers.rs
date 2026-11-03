@@ -11,7 +11,9 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use demi_provider_registry::families::family_name;
 use demi_provider_registry::registry::RegistryError;
+use demi_shared_types::{AudioShape, ImageShape, VideoShape};
 use demi_provider_registry::entry::ProviderEntry;
 use demi_backend_providers::vault::entries::Vault;
 use demi_backend_providers::vault::operations::OperationGuard;
@@ -22,7 +24,7 @@ use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::CredentialId;
 use demi_web_api_protocol::providers::{
     CreateProvider, ProviderAnswer, ProviderDetails, ProviderOrder, ProviderPatch, Providers, QuotaAnswer,
-    QuotaRequest, SubscriptionFamily, TestRequest, TestResult, VendorCatalog,
+    CompatibleShapes, QuotaRequest, SubscriptionFamily, TestRequest, TestResult, VendorCatalog,
 };
 
 use super::body::{JsonBody, OptionalJsonBody};
@@ -128,9 +130,9 @@ pub(super) async fn order(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// What the page can add: each subscription family, and the models.dev
-/// vendors a family speaks to. Which of them the user holds is the
-/// providers' part of the product state.
+/// What the page can add: each subscription family, the models.dev vendors
+/// a family speaks to, and the media shapes a compatible entry may choose.
+/// Which of them the user holds is the providers' part of the product state.
 pub(super) async fn catalog(
     State(services): State<Arc<Services>>,
     AuthUser(_): AuthUser,
@@ -141,6 +143,7 @@ pub(super) async fn catalog(
         .subscriptions()
         .map(|family| SubscriptionFamily {
             provider_type: family.to_owned(),
+            name: family_name(family).to_owned(),
         })
         .collect();
     let vendors = provider_registry
@@ -150,6 +153,11 @@ pub(super) async fn catalog(
     Ok(Json(VendorCatalog {
         subscriptions,
         vendors,
+        compatible_shapes: CompatibleShapes {
+            image: ImageShape::CHOSEN.to_vec(),
+            video: VideoShape::CHOSEN.to_vec(),
+            audio: AudioShape::CHOSEN.to_vec(),
+        },
     }))
 }
 

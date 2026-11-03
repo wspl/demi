@@ -73,12 +73,8 @@ export const MEDIA_SHAPE_LABELS: Record<SettingsMediaShape, string> = {
   hailuo: 'Hailuo',
 }
 
-/** The shapes a compatible API may choose for each kind, besides none, in the menu's order. */
-export const COMPATIBLE_MEDIA_SHAPES: { readonly [K in SettingsMediaKind]: readonly SettingsMediaShapes[K][] } = {
-  image: ['openai-images'],
-  video: ['xai-videos', 'openai-videos', 'ark-tasks', 'openrouter-videos'],
-  audio: ['openai-speech'],
-}
+/** The shapes a compatible API may choose for each kind, besides none, in the menu's order, as the backend lists them. */
+export type SettingsCompatibleShapes = { readonly [K in SettingsMediaKind]: readonly SettingsMediaShapes[K][] }
 
 /** A vendor's media model as an entry's section lists it, never edited. */
 export interface SettingsMediaModel {

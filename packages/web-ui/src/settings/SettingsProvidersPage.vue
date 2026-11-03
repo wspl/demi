@@ -73,7 +73,6 @@ import { useListReorder } from '../ui/useListReorder'
 import { canTest, hasTextModel, testedModel } from './tested-model'
 import { formatDate } from '../ui/dates'
 import {
-  COMPATIBLE_MEDIA_SHAPES,
   COMPATIBLE_WIRE_APIS,
   MEDIA_SHAPE_LABELS,
   SETTINGS_MEDIA_KINDS,
@@ -89,6 +88,7 @@ import {
   type SettingsModelDraft,
   type SettingsModelSearch,
   type SettingsModelEditor,
+  type SettingsCompatibleShapes,
   type SettingsProviderEntry,
   type SettingsProviderHeader,
   type SettingsProviderOperation,
@@ -151,6 +151,8 @@ const props = defineProps<{
   /** Searches models.dev for the Add Model dialog of the entry `providerId`, filled from that entry's vendor. */
   searchModels?: (providerId: string, query: string, signal: AbortSignal) => ReturnType<SettingsModelSearch>
   vendors: SettingsVendor[]
+  /** The shapes a compatible API may choose for each kind, as the backend lists them. */
+  compatibleShapes: SettingsCompatibleShapes
   load?: 'loading' | 'ready' | 'failed'
   vendorLoad?: 'loading' | 'ready' | 'failed'
   modelLoad?: 'loading' | 'ready'
@@ -900,6 +902,9 @@ function throughDescriptions(provider: SettingsProviderEntry): { text: string; s
     { text: removed, shown: false },
   ]
 }
+
+/** Whether the backend's catalog, which lists the shapes a compatible API may choose, is read. */
+const shapesRead = computed(() => (props.vendorLoad ?? 'ready') === 'ready')
 
 /** The page's `part` of a vendor's header `name`, null when it has none. */
 function vendorHeaderText(name: string, part: 'label' | 'description'): string | null {
@@ -1748,7 +1753,7 @@ a vendor entry's switch and its vendor's
                   :overlay-store="overlayStore"
                   variant="default"
                   :trigger-label="MEDIA_WORDS[kind].title()"
-                  :disabled="fieldsLocked(selected)"
+                  :disabled="fieldsLocked(selected) || !shapesRead"
                 >
                   <template #trigger>{{
                     selected.media[kind].shape ? MEDIA_SHAPE_LABELS[selected.media[kind].shape!] : t('providers.media.none')
@@ -1762,7 +1767,7 @@ a vendor entry's switch and its vendor's
                         @select="close(); chooseShape(selected, kind, null)"
                       />
                       <MenuItem
-                        v-for="shape in COMPATIBLE_MEDIA_SHAPES[kind]"
+                        v-for="shape in compatibleShapes[kind]"
                         :key="shape"
                         :label="MEDIA_SHAPE_LABELS[shape]"
                         choice

@@ -700,17 +700,32 @@ pub enum TestResult {
 /// of a backend. The page reads it once per backend version, so a vendor
 /// models.dev adds meanwhile is offered from the next version on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct VendorCatalog {
     /// Each subscription family.
     pub subscriptions: Vec<SubscriptionFamily>,
     /// The models.dev vendors a family speaks to, by name.
     pub vendors: Vec<Vendor>,
+    /// The shapes a compatible entry may choose for each kind of media.
+    pub compatible_shapes: CompatibleShapes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SubscriptionFamily {
     pub provider_type: String,
+    /// Its name in Settings, such as `Grok Build`.
+    pub name: String,
+}
+
+/// The shapes a compatible entry may choose for each kind of media, in the
+/// order its menu lists them; the backend refuses any other.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CompatibleShapes {
+    pub image: Vec<ImageShape>,
+    pub video: Vec<VideoShape>,
+    pub audio: Vec<AudioShape>,
 }
 
 /// A vendor the page can add an entry from.

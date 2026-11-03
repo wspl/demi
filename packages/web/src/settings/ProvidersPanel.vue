@@ -4,6 +4,7 @@ import { computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
+import type { SettingsCompatibleShapes } from '@demicodes/web-ui/settings/types'
 import ProviderLoginDialog from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import { useResources } from '../state/resources'
 import { usePreferences } from '../state/preferences'
@@ -11,6 +12,9 @@ import { useProduct } from '../state/product'
 import { useProviderSettings } from './providers'
 import { deviceMarkOf, hostKindOf, hostLabel } from '../state/hosts'
 import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
+
+/** The shapes before the catalog is read, while the page keeps their menus disabled: none besides None. */
+const NO_SHAPES: SettingsCompatibleShapes = { image: [], video: [], audio: [] }
 
 const resources = useResources()
 const preferences = usePreferences()
@@ -94,6 +98,7 @@ watch(
     @retry="product.reconnect"
     @retry-vendors="loadVendors"
     :vendors="resources.vendors"
+    :compatible-shapes="product.vendors?.compatibleShapes ?? NO_SHAPES"
     :overlay-store="appOverlayStore"
     :refreshing-usage="settings.refreshingUsage"
     :usage-failures="settings.usageFailures"
