@@ -305,6 +305,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         ? fileExtensionSchema.array().parse(model.extensions.map((extension) => extension.replace(/^\./, '')))
         : null,
       fastTier: model.fastTier,
+      thinkingForm: model.thinkingForm,
+      interleavedThinking: model.interleavedThinking,
     }
   }
 
@@ -492,6 +494,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         efforts: match.thinkingEfforts,
         extensions: match.acceptedExtensions?.map((extension) => `.${extension}`) ?? null,
         fastTier: null,
+        thinkingForm: match.thinkingForm,
+        interleavedThinking: match.interleavedThinking,
       },
     }))
   }

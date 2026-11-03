@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use demi_provider_claude_code::{AccountMachine, Placement};
 use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
-use demi_provider_common::{RuntimeEnv, Searches, VendorPolicy};
+use demi_provider_common::{ModelWires, RuntimeEnv, Searches};
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_provider_common::images::ImageMaker;
 use demi_provider_common::media::MediaModelInfo;
@@ -172,9 +172,9 @@ pub struct ApiKeyArgs {
     /// The vendor's API base; the family's default without it.
     pub base_url: Option<Url>,
     pub wire_api: Option<WireApi>,
-    /// The request requirements of the vendor the entry was added from,
-    /// which each protocol's provider applies.
-    pub vendor: VendorPolicy,
+    /// How each of the entry's models wants thinking sent and sent back,
+    /// which each protocol's provider reads for the model a request names.
+    pub models: ModelWires,
     /// The models.dev id of that vendor; none for a compatible entry.
     pub vendor_id: Option<String>,
     /// How the vendor entry makes images, as its family says; none for a

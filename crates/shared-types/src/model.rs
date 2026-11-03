@@ -204,6 +204,34 @@ pub enum ThinkingSummary {
 serde_plain::derive_display_from_serialize!(ThinkingSummary);
 serde_plain::derive_fromstr_from_deserialize!(ThinkingSummary);
 
+/// How a model takes a reasoning level on the Messages API: `effort`, as
+/// Anthropic's adaptive thinking at the level, or `budget`, as the level's
+/// number of tokens. The variants carry no doc comments of their own, which
+/// would make the schema a union that `demi providers models` cannot take as
+/// an option.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ThinkingForm {
+    #[default]
+    Effort,
+    Budget,
+}
+
+/// What a provider reads of the model a request names, beside the facts of
+/// its selection: how its API wants thinking sent and sent back. models.dev
+/// states both per model; a compatible entry's model holds them as the user
+/// set them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ModelWire {
+    /// Messages: how a reasoning level goes.
+    pub thinking_form: ThinkingForm,
+    /// Chat Completions: the model's earlier thinking goes back as
+    /// `reasoning_content`, and an empty one on each tool-call message without
+    /// thinking, as DeepSeek's thinking mode requires. A model that does not
+    /// know the field may refuse it.
+    pub interleaved_thinking: bool,
+}
+
 /// One way a model can think, as its catalog offers it. Effort levels are the
 /// vendor's words, such as `low` or `xhigh`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]

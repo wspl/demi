@@ -27,7 +27,7 @@ use demi_provider_common::images::ImageMaker;
 use demi_provider_common::media::{MediaMaker, MediaModelInfo};
 use demi_provider_common::audio::AudioMaker;
 use demi_provider_common::videos::VideoMaker;
-use demi_provider_common::{DeviceRoute, Provider, ProviderHttp, ProviderRuntime, RuntimeEnv};
+use demi_provider_common::{DeviceRoute, ModelWires, Provider, ProviderHttp, ProviderRuntime, RuntimeEnv};
 use demi_shared_types::{AudioShape, CacheTtl, Clock, ImageShape, MediaKind, MediaShapes, Model, Rotation};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use demi_provider_common::models_dev::ModelsDevError;
@@ -68,9 +68,9 @@ pub enum RegistryError {
     Incomplete,
 }
 
-/// An entry's provider for one of its accounts, with the entry read it was
-/// built from.
-type Built = (ProviderEntry, Arc<dyn Provider>);
+/// An entry's provider for one of its accounts, with the entry read and the
+/// models' wire facts it was built from.
+type Built = (ProviderEntry, ModelWires, Arc<dyn Provider>);
 
 /// The provider of an entry and an account: the active one's, or another's
 /// that an agent took under the entry's rotation.
@@ -310,25 +310,53 @@ impl ProviderRegistry {
     }
 
     /// The provider of `entry` for `account`: the one built before while
-    /// the entry is unchanged, otherwise a new one.
+    /// the entry and its models' wire facts are unchanged, otherwise a new
+    /// one. The facts count because a vendor's come from the models.dev copy,
+    /// which a provider built without one would otherwise miss until the
+    /// entry changes.
     async fn provider_of(
         &self,
         entry: &ProviderEntry,
         account: Option<&CredentialId>,
     ) -> Result<Arc<dyn Provider>, RegistryError> {
         let key = (entry.id.clone(), account.cloned());
+        let models = self.model_wires(entry).await;
         let reused = self
             .lock()
             .get(&key)
-            .filter(|(built_from, _)| built_from == entry)
-            .map(|(_, provider)| provider.clone());
+            .filter(|(built_from, built_models, _)| built_from == entry && *built_models == models)
+            .map(|(_, _, provider)| provider.clone());
         if let Some(provider) = reused {
             return Ok(provider);
         }
-        let provider = self.build(entry, account).await?;
+        let family = self.family(&entry.family)?;
+        let args = self.entry_args(entry, account, models.clone()).await?;
+        let provider = family.provider(args)?;
         // Two builds for one entry race only to insert the same provider.
-        self.lock().insert(key, (entry.clone(), provider.clone()));
+        self.lock().insert(key, (entry.clone(), models, provider.clone()));
         Ok(provider)
+    }
+
+    /// How each model of `entry` wants thinking sent and sent back: a
+    /// compatible entry's as its user set them; a vendor's from models.dev,
+    /// whether the entry follows the vendor's list or keeps its own, so a
+    /// model models.dev does not list takes the defaults.
+    async fn model_wires(&self, entry: &ProviderEntry) -> ModelWires {
+        let EntryCredential::ApiKey(config) = &entry.credential else {
+            return ModelWires::default();
+        };
+        match config.vendor_id.as_deref() {
+            Some(vendor_id) => self.vendors.wires(vendor_id).await,
+            None => ModelWires::new(
+                config
+                    .models
+                    .iter()
+                    .flat_map(|models| &models.0)
+                    .filter(|model| model.kind == ModelKind::Text)
+                    .map(|model| (model.id.as_str().to_owned(), model.wire()))
+                    .collect(),
+            ),
+        }
     }
 
     /// The provider of `entry` for its account `account`, whichever is
@@ -429,7 +457,7 @@ impl ProviderRegistry {
     /// on the Claude Code machine for a family whose login runs a process.
     pub async fn login_accounts(&self, entry: &ProviderEntry) -> Result<LoginAccounts, RegistryError> {
         let family = self.family(&entry.family)?;
-        let args = self.entry_args(entry, None).await?;
+        let args = self.entry_args(entry, None, self.model_wires(entry).await).await?;
         match family.login_accounts(args) {
             Some(accounts) => Ok(LoginAccounts::Machine(accounts?)),
             None => Ok(LoginAccounts::Provider(self.provider_for(entry).await?)),
@@ -479,7 +507,7 @@ impl ProviderRegistry {
         placement: Rc<dyn Placement>,
     ) -> Result<Box<dyn ProviderRuntime>, RegistryError> {
         let family = self.family(&entry.family)?;
-        let args = self.entry_args(entry, account).await?;
+        let args = self.entry_args(entry, account, self.model_wires(entry).await).await?;
         let runtime = family
             .process_runtime(args, env, placement)
             .ok_or_else(|| RegistryError::NoProcessRuntime(entry.family.clone()))?;
@@ -640,22 +668,14 @@ impl ProviderRegistry {
             .ok_or_else(|| RegistryError::UnknownFamily(name.to_owned()))
     }
 
-    async fn build(
-        &self,
-        entry: &ProviderEntry,
-        account: Option<&CredentialId>,
-    ) -> Result<Arc<dyn Provider>, RegistryError> {
-        let family = self.family(&entry.family)?;
-        let args = self.entry_args(entry, account).await?;
-        Ok(family.provider(args)?)
-    }
-
-    /// What `entry`'s family builds from for `account`: the entry's settings,
-    /// or its pool with the account and its quota store.
+    /// What `entry`'s family builds from for `account`: the entry's settings
+    /// with its models' wire facts `models`, or its pool with the account and
+    /// its quota store.
     async fn entry_args(
         &self,
         entry: &ProviderEntry,
         account: Option<&CredentialId>,
+        models: ModelWires,
     ) -> Result<FamilyArgs, RegistryError> {
         let credential = match &entry.credential {
             EntryCredential::ApiKey(config) => {
@@ -674,7 +694,7 @@ impl ProviderRegistry {
                         .as_ref()
                         .map(|endpoint| endpoint.url().clone()),
                     wire_api: config.wire_api,
-                    vendor: self.vendors.policy(config.vendor_id.as_deref()),
+                    models,
                     vendor_id: config.vendor_id.clone(),
                     image_shape: self.media_shapes(entry).image.filter(|_| !config.is_compatible()),
                     video_shape: self.media_shapes(entry).video.filter(|_| !config.is_compatible()),

@@ -301,6 +301,8 @@ const modelEditors: {
   mode: 'edit' | 'view'
   model: SettingsModelDraft
   error?: ShownError
+  /** The API of the compatible entry the model is of; absent for a vendor's. */
+  compatibleApi?: 'anthropic-messages' | 'openai-chat'
 }[] = [
   { variant: 'view', mode: 'view', model },
   { variant: 'edit · Save works a moment', mode: 'edit', model },
@@ -309,6 +311,18 @@ const modelEditors: {
     variant: 'edit · just added as Custom, no context window yet',
     mode: 'edit',
     model: { id: 'my-model', name: 'my-model', contextWindow: null, outputLimit: null, efforts: [], extensions: [], fastTier: null },
+  },
+  {
+    variant: 'edit · a compatible API on Messages: Thinking',
+    mode: 'edit',
+    model: { ...model, id: 'gateway-large', name: 'Gateway Large', thinkingForm: 'budget' },
+    compatibleApi: 'anthropic-messages',
+  },
+  {
+    variant: 'edit · a compatible API on Chat Completions: Interleaved thinking',
+    mode: 'edit',
+    model: { ...model, id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', extensions: [], interleavedThinking: true },
+    compatibleApi: 'openai-chat',
   },
   { variant: 'edit · an ID another model has', mode: 'edit', model: { ...model, id: 'claude-opus-5-5' } },
   {
@@ -634,7 +648,7 @@ const resetPhases: {
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="Edit Model" note="The one dialog of every model of a provider’s own list, the one just added included: its ID, name, context window, output limit, efforts, Fast tier and files, in that order, every field editable. An ID another model of the provider has is refused under the field and Save waits; a model without a context window, as Custom adds one, saves with its window unknown. Save keeps the change, Cancel drops it, Delete Model asks before the model goes. A catalog’s model shows its facts to read.">
+      <GallerySection title="Edit Model" note="The one dialog of every model of a provider’s own list, the one just added included: its ID, name, context window, output limit, efforts, how its API takes thinking, Fast tier and files, in that order, every field editable. A compatible API’s model shows the thinking row of the API it speaks: Thinking, Effort or Token Budget, on Messages; Interleaved thinking, on Chat Completions. A vendor’s model takes both from models.dev and shows neither. An ID another model of the provider has is refused under the field and Save waits; a model without a context window, as Custom adds one, saves with its window unknown. Save keeps the change, Cancel drops it, Delete Model asks before the model goes. A catalog’s model shows its facts to read.">
         <div class="grid items-start gap-6 xl:grid-cols-2">
           <GallerySpecimen v-for="editor in modelEditors" :key="editor.variant" wide :variant="editor.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -645,6 +659,7 @@ const resetPhases: {
                 :model="editor.model"
                 :error="editor.error"
                 :taken-ids="otherIds"
+                :compatible-api="editor.compatibleApi"
                 @close="close"
                 @save="(saved) => finishSlowly(close, `Save ${saved.name || saved.id}`)"
                 @delete="finish(close, `Ask Before Deleting ${editor.model.name || editor.model.id}`)"

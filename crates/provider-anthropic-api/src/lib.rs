@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use demi_provider_common::{
     Capabilities, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, VendorPolicy, endpoint_url, read_http_failure,
+    ModelWires, RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, endpoint_url, read_http_failure,
 };
 use demi_shared_types::{
     AuthState, CacheTtl, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts,
@@ -30,7 +30,8 @@ pub struct AnthropicConfig {
     /// `https://api.anthropic.com/v1`; `None` for that default. The provider
     /// appends `/messages` unless the URL already ends with it.
     pub base_url: Option<Url>,
-    pub policy: VendorPolicy,
+    /// How each of the entry's models takes a reasoning level.
+    pub models: ModelWires,
     /// The prompt cache lifetime its requests' cache marks ask for; none
     /// asks for the vendor's default, five minutes.
     pub cache_ttl: Option<CacheTtl>,
@@ -62,7 +63,7 @@ pub struct AnthropicProvider {
 struct Shared {
     api_key: Option<HeaderValue>,
     messages_url: Url,
-    policy: VendorPolicy,
+    models: ModelWires,
     cache_ttl: Option<CacheTtl>,
     clock: Arc<dyn Clock>,
 }
@@ -76,7 +77,7 @@ impl AnthropicProvider {
             shared: Arc::new(Shared {
                 api_key: config.api_key.as_ref().map(Secret::header_value),
                 messages_url: endpoint_url(&base, "/messages"),
-                policy: config.policy,
+                models: config.models,
                 cache_ttl: config.cache_ttl,
                 clock,
             }),

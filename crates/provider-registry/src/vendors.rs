@@ -4,21 +4,11 @@
 //!
 //! - The vendors whose client package maps to a protocol one of the families
 //!   speaks.
-//! - Each vendor's live model list.
-//! - The request requirements the backend applies to a vendor's models.
-//!
-//! A vendor's request requirements are typed settings of the vendor policy,
-//! applied to every model of the vendor and passed to the provider with the
-//! entry's configuration. Examples:
-//!
-//! - DeepSeek's Chat Completions needs earlier thinking replayed as
-//!   `reasoning_content`.
-//! - Some Responses gateways need replayed assistant items marked as completed.
-//! - Every vendor on the Messages API but Anthropic takes an effort as a token
-//!   budget.
+//! - Each vendor's live model list, and how each of its models wants thinking
+//!   sent and sent back, as models.dev states it per model.
 
 use demi_provider_anthropic_api::AnthropicConfig;
-use demi_provider_common::VendorPolicy;
+use demi_provider_common::ModelWires;
 use demi_provider_common::models_dev::{
     ModelsDevClient, ModelsDevError, ModelsDevMatch, ModelsDevVendor,
 };
@@ -49,24 +39,6 @@ const XAI_BASE_URL: &str = "https://api.x.ai/v1";
 /// an API key cannot satisfy.
 const NOT_OFFERED: [&str; 1] = ["github-copilot"];
 
-/// The request requirements of vendor `vendor_id`. Every vendor but
-/// Anthropic itself takes an effort on the Messages API as a token budget:
-/// adaptive thinking is Anthropic's own.
-fn policy_of(vendor_id: &str) -> VendorPolicy {
-    let effort_as_budget = vendor_id != "anthropic";
-    match vendor_id {
-        "deepseek" => VendorPolicy {
-            pass_back_reasoning_content: true,
-            effort_as_budget,
-            ..VendorPolicy::default()
-        },
-        _ => VendorPolicy {
-            effort_as_budget,
-            ..VendorPolicy::default()
-        },
-    }
-}
-
 /// The vendor list over the backend's models.dev copy.
 #[derive(Clone)]
 pub struct VendorCatalog {
@@ -82,9 +54,22 @@ impl VendorCatalog {
         &self.models_dev
     }
 
-    /// The request requirements of the models of vendor `vendor_id`.
-    pub fn policy(&self, vendor_id: Option<&str>) -> VendorPolicy {
-        vendor_id.map(policy_of).unwrap_or_default()
+    /// How each model of vendor `vendor_id` wants thinking sent and sent
+    /// back, from the backend's kept copy; none without one, so each model
+    /// takes the defaults.
+    pub async fn wires(&self, vendor_id: &str) -> ModelWires {
+        match self.models_dev.kept().await {
+            Ok(snapshot) => ModelWires::new(snapshot.wires(vendor_id)),
+            Err(error) => {
+                tracing::warn!(
+                    event = "vendor_wires.unread",
+                    vendor = vendor_id,
+                    error = %error,
+                    "a vendor's models were not read for how they take thinking; each takes the defaults"
+                );
+                ModelWires::default()
+            }
+        }
     }
 
     /// The vendors an entry can be added from, by name as the web app sorts
@@ -163,6 +148,8 @@ fn filled(found: ModelsDevMatch) -> ModelMatch {
         output_limit: found.model.output_limit,
         thinking_efforts: found.model.supported_thinking_efforts.unwrap_or_default(),
         accepted_extensions: found.model.accepted_extensions,
+        thinking_form: found.model.thinking_form,
+        interleaved_thinking: found.model.interleaved_thinking,
         release_date: found.release_date,
     }
 }

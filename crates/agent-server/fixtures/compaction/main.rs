@@ -24,7 +24,7 @@
 //! rules.
 
 use std::{
-    cell::RefCell, collections::HashSet, io::Read, process::ExitCode, rc::Rc, sync::Arc,
+    cell::RefCell, collections::{HashMap, HashSet}, io::Read, process::ExitCode, rc::Rc, sync::Arc,
     time::Duration,
 };
 
@@ -45,11 +45,11 @@ use demi_conversation_lane_protocol::{ClientFrame, ServerFrame};
 use demi_host_interface::CommandSet;
 use demi_provider_common::{
     InferenceItem, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime,
-    RequestLimits, RuntimeEnv, Secret, VendorPolicy,
+    ModelWires, RequestLimits, RuntimeEnv, Secret,
 };
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
 use demi_shared_types::{
-    Block, Clock, ContextUsage, Model, ModelSelection, NodeId, SessionPhase, SystemClock,
+    Block, Clock, ContextUsage, Model, ModelSelection, ModelWire, NodeId, SessionPhase, SystemClock,
     TokenUsage, ToolResultContentBlock, TurnId, UserContentBlock, WireApi,
 };
 use futures_util::{StreamExt as _, future::LocalBoxFuture};
@@ -220,10 +220,15 @@ fn load_fixture() -> Result<Fixture, String> {
     Ok(fixture)
 }
 
+/// The DeepSeek model the harness runs.
+fn deepseek_model_id() -> String {
+    std::env::var("DEEPSEEK_FLASH_MODEL").unwrap_or_else(|_| "deepseek-v4-flash".into())
+}
+
 /// DeepSeek with the context window `window`: the harness pins the window so
 /// that the thresholds are its own.
 fn deepseek_model(window: u32) -> ModelSelection {
-    let id = std::env::var("DEEPSEEK_FLASH_MODEL").unwrap_or_else(|_| "deepseek-v4-flash".into());
+    let id = deepseek_model_id();
     ModelSelection {
         provider_id: "deepseek".into(),
         model: Model {
@@ -252,10 +257,13 @@ fn deepseek() -> Result<Rc<OpenAiProvider>, String> {
         api_key: Some(api_key),
         base_url,
         wire: WireApi::ChatCompletions,
-        policy: VendorPolicy {
-            pass_back_reasoning_content: true,
-            ..VendorPolicy::default()
-        },
+        models: ModelWires::new(HashMap::from([(
+            deepseek_model_id(),
+            ModelWire {
+                interleaved_thinking: true,
+                ..ModelWire::default()
+            },
+        )])),
         vendor_id: Some("openai".to_owned()),
         entry_id: "deepseek".to_owned(),
         label: "DeepSeek".to_owned(),

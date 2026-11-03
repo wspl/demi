@@ -8,6 +8,8 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
+import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
+import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import type { Action, Operation } from '@demicodes/web-ui/ui/operations'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
@@ -19,6 +21,8 @@ import {
   EXTENSION_PRESETS,
   THINKING_EFFORTS,
   type SettingsModelDraft,
+  type SettingsThinkingForm,
+  type SettingsWireApi,
 } from './types'
 import { formatTokens } from '../ui/token-count'
 
@@ -28,9 +32,12 @@ import { formatTokens } from '../ui/token-count'
  * catalog's model to read.
  *
  * - Its fields come in one order: the id, the name, the context window, the
- *   output limit, the thinking efforts, the Fast tier and the files it reads.
- *   Every one is editable, the id too
+ *   output limit, the thinking efforts, how its API takes thinking, the Fast
+ *   tier and the files it reads. Every one is editable, the id too
  *   (`crates/backend-user-shard/src/provider_settings.rs`).
+ * - How its API takes thinking shows for a compatible API's model, as the row
+ *   of the API it speaks: Thinking on Messages, Interleaved Thinking on Chat
+ *   Completions. A vendor's model takes it from models.dev and shows neither.
  * - An id another model of the list has is refused here, before anything is sent.
  * - Save keeps the change, Cancel drops it, Delete Model removes the model.
  * - Tool calling is not a setting: a model without it cannot drive the agent, so
@@ -49,6 +56,8 @@ const props = defineProps<{
   model: SettingsModelDraft
   /** The ids of the entry's other models, which this one's id may not take. */
   takenIds?: readonly string[]
+  /** The API a compatible entry speaks; null or absent for a vendor's entry. */
+  compatibleApi?: SettingsWireApi | null
 }>()
 
 const emit = defineEmits<{
@@ -88,6 +97,23 @@ const text = computed(() => (draft.value.kind ?? 'text') === 'text')
 const title = computed(() =>
   props.mode === 'edit' ? t('modelDialog.edit') : draft.value.name || draft.value.id,
 )
+
+const thinkingForms = computed(() => (['effort', 'budget'] as const).map((value) => ({
+  value,
+  label: value === 'effort' ? t('modelDialog.thinkingEffort') : t('modelDialog.thinkingBudget'),
+})))
+const thinkingForm = computed<SettingsThinkingForm>({
+  get: () => draft.value.thinkingForm ?? 'effort',
+  set: (form) => {
+    draft.value.thinkingForm = form
+  },
+})
+const interleavedThinking = computed<boolean>({
+  get: () => draft.value.interleavedThinking ?? false,
+  set: (on) => {
+    draft.value.interleavedThinking = on
+  },
+})
 
 /** Why the id cannot be saved, said as the user reads it; null when it can. */
 const idProblem = computed(() =>
@@ -251,6 +277,21 @@ function save(): void {
             <span v-else class="text-chrome text-fg">{{
               draft.efforts.length ? draft.efforts.map(effortLabel).join(' · ') : t('modelDialog.none')
             }}</span>
+          </SettingsRow>
+          <!-- A compatible API's model alone, which is always its list's to edit. -->
+          <SettingsRow
+            v-if="editable && compatibleApi === 'anthropic-messages'"
+            :label="t('modelDialog.thinking')"
+            :description="t('modelDialog.thinkingDescription')"
+          >
+            <Segmented v-model="thinkingForm" size="sm" :options="thinkingForms" />
+          </SettingsRow>
+          <SettingsRow
+            v-if="editable && compatibleApi === 'openai-chat'"
+            :label="t('modelDialog.interleavedThinking')"
+            :description="t('modelDialog.interleavedThinkingDescription')"
+          >
+            <Switch v-model="interleavedThinking" size="sm" :aria-label="t('modelDialog.interleavedThinking')" />
           </SettingsRow>
           <SettingsRow
             :label="t('modelDialog.fastTier')"

@@ -30,7 +30,7 @@ pub(crate) fn run(
             return;
         }
         let wire = shared.wire;
-        let policy = shared.policy;
+        let interleaved_thinking = shared.models.of(&request.model_id).interleaved_thinking;
         let model = request.model_id.clone();
         let tag = shared.signature_tag.clone();
         // Only a session's request asks for a lifetime.
@@ -43,8 +43,8 @@ pub(crate) fn run(
         let body = encode_body(LABEL, move || {
             let ttl = ttl.as_ref().map(CacheTtl::as_str);
             match wire {
-                WireApi::Responses => request::responses(&request, policy, &tag, ttl),
-                WireApi::ChatCompletions => request::chat_completions(&request, policy, ttl),
+                WireApi::Responses => request::responses(&request, &tag, ttl),
+                WireApi::ChatCompletions => request::chat_completions(&request, interleaved_thinking, ttl),
             }
         });
         let body = tokio::select! {

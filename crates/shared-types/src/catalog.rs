@@ -7,8 +7,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    FileExtension, Model, ModelSelection, Nullable, THINKING_OFF, ThinkingCapability,
-    ThinkingConfig, ThinkingSummary, Timestamp,
+    FileExtension, Model, ModelSelection, ModelWire, Nullable, THINKING_OFF, ThinkingCapability,
+    ThinkingConfig, ThinkingForm, ThinkingSummary, Timestamp,
 };
 
 /// An entry's cached catalog as a catalog cache keeps it: model metadata
@@ -116,9 +116,26 @@ pub struct ProviderModel {
     #[schemars(with = "Nullable<ModelCost>")]
     #[garde(skip)]
     pub cost: Option<ModelCost>,
+    /// On the Messages API, how a reasoning level goes ([`ModelWire`]).
+    #[serde(default)]
+    #[garde(skip)]
+    pub thinking_form: ThinkingForm,
+    /// On Chat Completions, whether the model's earlier thinking goes back
+    /// ([`ModelWire`]).
+    #[serde(default)]
+    #[garde(skip)]
+    pub interleaved_thinking: bool,
 }
 
 impl ProviderModel {
+    /// How the model wants thinking sent and sent back.
+    pub fn wire(&self) -> ModelWire {
+        ModelWire {
+            thinking_form: self.thinking_form,
+            interleaved_thinking: self.interleaved_thinking,
+        }
+    }
+
     /// The selection a conversation infers with when it picks this model of
     /// entry `provider_id` with `thinking` and `service_tier_id`: the one
     /// conversion of a catalog model (`crates/shared-types/src/model.rs`).
