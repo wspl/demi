@@ -25,7 +25,7 @@ import GalleryComposer from './GalleryComposer.vue'
  *
  * - Stop, while it works, ends the answer where it is: the card keeps what was
  *   answered and says Stopped.
- * - Reply asks a follow-up.
+ * - The field under the answer sends a follow-up.
  * - The header or its chevron folds the card to its header and opens it again.
  * - Delete, in the card's menu (right-click) of a question still on its first
  *   answer, deletes the question with its card, as if it had not been asked.
@@ -344,14 +344,13 @@ onMounted(async () => {
   applySeed(anchor)
   if (props.seed !== 'follow-up')
     return
-  // Reply's field open with a follow-up typed, as a press on Reply and typing
-  // leave it, once the card is drawn: the list draws a row only in view.
+  // A follow-up typed into the card's field, once the card is drawn: the list
+  // draws a row only in view.
   opened = new MutationObserver(() => {
     const card = root.value?.querySelector<HTMLElement>('[data-ask-card]')
     if (!card)
       return
-    card.querySelector<HTMLElement>('[data-ask-reply]')?.click()
-    const field = card.querySelector<HTMLElement>('[contenteditable="true"]')
+    const field = card.querySelector<HTMLElement>('[data-ask-reply] [contenteditable="true"]')
     if (!field)
       return
     opened?.disconnect()

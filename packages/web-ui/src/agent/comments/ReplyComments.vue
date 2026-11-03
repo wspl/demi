@@ -276,17 +276,17 @@ function prune(keys: ReadonlySet<string>): void {
 // --- Side questions: each card under its line, open or folded to its header.
 
 const questions = keptComputed(() => props.asking?.questions ?? [])
-/** Each card's Reply field, open or not, and what it holds. */
-const replies = ref<Record<string, { open: boolean; message: DraftMessage }>>({})
+/** What each card's follow-up field holds. */
+const replies = ref<Record<string, { message: DraftMessage }>>({})
 /** The reads of the cards' transcripts asked for, each once (`readKey`). */
 const asked = new Set<string>()
 
-function replyOf(id: string): { open: boolean; message: DraftMessage } {
-  return (replies.value[id] ??= { open: false, message: { text: '', fileIds: [] } })
+function replyOf(id: string): { message: DraftMessage } {
+  return (replies.value[id] ??= { message: { text: '', fileIds: [] } })
 }
 
-// A Reply's files stay with what it holds, while its card is folded or out
-// of view as while its field is open.
+// A follow-up's files stay with what it holds, also while its card is folded
+// or out of view.
 const replyHolder = (id: string) => `reply-${id}`
 watch(() => Object.entries(replies.value).map(([id, reply]) => [id, reply.message.fileIds] as const), (now, before) => {
   for (const [id, ids] of now)
@@ -500,10 +500,8 @@ onBeforeUnmount(() => {
         :turns="cardContent(question).turns"
         :failure="cardContent(question).failure"
         :failure-facts="question.failures[cardContent(question).failure?.id ?? ''] ?? null"
-        :replying="replyOf(question.id).open"
         :reply="replyOf(question.id).message"
         :files="commenting.files"
-        @update:replying="replyOf(question.id).open = $event"
         @update:reply="replyOf(question.id).message = $event"
         @ask="asking.followUp(question.id, $event)"
         @retry="asking.retry(question.id)"
