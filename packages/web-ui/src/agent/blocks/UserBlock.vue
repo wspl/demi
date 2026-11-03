@@ -257,8 +257,10 @@ const textClass = computed(() => (props.pending ? 'text-fg-subtle' : 'text-fg-bo
  * A waiting message folds once it runs past two lines of text, to its first
  * line whole and its second fading, so the messages waiting under a working
  * agent leave the transcript in sight. The lines count from its first text, so
- * a commented picture above the words shows whole with them. Its row of
- * controls is there anyway, so Show More takes no room of its own.
+ * a commented picture above the words shows whole with them. When no text
+ * stands where its second line would, as after a first paragraph of one line,
+ * it folds to the last line above, unfaded, so that line shows alone. Its row
+ * of controls is there anyway, so Show More takes no room of its own.
  */
 const FOLD_ABOVE_PX = 300
 const FOLDED_PX = 200
@@ -268,11 +270,12 @@ const expanded = ref(false)
 const contentRef = ref<HTMLElement>()
 const bodyRef = ref<HTMLElement>()
 /**
- * Where a long message folds, and the line box its fade spans; null when it is
- * short enough to show whole. The fold is at its mark, `FOLDED_PX` down or a
- * waiting message's second line's end, or lower, at the end of a line of text
- * across that mark, so it cuts no letter. Anything else across it is cut
- * there.
+ * Where a long message folds, and the line box its fade spans, 0 for none;
+ * null when it is short enough to show whole. The fold is at its mark,
+ * `FOLDED_PX` down or a waiting message's second line's end, or lower, at the
+ * end of a line of text across that mark, so it cuts no letter. Anything else
+ * across it is cut there. A waiting message with no text in its second line's
+ * place folds higher, at the end of its last line above, unfaded.
  */
 const clip = ref<{ height: number; line: number } | null>(null)
 
@@ -295,6 +298,10 @@ function measure(): void {
     return
   }
   let height = limit
+  // The end of the last line wholly above the mark, and whether any text
+  // stands in the last line's place above it.
+  let above = 0
+  let last = false
   const texts = document.createTreeWalker(body, NodeFilter.SHOW_TEXT)
   const range = document.createRange()
   for (let text = texts.nextNode(); text; text = texts.nextNode()) {
@@ -312,8 +319,17 @@ function measure(): void {
       const lineBottom = rect.bottom - top + half
       if (lineTop < limit - slack && lineBottom > limit + slack) {
         height = Math.max(height, Math.ceil(lineBottom))
+      } else if (lineBottom <= limit + slack) {
+        above = Math.max(above, Math.ceil(lineBottom))
+      }
+      if (lineTop < limit - slack && lineBottom > limit - line + slack) {
+        last = true
       }
     }
+  }
+  if (props.pending && !last && above > 0) {
+    clip.value = { height: above, line: 0 }
+    return
   }
   clip.value = height < full - 1 ? { height, line } : null
 }
