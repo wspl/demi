@@ -148,7 +148,8 @@ impl ProviderFailure {
 
     /// A reply the vendor ended before it was complete, for `end`, with the
     /// vendor's own `reason` in the message and as the provider code, and
-    /// the frame that said so, `received`, as the record: `incomplete`.
+    /// the frame that said so, `received`, as the record: `filtered` for a
+    /// filter, `incomplete` otherwise.
     pub fn ended_early(end: EarlyEnd, reason: &str, received: impl Into<String>) -> Self {
         let message = match end {
             EarlyEnd::OutputLimit => format!("The reply reached the model's output limit ({reason})"),
@@ -159,9 +160,13 @@ impl ProviderFailure {
         };
         let mut diagnostics = diagnostics(FailureSource::Stream, None, Some(received.into()));
         diagnostics.provider_code = Some(reason.to_owned());
+        let code = match end {
+            EarlyEnd::Filter => ErrorCode::Filtered,
+            EarlyEnd::OutputLimit | EarlyEnd::Other => ErrorCode::Incomplete,
+        };
         Self {
             message,
-            code: Some(ErrorCode::Incomplete),
+            code: Some(code),
             diagnostics: Some(Box::new(diagnostics)),
             retry_after: None,
         }
@@ -238,8 +243,12 @@ pub enum ErrorCode {
     /// accepts, however few tokens it holds.
     RequestTooLarge,
     /// The vendor ended the reply before it was complete: for its output
-    /// limit, a filter or another reason it named.
+    /// limit or another reason it named.
     Incomplete,
+    /// The vendor's safety filter stopped the reply, or the model refused.
+    /// Asked again, the same history is likely refused again, so the agent
+    /// does not retry it.
+    Filtered,
     /// The vendor does not accept the credential: it expired, or the key or
     /// token is not one the vendor knows (HTTP 401).
     AuthExpired,
@@ -277,6 +286,7 @@ impl ErrorCode {
             Self::ContextLengthExceeded => "context_length_exceeded",
             Self::RequestTooLarge => "request_too_large",
             Self::Incomplete => "incomplete",
+            Self::Filtered => "filtered",
             Self::AuthExpired => "auth_expired",
             Self::PermissionDenied => "permission_denied",
             Self::AuthMissing => "auth_missing",
@@ -345,6 +355,7 @@ impl FromStr for ErrorCode {
             "context_length_exceeded" => Self::ContextLengthExceeded,
             "request_too_large" => Self::RequestTooLarge,
             "incomplete" => Self::Incomplete,
+            "filtered" => Self::Filtered,
             "auth_expired" => Self::AuthExpired,
             "permission_denied" => Self::PermissionDenied,
             "auth_missing" => Self::AuthMissing,

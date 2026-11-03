@@ -288,6 +288,7 @@
     "context_length_exceeded": "The conversation is longer than the model’s context.",
     "request_too_large": "The request is too large for the provider.",
     "incomplete": "The reply ended before it was complete.",
+    "filtered": "The provider’s safety filters stopped this reply.",
     "auth_expired": "The provider’s sign-in expired or was refused.",
     "permission_denied": "The provider refused this request.",
     "auth_missing": "The provider has no credential.",

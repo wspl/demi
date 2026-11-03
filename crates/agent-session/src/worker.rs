@@ -7,8 +7,8 @@
 use std::rc::{Rc, Weak};
 
 use demi_agent_transcript::{opens_input_turn, resume_point, resume_point_within, rewind, unwind};
-use demi_provider_common::Ahead;
-use demi_shared_types::TurnId;
+use demi_provider_common::{Ahead, ErrorCode};
+use demi_shared_types::{Block, TurnId};
 use tokio::sync::Notify;
 use tracing::Instrument as _;
 
@@ -299,11 +299,12 @@ async fn rerun(s: &Rc<SessionShared>, cancel: &TurnCancel, turn: TurnId) -> Resu
 /// It unwinds the turn to its resume point, keeping the compactions after it,
 /// marks the stop it continues as resumed, appends a `resume` block and infers
 /// again. A turn that left nothing but leftovers runs again from its input, as
-/// a retry does.
+/// a retry does. A turn a filtered reply ended tells the model so, as one
+/// that goes on after a filtered reply does.
 async fn resume(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
-    reason: Option<String>,
+    mut reason: Option<String>,
 ) -> Result<(), TurnError> {
     let point = {
         let _turn = s.persist_gate.acquire().await;
@@ -321,8 +322,17 @@ async fn resume(
         };
         // The unwind comes before a pending switch lands: a switch that
         // compacts would move the cut.
-        let kept = s.read(|core| unwind(core.transcript.blocks(), point.cut));
+        let (kept, filtered) = s.read(|core| {
+            let blocks = core.transcript.blocks();
+            let filtered = blocks[point.cut..].iter().any(|block| {
+                matches!(block, Block::Error(error) if error.code.as_deref() == Some(ErrorCode::Filtered.as_str()))
+            });
+            (unwind(blocks, point.cut), filtered)
+        });
         persist::commit_rewrite_held(s, kept).await?;
+        if filtered {
+            reason.get_or_insert_with(|| turn::FILTERED_REASON.to_owned());
+        }
         point
     };
     if let Some(turn) = point.rerun {

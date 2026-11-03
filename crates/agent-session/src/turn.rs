@@ -4,8 +4,9 @@
 //! A turn does these in order:
 //!
 //! 1. Write waiting input.
-//! 2. Request the provider, retry what waiting can fix and compact once after a
-//!    refusal for its tokens.
+//! 2. Request the provider, retry what waiting can fix, compact once after a
+//!    refusal for its tokens, and go on after a few replies the vendor's
+//!    filter stopped, as a Resume does.
 //! 3. Apply the events to the transcript as they stream.
 //! 4. Save, and run the requested tools in steps.
 //! 5. Compact when the usage reached the threshold.
@@ -26,6 +27,8 @@
 //!   +-> write waiting input at the boundary
 //!   |   request the provider, retrying what waiting can fix
 //!   |     refused for its tokens: compact once, request again
+//!   |     stopped by a filter: end its calls, append `resume`, request
+//!   |       again, at most three times a turn
 //!   |     refused for its size: the turn fails
 //!   |   apply the events to the transcript as they stream
 //!   |   save, then run the requested tools in steps
@@ -81,6 +84,16 @@ use super::{
 /// compacting without end.
 const MAX_AUTO_COMPACTIONS: u32 = 3;
 
+/// How many filtered replies one turn goes on after.
+///
+/// Bounded because a history the vendor's filter stops once is often stopped
+/// again, and each filtered reply is a request paid for; the next ends the turn,
+/// and the user decides.
+const MAX_FILTERED_RESUMES: u32 = 3;
+
+/// Why the turn goes on after a filtered reply, as the model reads it before
+/// "Continue from where you left off.".
+pub(super) const FILTERED_REASON: &str = "The provider's safety filters stopped your previous reply.";
 
 pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     run_turn(s, cancel, true).await
@@ -104,6 +117,7 @@ async fn run_turn(
     mut switch_first: bool,
 ) -> Result<(), TurnError> {
     let mut auto_compactions = 0;
+    let mut filtered = 0;
     // The turn's first request follows its new input; each later one
     // continues the running turn.
     let mut continues = false;
@@ -126,9 +140,36 @@ async fn run_turn(
         }
         write_inputs(s, "before_request").await?;
         let before = s.read(|core| core.inputs.arrivals());
-        let reached = stream(s, cancel, continues).await?;
-        let recover = reached.is_some();
+        // A session copy sends one request, whose answer is its summary.
+        let resumes = filtered < MAX_FILTERED_RESUMES && !s.read(|core| core.one_request);
+        let streamed = stream(s, cancel, continues, resumes).await?;
         continues = true;
+        let reached = match streamed {
+            Streamed::Answered(reached) => reached,
+            // The next request is usually not filtered: the turn goes on as
+            // a Resume would, the model told why, and what the filtered
+            // reply wrote stays as it showed.
+            Streamed::Filtered(message) => {
+                filtered += 1;
+                s.update(|core| core.resume_after_filter(&message));
+                s.read(|core| {
+                    session_log!(
+                        core,
+                        info,
+                        event = "model_request.filtered",
+                        node = %core.id,
+                        turn = %core.turn(),
+                        request_no = core.requests_so_far(),
+                        filtered,
+                        "the provider's filter stopped a reply, and the turn goes on"
+                    );
+                    core.log_continued("after_filter");
+                });
+                again = WaitStart::Filtered;
+                continue;
+            }
+        };
+        let recover = reached.is_some();
         cancel.check()?;
         // A session copy's answer is its summary: a call in it never
         // runs.
@@ -310,6 +351,15 @@ async fn write_inputs_since(s: &SessionShared, arrivals: u64) -> Result<(), Turn
     Ok(())
 }
 
+/// How a request ended for the turn.
+enum Streamed {
+    /// Its response came, with the trigger of a pass when its usage reached
+    /// the compaction threshold.
+    Answered(Option<Trigger>),
+    /// The vendor's filter stopped the reply, with the failure's message.
+    Filtered(String),
+}
+
 /// One provider request, from building it to the end of its stream.
 ///
 /// It retries transient failures while everything the attempt wrote can be
@@ -318,7 +368,8 @@ async fn write_inputs_since(s: &SessionShared, arrivals: u64) -> Result<(), Turn
 /// so a pass is followed by a `resume` block.
 ///
 /// Returns the trigger of a pass when the usage of a response that requested a
-/// tool reached the compaction threshold.
+/// tool reached the compaction threshold, or, when `resumes`, the vendor's
+/// filter stopping the reply, which the turn goes on after.
 ///
 /// The stage stays streaming across the waits, so steers keep being accepted. A
 /// message the user sent now cuts the stream, or the wait before a retry,
@@ -327,7 +378,8 @@ async fn stream(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
     continues: bool,
-) -> Result<Option<Trigger>, TurnError> {
+    resumes: bool,
+) -> Result<Streamed, TurnError> {
     s.update(|core| core.set_stage(TurnStage::Streaming));
     let policy = s.config.retry;
     let mut attempt = 1;
@@ -365,10 +417,14 @@ async fn stream(
                 });
                 s.emit(SessionEvent::IdleCompactionDue { due });
                 compaction::report_context_usage(s, cancel).await;
-                return Ok(reached);
+                return Ok(Streamed::Answered(reached));
             }
             Err(failure) => with_request_id(failure, &request_id),
         };
+        if failure.code == Some(ErrorCode::Filtered) && resumes {
+            s.update(|core| core.set_stage(TurnStage::Preparing));
+            return Ok(Streamed::Filtered(failure.message));
+        }
         // A scan that passes the whole window cuts before it.
         let unwindable = s.read(|core| match resume_point_within(core.transcript.blocks()) {
             Some(point) => core.transcript.start() + point.cut <= start,
@@ -421,7 +477,7 @@ async fn stream(
             biased;
             () = sent_now(s) => {
                 s.update(|core| core.set_stage(TurnStage::Preparing));
-                return Ok(None);
+                return Ok(Streamed::Answered(None));
             }
             slept = cancel.guard(tokio::time::sleep(delay)) => slept?,
         }
