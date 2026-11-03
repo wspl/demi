@@ -124,7 +124,7 @@ export const README_SCENES: Record<string, ReadmeScene> = {
     services: [SIMULATOR_LOG],
     workflow: {
       choice: { type: 'workflow', id: 'review' },
-      list: { state: 'read', workflows: [{ id: 'review', name: 'Review before merge', path: `${HARBOR}/.demi/workflows/review.yaml`, unavailable: null, profiles: ['reviewer'] }] },
+      list: { state: 'read', workflows: [{ id: 'review', name: 'Review before merge', path: `${HARBOR}/.demi/workflows/review.yaml`, unavailable: null, profiles: ['reviewer'], userProfiles: true }] },
     },
     saved: ['Run the UI tests on the Android foldable too', 'Write the release notes for 2.3'],
     screen: HARBOR_SCREEN,

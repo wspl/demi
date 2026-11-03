@@ -125,6 +125,7 @@ impl ProjectWorkflows {
                     .as_ref()
                     .map(|workflow| workflow.profiles.iter().map(|profile| profile.id.clone()).collect())
                     .unwrap_or_default(),
+                user_profiles: file.read.as_ref().is_ok_and(|workflow| workflow.user_profiles),
             })
             .collect();
         ConversationWorkflows {
@@ -564,17 +565,10 @@ impl Shard {
                     }
                 }
             };
-            // Every child hears the workflow's shared instructions, then
-            // its profile's.
-            let instructions: Vec<&str> = [&workflow.subagent_instructions, &profile.instructions]
-                .into_iter()
-                .flatten()
-                .map(|text| text.trim_end())
-                .collect();
             profiles.push(WorkflowChild {
                 name: profile.id.clone(),
                 description: profile.description.clone(),
-                instructions: (!instructions.is_empty()).then(|| instructions.join("\n\n")),
+                instructions: profile.instructions.clone(),
                 can_spawn: profile.spawning,
                 model,
                 context_limit,
@@ -585,6 +579,8 @@ impl Shard {
             worktree,
             name: workflow.name.clone(),
             profiles,
+            user_profiles: workflow.user_profiles,
+            subagent_instructions: workflow.subagent_instructions.clone(),
         }))
     }
 

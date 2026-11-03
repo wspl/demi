@@ -35,11 +35,11 @@ const PARENT: &str = "parent";
 
 const PROFILES_GROUP: &str = "The user's subagent profiles: list them, show one, and create, edit or delete them; a change needs the user's permission and reaches every conversation.";
 
-const LIST_SUMMARY: &str = "List the profiles this conversation's agents may spawn with, as they are now: the chosen workflow's, or the user's enabled ones, each with its source (the workflow's name or user), the model and effort its children run (inherited for the parent's), and when to use it. profiles show tells what an unavailable one is missing; a warning on stderr says when subagents are off. A read, not a wait.";
+const LIST_SUMMARY: &str = "List the profiles this conversation's agents may spawn with, as they are now: the chosen workflow's, then the user's enabled ones unless the workflow keeps them out, each with its source (the workflow's name or user), the model and effort its children run (inherited for the parent's), and when to use it. profiles show tells what an unavailable one is missing; a warning on stderr says when subagents are off. A read, not a wait.";
 
 const SHOW_SUMMARY: &str = "Show every field of one profile profiles list lists, or of one of the user's, enabled or not: name, source (the workflow's name or user), description, status, model (- for the parent's, or the model with its provider entry, effort and tier), context, spawning, enabled, and its instructions in full. A read.";
 
-const CREATE_SUMMARY: &str = "Create a subagent profile, enabled unless --disabled. Without --model it inherits the parent's model. Its instructions, added to a child's system prompt, are stdin when given, else none. While this conversation runs a workflow, a spawn here takes only the workflow's profiles, and a warning says so. Needs the user's permission.";
+const CREATE_SUMMARY: &str = "Create a subagent profile, enabled unless --disabled. Without --model it inherits the parent's model. Its instructions, added to a child's system prompt, are stdin when given, else none. While this conversation runs a workflow that keeps the user's profiles out, a spawn here cannot take it, and a warning says so. Needs the user's permission.";
 
 const EDIT_SUMMARY: &str = "Change the fields the options name and keep the others. --model parent inherits the parent's model again; --effort or --tier alone change those of the profile's own model. Stdin replaces the instructions; --no-instructions removes them. Needs the user's permission.";
 

@@ -36,14 +36,15 @@ const MENU_NAME_MARKS: &[char] = &[
 
 /// The help of `demi agent workflows`: where workflow files live, each
 /// field, and a whole example (`crates/backend-user-shard/src/conversation/workflows.rs`).
-pub const WORKFLOWS_HELP: &str = r#"A workflow is a group of subagent profiles with instructions on how to split the work between them, kept in the project's repository so a team shares it. The user picks one for a conversation in the composer's Workflow menu, or lets an agent pick one with demi agent workflows use; nothing applies until one is picked. With a workflow picked, its profiles replace the user's for that conversation and are the only subagents it spawns, and its instructions and profiles reach the agent leading the conversation with the project's instructions.
+pub const WORKFLOWS_HELP: &str = r#"A workflow is a group of subagent profiles with instructions on how to split the work between them, kept in the project's repository so a team shares it. The user picks one for a conversation in the composer's Workflow menu, or lets an agent pick one with demi agent workflows use; nothing applies until one is picked. With a workflow picked, the conversation spawns its profiles and the user's own from Settings > Subagents, unless user_profiles turns the user's off, and its instructions and profiles reach the agent leading the conversation with the project's instructions.
 
 Where: .demi/workflows/<id>.yaml in the nearest directory, from the working directory up to the git repository's root, that has a .demi/workflows/ directory. The file's name without .yaml is the workflow's id.
 
 Fields:
   name          What the Workflow menu shows, so name it as a menu item: the way of working in a few words, never the task at hand, in English Title Case or as the user's language writes a menu item. With no colon, plus sign or brackets; check warns of a name that has. Good: Review Team, Parallel Development, 并行开发. Bad: Payments refactor: lead + 2 workers, Review (strict), 支付重构：主管 + 两个 worker. Required.
   instructions  For the agent leading the conversation: when to use which profile and how to split the work. Optional.
-  subagent_instructions  For every subagent of every profile, added to its system prompt after Demi's own and before its profile's instructions: what all of them share, such as when to message the lead. Optional.
+  subagent_instructions  For every subagent of the conversation, the user's profiles' included, added to its system prompt after Demi's own and before its profile's instructions: what all of them share, such as when to message the lead. Optional.
+  user_profiles  false keeps the user's own profiles out, so the conversation spawns only the workflow's. Optional, true by default; a profile of the workflow's takes the place of a user's of the same id.
   profiles      The workflow's profiles, a list. Required. Each has:
     id            The --profile value of demi agent spawn: 1 to 40 lowercase letters, digits and hyphens, starting with a letter; not default; unique in the list. Required.
     description   When an agent should use it: one line, which demi agent profiles list shows. Required.
@@ -86,11 +87,16 @@ pub struct Workflow {
     #[serde(default)]
     #[garde(inner(length(chars, min = 1)))]
     pub instructions: Option<String>,
-    /// What every child of every profile is told, before its profile's
+    /// What every child of the conversation is told, before its profile's
     /// instructions.
     #[serde(default)]
     #[garde(inner(length(chars, min = 1)))]
     pub subagent_instructions: Option<String>,
+    /// Whether the conversation spawns the user's enabled profiles beside
+    /// the workflow's.
+    #[serde(default = "user_profiles_default")]
+    #[garde(skip)]
+    pub user_profiles: bool,
     #[garde(dive, custom(unique_ids))]
     pub profiles: Vec<WorkflowProfile>,
 }
@@ -176,6 +182,11 @@ pub fn parse_workflow(text: &str) -> Result<Workflow, WorkflowError> {
     };
     serde_saphyr::from_str_with_options_valid(text, options)
         .map_err(|error| WorkflowError(error.to_string()))
+}
+
+/// A workflow offers the user's profiles unless its file says otherwise.
+fn user_profiles_default() -> bool {
+    true
 }
 
 /// The workflow id of a file named `name` in the workflows directory: its

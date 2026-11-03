@@ -12,9 +12,10 @@
 //! A profile never replaces the product's prompt (the child is always Demi) and
 //! never changes the commands. With the user's profiles, a spawn without
 //! `--profile` takes the inherit profile, which exists whether or not the user
-//! has profiles. A project's workflow has no inherit profile: its profiles are
-//! the subagents its team planned, and work none of them is for is the
-//! spawning agent's own.
+//! has profiles. A project's workflow has no inherit profile: a spawn names
+//! one of its profiles or, unless its file turns them off, one of the user's,
+//! and work none of them is for is the spawning agent's own. A name both have
+//! is the workflow's, the one its instructions were written for.
 //!
 //! The checks run in the order of `Tree::spawn_setup`. The reasons behind them:
 //!
@@ -34,8 +35,8 @@
 //!   bound what the user runs at once (tokens, the Hosts' load), not what one
 //!   conversation does. A tree with a live subagent is never evicted, so every
 //!   live one is counted. A limit lowered below what is live ends nothing.
-//! - A workflow chosen for the conversation replaces the user's profiles and
-//!   the switch.
+//! - The switch stops the user's profiles only: a workflow chosen for the
+//!   conversation spawns its own whatever the switch is.
 //! - `profiles list` reads the settings at call time and succeeds while
 //!   subagents are off. The user's profiles are in neither the system prompt
 //!   nor a context block: the prompt is rendered once per tree and could not
@@ -129,7 +130,8 @@ impl Limits {
 
 /// `demi agent profiles list --json`: whether this conversation's agents
 /// may spawn, its Workflow menu choice, and the profiles they may spawn
-/// with: each enabled profile of the user's, or the chosen workflow's.
+/// with: the chosen workflow's, and each enabled profile of the user's that
+/// it offers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub(crate) struct ProfileListing {
     /// False while the user has subagents off with Global Workflow chosen, with No
@@ -143,6 +145,10 @@ pub(crate) struct ProfileListing {
     /// Why the chosen workflow cannot be used now; absent while it can.
     #[serde(skip_serializing_if = "Option::is_none")]
     unavailable: Option<String>,
+    /// Whether the chosen workflow offers the user's profiles while the
+    /// user's switch keeps them off, which `list` tells on stderr.
+    #[serde(skip)]
+    users_off: bool,
     profiles: Vec<ListedProfile>,
 }
 
@@ -186,7 +192,8 @@ impl<H: HostResolver> Tree<H> {
     /// 3. the profile is enabled;
     /// 4. its model settings make a selection.
     ///
-    /// A workflow's profiles replace the user's, whatever the user's switch is.
+    /// A workflow's own profiles answer to no switch of the user's; the
+    /// user's profiles it offers come after them and answer to the switch.
     /// A resume in a conversation that says No Subagents names the user's
     /// profiles, which are the ones left. The limits the call checks next come
     /// with the answer.
@@ -233,14 +240,23 @@ impl<H: HostResolver> Tree<H> {
             )),
             ConversationProfiles::Workflow(workflow) => {
                 let Some(name) = name else {
-                    return Err(unnamed_in(&workflow));
+                    return Err(unnamed_in(&workflow, &settings));
                 };
-                let child = workflow
-                    .profiles
-                    .iter()
-                    .find(|child| child.name == name)
+                let Some(child) = workflow.profiles.iter().find(|child| child.name == name) else {
                     // A workflow's spawn has no profile to fall back on; a resume goes on with the child's.
-                    .ok_or_else(|| unknown_in(name, &workflow, (purpose == SetupFor::Resume).then_some(omitting)))?;
+                    let omit = (purpose == SetupFor::Resume).then_some(omitting);
+                    let profile = workflow
+                        .user_profiles
+                        .then(|| settings.profiles.iter().find(|profile| profile.name == name))
+                        .flatten()
+                        .ok_or_else(|| unknown_in(name, &workflow, &settings, purpose, omit))?;
+                    if !takes_users(&settings, purpose) {
+                        return Err(users_off(&workflow));
+                    }
+                    let mut setup = user_setup(server, profile, omit, parents, limits).await?;
+                    setup.instructions = workflow.child_instructions(setup.instructions.as_deref());
+                    return Ok(setup);
+                };
                 let (model, context_limit) = match &child.model {
                     None => parents(),
                     Some(Ok(selection)) => (selection.clone(), child.context_limit),
@@ -250,7 +266,7 @@ impl<H: HostResolver> Tree<H> {
                 };
                 Ok(Setup {
                     model,
-                    instructions: child.instructions.clone(),
+                    instructions: workflow.child_instructions(child.instructions.as_deref()),
                     context_limit,
                     can_spawn: child.can_spawn,
                     limits,
@@ -268,30 +284,7 @@ impl<H: HostResolver> Tree<H> {
                     .iter()
                     .find(|profile| profile.name == name)
                     .ok_or_else(|| unknown(name, &settings, omitting))?;
-                if !profile.enabled {
-                    return Err(format!(
-                        "profile \"{name}\" is disabled in settings; omit --profile to {omitting}, or ask the user to enable it in Settings > Subagents."
-                    ));
-                }
-                let (model, context_limit) = match &profile.model {
-                    Some(model) => (
-                        server
-                            .deps
-                            .providers
-                            .profile_selection(model)
-                            .await
-                            .map_err(|missing| unavailable(name, &missing))?,
-                        profile.context_limit,
-                    ),
-                    None => parents(),
-                };
-                Ok(Setup {
-                    model,
-                    instructions: profile.instructions.clone(),
-                    context_limit,
-                    can_spawn: profile.can_spawn,
-                    limits,
-                })
+                user_setup(server, profile, Some(omitting), parents, limits).await
             }
         }
     }
@@ -356,6 +349,7 @@ impl<H: HostResolver> Tree<H> {
             choice,
             workflow: None,
             unavailable: None,
+            users_off: false,
             profiles: Vec::new(),
         };
         match self.conversation_profiles(&server).await? {
@@ -365,7 +359,12 @@ impl<H: HostResolver> Tree<H> {
                 ..off(WorkflowChoice::Workflow { id, worktree })
             }),
             ConversationProfiles::Workflow(workflow) => {
-                let profiles = workflow
+                let settings = read(&server).await?;
+                let users = join_all(
+                    users_in(&workflow, &settings, SetupFor::Spawn).map(|profile| listed(&server, profile)),
+                )
+                .await;
+                let mut profiles: Vec<ListedProfile> = workflow
                     .profiles
                     .iter()
                     .map(|child| ListedProfile {
@@ -389,11 +388,13 @@ impl<H: HostResolver> Tree<H> {
                         },
                     })
                     .collect();
+                profiles.extend(users);
                 Ok(ProfileListing {
                     enabled: true,
                     choice: WorkflowChoice::Workflow { id: workflow.id, worktree: workflow.worktree },
                     workflow: Some(workflow.name),
                     unavailable: None,
+                    users_off: workflow.user_profiles && !settings.enabled,
                     profiles,
                 })
             }
@@ -409,6 +410,7 @@ impl<H: HostResolver> Tree<H> {
                     choice: WorkflowChoice::Default,
                     workflow: None,
                     unavailable: None,
+                    users_off: false,
                     profiles,
                 })
             }
@@ -477,17 +479,16 @@ impl<H: HostResolver> Tree<H> {
     /// not, checked now.
     pub(crate) async fn profile(&self, name: &str) -> Result<ProfileAnswer, String> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
-        // The profiles `list` lists: the chosen workflow's in place of the
-        // user's (`crates/backend-user-shard/src/conversation/workflows.rs`).
-        if let ConversationProfiles::Workflow(workflow) = self.conversation_profiles(&server).await? {
-            let child = workflow
-                .profiles
-                .iter()
-                .find(|child| child.name == name)
-                .ok_or_else(|| unknown_in(name, &workflow, None))?;
-            return Ok(workflow_answer(&workflow, child));
-        }
         let settings = read(&server).await?;
+        // The chosen workflow's profile of the name first, as a spawn takes
+        // it; then the user's, which `show` reads whether or not a spawn here
+        // can take it
+        // (`crates/backend-user-shard/src/conversation/workflows.rs`).
+        if let ConversationProfiles::Workflow(workflow) = self.conversation_profiles(&server).await? {
+            if let Some(child) = workflow.profiles.iter().find(|child| child.name == name) {
+                return Ok(workflow_answer(&workflow, child));
+            }
+        }
         let profile = settings
             .profiles
             .iter()
@@ -498,8 +499,8 @@ impl<H: HostResolver> Tree<H> {
 
     /// `demi agent profiles create`: the profile as stored.
     ///
-    /// While this conversation runs a workflow, it also answers why a spawn
-    /// here cannot use the profile: a workflow's profiles replace the user's
+    /// While this conversation runs a workflow that keeps the user's profiles
+    /// out, it also answers why a spawn here cannot use the profile
     /// (`crates/backend-user-shard/src/conversation/workflows.rs`).
     pub(crate) async fn create_profile(
         &self,
@@ -509,8 +510,9 @@ impl<H: HostResolver> Tree<H> {
         // Read before the profile is saved, so that what the warning needs
         // cannot fail a creation that succeeded.
         let workflow = match self.conversation_profiles(&server).await? {
-            ConversationProfiles::Workflow(workflow) => Some(workflow.name),
-            ConversationProfiles::Off
+            ConversationProfiles::Workflow(workflow) if !workflow.user_profiles => Some(workflow.name),
+            ConversationProfiles::Workflow(_)
+            | ConversationProfiles::Off
             | ConversationProfiles::Unavailable { .. }
             | ConversationProfiles::Settings => None,
         };
@@ -592,7 +594,7 @@ fn workflow_answer(workflow: &ChosenWorkflow, child: &WorkflowChild) -> ProfileA
         }),
         context: child.context_limit.map_or_else(|| "default".to_owned(), context_word),
         context_tokens: child.context_limit,
-        instructions: child.instructions.clone(),
+        instructions: workflow.child_instructions(child.instructions.as_deref()),
         spawning: child.can_spawn,
         enabled: true,
         unavailable: match &child.model {
@@ -679,9 +681,17 @@ impl ProfileListing {
                 "this conversation's workflow \"{id}\" is unavailable: {}; demi agent spawn fails until another is picked in the composer's Workflow menu, or with demi agent workflows use <id> once the user allows it",
                 self.unavailable.as_deref().unwrap_or_default()
             )),
+            WorkflowChoice::Workflow { .. } if self.users_off => Some(format!(
+                "subagents are turned off in settings, so the user's profiles are not offered here; {}",
+                if self.profiles.is_empty() {
+                    "demi agent spawn fails until the user turns them on"
+                } else {
+                    "the workflow's are"
+                }
+            )),
             _ if self.profiles.is_empty() => Some(match &self.workflow {
                 None => "the user has no enabled subagent profile; demi agent spawn without --profile inherits the parent".to_owned(),
-                Some(name) => format!("workflow {name} has no profiles; demi agent spawn fails, so do the work in this session"),
+                Some(name) => format!("workflow {name} offers no profiles; demi agent spawn fails, so do the work in this session"),
             }),
             WorkflowChoice::Default | WorkflowChoice::Workflow { .. } => None,
         }
@@ -716,6 +726,87 @@ impl ProfileListing {
         }
         table.render()
     }
+}
+
+/// What a spawn with the user's `profile` makes its child of, its model
+/// checked now, the parent's from `parents` for a profile without one; or why
+/// it cannot, with what an omitted `--profile` does where it does anything.
+async fn user_setup<H: HostResolver>(
+    server: &AgentServer<H>,
+    profile: &Profile,
+    omitting: Option<&str>,
+    parents: impl FnOnce() -> (ModelSelection, Option<u32>),
+    limits: Limits,
+) -> Result<Setup, String> {
+    let name = &profile.name;
+    if !profile.enabled {
+        let omit = omitting.map(|omitting| format!("omit --profile to {omitting}, or ")).unwrap_or_default();
+        return Err(format!(
+            "profile \"{name}\" is disabled in settings; {omit}ask the user to enable it in Settings > Subagents."
+        ));
+    }
+    let (model, context_limit) = match &profile.model {
+        Some(model) => (
+            server
+                .deps
+                .providers
+                .profile_selection(model)
+                .await
+                .map_err(|missing| unavailable(name, &missing))?,
+            profile.context_limit,
+        ),
+        None => parents(),
+    };
+    Ok(Setup {
+        model,
+        instructions: profile.instructions.clone(),
+        context_limit,
+        can_spawn: profile.can_spawn,
+        limits,
+    })
+}
+
+/// Whether the user's switch lets a setup for `purpose` take the user's
+/// profiles: it guards making a child, not moving one, as under Global
+/// Workflow.
+fn takes_users(settings: &SubagentSettings, purpose: SetupFor) -> bool {
+    settings.enabled || purpose == SetupFor::Resume
+}
+
+/// The user's enabled profiles a setup for `purpose` under `workflow` takes
+/// now, in name order: none when the workflow keeps them out or the switch
+/// does, and none whose name the workflow's own profiles have.
+fn users_in<'a>(
+    workflow: &'a ChosenWorkflow,
+    settings: &'a SubagentSettings,
+    purpose: SetupFor,
+) -> impl Iterator<Item = &'a Profile> {
+    let offered = workflow.user_profiles && takes_users(settings, purpose);
+    settings.profiles.iter().filter(move |profile| {
+        offered && profile.enabled && !workflow.profiles.iter().any(|child| child.name == profile.name)
+    })
+}
+
+/// The names a setup for `purpose` under `workflow` takes now: the
+/// workflow's in the file's order, then the user's it takes.
+fn offered<'a>(workflow: &'a ChosenWorkflow, settings: &'a SubagentSettings, purpose: SetupFor) -> Vec<&'a str> {
+    let own = workflow.profiles.iter().map(|child| child.name.as_str());
+    own.chain(users_in(workflow, settings, purpose).map(|profile| profile.name.as_str()))
+        .collect()
+}
+
+/// Why a spawn under `workflow` cannot take the user's profile it names: the
+/// user's switch is off.
+fn users_off(workflow: &ChosenWorkflow) -> String {
+    let names: Vec<&str> = workflow.profiles.iter().map(|child| child.name.as_str()).collect();
+    let instead = if names.is_empty() {
+        "do this work in this session".to_owned()
+    } else {
+        format!("spawn one of the workflow's: {}", names.join(", "))
+    };
+    format!(
+        "subagents are turned off in settings, so the user's profiles cannot be spawned; {instead}, or ask the user to turn subagents on in Settings > Subagents."
+    )
 }
 
 /// The user's subagent settings now.
@@ -768,41 +859,39 @@ fn unknown(name: &str, settings: &SubagentSettings, omitting: &str) -> String {
 }
 
 /// Why a spawn without `--profile` fails in a conversation that chose a
-/// workflow: with the workflow's names.
-fn unnamed_in(workflow: &ChosenWorkflow) -> String {
-    let names: Vec<&str> = workflow
-        .profiles
-        .iter()
-        .map(|child| child.name.as_str())
-        .collect();
+/// workflow: with the names it takes.
+fn unnamed_in(workflow: &ChosenWorkflow, settings: &SubagentSettings) -> String {
+    let names = offered(workflow, settings, SetupFor::Spawn);
     if names.is_empty() {
-        return format!("workflow {} has no profiles; do this work in this session.", workflow.name);
+        return format!("workflow {} offers no profiles; do this work in this session.", workflow.name);
     }
     format!(
-        "workflow {} spawns only its profiles: {}; do other work in this session.",
+        "workflow {} spawns only named profiles: {}; do other work in this session.",
         workflow.name,
         names.join(", ")
     )
 }
 
-/// Why a spawn or a resume names no profile of the conversation's workflow:
-/// with the workflow's names, and what an omitted `--profile` does where it
-/// does anything.
-fn unknown_in(name: &str, workflow: &ChosenWorkflow, omitting: Option<&str>) -> String {
-    let names: Vec<&str> = workflow
-        .profiles
-        .iter()
-        .map(|child| child.name.as_str())
-        .collect();
+/// Why a spawn or a resume names no profile the conversation's workflow
+/// takes: with the names it takes, and what an omitted `--profile` does where
+/// it does anything.
+fn unknown_in(
+    name: &str,
+    workflow: &ChosenWorkflow,
+    settings: &SubagentSettings,
+    purpose: SetupFor,
+    omitting: Option<&str>,
+) -> String {
+    let names = offered(workflow, settings, purpose);
     let omit = omitting.map(|omitting| format!(" Omit --profile to {omitting}.")).unwrap_or_default();
     if names.is_empty() {
         return format!(
-            "unknown profile \"{name}\"; this conversation's workflow {} has no profiles.{omit}",
+            "unknown profile \"{name}\"; this conversation's workflow {} offers no profiles.{omit}",
             workflow.name
         );
     }
     format!(
-        "unknown profile \"{name}\"; the profiles of this conversation's workflow {} are {}. Run `demi agent profiles list` for when to use each.{omit}",
+        "unknown profile \"{name}\"; this conversation's workflow {} takes {}. Run `demi agent profiles list` for when to use each.{omit}",
         workflow.name,
         names.join(", ")
     )

@@ -45,7 +45,7 @@ const LIST_SUMMARY: &str = "List the workflows of this conversation's project as
 
 const CHECK_SUMMARY: &str = "Check a workflow file with the parser that reads it: prints its name and profiles, with a warning on stderr when the name does not read as a menu item, or fails naming the line and the field that are wrong. Run it on every workflow file you write or change before you report it.";
 
-const USE_SUMMARY: &str = "Pick this conversation's workflow as the composer's Workflow menu does, which shows it at once: a workflow by its id, the project's or with --worktree the git worktree's this conversation works in (the worktree's when only it has the id), global for Global Workflow (the user's own profiles) or none for No Subagents. Spawns take its profiles from then on, and its instructions reach the leading agent from its next request. A workflow that cannot be used fails with why and the choice stays. Needs the user's permission.";
+const USE_SUMMARY: &str = "Pick this conversation's workflow as the composer's Workflow menu does, which shows it at once: a workflow by its id, the project's or with --worktree the git worktree's this conversation works in (the worktree's when only it has the id), global for Global Workflow (the user's own profiles) or none for No Subagents. Spawns take its profiles from then on, with the user's unless it keeps them out, and its instructions reach the leading agent from its next request. A workflow that cannot be used fails with why and the choice stays. Needs the user's permission.";
 
 /// The input of `demi agent workflows use`.
 #[derive(Deserialize, JsonSchema)]
@@ -129,10 +129,13 @@ struct ListedEntry {
 
 /// `demi agent workflows check --json`: what the file reads as.
 #[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 struct Checked {
     file: String,
     name: String,
     profiles: Vec<CheckedProfile>,
+    /// Whether its conversations spawn the user's profiles too.
+    user_profiles: bool,
     /// Why the name does not read as a menu item; null when it does.
     warning: Option<String>,
 }
@@ -243,6 +246,7 @@ async fn check<H: HostResolver>(call: Invoked<H, CheckArgs>, port: RpcPort) -> R
                 description: profile.description.clone(),
             })
             .collect(),
+        user_profiles: workflow.user_profiles,
         warning: workflow.name_warning(),
     };
     if let Some(note) = &checked.warning {
@@ -259,7 +263,8 @@ async fn check<H: HostResolver>(call: Invoked<H, CheckArgs>, port: RpcPort) -> R
     fields
         .field("File", checked.file.as_str())
         .field("Name", checked.name.as_str())
-        .table("Profiles", &profiles);
+        .table("Profiles", &profiles)
+        .field("User profiles", if checked.user_profiles { "yes" } else { "no" });
     out(&port, fields.render()).await
 }
 

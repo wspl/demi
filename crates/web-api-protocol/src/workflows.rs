@@ -97,6 +97,10 @@ pub struct MenuWorkflow {
     /// the context card's cost part follows; none for a file that does not
     /// read.
     pub profiles: Vec<String>,
+    /// Whether the conversation spawns the user's enabled profiles beside
+    /// these, which the cost part follows too; false for a file that does
+    /// not read.
+    pub user_profiles: bool,
 }
 
 /// A subject a project search watches on the Host's file watch: what makes
