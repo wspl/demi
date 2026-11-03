@@ -13,6 +13,7 @@ pub mod history;
 pub mod loading;
 pub mod logs;
 pub mod navigation;
+pub mod passkeys;
 pub mod registry;
 pub mod session;
 pub mod tab;

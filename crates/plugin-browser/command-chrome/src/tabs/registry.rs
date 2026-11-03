@@ -742,6 +742,7 @@ impl Context {
             // tab's whole life.
             page.execute(SetFocusEmulationEnabledParams::new(true))
                 .await?;
+            crate::tabs::passkeys::refuse(&page).await?;
             let tab = BrowserTab::new(
                 page,
                 self.browser.clone(),

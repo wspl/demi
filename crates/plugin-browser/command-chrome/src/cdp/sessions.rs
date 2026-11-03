@@ -21,10 +21,13 @@
 //!   names the callers whose connections hold the tab, but nothing detaches on
 //!   behalf of another.
 //! - Transport loss is not a cleanup failure that fences a later start.
+//! - A closing connection takes the tab's virtual authenticators with it, so
+//!   the owner sets them up again (`crate::tabs::passkeys`).
 
 use std::collections::HashMap;
 
 use chromiumoxide::{
+    Page,
     cdp::browser_protocol::target::{
         AttachToTargetReturns, EventAttachedToTarget, EventDetachedFromTarget, SessionId, TargetId,
     },
@@ -71,6 +74,7 @@ pub(crate) fn start(tab: &BrowserTab) -> DebugOwner {
     let finished = CancellationToken::new();
     let owner = SessionsOwner {
         browser: tab.browser().clone(),
+        page: tab.page().clone(),
         target: tab.page().target_id().clone(),
         ended: tab.ended().clone(),
         tasks: tab.state().tasks.clone(),
@@ -93,6 +97,8 @@ pub(crate) fn start(tab: &BrowserTab) -> DebugOwner {
 
 struct SessionsOwner {
     browser: BrowserHandle,
+    /// The tab's own session, which holds its virtual authenticators.
+    page: Page,
     target: TargetId,
     /// The tab's end.
     ended: CancellationToken,
@@ -128,7 +134,10 @@ impl SessionsOwner {
                 recorded = recordings.recv() => match recorded {
                     Some(Recorded::Event(event)) => self.record(event),
                     // Its commands fail as ended until the caller detaches.
-                    Some(Recorded::Ended) => self.publish_callers(),
+                    Some(Recorded::Ended) => {
+                        self.publish_callers();
+                        self.refuse_passkeys().await;
+                    }
                     None => break,
                 },
                 request = requests.recv() => match request {
@@ -151,7 +160,11 @@ impl SessionsOwner {
             }
             SessionsRequest::Detach { caller, reply } => {
                 let closed = match self.connections.remove(&caller) {
-                    Some(connection) => connection.close().await,
+                    Some(connection) => {
+                        let closed = connection.close().await;
+                        self.refuse_passkeys().await;
+                        closed
+                    }
                     None => Ok(()),
                 };
                 if self.connections.is_empty() {
@@ -267,6 +280,16 @@ impl SessionsOwner {
             },
             wait,
         })
+    }
+
+    /// Sets up the tab's virtual authenticators again after a connection
+    /// closed. A tab that closed meanwhile needs none.
+    async fn refuse_passkeys(&self) {
+        if let Err(error) = crate::tabs::passkeys::refuse(&self.page).await
+            && !self.ended.is_cancelled()
+        {
+            tracing::warn!(event = "passkeys.refuse_failed", %error, "a tab could not refuse passkeys again after a debugging connection closed");
+        }
     }
 
     /// Closes every connection and joins their cleanup.
