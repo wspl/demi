@@ -23,7 +23,7 @@ use demi_shared_types::preview_media_type;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{
     AbsolutePath, ChangeSides, ChangesQuery, CommitName, CommitQuery, CommittedFileQuery, CreateDirectory, CreatedDirectory, Directory, DirectoryLists, DirectoryQuery, ListedDirectories, ListedDirectory, LogQuery,
-    FileQuery, FileText, RawFileQuery, RemoveQuery, SearchRequest, TreeFileQuery,
+    FileQuery, FileText, RawFileQuery, RemoveQuery, RepositoriesRequest, SearchRequest, TreeFileQuery,
     UploadQuery, WorkingTreeChanges,
 };
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
@@ -504,6 +504,24 @@ pub(super) async fn branches(
     })
     .await?;
     Ok(read_answer(&read_at, Json(branches)))
+}
+
+/// The repositories the conversation's execution directory is in or holds,
+/// and those holding the directories the request names.
+pub(super) async fn repositories(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    JsonBody(RepositoriesRequest { paths }): JsonBody<RepositoriesRequest>,
+) -> Result<Response, ApiError> {
+    let (repositories, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
+        host.host
+            .git_repositories(&host.root, paths)
+            .await
+            .map_err(ApiError::history)
+    })
+    .await?;
+    Ok(read_answer(&read_at, Json(repositories)))
 }
 
 /// One page of a branch's first-parent history.

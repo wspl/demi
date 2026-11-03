@@ -207,6 +207,7 @@
     "commitList": "Commits",
     "commitsFailed": "Couldn’t list the commits.",
     "searchBranches": "Search branches",
+    "searchRepositories": "Search repositories",
     "checkedOut": "Checked out"
   },
   "document": {

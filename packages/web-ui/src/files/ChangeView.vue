@@ -17,6 +17,8 @@ import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import { useIconPx } from '../ui/icon-metrics'
 import BranchMenu from './BranchMenu.vue'
+import RepositoryMenu from './RepositoryMenu.vue'
+import type { RepositoryEntry } from './repositories'
 import ChangeTree from './ChangeTree.vue'
 import CommitList from './CommitList.vue'
 import { useCommitLog } from './commit-log'
@@ -98,6 +100,12 @@ const props = defineProps<{
   canForward?: boolean
   /** Whether the page can open a file, so the view offers Open file and follows links to files. */
   opens?: boolean
+  /**
+   * The repositories found for the working directory, which the repository
+   * menu lists: empty while they are on their way, the menu's room kept;
+   * absent, no menu.
+   */
+  repositories?: readonly RepositoryEntry[]
 }>()
 
 const emit = defineEmits<{
@@ -120,6 +128,8 @@ const selected = defineModel<string | null>('selected', { default: null })
 const commit = defineModel<string | null>('commit', { default: null })
 /** The branch the commit list shows: null for the one checked out, or HEAD. */
 const branch = defineModel<string | null>('branch', { default: null })
+/** The root of the repository shown, which the repository menu picks. */
+const repository = defineModel<string | null>('repository', { default: null })
 /** The commit list's height under the files, the divider's place, which the host keeps as it keeps the sidebar's width. */
 const commitsHeight = defineModel<number>('commitsHeight', { default: COMMITS_HEIGHT.default })
 /** In Conversation, the selected file's edit shown; null for All Changes. */
@@ -642,15 +652,24 @@ function pick(path: string): void {
           <IconButton :icon="ArrowRight" variant="ghost" :aria-label="t('actions.forward')" :disabled="!canForward" @click="emit('forward')" />
         </Tooltip>
       </div>
-      <!-- It gives way before the controls at the right, scrolling in its own box, as on a phone. -->
-      <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1 min-w-0 phone:ml-0" />
+      <!-- The menus at the right give way first, their names cut short; only then does it, scrolling in its own
+           box, as on a phone. -->
+      <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1 min-w-0 shrink-[0.01] phone:ml-0" />
       <!-- A phone overlay's Close ends the first row, at the screen's top right. -->
       <SheetCloseButton class="ml-auto" />
       <!-- On a phone the file's controls take a second row, the branch at its start, rather than crowd the first. -->
       <div class="hidden h-0 basis-full phone:block" aria-hidden="true" />
       <!-- The file's controls keep to the right, whether or not a file is shown. -->
       <div class="ml-auto flex min-w-0 items-center gap-1 phone:h-11 phone:flex-1">
-        <!-- The branch the list shows, left of the toolbar's buttons. -->
+        <!-- The repository shown, then the branch its list shows, left of the toolbar's buttons. A repository's
+             path is the longer name, so it gives way first. -->
+        <RepositoryMenu
+          v-if="repositories && mode === 'commits'"
+          v-model:shown="repository"
+          class="min-w-0 shrink-[4]"
+          :class="repositories.length > 0 ? '' : 'invisible'"
+          :repositories="repositories"
+        />
         <BranchMenu
           v-if="history && treeAvailable"
           v-model:shown="branch"

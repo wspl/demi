@@ -19,7 +19,7 @@ use demi_host_interface::{
 };
 use demi_runner_protocol::search::SearchQuery;
 use demi_runner_protocol::wire::{
-    self, FsResult, GitBranches, GitChanges, GitCommit, GitLog, GitResult, Inbound, PipeRef, ReadAt, STDIN_CHUNK_BYTES,
+    self, FsResult, GitBranches, GitChanges, GitCommit, GitLog, GitRepositories, GitResult, Inbound, PipeRef, ReadAt, STDIN_CHUNK_BYTES,
     WireBytes,
 };
 use demi_shared_gates::GateLease;
@@ -713,6 +713,28 @@ impl RemoteHost {
             .await?;
         match reply {
             Answer::Git(GitResult::Branches(branches), read_at) => Ok((branches, read_at)),
+            _ => Err(mismatch()),
+        }
+    }
+
+    /// The repositories `root` is in or holds, and those holding `paths`
+    /// (`crates/runner-host/src/repositories.rs`), and the Host's number
+    /// before it looked.
+    pub async fn git_repositories(
+        &self,
+        root: &str,
+        paths: Vec<String>,
+    ) -> Result<(GitRepositories, ReadAt), HostError> {
+        let link = self.link()?;
+        let reply = link
+            .call(Expected::Git("repositories"), |id| Inbound::GitRepositories {
+                id,
+                root: root.into(),
+                paths,
+            })
+            .await?;
+        match reply {
+            Answer::Git(GitResult::Repositories(repositories), read_at) => Ok((repositories, read_at)),
             _ => Err(mismatch()),
         }
     }

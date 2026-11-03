@@ -1,4 +1,8 @@
-import { computed, effectScope, onScopeDispose, watch } from 'vue'
+import { computed, effectScope, onScopeDispose, shallowRef, watch } from 'vue'
+import { baseName } from '@demicodes/utils'
+import { errorFields } from '@demicodes/web-ui/infra/errors'
+import { pageLog } from '@demicodes/web-ui/infra/log'
+import { changedPlaces, namedRepositories, type ChangedPlaces, type FoundRepositories } from '@demicodes/web-ui/files/repositories'
 import { useOnScreen } from '@demicodes/web-ui/files/on-screen'
 import { emptyChangeSet, type ChangeSetSource } from '@demicodes/web-ui/files/changes'
 import { findRequest } from '@demicodes/web-ui/files/request-changes'
@@ -10,12 +14,15 @@ import { t as shared } from '@demicodes/web-ui/locales/text'
 import { conversationFileRoutes, fileSource, hostFiles } from '../api/files'
 import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
-import { historyReads, readEditCopies, workingTreeReads } from './changes'
+import { historyReads, readEditCopies, readRepositories, workingTreeReads } from './changes'
 import { ConversationWatch, type FollowHost } from './file-watch'
 import { directRoute } from '../direct'
 import { directFileReads, directWatchLink } from '../direct/operations'
 import { agentDirectories } from '@demicodes/web-ui/agent/working-directory'
 import { useConversations } from './store'
+
+/** Nothing to choose from, when the Host cannot list the repositories: the view reads the directory as before. */
+const NO_REPOSITORIES: FoundRepositories = { inRepository: false, repositories: [] }
 
 /** Each conversation's service, made once for the page's lifetime. */
 const services = new Map<string, ConversationFileService>()
@@ -186,6 +193,77 @@ export function conversationFiles(conversationId: string): ConversationFileServi
     return history
   }
 
+  // Where the agents changed files: the same folders keep their list, so a
+  // file changed in a folder known already asks the Host nothing.
+  const places = computed<ChangedPlaces | null>((previous) => {
+    const own = root.value
+    const next = own && conversation.value ? changedPlaces(conversation.value, own) : null
+    if (!previous || !next)
+      return next
+    const sameDirectories = previous.directories.length === next.directories.length
+      && previous.directories.every((directory, index) => directory === next.directories[index])
+    if (!sameDirectories)
+      return next
+    return previous.latest === next.latest ? previous : { directories: previous.directories, latest: next.latest }
+  })
+  // The views on screen that show the repositories: the Host is asked only
+  // while one does, and the transcripts are read for it only then.
+  const repositoryViewers = shallowRef(0)
+  // What the Host found, for the Host and directory it was asked of, and the
+  // folders it was asked about, which only grow: a folder the page no longer
+  // holds the transcript of keeps the repository found there.
+  const found = shallowRef<{ tree: string; asked: ReadonlySet<string>; answer: FoundRepositories; fromHost: boolean } | null>(null)
+  let followingRepositories = false
+  function followRepositories(): void {
+    if (followingRepositories)
+      return
+    followingRepositories = true
+    effectScope(true).run(() => {
+      const asking = computed((previous?: { tree: string; online: boolean; directories: readonly string[] } | null) => {
+        const own = root.value
+        const host = device.value
+        if (repositoryViewers.value === 0 || !own || !host)
+          return null
+        const next = { tree: `${host.id}\0${own}`, online: host.state === 'online', directories: places.value?.directories ?? [] }
+        const same = previous && previous.tree === next.tree && previous.online === next.online && previous.directories === next.directories
+        return same ? previous : next
+      })
+      watch(asking, (asked, _previous, onCleanup) => {
+        if (!asked)
+          return
+        const known = found.value?.tree === asked.tree ? found.value : null
+        if (!known)
+          found.value = null
+        // An offline Host lists nothing new: the view reads the directory as it did before there was a choice.
+        if (!asked.online) {
+          found.value = known ?? { tree: asked.tree, asked: new Set(), answer: NO_REPOSITORIES, fromHost: false }
+          return
+        }
+        if (known?.fromHost && asked.directories.every((directory) => known.asked.has(directory)))
+          return
+        const folders = new Set([...(known?.asked ?? []), ...asked.directories])
+        const stop = new AbortController()
+        onCleanup(() => stop.abort())
+        readRepositories(conversationId, [...folders], stop.signal).then(
+          (answer) => (found.value = { tree: asked.tree, asked: folders, answer, fromHost: true }),
+          (error: unknown) => {
+            if (stop.signal.aborted)
+              return
+            found.value ??= { tree: asked.tree, asked: new Set(), answer: NO_REPOSITORIES, fromHost: false }
+            pageLog.warn('repositories.read_failed', { conversation: conversationId, ...errorFields(error) })
+          },
+        )
+      }, { immediate: true })
+    })
+  }
+  const repositories = computed(() => {
+    const own = root.value
+    const known = found.value
+    if (!own || !known)
+      return null
+    return namedRepositories(known.answer, own, name.value ?? baseName(own), places.value?.latest ?? null)
+  })
+
   const service: ConversationFileService = {
     get tree() {
       return tree.value
@@ -200,6 +278,23 @@ export function conversationFiles(conversationId: string): ConversationFileServi
       return treeChanges(directory) ?? emptyChangeSet
     },
     history: treeHistory,
+    repositories() {
+      return repositories.value
+    },
+    showRepositories() {
+      followRepositories()
+      // Counted while the calling component is on screen, until its scope ends.
+      const onScreen = useOnScreen()
+      let counted = false
+      const count = (shown: boolean) => {
+        if (shown !== counted) {
+          counted = shown
+          repositoryViewers.value += shown ? 1 : -1
+        }
+      }
+      watch(onScreen, count, { immediate: true })
+      onScopeDispose(() => count(false))
+    },
     edit: readEditCopies,
     request(node, request) {
       // The conversation's transcripts as the page holds them: its own agent's and each subagent's.
@@ -211,7 +306,10 @@ export function conversationFiles(conversationId: string): ConversationFileServi
       const scope = effectScope()
       const onScreen = useOnScreen()
       scope.run(() => {
-        watch(() => treeChanges(directory?.()), (set, _previous, onCleanup) => {
+        watch(() => {
+          const shown = directory?.()
+          return shown === null ? null : treeChanges(shown)
+        }, (set, _previous, onCleanup) => {
           const showing = set?.show()
           // The list follows the Host only while the component is on screen.
           const following = watch(onScreen, (shown) => (shown ? showing?.back() : showing?.away()), { immediate: true })

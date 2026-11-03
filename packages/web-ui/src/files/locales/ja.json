@@ -207,6 +207,7 @@
     "commitList": "コミット",
     "commitsFailed": "コミットを一覧表示できませんでした。",
     "searchBranches": "ブランチを検索",
+    "searchRepositories": "リポジトリを検索",
     "checkedOut": "チェックアウト済み"
   },
   "document": {

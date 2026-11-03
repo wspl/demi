@@ -783,6 +783,13 @@ pub enum Inbound {
         id: String,
         root: String,
     },
+    /// The repositories that hold `root`, lie below it, or hold one of
+    /// `paths`, directories inside it.
+    GitRepositories {
+        id: String,
+        root: String,
+        paths: Vec<String>,
+    },
     /// One page of a branch's first-parent history, HEAD's without
     /// `branch`, continuing after the commit `after` names.
     GitLog {
@@ -1047,6 +1054,7 @@ impl Inbound {
             | Self::GitChanges { .. }
             | Self::GitShow { .. }
             | Self::GitBranches { .. }
+            | Self::GitRepositories { .. }
             | Self::GitLog { .. }
             | Self::GitCommit { .. }
             | Self::FsSubscribe { .. }
@@ -1105,6 +1113,7 @@ impl Inbound {
             Self::GitChanges { id, .. }
             | Self::GitShow { id, .. }
             | Self::GitBranches { id, .. }
+            | Self::GitRepositories { id, .. }
             | Self::GitLog { id, .. }
             | Self::GitCommit { id, .. } => Some(id),
             _ => None,
@@ -2354,6 +2363,18 @@ pub struct GitBranches {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "demi_shared_types::Nullable<String>")]
     pub head: Option<String>,
+}
+
+/// The repositories around a directory (`crates/runner-host/src/repositories.rs`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[garde(allow_unvalidated)]
+pub struct GitRepositories {
+    /// Whether the directory lies in a repository, at it or above it.
+    pub in_repository: bool,
+    /// The repositories below it, by their work trees' absolute paths, in
+    /// order of path.
+    pub repositories: Vec<String>,
 }
 
 /// One commit as a history lists it: its full id, its whole message, its

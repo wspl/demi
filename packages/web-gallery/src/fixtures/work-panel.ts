@@ -58,6 +58,9 @@ export function galleryFiles(
     changes: (directory) => directory === undefined || directory === project.root ? project.changes : (slot ??= createSlotChangeSet(200)),
     // One repository stands behind every working tree of the gallery.
     history: (directory) => directory !== undefined && (directory === SLOT_ROOT || directory.startsWith(`${SLOT_ROOT}/`)) ? slotHistory : sharedHistory.source,
+    // The project is its own repository, and holds no other.
+    repositories: () => ({ list: [{ root: project.root, name: 'shop' }], preferred: project.root }),
+    showRepositories: () => {},
     edit: readGalleryEdit,
     request: galleryRequest,
     // The gallery's working tree changes only when a specimen changes it.

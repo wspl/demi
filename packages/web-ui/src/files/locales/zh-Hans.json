@@ -207,6 +207,7 @@
     "commitList": "提交",
     "commitsFailed": "无法列出提交。",
     "searchBranches": "搜索分支",
+    "searchRepositories": "搜索仓库",
     "checkedOut": "已签出"
   },
   "document": {
