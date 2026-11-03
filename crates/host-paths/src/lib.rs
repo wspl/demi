@@ -1,10 +1,15 @@
-//! How a Host writes its paths (`crates/runner-shell/src/lib.rs`).
+//! How a Host writes its paths.
 //!
 //! The backend builds paths on a Host, such as where an attachment is saved,
 //! with the separator of the system the Host's runner reports. A Windows Host
 //! shows `C:\Users\alex\.demi\attachments\…`, never `C:\Users\alex/.demi/…`.
-//! Every path the backend joins, splits or walks up on a Host goes through
-//! here.
+//! Every path the backend or the runner joins, splits, walks up or writes from
+//! `~` on a Host goes through here.
+//!
+//! The crate reads the text of a path, which may name another machine's file,
+//! and does no IO: it depends on no runtime and no other Demi crate, so both
+//! the agent's side (`host-interface`) and the runner's wire
+//! (`runner-protocol`) use it.
 
 /// The path form of a Host's system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]

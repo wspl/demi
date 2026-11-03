@@ -8,7 +8,9 @@
 //! Windows `C:\Users\alex\app` walks up to `C:\`, and its `.git` is
 //! `C:\Users\alex\app\.git`.
 
-use crate::{HostFile, HostPaths, HostRead};
+use demi_host_paths::HostPaths;
+
+use crate::{HostFile, HostRead};
 
 /// The reads that find the repository's root among `ancestors`, the
 /// directories [`HostPaths::ancestors`] gives: `.git` in each, in their

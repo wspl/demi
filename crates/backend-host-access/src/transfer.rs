@@ -91,7 +91,7 @@ pub enum DownloadPath {
     Named(String),
     /// The file at a place, as an HTML view's URL names it: its path's names
     /// joined by `/`, read in the Host's form of paths
-    /// ([`demi_host_interface::HostPaths::place`]).
+    /// ([`demi_host_paths::HostPaths::place`]).
     Place(String),
 }
 

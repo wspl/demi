@@ -144,6 +144,15 @@ use tracing_subscriber::{
     Layer as _, filter::LevelFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _,
 };
 
+/// The system this runner was built for, as it reports it.
+const PLATFORM: RunnerPlatform = if cfg!(target_os = "macos") {
+    RunnerPlatform::Darwin
+} else if cfg!(windows) {
+    RunnerPlatform::Win32
+} else {
+    RunnerPlatform::Linux
+};
+
 async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
     // Without the `=C:` entries cmd.exe adds on Windows for each drive's
     // current directory, which are no variables: a command run from
@@ -564,13 +573,7 @@ async fn runner(cli: Cli) -> io::Result<u8> {
     let runner = wire::RunnerInfo {
         native_target: Some(host_target().into()),
         name: name.unwrap_or_else(|| identity.hostname.clone()),
-        platform: if cfg!(target_os = "macos") {
-            RunnerPlatform::Darwin
-        } else if cfg!(windows) {
-            RunnerPlatform::Win32
-        } else {
-            RunnerPlatform::Linux
-        },
+        platform: PLATFORM,
         os: operating_system(),
         version: installation
             .release

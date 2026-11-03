@@ -48,7 +48,7 @@ pub struct HostIdentity {
     /// that never connected.
     pub scratch_root: String,
     /// How the Host writes its paths, from the system its runner reports.
-    pub paths: crate::HostPaths,
+    pub paths: demi_host_paths::HostPaths,
 }
 
 /// An execution target. A relative path in any of its operations is

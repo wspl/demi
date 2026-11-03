@@ -27,8 +27,7 @@ use demi_conversation_lane_protocol::{AgentEntry, Version};
 use demi_agent_tools::NodeContext;
 use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::{conversation_of, root_of};
-use demi_runner_client::host_paths;
-use demi_host_interface::HostPaths;
+use demi_host_paths::HostPaths;
 use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
@@ -206,7 +205,7 @@ impl Shard {
     /// its runner reported; POSIX for a device not known.
     pub(crate) async fn device_paths(&self, device: &DeviceId) -> Result<HostPaths, StorageError> {
         let record = self.services().control.device(device.clone()).await?;
-        Ok(record.map_or(HostPaths::Posix, |record| host_paths(record.platform)))
+        Ok(record.map_or(HostPaths::Posix, |record| record.platform.paths()))
     }
 
     /// How the primary Host of the conversation `id` writes its paths: in
@@ -218,7 +217,7 @@ impl Shard {
         };
         let target = self.host_shard().resolve_target(&record).await?;
         let (device, _) = self.primary_host(&target).await?;
-        Ok(device.map_or(HostPaths::Posix, |record| host_paths(record.platform)))
+        Ok(device.map_or(HostPaths::Posix, |record| record.platform.paths()))
     }
 
     /// The primary Host as the model reads it.

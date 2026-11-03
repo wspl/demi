@@ -1747,6 +1747,7 @@ dependencies = [
  "demi-agent-transcript",
  "demi-conversation-lane-protocol",
  "demi-host-interface",
+ "demi-host-paths",
  "demi-provider-common",
  "demi-provider-openai-api",
  "demi-shared-gates",
@@ -1799,6 +1800,7 @@ dependencies = [
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
  "demi-host-interface",
+ "demi-host-paths",
  "demi-provider-common",
  "demi-shared-types",
  "futures-util",
@@ -2009,6 +2011,7 @@ dependencies = [
  "demi-backend-database",
  "demi-conversation-lane-protocol",
  "demi-host-interface",
+ "demi-host-paths",
  "demi-machine-manager-protocol",
  "demi-plugin-host",
  "demi-plugin-interface",
@@ -2055,6 +2058,7 @@ dependencies = [
  "demi-command-declarations",
  "demi-command-protocol",
  "demi-host-interface",
+ "demi-host-paths",
  "demi-plugin-interface",
  "demi-runner-client",
  "demi-runner-protocol",
@@ -2261,6 +2265,7 @@ dependencies = [
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
  "demi-host-interface",
+ "demi-host-paths",
  "demi-machine-manager-protocol",
  "demi-plugin-host",
  "demi-plugin-interface",
@@ -2573,6 +2578,7 @@ dependencies = [
  "bytes",
  "demi-command-declarations",
  "demi-command-protocol",
+ "demi-host-paths",
  "demi-shared-types",
  "futures-util",
  "garde",
@@ -2583,6 +2589,13 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "demi-host-paths"
+version = "0.1.65"
+dependencies = [
+ "serde",
  "typed-path",
 ]
 
@@ -2793,6 +2806,7 @@ dependencies = [
  "base64 0.22.1",
  "demi-command-declarations",
  "demi-host-interface",
+ "demi-host-paths",
  "demi-plugin-interface",
  "demi-provider-common",
  "demi-shared-types",
@@ -2833,6 +2847,7 @@ version = "0.1.65"
 dependencies = [
  "demi-command-declarations",
  "demi-host-interface",
+ "demi-host-paths",
  "demi-shared-types",
  "demi-web-api-protocol",
  "futures-util",
@@ -2882,6 +2897,7 @@ name = "demi-plugin-skills"
 version = "0.1.65"
 dependencies = [
  "demi-host-interface",
+ "demi-host-paths",
  "demi-plugin-interface",
  "demi-shared-types",
  "demi-web-api-protocol",
@@ -3243,6 +3259,7 @@ dependencies = [
  "demi-command-declarations",
  "demi-command-protocol",
  "demi-host-interface",
+ "demi-host-paths",
  "demi-runner-protocol",
  "demi-shared-gates",
  "demi-shared-types",
@@ -3389,6 +3406,7 @@ dependencies = [
  "bytes",
  "demi-command-declarations",
  "demi-command-protocol",
+ "demi-host-paths",
  "demi-shared-types",
  "garde",
  "jiff",

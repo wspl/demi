@@ -16,7 +16,6 @@ use demi_web_api_protocol::devices::{DeviceKind, DeviceLogo, DeviceRoute};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, ProjectId};
 use std::collections::HashMap;
 
-use demi_runner_client::host_paths;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
@@ -612,7 +611,7 @@ impl ControlService {
                 return Ok(HomeSettled::default());
             }
             transaction.execute("UPDATE devices SET home = ?1 WHERE id = ?2", params![home, device.as_str()])?;
-            let paths = host_paths(record.platform);
+            let paths = record.platform.paths();
             let canonical = |path: &str| resolved.get(path).cloned().unwrap_or_else(|| directory(paths, path));
             let home_directory = canonical(&home);
             let device = DeviceRecord {

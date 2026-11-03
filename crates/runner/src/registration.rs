@@ -226,7 +226,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         management.removing.cancel();
     }
     if let Some(reason) = &runner.autostart_unavailable {
-        let sentence = reason.sentence(&runner.identity.home_dir);
+        let sentence = reason.sentence(runner.platform, &runner.identity.home_dir);
         management.tell_no_autostart(&sentence);
     }
     let dispatcher = Arc::new(Dispatcher {

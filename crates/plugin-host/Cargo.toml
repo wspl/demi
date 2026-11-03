@@ -14,6 +14,7 @@ bench = false
 [dependencies]
 demi-command-declarations = { path = "../command-declarations" }
 demi-host-interface = { path = "../host-interface" }
+demi-host-paths = { path = "../host-paths" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-shared-types = { path = "../shared-types" }
 demi-web-api-protocol = { path = "../web-api-protocol" }

@@ -111,7 +111,8 @@ use demi_shared_types::{
     ToolCallStatus, TurnId, UserContentBlock,
     output::{self, Fields, Table, seconds},
 };
-use demi_host_interface::{ShellEnvironment, relative_to};
+use demi_host_interface::ShellEnvironment;
+use demi_host_paths::relative_to;
 use futures_util::future::{LocalBoxFuture, join_all};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

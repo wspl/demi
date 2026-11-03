@@ -11,7 +11,6 @@
 //! another project has is that project.
 
 use demi_backend_database::devices::DeviceRecord;
-use demi_runner_client::host_paths;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::DeviceId;
@@ -90,7 +89,7 @@ impl dyn HostShard + '_ {
 /// result must be absolute there.
 fn typed_directory(device: &DeviceRecord, path: &str) -> Result<String, ChangeRefusal> {
     let host = if device.kind == DeviceKind::Managed { "Cloud" } else { device.name.as_str() };
-    let paths = host_paths(device.platform);
+    let paths = device.platform.paths();
     let path = match paths.home_relative(path) {
         Some(_) => {
             let home = match device.kind {

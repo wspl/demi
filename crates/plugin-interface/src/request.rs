@@ -1,7 +1,8 @@
 //! What the plugin host asks of a plugin, and what the plugin answers. Each request names its user,
 //! since a plugin process would serve every user.
 
-use demi_host_interface::{HostPaths, PortError, RpcError, RpcInvocation};
+use demi_host_interface::{PortError, RpcError, RpcInvocation};
+use demi_host_paths::HostPaths;
 use demi_shared_types::{NodeId, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use demi_web_api_protocol::panel::PanelTab;

@@ -16,7 +16,7 @@
 //! one above it, a subagent's own working directory, the user's home or another
 //! agent's configuration.
 
-use demi_host_interface::HostPaths;
+use demi_host_paths::HostPaths;
 use demi_plugin_interface::{PluginPort, PortFailure, SubscriptionKind, WatchSubject};
 use demi_host_interface::{EntryKind, HostFile, HostRead};
 use serde::{Deserialize, Serialize};
