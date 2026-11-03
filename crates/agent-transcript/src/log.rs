@@ -683,6 +683,19 @@ impl TranscriptLog {
         }
     }
 
+    /// Whether `step` updates a step of this turn that had ended, as the
+    /// encrypted output xAI sends after a search does: it neither starts nor
+    /// ends one.
+    pub fn updates_ended_opaque(&self, step: &OpaqueStep) -> bool {
+        let Some(call_id) = &step.call_id else {
+            return false;
+        };
+        self.blocks[self.turn_start()..].iter().any(|block| {
+            matches!(block, Block::Opaque(open)
+                if open.call_id.as_ref() == Some(call_id) && open.status != OpaqueStatus::Running)
+        })
+    }
+
     /// Starts a vendor's step, or updates the one of this turn that has
     /// its call id: its status, view and end, and its entries after those it
     /// holds.

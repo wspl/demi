@@ -55,7 +55,7 @@ use demi_agent_transcript::{
 use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
 };
-use demi_shared_types::{Block, BlockId, ModelSelection, ShellToolView, ToolView};
+use demi_shared_types::{Block, BlockId, ModelSelection, OpaqueStatus, OpaqueView, ShellToolView, ToolView};
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
@@ -449,7 +449,8 @@ async fn compact_before_request(
 
 /// Drops what a failed attempt wrote, cutting the history to its first
 /// `cut` blocks. The row says Requesting again, so the node waits for the
-/// model again, unless its wait runs on from before any output.
+/// model again, unless its wait runs on already, as after text or a step the
+/// vendor ran ended.
 async fn drop_attempt(s: &SessionShared, cut: usize) -> Result<(), TurnError> {
     let blocks = s.read(|core| core.transcript.blocks()[..cut - core.transcript.start()].to_vec());
     persist::commit_rewrite(s, blocks).await?;
@@ -643,6 +644,12 @@ async fn read(
                 // else shows. The response's end is the run's, after which the
                 // turn ends or its next request waits.
                 //
+                // A step the vendor ran, such as a search, that ended starts it
+                // too: the model goes on within the run, often for a long while
+                // before its next step shows. Reasoning the vendor sends
+                // encrypted is the model's own output, which shows as thinking,
+                // and starts none, as thinking does not.
+                //
                 // One update, so an event that shows, such as a whole call,
                 // ends that wait before any page hears of it.
                 let within_run = !matches!(event, ProviderEvent::Response(_));
@@ -650,7 +657,14 @@ async fn read(
                     if completes_text && core.complete_tail_text() && within_run {
                         core.start_waiting(WaitStart::TextEnded);
                     }
+                    let step_ended = matches!(&event, ProviderEvent::Opaque(step)
+                        if step.status != OpaqueStatus::Running
+                            && !matches!(step.view, OpaqueView::Reasoning)
+                            && !core.transcript.updates_ended_opaque(step));
                     core.apply_event(event);
+                    if step_ended {
+                        core.start_waiting(WaitStart::StepEnded);
+                    }
                 });
             }
         }
