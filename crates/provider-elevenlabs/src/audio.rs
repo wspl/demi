@@ -28,7 +28,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_provider_common::{
     ErrorCode, ProviderFailure, Secret,
-    audio::{AudioFormatAsk, AudioMaker, AudioRequest, MadeAudio, Voice},
+    audio::{AudioFormatAsk, AudioMaker, AudioOption, AudioRequest, MadeAudio, Voice, unsent_of},
     endpoint_url, json_body,
     media::{MediaAnswer, MediaCall, MediaCredential, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable},
     media_catalog::{AudioOutput, Catalog, MediaKind},
@@ -169,6 +169,19 @@ impl MediaMaker for KeyAudio {
 }
 
 impl AudioMaker for KeyAudio {
+    /// Its speech takes no instructions; it takes no seed with a prompt, the
+    /// only way a call asks for music or an effect.
+    fn unsent(&self, _: &Catalog, request: &AudioRequest) -> Vec<AudioOption> {
+        match request.kind {
+            AudioKind::Speech => unsent_of(&[AudioOption::Instructions], request),
+            _ => unsent_of(&[AudioOption::Seed], request),
+        }
+    }
+
+    fn shape_name(&self, _: &Catalog, _: &AudioRequest) -> &'static str {
+        "ElevenLabs"
+    }
+
     fn shape(&self) -> AudioShape {
         AudioShape::Elevenlabs
     }

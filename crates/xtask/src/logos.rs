@@ -149,7 +149,8 @@ pub fn run(_options: Options) -> Result<(), Error> {
 /// hand nor written now.
 pub async fn refresh(client: &reqwest::Client, base: &Url, directory: &Path) -> Result<Refresh, Error> {
     let document = base.join("api.json").expect("a relative path joins");
-    let catalog = VendorCatalog::new(ModelsDevClient::new(client.clone(), document, Arc::new(SystemClock)));
+    // The marks need no model's thinking.
+    let catalog = VendorCatalog::new(ModelsDevClient::new(client.clone(), document, Arc::new(SystemClock), &[]));
     let vendors = catalog
         .vendors()
         .await

@@ -93,6 +93,12 @@ impl ProviderFamily for AnthropicFamily {
         Some(lifetimes(&AnthropicConfig::CACHE_TTLS))
     }
 
+    /// Anthropic documents what an effort means on the Messages API; no
+    /// other vendor on it does.
+    fn effort_vendors(&self) -> &'static [&'static str] {
+        &["anthropic"]
+    }
+
     /// Anthropic's own keys may need to name a workspace; another vendor on
     /// the Messages API has none.
     fn vendor_headers(&self, vendor_id: Option<&str>) -> &'static [&'static str] {

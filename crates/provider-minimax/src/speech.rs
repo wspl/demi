@@ -18,7 +18,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_provider_common::{
     Secret,
-    audio::{AudioMaker, AudioRequest, MadeAudio, Voice, searched},
+    audio::{AudioMaker, AudioOption, AudioRequest, MadeAudio, Voice, searched, unsent_of},
     endpoint_url, json_body,
     media::{Ask, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, catalog_models, unreadable},
     media_catalog::{Catalog, MediaKind},
@@ -74,6 +74,16 @@ impl MediaMaker for MinimaxSpeech {
 }
 
 impl AudioMaker for MinimaxSpeech {
+    /// MiniMax makes speech alone, which takes neither instructions nor a
+    /// seed.
+    fn unsent(&self, _: &Catalog, request: &AudioRequest) -> Vec<AudioOption> {
+        unsent_of(&[AudioOption::Instructions, AudioOption::Seed], request)
+    }
+
+    fn shape_name(&self, _: &Catalog, _: &AudioRequest) -> &'static str {
+        "MiniMax speech"
+    }
+
     fn shape(&self) -> AudioShape {
         AudioShape::Minimax
     }

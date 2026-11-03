@@ -72,11 +72,13 @@ pub trait VideoMaker: MediaMaker {
     }
 
     /// The options `request` gives that its request has no field for,
-    /// which are not sent: its shape's ([`unsent`]), unless the maker's
-    /// models take different requests, as MiniMax's v1 and v2 do.
-    fn unsent(&self, _catalog: &Catalog, request: &VideoRequest) -> Vec<VideoOption> {
-        unsent(self.shape(), request)
-    }
+    /// which are not sent, as [`unsent_of`] picks them from the ones the
+    /// request lacks.
+    fn unsent(&self, catalog: &Catalog, request: &VideoRequest) -> Vec<VideoOption>;
+
+    /// How a call's message names the request it takes, such as `Veo takes
+    /// no --audio`.
+    fn shape_name(&self) -> &'static str;
 }
 
 /// A job a vendor took: its id at the vendor, and the model it makes as
@@ -120,20 +122,6 @@ pub enum VideoOption {
     Resolution,
     Audio,
     Seed,
-}
-
-/// The options `request` gives that `shape` has no field for, which are
-/// not sent, in the order of the table of the shapes' options.
-pub fn unsent(shape: VideoShape, request: &VideoRequest) -> Vec<VideoOption> {
-    let lacks: &[VideoOption] = match shape {
-        VideoShape::Grok | VideoShape::XaiVideos => &[VideoOption::Seed],
-        VideoShape::Veo => &[VideoOption::Audio],
-        VideoShape::OpenaiVideos => &[VideoOption::LastFrame, VideoOption::Reference, VideoOption::Audio, VideoOption::Seed],
-        VideoShape::OpenrouterVideos | VideoShape::ArkTasks => &[],
-        // Both of MiniMax's requests; v1's lacks more, which its maker says.
-        VideoShape::Hailuo => &[VideoOption::Audio, VideoOption::Seed],
-    };
-    unsent_of(lacks, request)
 }
 
 /// The options `request` gives among those a request `lacks`, in the order

@@ -156,19 +156,6 @@ pub enum VideoShape {
 impl VideoShape {
     /// The shapes a compatible entry may choose.
     pub const CHOSEN: [Self; 4] = [Self::XaiVideos, Self::OpenaiVideos, Self::ArkTasks, Self::OpenrouterVideos];
-
-    /// How a call's words name it, such as `Veo takes no --seed`.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Grok => "Grok",
-            Self::XaiVideos => "xAI Videos",
-            Self::Veo => "Veo",
-            Self::OpenaiVideos => "OpenAI Videos",
-            Self::OpenrouterVideos => "OpenRouter Videos",
-            Self::ArkTasks => "Ark Tasks",
-            Self::Hailuo => "Hailuo",
-        }
-    }
 }
 
 serde_plain::derive_display_from_serialize!(VideoShape);
@@ -271,30 +258,6 @@ pub enum AudioShape {
 impl AudioShape {
     /// The shapes a compatible entry may choose.
     pub const CHOSEN: [Self; 1] = [Self::OpenaiSpeech];
-
-    /// The kinds of audio it makes.
-    pub fn makes(self) -> &'static [AudioKind] {
-        match self {
-            Self::OpenaiSpeech => &[AudioKind::Speech],
-            Self::Gemini => &[AudioKind::Speech, AudioKind::Music],
-            Self::Elevenlabs => &[AudioKind::Speech, AudioKind::Music, AudioKind::Effect],
-            Self::Seed => &[AudioKind::Speech, AudioKind::Effect],
-            Self::Minimax => &[AudioKind::Speech],
-        }
-    }
-
-    /// How a call of `kind` names it, such as `Lyria takes no --duration`.
-    pub fn name(self, kind: AudioKind) -> &'static str {
-        match (self, kind) {
-            (Self::OpenaiSpeech, _) => "OpenAI Speech",
-            (Self::Gemini, AudioKind::Music) => "Lyria",
-            (Self::Gemini, _) => "Gemini",
-            (Self::Elevenlabs, _) => "ElevenLabs",
-            (Self::Seed, AudioKind::Speech) => "Seed speech",
-            (Self::Seed, _) => "Seed Audio",
-            (Self::Minimax, _) => "MiniMax speech",
-        }
-    }
 }
 
 serde_plain::derive_display_from_serialize!(AudioShape);

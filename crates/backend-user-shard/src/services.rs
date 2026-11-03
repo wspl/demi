@@ -388,6 +388,7 @@ impl Services {
             http.clone(),
             providers.models_dev_url,
             providers.clock.clone(),
+            &providers.families.effort_vendors(),
         );
         let media = MediaCatalog::new(http.clone(), providers.media_catalog_url, providers.media_catalog);
         media.start(&edge);

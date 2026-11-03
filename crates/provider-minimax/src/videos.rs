@@ -226,8 +226,12 @@ impl VideoMaker for Hailuo {
     fn unsent(&self, catalog: &Catalog, request: &VideoRequest) -> Vec<VideoOption> {
         match self.api(catalog, &request.model) {
             Ok(Api::V1) => unsent_of(&[VideoOption::Reference, VideoOption::Aspect, VideoOption::Audio, VideoOption::Seed], request),
-            _ => videos::unsent(VideoShape::Hailuo, request),
+            _ => unsent_of(&[VideoOption::Audio, VideoOption::Seed], request),
         }
+    }
+
+    fn shape_name(&self) -> &'static str {
+        "Hailuo"
     }
 }
 

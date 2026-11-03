@@ -17,7 +17,7 @@ use demi_provider_common::{
     json_body,
     media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable},
     media_catalog::Catalog,
-    videos::{self, Done, JobState, VideoMaker, VideoRequest},
+    videos::{self, Done, JobState, VideoMaker, VideoOption, VideoRequest, unsent_of},
 };
 use demi_shared_types::{VideoResolution, VideoShape};
 use futures_util::future::BoxFuture;
@@ -53,6 +53,15 @@ impl MediaMaker for KeyVideos {
 }
 
 impl VideoMaker for KeyVideos {
+    /// Veo's request has no field for sound.
+    fn unsent(&self, _: &Catalog, request: &VideoRequest) -> Vec<VideoOption> {
+        unsent_of(&[VideoOption::Audio], request)
+    }
+
+    fn shape_name(&self) -> &'static str {
+        "Veo"
+    }
+
     fn shape(&self) -> VideoShape {
         VideoShape::Veo
     }

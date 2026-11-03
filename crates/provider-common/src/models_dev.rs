@@ -38,6 +38,9 @@ struct Inner {
     http: reqwest::Client,
     url: Url,
     clock: Arc<dyn Clock>,
+    /// The vendors whose models take an effort where the document lists
+    /// one, as their families say.
+    effort_vendors: Arc<[String]>,
     /// Shared by every thread that reads the document, for sections that
     /// never await.
     state: Mutex<State>,
@@ -67,6 +70,7 @@ struct DocumentCopy {
 #[derive(Debug, Clone)]
 pub struct ModelsDevSnapshot {
     document: Arc<ModelsDevDocument>,
+    effort_vendors: Arc<[String]>,
     /// When the content was downloaded.
     pub fetched_at: Timestamp,
     /// Whether this is the copy kept after a failed request.
@@ -85,13 +89,17 @@ impl ModelsDevClient {
     pub const DEFAULT_URL: &str = "https://models.dev/api.json";
 
     /// A client of the document at `url` with no copy yet. `http` is the
-    /// client of the runtime that reads it, and `clock` dates each download.
-    pub fn new(http: reqwest::Client, url: Url, clock: Arc<dyn Clock>) -> Self {
+    /// client of the runtime that reads it, `clock` dates each download, and
+    /// `effort_vendors` are the vendors whose models take an effort where the
+    /// document lists one (`ProviderFamily::effort_vendors` in
+    /// `crates/provider-registry/src/families.rs`).
+    pub fn new(http: reqwest::Client, url: Url, clock: Arc<dyn Clock>, effort_vendors: &[&str]) -> Self {
         Self {
             inner: Arc::new(Inner {
                 http,
                 url,
                 clock,
+                effort_vendors: effort_vendors.iter().map(|vendor| (*vendor).to_owned()).collect(),
                 state: Mutex::default(),
             }),
         }
@@ -127,7 +135,7 @@ impl ModelsDevClient {
                 Reuse::Any => true,
             });
             if let Some(copy) = reused {
-                return Ok(copy.snapshot());
+                return Ok(copy.snapshot(&self.inner.effort_vendors));
             }
             match state.flight.as_ref().and_then(WeakShared::upgrade) {
                 Some(flight) => flight,
@@ -141,11 +149,11 @@ impl ModelsDevClient {
             }
         };
         match flight.await {
-            Ok(copy) => Ok(copy.snapshot()),
+            Ok(copy) => Ok(copy.snapshot(&self.inner.effort_vendors)),
             Err(failure) => {
                 let kept = self.inner.lock().copy.clone();
                 match kept {
-                    Some(copy) => Ok(copy.stale(&failure)),
+                    Some(copy) => Ok(copy.stale(&failure, &self.inner.effort_vendors)),
                     None => Err(ModelsDevError(failure)),
                 }
             }
@@ -225,9 +233,10 @@ async fn request(
 }
 
 impl DocumentCopy {
-    fn snapshot(&self) -> ModelsDevSnapshot {
+    fn snapshot(&self, effort_vendors: &Arc<[String]>) -> ModelsDevSnapshot {
         ModelsDevSnapshot {
             document: self.document.clone(),
+            effort_vendors: effort_vendors.clone(),
             fetched_at: self.fetched_at,
             stale: false,
             warnings: Vec::new(),
@@ -235,9 +244,10 @@ impl DocumentCopy {
     }
 
     /// The copy kept after a request that failed with `failure`.
-    fn stale(&self, failure: &str) -> ModelsDevSnapshot {
+    fn stale(&self, failure: &str, effort_vendors: &Arc<[String]>) -> ModelsDevSnapshot {
         ModelsDevSnapshot {
             document: self.document.clone(),
+            effort_vendors: effort_vendors.clone(),
             fetched_at: self.fetched_at,
             stale: true,
             warnings: vec![format!("Using stale models.dev catalog: {failure}")],
@@ -301,14 +311,20 @@ impl ModelsDevSnapshot {
                 .as_deref()
                 .cmp(&left.model.release_date.as_deref())
         });
-        found.into_iter().map(Listing::found).collect()
+        found.into_iter().map(|listing| listing.found(self.takes_effort(listing.vendor))).collect()
     }
 
     /// The model `id` as vendor `vendor_id` lists it.
     pub fn listing(&self, vendor_id: &str, id: &str) -> Option<ModelsDevMatch> {
         let (vendor, listed) = self.document.0.get_key_value(vendor_id)?;
         let (id, model) = listed.models.get_key_value(id)?;
-        Some(Listing { vendor, id, model }.found())
+        Some(Listing { vendor, id, model }.found(self.takes_effort(vendor)))
+    }
+
+    /// Whether vendor `vendor_id`'s models take an effort where the document
+    /// lists one.
+    fn takes_effort(&self, vendor_id: &str) -> bool {
+        self.effort_vendors.iter().any(|vendor| vendor == vendor_id)
     }
 
     /// The whole model list of vendor `vendor_id` as a catalog, with this
@@ -337,7 +353,7 @@ impl ModelsDevSnapshot {
                 vendor
                     .models
                     .iter()
-                    .map(|(id, model)| (id.clone(), model.wire(vendor_id)))
+                    .map(|(id, model)| (id.clone(), model.wire(self.takes_effort(vendor_id))))
                     .collect()
             })
             .unwrap_or_default()
@@ -355,7 +371,7 @@ impl ModelsDevSnapshot {
                 .models
                 .iter()
                 .filter(|(_, model)| kept(model))
-                .map(|(id, model)| model.catalog(vendor_id, id))
+                .map(|(id, model)| model.catalog(id, self.takes_effort(vendor_id)))
                 .collect(),
             default_model_id: None,
             warnings: self.warnings.clone(),
@@ -385,11 +401,12 @@ struct Listing<'a> {
 }
 
 impl Listing<'_> {
-    fn found(&self) -> ModelsDevMatch {
+    /// The match, whose vendor's models take an effort when `takes_effort`.
+    fn found(&self, takes_effort: bool) -> ModelsDevMatch {
         ModelsDevMatch {
             vendor: self.vendor.clone(),
             id: self.id.clone(),
-            model: self.model.catalog(self.vendor, self.id),
+            model: self.model.catalog(self.id, takes_effort),
             release_date: self.model.release_date.clone(),
         }
     }
@@ -579,12 +596,12 @@ impl ModelsDevModel {
     /// - `reasoning` is its thinking support, and the values of its `effort`
     ///   reasoning option are its efforts.
     /// - `tool_call` is its tool support and `cost` its prices.
-    /// - How it takes thinking is [`ModelsDevModel::wire`]'s, for vendor
-    ///   `vendor_id`.
+    /// - How it takes thinking is [`ModelsDevModel::wire`]'s, which an effort
+    ///   is one of when `takes_effort`.
     ///
     /// What the document does not state is unknown.
-    fn catalog(&self, vendor_id: &str, id: &str) -> ProviderModel {
-        let wire = self.wire(vendor_id);
+    fn catalog(&self, id: &str, takes_effort: bool) -> ProviderModel {
+        let wire = self.wire(takes_effort);
         let limit = self.limit.as_ref();
         let context_window = limit.and_then(|limit| tokens(limit.context));
         let output_limit = limit
@@ -618,15 +635,15 @@ impl ModelsDevModel {
         }
     }
 
-    /// How the model of vendor `vendor_id` wants thinking sent and sent back:
+    /// How the model wants thinking sent and sent back:
     ///
-    /// - An effort goes as one when the record is Anthropic's and lists an
-    ///   `effort` option, and as a budget otherwise: no other vendor documents
-    ///   what its `effort` means on the Messages API.
+    /// - An effort goes as one when its vendor's models take one
+    ///   (`takes_effort`) and the record lists an `effort` option, and as a
+    ///   budget otherwise.
     /// - Its thinking goes back when `interleaved` is `true` or names
     ///   `reasoning_content`, the one field Demi reads thinking from.
-    fn wire(&self, vendor_id: &str) -> ModelWire {
-        let takes_effort = vendor_id == "anthropic"
+    fn wire(&self, takes_effort: bool) -> ModelWire {
+        let takes_effort = takes_effort
             && self
                 .reasoning_options
                 .iter()
