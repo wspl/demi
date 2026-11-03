@@ -715,11 +715,16 @@ impl Context {
     ) -> Result<BrowserTab> {
         let ended = self.ended.child_token();
         // A tab the user opens in the panel starts at the size the panel
-        // gives it, so it needs no other once its page commits; any other
-        // starts at the unwatched viewport.
-        let viewport = match created_by {
+        // gives it, and one a page opens at its opener's, as a browser's new
+        // window takes the size of the one it came from: the popup of a page
+        // the user watches is shown at the panel's size from its first
+        // picture, and one an agent's page opens lays out as that page did.
+        // Neither needs another size once its page commits. An agent's starts
+        // at the unwatched viewport.
+        let viewport = match &created_by {
             BrowserCreatedBy::User {} => *self.opening.borrow(),
-            _ => None,
+            BrowserCreatedBy::Page { opener } => self.tabs.latest().find(opener).map(BrowserTab::viewport),
+            BrowserCreatedBy::Agent { .. } | BrowserCreatedBy::Temporary { .. } => None,
         }
         .unwrap_or(crate::tabs::viewport::UNWATCHED);
         let tab = async {

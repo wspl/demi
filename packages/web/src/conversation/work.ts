@@ -167,6 +167,12 @@ export const useWorkPanel = defineStore('work-panel', () => {
   const panels = new Map<string, PanelTabs>()
   /** Each conversation's pinned tabs' data as last shown, for the page's lifetime. */
   const keptPinned = reactive(new Map<string, PinnedTabs>())
+  /**
+   * The tab of each conversation a selection named before the panel had it,
+   * as the stop of the watch that selects it once it arrives: a page's tab
+   * reaches the panel only after the plugin that opened it asked for it.
+   */
+  const awaited = new Map<string, () => void>()
   const phone = usePhone()
   /** The conversation the page shows, as the frame tells it (`shown`). */
   let shownId: string | null = null
@@ -258,9 +264,13 @@ export const useWorkPanel = defineStore('work-panel', () => {
     if (selection === null) {
       return null
     }
-    const known = kinds().some((kind) => kind.pinned && kind.kind === selection)
-      || tabsOf(conversationId).tabs.value.some((tab) => tab.id === selection)
-    return known || !ready(conversationId) ? selection : null
+    return has(conversationId, selection) || !ready(conversationId) ? selection : null
+  }
+
+  /** Whether the panel has the tab `id`: one of its tabs or a pinned kind. */
+  function has(conversationId: string, id: string): boolean {
+    return kinds().some((kind) => kind.pinned && kind.kind === id)
+      || tabsOf(conversationId).tabs.value.some((tab) => tab.id === id)
   }
 
   /** Keeps whether the panel is open, as the desktop shows the conversation again; a phone keeps nothing. */
@@ -311,6 +321,12 @@ export const useWorkPanel = defineStore('work-panel', () => {
    * address names (`correct`).
    */
   function move(conversationId: string, next: PanelView, how: 'push' | 'replace' | 'correct'): void {
+    // Another tab selected, by the user or the product, overrides a selection
+    // that still waits for its tab; a correction of the address selects
+    // nothing of its own.
+    if (how !== 'correct' && next.history.at(-1) !== viewOf(conversationId).history.at(-1)) {
+      stopAwaiting(conversationId)
+    }
     keepHistory(conversationId, next.history)
     if (keptPinned.get(conversationId) !== next.pinned) {
       keptPinned.set(conversationId, next.pinned)
@@ -556,6 +572,11 @@ export const useWorkPanel = defineStore('work-panel', () => {
 
   /** The web browser's Back or Forward, as the panel's address bar takes it. */
   function go(direction: HistoryDirection): void {
+    // Back and Forward select what the address names, overriding a
+    // selection that still waits for its tab.
+    for (const conversationId of [...awaited.keys()]) {
+      stopAwaiting(conversationId)
+    }
     if (direction === 'back') {
       router?.back()
     } else {
@@ -583,7 +604,28 @@ export const useWorkPanel = defineStore('work-panel', () => {
     move(conversationId, { ...viewOf(conversationId), open, sheet: false }, 'push')
   }
 
+  function stopAwaiting(conversationId: string): void {
+    awaited.get(conversationId)?.()
+    awaited.delete(conversationId)
+  }
+
+  /**
+   * Selects the tab `id`; one the panel does not have yet is selected once it
+   * arrives, unless another tab is selected first. Written into the address
+   * before it arrives, it would yield to the tab the address can name.
+   */
   function select(conversationId: string, id: string): void {
+    stopAwaiting(conversationId)
+    if (!has(conversationId, id)) {
+      const stop = watch(() => has(conversationId, id), (arrived) => {
+        if (arrived) {
+          stopAwaiting(conversationId)
+          select(conversationId, id)
+        }
+      })
+      awaited.set(conversationId, stop)
+      return
+    }
     const view = viewOf(conversationId)
     move(conversationId, { ...view, history: selectTab(view.history, id) }, 'push')
   }
