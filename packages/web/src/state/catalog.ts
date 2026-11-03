@@ -171,7 +171,7 @@ export function providerView(
     compatible: entry.compatible,
     // The `media` family's entries make media alone.
     makesText: entry.providerType !== 'media',
-    baseUrl: entry.endpoint ?? '',
+    baseUrl: entry.baseUrl ?? '',
     throughDevice: entry.throughDevice,
     ...(entry.compatible ? { headers: entry.headers.map((header) => ({ ...header })) } : {}),
     wireApi: wireApi(entry.providerType, entry.wireApi),
