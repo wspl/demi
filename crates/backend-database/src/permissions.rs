@@ -28,7 +28,7 @@ use std::collections::BTreeMap;
 use demi_shared_types::{NodeId, PermissionOutcome, Timestamp};
 use demi_web_api_protocol::credentials::{CredentialField, Keep};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
-use demi_web_api_protocol::permissions::{PermissionRequestId, RequestingAgent};
+use demi_web_api_protocol::permissions::{PermissionDecision, PermissionRequestId, RequestingAgent};
 use garde::Validate;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -324,19 +324,19 @@ impl ControlService {
         &self,
         conversation: ConversationId,
         request: PermissionRequestId,
-        outcome: PermissionOutcome,
+        decision: PermissionDecision,
     ) -> Result<Result<Vec<StoredRequest>, PermissionRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let decided = match undecided(&transaction, &conversation, &request)? {
                 Err(refusal) => return Ok(Err(refusal)),
-                Ok(stored) => match (&stored.ask, outcome) {
-                    (StoredAsk::Credential { .. }, PermissionOutcome::Allowed) => {
+                Ok(stored) => match (&stored.ask, decision) {
+                    (StoredAsk::Credential { .. }, PermissionDecision::Allow) => {
                         return Ok(Err(PermissionRefusal::InvalidAnswer(
                             AnswerProblem::ValuesMissing,
                         )));
                     }
-                    (StoredAsk::Credential { .. }, PermissionOutcome::Denied) => {
+                    (StoredAsk::Credential { .. }, PermissionDecision::Deny) => {
                         transaction.execute(
                             "DELETE FROM permission_requests WHERE id = ?1",
                             [request.as_str()],
@@ -344,40 +344,36 @@ impl ControlService {
                         transaction.commit()?;
                         return Ok(Ok(vec![stored]));
                     }
-                    (StoredAsk::Permission(category), PermissionOutcome::Allowed) => {
-                        transaction.execute(
-                            "INSERT OR IGNORE INTO permission_grants (conversation_id, category, granted_at)
-                             VALUES (?1, ?2, ?3)",
-                            params![conversation.as_str(), category, now.as_millisecond()],
-                        )?;
-                        transaction
-                            .prepare_cached(
-                                "SELECT id FROM permission_requests
-                                 WHERE conversation_id = ?1 AND kind = 'permission' AND categories = ?2
-                                   AND decision IS NULL",
-                            )?
-                            .query_map(params![conversation.as_str(), to_json(&[category])], |row| row.get(0))?
-                            .collect::<Result<_, _>>()?
+                    (StoredAsk::Permission(category), PermissionDecision::Allow) => {
+                        let category = category.clone();
+                        let requests = grant(&transaction, &conversation, &category, PermissionOutcome::Allowed, now)?;
+                        transaction.commit()?;
+                        return Ok(Ok(requests));
                     }
-                    (StoredAsk::Permission(_), PermissionOutcome::Denied) => vec![request.as_str().to_owned()],
+                    (StoredAsk::Permission(_), PermissionDecision::Deny) => vec![request.as_str().to_owned()],
                 },
             };
-            let decision = outcome_text(outcome);
-            let mut requests = Vec::with_capacity(decided.len());
-            for id in decided {
-                transaction.execute(
-                    "UPDATE permission_requests SET decision = ?2, decided_at = ?3 WHERE id = ?1",
-                    params![id, decision, now.as_millisecond()],
-                )?;
-                let row = transaction.query_row(
-                    &format!("SELECT {REQUEST_COLUMNS} FROM permission_requests WHERE id = ?1"),
-                    [&id],
-                    |row| Ok(request_row(row)),
-                )??;
-                requests.push(row);
-            }
+            let requests = decide(&transaction, decided, PermissionOutcome::Denied, now)?;
             transaction.commit()?;
             Ok(Ok(requests))
+        })
+        .await
+    }
+
+    /// Grants `category` to `conversation` as the user's allow of a request
+    /// for it does, such as when another conversation's agent reaches it:
+    /// records the grant and allows every undecided permission request of the
+    /// conversation for the category.
+    ///
+    /// Answers the requests it allowed, whose messages the backend delivers
+    /// next.
+    pub async fn grant_permission(&self, conversation: ConversationId, category: &str) -> Result<Vec<StoredRequest>, StorageError> {
+        let category = category.to_owned();
+        self.call(move |connection, now| {
+            let transaction = connection.transaction()?;
+            let requests = grant(&transaction, &conversation, &category, PermissionOutcome::Reached, now)?;
+            transaction.commit()?;
+            Ok(requests)
         })
         .await
     }
@@ -771,6 +767,58 @@ fn fitting(
     Ok(())
 }
 
+/// Records the grant of `category` to `conversation` and decides its
+/// undecided permission requests for it with `outcome`, which says who
+/// granted it: the user's allow through
+/// [`ControlService::decide_permission`], or a reach through
+/// [`ControlService::grant_permission`].
+fn grant(
+    transaction: &rusqlite::Transaction<'_>,
+    conversation: &ConversationId,
+    category: &str,
+    outcome: PermissionOutcome,
+    now: Timestamp,
+) -> Result<Vec<StoredRequest>, StorageError> {
+    transaction.execute(
+        "INSERT OR IGNORE INTO permission_grants (conversation_id, category, granted_at)
+         VALUES (?1, ?2, ?3)",
+        params![conversation.as_str(), category, now.as_millisecond()],
+    )?;
+    let undecided: Vec<String> = transaction
+        .prepare_cached(
+            "SELECT id FROM permission_requests
+             WHERE conversation_id = ?1 AND kind = 'permission' AND categories = ?2
+               AND decision IS NULL",
+        )?
+        .query_map(params![conversation.as_str(), to_json(&[category])], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+    decide(transaction, undecided, outcome, now)
+}
+
+/// Decides the requests `ids` with `outcome`, answering each as stored after.
+fn decide(
+    transaction: &rusqlite::Transaction<'_>,
+    ids: Vec<String>,
+    outcome: PermissionOutcome,
+    now: Timestamp,
+) -> Result<Vec<StoredRequest>, StorageError> {
+    let decision = outcome_text(outcome);
+    let mut requests = Vec::with_capacity(ids.len());
+    for id in ids {
+        transaction.execute(
+            "UPDATE permission_requests SET decision = ?2, decided_at = ?3 WHERE id = ?1",
+            params![id, decision, now.as_millisecond()],
+        )?;
+        let row = transaction.query_row(
+            &format!("SELECT {REQUEST_COLUMNS} FROM permission_requests WHERE id = ?1"),
+            [&id],
+            |row| Ok(request_row(row)),
+        )??;
+        requests.push(row);
+    }
+    Ok(requests)
+}
+
 /// When the conversation was granted `category`, if it was.
 fn granted_at(
     connection: &Connection,
@@ -796,6 +844,7 @@ fn outcome_text(outcome: PermissionOutcome) -> &'static str {
     match outcome {
         PermissionOutcome::Allowed => "allowed",
         PermissionOutcome::Denied => "denied",
+        PermissionOutcome::Reached => "reached",
     }
 }
 
@@ -856,6 +905,7 @@ fn request_row(row: &Row<'_>) -> Result<StoredRequest, StorageError> {
         None => None,
         Some("allowed") => Some(PermissionOutcome::Allowed),
         Some("denied") => Some(PermissionOutcome::Denied),
+        Some("reached") => Some(PermissionOutcome::Reached),
         Some(other) => {
             return Err(StorageError::Corrupt {
                 table: REQUESTS,

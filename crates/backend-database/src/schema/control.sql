@@ -670,7 +670,7 @@ CREATE TABLE permission_requests (
   agent_number      INTEGER,
   agent_description TEXT,
   created_at        INTEGER NOT NULL,
-  decision          TEXT CHECK (decision IN ('allowed', 'denied')),
+  decision          TEXT CHECK (decision IN ('allowed', 'denied', 'reached')),
   decided_at        INTEGER,
   read              INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1)),
   CHECK ((kind = 'permission') = (categories IS NOT NULL)),

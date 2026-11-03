@@ -40,6 +40,7 @@
     "receipt": {
       "allowed": "Você permitiu que esta conversa possa {action}",
       "denied": "Você negou a esta conversa a permissão para {action}",
+      "reached": "Outra conversa entrou em contato com esta, então ela pode {action}",
       "moved": "Você moveu esta conversa para {host} · {path}",
       "moveFailed": "Falha ao mover: {reason}",
       "fromMain": "Mensagem de {agent}",

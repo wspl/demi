@@ -40,6 +40,7 @@
     "receipt": {
       "allowed": "このチャットで次の操作を許可しました: {action}",
       "denied": "このチャットで次の操作を拒否しました: {action}",
+      "reached": "別のチャットから連絡があったため、このチャットで次の操作が許可されました: {action}",
       "moved": "このチャットを {host} · {path} に移動しました",
       "moveFailed": "移動できませんでした: {reason}",
       "fromMain": "{agent}からのメッセージ",

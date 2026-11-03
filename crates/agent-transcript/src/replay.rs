@@ -669,6 +669,7 @@ fn permission(outcome: PermissionOutcome) -> &'static str {
     match outcome {
         PermissionOutcome::Allowed => "allowed",
         PermissionOutcome::Denied => "denied",
+        PermissionOutcome::Reached => "reached",
     }
 }
 

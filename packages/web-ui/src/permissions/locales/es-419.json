@@ -38,7 +38,7 @@
     },
     "conversation_use": {
       "action": "usar tus otros chats",
-      "description": "Permite que los agentes de este chat enumeren tus chats, lean lo que contiene cualquiera de ellos, les envíen mensajes y empiecen chats nuevos. Lo que leen se envía al proveedor del modelo de este chat."
+      "description": "Permite que los agentes de este chat enumeren tus chats, lean lo que contiene cualquiera de ellos, les envíen mensajes y empiecen chats nuevos. Un chat al que escriben o que empiezan puede hacer lo mismo. Lo que leen se envía al proveedor del modelo de este chat."
     },
     "agent_profiles": {
       "action": "cambiar los perfiles de subagentes",

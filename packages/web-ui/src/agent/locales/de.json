@@ -40,6 +40,7 @@
     "receipt": {
       "allowed": "Du hast diesem Chat erlaubt, {action}",
       "denied": "Du hast diesem Chat verweigert, {action}",
+      "reached": "Ein anderer Chat hat diesen Chat kontaktiert, daher wurde ihm erlaubt, {action}",
       "moved": "Du hast diesen Chat nach {host} · {path} verschoben",
       "moveFailed": "Verschieben fehlgeschlagen: {reason}",
       "fromMain": "Nachricht von {agent}",

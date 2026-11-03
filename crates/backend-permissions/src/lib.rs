@@ -7,7 +7,9 @@
 //! - The requests a call without a grant raises, which the call waits on until
 //!   the user decides.
 //! - The user's decisions, which end those waits.
-//! - The grants an allow records, each kept for the conversation's life.
+//! - The grants an allow records, and those another conversation's message
+//!   gives the conversation it reaches ([`grant`]), each kept for the
+//!   conversation's life.
 //! - The message each decision sends the agent that asked, delivered again at
 //!   start when a restart cut it off.
 //!
@@ -24,7 +26,8 @@
 //! user owns beyond the conversation. Each such power is one broad category,
 //! which the user judges once for a conversation and which covers every object
 //! and every step of it: every credential, every device, every other
-//! conversation.
+//! conversation. A conversation another one's agent reaches holds Use Your
+//! Other Conversations as the reaching one does, so it answers without asking.
 //!
 //! ```text
 //! demi skills add ... -> dispatch: the check -- grant? -- yes --> handler
@@ -730,34 +733,54 @@ pub async fn decide(
             AnswerProblem::DeclinedWithValues,
         )),
         (decision, None) => {
+            let decided = shard
+                .control()
+                .decide_permission(conversation.clone(), request, decision)
+                .await??;
             let outcome = match decision {
                 PermissionDecision::Allow => PermissionOutcome::Allowed,
                 PermissionDecision::Deny => PermissionOutcome::Denied,
             };
-            let decided = shard
-                .control()
-                .decide_permission(conversation.clone(), request, outcome)
-                .await??;
-            changed(shard, conversation);
-            for request in decided {
-                match request.ask {
-                    StoredAsk::Credential { .. } => {
-                        shard.waits().answer(&request.id, Answer::Declined);
-                        continue;
-                    }
-                    StoredAsk::Permission(_) => shard.waits().decided(
-                        &request.id,
-                        match outcome {
-                            PermissionOutcome::Allowed => Decided::Allowed,
-                            PermissionOutcome::Denied => Decided::Denied,
-                        },
-                    ),
-                }
-                let this = shard.this();
-                shard.spawn(Box::pin(async move { deliver(this, request).await }));
-            }
+            settle(shard, conversation, decided, outcome);
             Ok(())
         }
+    }
+}
+
+/// Grants `category` to `conversation` as the user's Allow does, such as
+/// when another conversation's agent reaches it: a request for it that waits
+/// is allowed and its agent hears so.
+///
+/// A page shows no grant, so one that allows no request changes nothing it
+/// shows and tells it nothing.
+pub async fn grant(shard: &dyn PermissionShard, conversation: &ConversationId, category: &str) -> Result<(), PermissionError> {
+    let allowed = shard.control().grant_permission(conversation.clone(), category).await?;
+    if !allowed.is_empty() {
+        settle(shard, conversation, allowed, PermissionOutcome::Reached);
+    }
+    Ok(())
+}
+
+/// Tells the agents of the requests `decided` the decision `outcome`, and
+/// every page that the conversation's requests changed.
+fn settle(shard: &dyn PermissionShard, conversation: &ConversationId, decided: Vec<StoredRequest>, outcome: PermissionOutcome) {
+    changed(shard, conversation);
+    for request in decided {
+        match request.ask {
+            StoredAsk::Credential { .. } => {
+                shard.waits().answer(&request.id, Answer::Declined);
+                continue;
+            }
+            StoredAsk::Permission(_) => shard.waits().decided(
+                &request.id,
+                match outcome {
+                    PermissionOutcome::Allowed | PermissionOutcome::Reached => Decided::Allowed,
+                    PermissionOutcome::Denied => Decided::Denied,
+                },
+            ),
+        }
+        let this = shard.this();
+        shard.spawn(Box::pin(async move { deliver(this, request).await }));
     }
 }
 
@@ -861,6 +884,9 @@ fn content(
     let mut text = match outcome {
         PermissionOutcome::Allowed => format!("The user allowed this conversation to {action}."),
         PermissionOutcome::Denied => format!("The user denied this conversation permission to {action}."),
+        PermissionOutcome::Reached => {
+            format!("Another conversation's agent reached this conversation, which allows it to {action}.")
+        }
     };
     if recipient != &request.agent.node
         && let Some(subagent) = &request.agent.subagent

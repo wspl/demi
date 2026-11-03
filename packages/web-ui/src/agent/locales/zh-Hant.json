@@ -40,6 +40,7 @@
     "receipt": {
       "allowed": "你已允許此對話{action}",
       "denied": "你已拒絕此對話{action}",
+      "reached": "另一個對話聯絡了此對話，因此已允許它{action}",
       "moved": "你已將此對話移到 {host} · {path}",
       "moveFailed": "移動失敗：{reason}",
       "fromMain": "來自{agent}的訊息",

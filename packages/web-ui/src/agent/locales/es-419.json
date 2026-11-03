@@ -40,6 +40,7 @@
     "receipt": {
       "allowed": "Permitiste que este chat pueda {action}",
       "denied": "Negaste a este chat el permiso para {action}",
+      "reached": "Otro chat se comunicó con este, así que puede {action}",
       "moved": "Moviste este chat a {host} · {path}",
       "moveFailed": "No se pudo mover: {reason}",
       "fromMain": "Mensaje de {agent}",
