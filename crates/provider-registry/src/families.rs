@@ -25,19 +25,17 @@
 //! reported instead of silently doing nothing.
 
 use std::collections::BTreeMap;
-use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_provider_claude_code::{AccountMachine, Placement};
 use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
-use demi_provider_common::{ModelWires, RuntimeEnv, Searches};
+use demi_provider_common::{ModelWires, Searches};
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_provider_common::images::ImageMaker;
 use demi_provider_common::media::MediaModelInfo;
 use demi_provider_common::audio::AudioMaker;
 use demi_provider_common::videos::VideoMaker;
 use demi_provider_common::quota::QuotaSnapshotStore;
-use demi_provider_common::{Provider, ProviderRuntime, Secret};
+use demi_provider_common::{Provider, Secret};
 use demi_shared_types::{AudioShape, CacheTtl, Clock, ImageShape, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 use url::Url;
@@ -121,21 +119,9 @@ pub trait ProviderFamily: Send + Sync + 'static {
         None
     }
 
-    /// A session's runtime of the provider `args` build, whose process
-    /// `placement` starts, with the shard's `env`; none for a family whose
-    /// provider runs no process (`crates/provider-claude-code/src/placement.rs`).
-    fn process_runtime(
-        &self,
-        _args: FamilyArgs,
-        _env: RuntimeEnv,
-        _placement: Rc<dyn Placement>,
-    ) -> Option<Result<Box<dyn ProviderRuntime>, FamilyError>> {
-        None
-    }
-
     /// The account operations of the provider `args` build, whose sign-in
-    /// runs on the args' machine; none for a family whose login runs no
-    /// process (`crates/provider-claude-code/src/account.rs`).
+    /// runs a process of the family's own; none for a family whose login
+    /// runs none.
     fn login_accounts(
         &self,
         _args: FamilyArgs,
@@ -163,10 +149,6 @@ pub struct FamilyArgs {
     /// The backend's one models.dev copy, for a family whose directory it
     /// is.
     pub models_dev: ModelsDevClient,
-    /// The Claude Code machine, which a process provider's sign-in and usage
-    /// probe run on (`crates/provider-claude-code/src/placement.rs`); none before the
-    /// backend's shards started, and in a backend without them.
-    pub machine: Option<Arc<dyn AccountMachine>>,
     /// The prompt cache lifetime the entry asks for; none to send none.
     pub cache_ttl: Option<CacheTtl>,
     /// The vendor's searches the entry turned on.

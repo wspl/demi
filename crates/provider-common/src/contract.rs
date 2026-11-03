@@ -24,7 +24,10 @@ use crate::{
 /// One provider entry and account, shared by every user and request of the
 /// entry. It is used from any thread: the backend's request handlers read its
 /// status, models and quota, and each user's shard builds runtimes from it.
-pub trait Provider: Send + Sync + 'static {
+///
+/// It is `Any`, so the part of the backend that places a provider's CLI
+/// process tells that provider's concrete type and asks it for the runtime.
+pub trait Provider: std::any::Any + Send + Sync {
     fn capabilities(&self) -> Capabilities;
 
     /// Whether the credential is present and usable. Never makes an
@@ -117,9 +120,10 @@ pub trait Provider: Send + Sync + 'static {
 /// What a provider requires of the Host its conversation runs on.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Capabilities {
-    /// The runtime starts a process on a Host, so the backend places the
-    /// process and admission refuses a Host without process execution.
-    pub process_host: bool,
+    /// The command package whose CLI its requests run as a process on a
+    /// machine the backend places them on, such as `demi.claude-code`; none
+    /// for a provider whose requests are HTTP.
+    pub cli_package: Option<&'static str>,
 }
 
 /// What the user's shard gives a runtime it builds.
@@ -134,10 +138,10 @@ pub struct RuntimeEnv {
 /// Why a provider could not build a runtime.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RuntimeError {
-    /// The provider starts a process and the environment offers no Host to
-    /// start it on.
+    /// The provider runs its CLI as a process, which only a runtime over the
+    /// backend's placement starts.
     #[error("{provider} needs a Host that runs processes")]
-    ProcessHostRequired { provider: String },
+    PlacementRequired { provider: String },
     /// The provider makes media and no text, so it runs no session.
     #[error("{provider} makes no text")]
     NoText { provider: String },

@@ -18,16 +18,14 @@
 use demi_provider_common::media_catalog::MediaCatalog;
 use demi_provider_common::Searches;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
-use demi_provider_claude_code::{AccountMachine, Placement};
 use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
 use demi_provider_common::images::ImageMaker;
 use demi_provider_common::media::{MediaMaker, MediaModelInfo};
 use demi_provider_common::audio::AudioMaker;
 use demi_provider_common::videos::VideoMaker;
-use demi_provider_common::{DeviceRoute, ModelWires, Provider, ProviderHttp, ProviderRuntime, RuntimeEnv};
+use demi_provider_common::{DeviceRoute, ModelWires, Provider, ProviderHttp};
 use demi_shared_types::{AudioShape, CacheTtl, Clock, ImageShape, MediaKind, MediaShapes, Model, Rotation};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use demi_provider_common::models_dev::ModelsDevError;
@@ -58,10 +56,6 @@ pub enum RegistryError {
     UnknownFamily(String),
     #[error(transparent)]
     Family(#[from] FamilyError),
-    /// The entry's provider says it runs a process, but its family builds
-    /// no runtime over a placement.
-    #[error("the provider family {0} cannot run its process")]
-    NoProcessRuntime(String),
     /// An API-key entry without its key: nothing is sent until the user
     /// adds it.
     #[error("{SETUP_MESSAGE}")]
@@ -110,9 +104,6 @@ pub struct ProviderRegistry {
     /// built from. A `std` mutex: lookups never await under it.
     built: Mutex<HashMap<BuiltKey, Built>>,
     rotation: Arc<AccountRotation>,
-    /// The Claude Code machine, set once the backend's shards started,
-    /// which hold it.
-    machine: OnceLock<Arc<dyn AccountMachine>>,
     /// The media catalog, whose time each entry's media carry.
     media: MediaCatalog,
     /// The way to the users' devices, set once the backend's shards
@@ -142,18 +133,7 @@ impl ProviderRegistry {
             clock,
             built: Mutex::default(),
             rotation: AccountRotation::new(),
-            machine: OnceLock::new(),
             devices: OnceLock::new(),
-        }
-    }
-
-    /// Sets the Claude Code machine, once, as the backend's shards start
-    /// (`crates/backend-cloud/src/lib.rs`).
-    ///
-    /// A second setting is refused and the first kept.
-    pub fn set_machine(&self, machine: Arc<dyn AccountMachine>) {
-        if self.machine.set(machine).is_err() {
-            tracing::error!(event = "provider_registry.set_twice", what = "claude_code_machine", "the Claude Code machine was set twice; the first is kept");
         }
     }
 
@@ -480,7 +460,7 @@ impl ProviderRegistry {
     }
 
     /// The account operations a login into `entry` runs, whose sign-in runs
-    /// on the Claude Code machine for a family whose login runs a process.
+    /// a process of its family's own for a family whose login runs one.
     pub async fn login_accounts(&self, entry: &ProviderEntry) -> Result<LoginAccounts, RegistryError> {
         let family = self.family(&entry.family)?;
         let args = self.entry_args(entry, None, self.model_wires(entry).await).await?;
@@ -492,8 +472,8 @@ impl ProviderRegistry {
 
     /// The account operations of a login of `family` over `pool` with no
     /// account yet, whose entry does not exist until the login completes;
-    /// its sign-in runs on the Claude Code machine for a family whose login
-    /// runs a process.
+    /// its sign-in runs a process of its family's own for a family whose
+    /// login runs one.
     pub fn detached_login_accounts(
         &self,
         family: &str,
@@ -516,28 +496,22 @@ impl ProviderRegistry {
         }
     }
 
-    /// Whether `entry`'s provider runs a process on a Host, which then is the
-    /// Claude Code machine (`crates/provider-claude-code/src/placement.rs`).
+    /// Whether `entry`'s provider runs its CLI as a process on a machine.
     pub async fn runs_a_process(&self, entry: &ProviderEntry) -> Result<bool, RegistryError> {
-        Ok(self.provider_for(entry).await?.capabilities().process_host)
+        Ok(self.provider_for(entry).await?.capabilities().cli_package.is_some())
     }
 
-    /// A session's runtime of `entry`'s provider for `account`, whose
-    /// process `placement` starts, for a provider that runs one
-    /// (`crates/provider-claude-code/src/placement.rs`).
-    pub async fn process_runtime(
+    /// A provider of `entry` for `account` of its own, built without the
+    /// cache, as a session's runtime of a provider that runs a process has
+    /// one.
+    pub async fn own_provider(
         &self,
         entry: &ProviderEntry,
         account: Option<&CredentialId>,
-        env: RuntimeEnv,
-        placement: Rc<dyn Placement>,
-    ) -> Result<Box<dyn ProviderRuntime>, RegistryError> {
+    ) -> Result<Arc<dyn Provider>, RegistryError> {
         let family = self.family(&entry.family)?;
         let args = self.entry_args(entry, account, self.model_wires(entry).await).await?;
-        let runtime = family
-            .process_runtime(args, env, placement)
-            .ok_or_else(|| RegistryError::NoProcessRuntime(entry.family.clone()))?;
-        Ok(runtime?)
+        Ok(family.provider(args)?)
     }
 
     /// Forgets the entry's provider and catalog after its configuration or
@@ -780,7 +754,6 @@ impl ProviderRegistry {
             services_http: self.http.clone(),
             clock: self.clock.clone(),
             models_dev: self.vendors.models_dev().clone(),
-            machine: self.machine.get().cloned(),
         }
     }
 }

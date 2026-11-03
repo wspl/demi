@@ -38,6 +38,7 @@
 //! Each run, sign-in and probe holds a lease of the machine for its whole life,
 //! which keeps it awake and wakes it.
 
+use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -50,7 +51,11 @@ use demi_backend_cloud::access::MachineAccess;
 use demi_backend_database::control::ControlService;
 use demi_backend_page_sync::Part;
 use demi_plugin_host::Lost;
-use demi_provider_registry::claude_releases::ReleaseError;
+use demi_provider_claude_code::releases::ReleaseError;
+use demi_provider_common::ProviderRuntime;
+use demi_provider_registry::entry::ProviderEntry;
+use demi_provider_registry::registry::ProviderRegistry;
+use demi_web_api_protocol::ids::CredentialId;
 use demi_runner_client::{
     AttachedArtifact, Link, RemoteHost, ResidentCallError, ResidentRequest, WeakLink,
 };
@@ -67,7 +72,7 @@ use demi_host_interface::{
     WriteOptions,
 };
 use demi_provider_claude_code::{
-    AccountMachine, AccountWork, CliSite, CliStart, CliStarter, CliSystem, CliWork, ConfigDir,
+    AccountMachine, AccountWork, ClaudeCodeProvider, CliSite, CliStart, CliStarter, CliSystem, CliWork, ConfigDir,
     IdleProcesses, MachineState, Placed, Placement, StartError, StartStage, StartSteps, WorkLease,
     close_process,
 };
@@ -206,6 +211,25 @@ impl ClaudeMachine {
     }
 }
 
+/// Where the Claude Code machine is once the master's shard has started,
+/// which every shard and the Claude Code family read; empty before then,
+/// and in a backend without shards. Its clones share it.
+#[derive(Clone, Default)]
+pub struct MachineSlot(Arc<std::sync::OnceLock<ClaudeMachine>>);
+
+impl MachineSlot {
+    /// Puts `machine` there, once: a second is refused and the first kept,
+    /// which the answer says.
+    pub(crate) fn set(&self, machine: ClaudeMachine) -> bool {
+        self.0.set(machine).is_ok()
+    }
+
+    /// The machine; none before the master's shard has started.
+    pub fn get(&self) -> Option<ClaudeMachine> {
+        self.0.get().cloned()
+    }
+}
+
 impl AccountMachine for ClaudeMachine {
     fn state(&self) -> &MachineState {
         &self.state
@@ -272,6 +296,24 @@ impl CrossPlacement {
             }),
             None => Rc::new(Unplaced),
         }
+    }
+
+    /// A session's runtime of `entry`'s provider for `account`, whose CLI
+    /// processes of `work` start through the placement: a provider of its own
+    /// (`ProviderRegistry::own_provider`), which only Claude Code's is of those
+    /// whose CLI runs as a process.
+    pub async fn runtime(
+        shard: Weak<Shard>,
+        registry: &ProviderRegistry,
+        entry: &ProviderEntry,
+        account: Option<&CredentialId>,
+        work: ProcessWork,
+    ) -> Result<Box<dyn ProviderRuntime>, String> {
+        let provider: Arc<dyn Any + Send + Sync> = registry.own_provider(entry, account).await.map_err(|error| error.to_string())?;
+        let provider = provider
+            .downcast::<ClaudeCodeProvider>()
+            .map_err(|_| format!("The provider family {} runs no process Demi places", entry.family))?;
+        Ok(provider.process_runtime(Self::placement(shard, work)))
     }
 
     /// The command context the package's operations run under for the work.
@@ -864,7 +906,7 @@ impl MachinePlacement {
             // A start that finds the executable it was given gone, as after
             // another runner sharing the cache removed it, drops what is
             // kept of the machine's versions
-            // (`crates/provider-registry/src/claude_releases.rs`).
+            // (`crates/provider-claude-code/src/releases.rs`).
             let kept_by = self.shard.clone();
             let device = access.device.id.clone();
             let exit = process
@@ -1192,7 +1234,7 @@ pub(crate) struct ClaudeCli {
 type Versions = Shared<LocalBoxFuture<'static, Result<Vec<Installed>, CliError>>>;
 
 /// What the backend keeps of the CLI versions a machine has
-/// (`crates/provider-registry/src/claude_releases.rs`).
+/// (`crates/provider-claude-code/src/releases.rs`).
 ///
 /// It is the answer of the runner connection `link`, asked once on it, or what
 /// the backend's own install over it left. A new connection asks again.
@@ -1216,7 +1258,7 @@ impl KeptVersions {
 /// A start waiting for an ask of a machine's versions. The last one to
 /// give up before the answer drops the ask, so the next start asks again
 /// rather than wait for an ask nobody waits for
-/// (`crates/provider-registry/src/claude_releases.rs`).
+/// (`crates/provider-claude-code/src/releases.rs`).
 struct WaitingForVersions<'a> {
     cli: &'a ClaudeCli,
     device: &'a DeviceId,
@@ -1327,7 +1369,7 @@ impl Shard {
     }
 
     /// The executable to start on `target`
-    /// (`crates/provider-registry/src/claude_releases.rs`): the wanted
+    /// (`crates/provider-claude-code/src/releases.rs`): the wanted
     /// version when the machine has it, else the newest it has while the wanted
     /// one installs beside it.
     ///
@@ -1375,7 +1417,7 @@ impl Shard {
 
     /// The versions `target`'s machine has, newest install first, as the backend
     /// keeps them for its runner connection
-    /// (`crates/provider-registry/src/claude_releases.rs`).
+    /// (`crates/provider-claude-code/src/releases.rs`).
     ///
     /// The versions are asked once on the connection, by whichever start comes
     /// first, while the others wait for the same answer. A failed ask, or one
@@ -1466,7 +1508,7 @@ impl Shard {
 
     /// Drops what is kept of `device`'s CLI versions when `lost` names the
     /// package's state there, which went without the runner saying so
-    /// (`crates/provider-registry/src/claude_releases.rs`).
+    /// (`crates/provider-claude-code/src/releases.rs`).
     pub(crate) fn cli_package_lost(&self, device: &DeviceId, lost: &Lost<'_>) {
         if matches!(lost, Lost::Every | Lost::Package(PACKAGE)) {
             self.claude_cli().forget_versions(device);

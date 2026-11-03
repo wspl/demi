@@ -19,6 +19,8 @@ testing = []
 [dependencies]
 demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }
+# The releases it reads and the package that installs them.
+demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
 demi-host-interface = { path = "../host-interface" }
 # The build version the SDK MCP server names.
 demi-shared-artifacts = { path = "../shared-artifacts" }
@@ -29,6 +31,9 @@ bytes.workspace = true
 # stream of its messages, and these channels are both.
 futures-channel = { version = "0.3", features = ["sink"] }
 futures-util.workspace = true
+# A release's manifest is validated as the package's protocol declares it.
+garde.workspace = true
+jiff.workspace = true
 reqwest = { workspace = true, features = ["rustls", "stream"] }
 # The SDK MCP server; `local` runs its service loop and handlers on the
 # user's shard, which is one thread.
@@ -40,4 +45,5 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["codec"] }
 tracing.workspace = true
+url = { version = "2", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }

@@ -117,7 +117,7 @@ impl ProviderRegistry {
             active,
             quota,
             quota_capability,
-            cli_package: crate::claude_releases::cli_package(provider.as_ref()),
+            cli_package: provider.capabilities().cli_package.map(str::to_owned),
         };
         Ok(if disclose {
             details

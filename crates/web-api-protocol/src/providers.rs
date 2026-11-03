@@ -597,9 +597,8 @@ pub struct ProviderDetails {
     #[schemars(with = "Nullable<QuotaSnapshot>")]
     pub quota: Option<QuotaSnapshot>,
     pub quota_capability: QuotaCapability,
-    /// The command package that installs the CLI the provider's requests
-    /// start on the Claude Code machine, such as `demi.claude-code`; null
-    /// when its requests are HTTP.
+    /// The command package whose CLI the provider's requests run as a
+    /// process, such as `demi.claude-code`; null when its requests are HTTP.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub cli_package: Option<String>,
@@ -964,8 +963,8 @@ pub struct ModelCatalog {
 pub struct CatalogProvider {
     pub provider_id: ProviderId,
     pub display_name: String,
-    /// The command package that installs the CLI the provider's requests
-    /// start on the Claude Code machine; null when its requests are HTTP.
+    /// The command package whose CLI the provider's requests run as a
+    /// process; null when its requests are HTTP.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub cli_package: Option<String>,

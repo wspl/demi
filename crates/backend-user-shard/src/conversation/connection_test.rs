@@ -106,17 +106,10 @@ impl Shard {
         // The model the catalog lists is also the configured one, when the
         // entry configures its list.
         let selection = model.selection(entry.id.as_str(), None, None);
-        let runtime = if provider.capabilities().process_host {
+        let runtime = if provider.capabilities().cli_package.is_some() {
             let work = ProcessWork::Account(entry.id.clone());
-            let placement = CrossPlacement::placement(Rc::downgrade(&self.this()), work);
             let account = account.as_ref().or(entry.active());
-            let env = RuntimeEnv {
-                http: provider_registry.http_for(&entry, self.http().clone()),
-            };
-            provider_registry
-                .process_runtime(&entry, account, env, placement)
-                .await
-                .map_err(|error| error.to_string())
+            CrossPlacement::runtime(Rc::downgrade(&self.this()), provider_registry, &entry, account, work).await
         } else {
             let env = RuntimeEnv {
                 http: provider_registry.http_for(&entry, self.http().clone()),

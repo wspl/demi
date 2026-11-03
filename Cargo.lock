@@ -2964,12 +2964,15 @@ dependencies = [
  "async-stream",
  "base64 0.22.1",
  "bytes",
+ "demi-command-package-claude-code-protocol",
  "demi-host-interface",
  "demi-provider-common",
  "demi-shared-artifacts",
  "demi-shared-types",
  "futures-channel",
  "futures-util",
+ "garde",
+ "jiff",
  "reqwest",
  "rmcp",
  "serde",
@@ -2979,6 +2982,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "url",
  "uuid",
 ]
 
@@ -3116,9 +3120,7 @@ dependencies = [
 name = "demi-provider-registry"
 version = "0.1.65"
 dependencies = [
- "demi-command-package-claude-code-protocol",
  "demi-provider-anthropic-api",
- "demi-provider-claude-code",
  "demi-provider-common",
  "demi-provider-openai-api",
  "demi-shared-types",

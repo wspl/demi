@@ -19,24 +19,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use demi_command_package_claude_code_protocol::{Artifact, PACKAGE, Release, is_version};
-use demi_provider_common::Provider;
+use demi_command_package_claude_code_protocol::{Artifact, Release, is_version};
 use demi_provider_common::kept::KeptRead;
 use demi_shared_types::Clock;
 use jiff::SignedDuration;
 use serde::Deserialize;
 use tokio::runtime::Handle;
 use url::Url;
-
-/// The command package that installs the CLI `provider`'s requests start on
-/// the Claude Code machine: Claude Code's, the one provider whose requests are a
-/// process (`crates/command-package-claude-code/src/lib.rs`); none for an HTTP provider.
-pub fn cli_package(provider: &dyn Provider) -> Option<String> {
-    provider
-        .capabilities()
-        .process_host
-        .then(|| PACKAGE.to_owned())
-}
 
 /// The vendor's official distribution.
 pub const DEFAULT_RELEASES_URL: &str = "https://downloads.claude.ai/claude-code-releases";

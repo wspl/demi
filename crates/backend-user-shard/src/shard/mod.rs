@@ -339,7 +339,7 @@ impl Shard {
     /// The Claude Code machine, through the master's shard; none in a
     /// backend whose shards never started.
     pub(crate) fn claude_machine(&self) -> Option<ClaudeMachine> {
-        self.services().claude_machine.get().cloned()
+        self.services().claude_machine.get()
     }
 
     /// Whether the shard is closing and starts no new work.
@@ -757,10 +757,9 @@ impl ShardPool {
         // shard and the providers' sign-ins and probes reach through it
         // (`crates/backend-cloud/src/lib.rs`).
         let machine = ClaudeMachine::new(shards.clone(), shared.control.clone());
-        if shared.claude_machine.set(machine.clone()).is_err() {
-            tracing::error!(event = "provider_registry.set_twice", what = "claude_code_machine", "the Claude Code machine was set twice; the first is kept");
+        if !shared.claude_machine.set(machine) {
+            tracing::error!(event = "claude_code_machine.set_twice", "the Claude Code machine was set twice; the first is kept");
         }
-        shared.provider_registry.set_machine(Arc::new(machine));
         // A provider entry's request through one of its owner's devices goes
         // through the owner's shard (`crates/backend-user-shard/src/shard/device_requests.rs`).
         shared.provider_registry.set_devices(device_requests::DeviceRequests::new(shards.clone()));

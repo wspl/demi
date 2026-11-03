@@ -4,7 +4,6 @@
 //! They are the registry the backend starts with, beside which a test registers
 //! scripted families.
 
-use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
 use demi_provider_registry::registry::MEDIA_FAMILY;
@@ -13,12 +12,13 @@ use demi_provider_registry::families::{
     ProviderFamily,
 };
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
-use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider, Placement};
+use demi_backend_user_shard::conversation::claude_cli::MachineSlot;
+use demi_provider_claude_code::{AccountMachine, ClaudeCodeConfig, ClaudeCodeProvider};
 use demi_provider_codex::{CodexConfig, CodexProvider, CodexReleases};
 use demi_provider_common::credentials::SubscriptionAccounts;
 use demi_provider_common::quota::{MemorySnapshots, QuotaSnapshotStore};
 use demi_provider_common::media::MediaVendor;
-use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv, Searches};
+use demi_provider_common::{Provider, Searches};
 use demi_provider_bytedance::{Ark, ArkConfig, ArkProvider, Speech, SpeechConfig, SpeechProvider};
 use demi_provider_elevenlabs::{ElevenLabsConfig, ElevenLabsProvider};
 use demi_provider_google::{GoogleConfig, GoogleProvider};
@@ -28,8 +28,9 @@ use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
 use demi_shared_types::{AudioShape, CacheTtl, ImageShape, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 
-/// The families built into the backend.
-pub fn builtin() -> FamilyRegistry {
+/// The families built into the backend, whose Claude Code family reads its
+/// machine from `machine`.
+pub fn builtin(machine: MachineSlot) -> FamilyRegistry {
     FamilyRegistry::default()
         .with_compatible_images(Arc::new(|args: CompatibleImagesArgs| {
             demi_provider_openai_api::compatible_images(args.name, args.key, &args.base, args.models, args.clock)
@@ -42,7 +43,7 @@ pub fn builtin() -> FamilyRegistry {
             demi_provider_openai_api::compatible_audio(args.name, args.key, &args.base, args.models, args.clock)
         }))
         .with("anthropic", AnthropicFamily)
-        .with("claude-code", ClaudeCodeFamily)
+        .with("claude-code", ClaudeCodeFamily { machine })
         .with("codex", CodexFamily::default())
         .with("google", GoogleFamily)
         .with("grok-build", GrokBuildFamily::new())
@@ -446,16 +447,24 @@ impl ProviderFamily for GrokBuildFamily {
 
 /// The `claude-code` family: Claude accounts signed in by the Claude Code
 /// CLI's own login, whose requests run the CLI on the Claude Code machine.
-#[derive(Default)]
-pub struct ClaudeCodeFamily;
+pub struct ClaudeCodeFamily {
+    /// The machine a sign-in and a usage probe run on, once the backend's
+    /// shards started; a session's processes reach it through their shard.
+    machine: MachineSlot,
+}
 
 impl ClaudeCodeFamily {
+    /// The machine, once the backend's shards started.
+    fn machine(&self) -> Option<Arc<dyn AccountMachine>> {
+        self.machine.get().map(|machine| Arc::new(machine) as Arc<dyn AccountMachine>)
+    }
+
     fn build(&self, args: FamilyArgs) -> Result<ClaudeCodeProvider, FamilyError> {
         let FamilyCredential::Subscription(subscription) = args.credential else {
             return Err(FamilyError::WrongCredential);
         };
         let (account, quota) = bound(subscription.account);
-        let mut config = ClaudeCodeConfig::new(args.entry_id, args.label, account, args.machine);
+        let mut config = ClaudeCodeConfig::new(args.entry_id, args.label, account, self.machine());
         config.searches = args.searches;
         Ok(ClaudeCodeProvider::new(
             config,
@@ -480,23 +489,11 @@ impl ProviderFamily for ClaudeCodeFamily {
         Ok(Arc::new(self.build(args)?))
     }
 
-    fn process_runtime(
-        &self,
-        args: FamilyArgs,
-        _env: RuntimeEnv,
-        placement: Rc<dyn Placement>,
-    ) -> Option<Result<Box<dyn ProviderRuntime>, FamilyError>> {
-        Some(
-            self.build(args)
-                .map(|provider| provider.process_runtime(placement)),
-        )
-    }
-
     fn login_accounts(
         &self,
         args: FamilyArgs,
     ) -> Option<Result<Box<dyn SubscriptionAccounts>, FamilyError>> {
-        let machine = args.machine.clone()?;
+        let machine = self.machine()?;
         Some(
             self.build(args)
                 .map(|provider| provider.login_accounts(machine)),

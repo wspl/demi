@@ -23,13 +23,15 @@
 //!
 //! A process provider cannot build its runtime from the provider alone, since
 //! only the backend chooses the machine. So `Provider::runtime` refuses
-//! (`ProcessHostRequired`) and the runtime is built over a placement, from the
-//! arguments the provider was built from, so that no code downcasts a provider
-//! to its concrete type:
+//! (`PlacementRequired`), and the backend's placement, the user shard's
+//! Claude Code part, asks the registry for a provider of the entry's own,
+//! tells it as this crate's [`ClaudeCodeProvider`] by its `Any`, and builds
+//! the runtime over the placement. The registry and the families' trait know
+//! no placement:
 //!
 //! ```text
 //! backend (user's shard)                      this crate
-//!   claude-code family --same arguments-->    provider + placement = runtime
+//!   registry's own provider --as Any-->       provider + placement = runtime
 //!   Placement::start <------ a run needs a process
 //!     wake or admit the machine, ensure the CLI, hand over an earlier sign-in
 //!     spawn request built by the provider; Host process interface starts it
