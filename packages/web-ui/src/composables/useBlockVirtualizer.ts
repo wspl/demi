@@ -1563,9 +1563,15 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       // The virtualizer learns the scroller's offset from its scroll event,
       // which comes after the new rows are measured; corrected from the old
       // offset, they would pull the view back. So its offset moves with the
-      // scroller's, in the same step.
-      const target = (virtualizer.value.scrollOffset ?? viewTop(el)) + moved - anchor.start
+      // scroller's, in the same step. The move starts from where the scroller
+      // stands, with the follows still held for it, not from the virtualizer's
+      // offset, which lags behind a scroll whose event has not come yet: the
+      // reader's last step would be undone.
+      const target = viewTop(el) + pendingScrollBy + moved - anchor.start
+      pendingScrollBy = 0
+      pendingFrom = null
       virtualizer.value.scrollOffset = target
+      scrollOffset.value = target
       el.scrollTop = target - rowsShift.value
       scrolledTo = el.scrollTop
       logList('debug', 'list.anchor_corrected', {
@@ -1574,6 +1580,11 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         row_from: anchor.anchorIndex,
         row_to: index,
       })
+      // The anchor is its row at its new place, which the next change of the
+      // blocks measures from. updateAnchor may not find the row in view drawn
+      // yet, and would keep the old place: that change would then move the
+      // view by as much again.
+      lastAnchor = { ...anchor, anchorIndex: index, start: moved, scrollTop: target }
       updateAnchor()
     },
     { flush: 'post' },
