@@ -75,7 +75,7 @@ use demi_agent_tools::duration;
 use demi_backend_database::projects::TypedDirectory;
 use demi_runner_client::{Admission, Link, RemoteHost, WeakLink, Withdrawal};
 use demi_backend_runners::file_gate::{FileGate, FileLease};
-use demi_host_interface::{HostError, HostErrorKind, HostFs};
+use demi_host_interface::{Host as _, HostError, HostErrorKind, HostFs};
 use demi_runner_protocol::files::FsFailure;
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, SerialGate};
 use demi_web_api_protocol::devices::DeviceKind;
@@ -414,6 +414,7 @@ impl HostAccessError {
             Self::Refused(Refusal::Busy) => (ErrorCode::ConversationBusy, 409),
             Self::Refused(Refusal::Stopped) => (ErrorCode::HostStopped, 409),
             Self::Refused(Refusal::DeviceGone) => (ErrorCode::DeviceNotFound, 404),
+            Self::Refused(Refusal::HomeUnknown) => (ErrorCode::DeviceHomeUnknown, 409),
             Self::Cloud(error) => error.code(),
             Self::Host(error) => host_error_code(error),
             Self::Cancelled | Self::Storage(_) | Self::Objects(_) | Self::Store(_) => {
@@ -460,6 +461,9 @@ pub enum Refusal {
     /// such as a revoked one.
     #[error("The conversation's device no longer exists")]
     DeviceGone,
+    /// A path from `~` on a Host whose runner never reported its home.
+    #[error("The Host has not said where its home is")]
+    HomeUnknown,
 }
 
 /// A conversation's Host as an admitted operation reaches it.
@@ -471,6 +475,28 @@ pub struct ConversationHost {
     /// The home directory the device's runner reported when it last
     /// connected.
     pub home: Option<String>,
+}
+
+impl ConversationHost {
+    /// `path` as a request names it on this Host: from `~`, under the home
+    /// its runner reported, while it reported one; any other as it is.
+    pub fn path(&self, path: &str) -> String {
+        match &self.home {
+            Some(home) => self.host.identity().paths.from_home(home, path),
+            None => path.to_owned(),
+        }
+    }
+
+    /// `path`, absolute or from `~`, as an absolute path on this Host; a
+    /// path from `~` while its runner reported no home is refused.
+    pub fn rooted(&self, path: &str) -> Result<String, Refusal> {
+        let path = self.path(path);
+        if self.host.identity().paths.is_absolute(&path) {
+            Ok(path)
+        } else {
+            Err(Refusal::HomeUnknown)
+        }
+    }
 }
 
 /// An admitted operation's hold. The fields drop in order: the Host, the

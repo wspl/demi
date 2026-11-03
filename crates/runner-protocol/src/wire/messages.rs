@@ -1988,7 +1988,7 @@ impl AutostartUnavailable {
             }
             Self::NotWritten { path, error } => format!(
                 "the file that registers it, {}, could not be written ({error})",
-                from_home(path, home)
+                written_from_home(path, home)
             ),
             Self::LingerOff { user } => format!(
                 "it starts only once {user} logs in; to start it at boot, run: sudo loginctl enable-linger {user}"
@@ -2005,7 +2005,7 @@ impl AutostartUnavailable {
 }
 
 /// `path` written from `~` when it lies in `home`.
-fn from_home(path: &str, home: &str) -> String {
+fn written_from_home(path: &str, home: &str) -> String {
     let home = home.trim_end_matches(['/', '\\']);
     match path.strip_prefix(home) {
         Some(rest) if !home.is_empty() && (rest.starts_with('/') || rest.starts_with('\\')) => {

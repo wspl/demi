@@ -254,7 +254,8 @@ impl From<HostAccessError> for HostError {
                 | Refusal::NotAttached
                 | Refusal::Busy
                 | Refusal::Stopped
-                | Refusal::DeviceGone,
+                | Refusal::DeviceGone
+                | Refusal::HomeUnknown,
             ) => HostError::new(HostErrorKind::Unavailable, error.to_string()),
         }
     }

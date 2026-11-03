@@ -44,6 +44,55 @@ impl HostPaths {
         format!("{directory}{}{name}", self.separator())
     }
 
+    /// What `path` names under the Host's home when it starts from `~`, as a
+    /// shell reads it: `""` for `~` itself, `x` for `~/x`; none for any other
+    /// path, `~x` among them.
+    pub fn home_relative(self, path: &str) -> Option<&str> {
+        match path.strip_prefix('~')? {
+            "" => Some(""),
+            rest if rest.starts_with(|c| self.separates(c)) => {
+                Some(rest.trim_start_matches(|c| self.separates(c)))
+            }
+            _ => None,
+        }
+    }
+
+    /// `path` with a leading `~` read as the Host's home `home`
+    /// ([`Self::home_relative`]); any other path as it is.
+    pub fn from_home(self, home: &str, path: &str) -> String {
+        match self.home_relative(path) {
+            Some("") => home.to_owned(),
+            Some(rest) => self.join(home, rest),
+            None => path.to_owned(),
+        }
+    }
+
+    /// `path` written from `~` when it is the Host's home `home` or lies
+    /// under it, which [`Self::from_home`] reads back: `~` for the home,
+    /// `~` and the rest of the path, its separator first, for what is in it;
+    /// any other path as it is. A Windows path's home is found as
+    /// [`is_inside`] finds a directory, in either case and either separator.
+    pub fn written_from_home(self, home: &str, path: &str) -> String {
+        let home = home.trim_end_matches(|c| self.separates(c));
+        let starts = match self {
+            Self::Posix => path.starts_with(home),
+            Self::Windows => path
+                .get(..home.len())
+                .is_some_and(|head| head.replace('/', "\\").eq_ignore_ascii_case(&home.replace('/', "\\"))),
+        };
+        if home.is_empty() || !starts {
+            return path.to_owned();
+        }
+        let rest = path[home.len()..].trim_end_matches(|c| self.separates(c));
+        if rest.is_empty() {
+            "~".to_owned()
+        } else if rest.starts_with(|c| self.separates(c)) {
+            format!("~{rest}")
+        } else {
+            path.to_owned()
+        }
+    }
+
     /// Whether `path` is absolute on the Host: from `/` on a Posix Host,
     /// from a drive, `C:\`, or a share on Windows.
     pub fn is_absolute(self, path: &str) -> bool {

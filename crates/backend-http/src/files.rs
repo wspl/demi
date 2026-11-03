@@ -72,7 +72,7 @@ async fn list_on(
 ) -> Result<Response, ApiError> {
     let requested = query.path.map(|path| path.as_str().to_owned());
     let (directory, read_at) = on_host(state, user, id, device, async move |host| {
-        let path = requested.unwrap_or_else(|| host.root.clone());
+        let path = requested.map_or_else(|| host.root.clone(), |path| host.path(&path));
         let (entries, read_at) = browse_directory(&host.host, &path)
             .await
             .map_err(ApiError::host_operation)?;
@@ -107,6 +107,7 @@ pub(super) async fn lists(
     JsonBody(DirectoryLists { paths }): JsonBody<DirectoryLists>,
 ) -> Result<Json<ListedDirectories>, ApiError> {
     let lists = on_host(&state, &user.id, &id, None, async move |host| {
+        let paths: Vec<String> = paths.iter().map(|path| host.path(path)).collect();
         let reads = paths.iter().map(|path| browse_directory(&host.host, path));
         let answers = futures_util::future::join_all(reads).await;
         Ok(paths
@@ -161,6 +162,7 @@ async fn make_directory_on(
     CreateDirectory { path }: CreateDirectory,
 ) -> Result<(StatusCode, Json<CreatedDirectory>), ApiError> {
     let made = on_host(state, user, id, device, async move |host| {
+        let path = host.path(&path);
         HostFs::mkdir(&host.host, &path, MkdirOptions { recursive: true })
             .await
             .map_err(ApiError::host_operation)?;
@@ -180,7 +182,8 @@ pub(super) async fn remove(
 ) -> Result<StatusCode, ApiError> {
     on_host(&state, &user.id, &id, None, async move |host| {
         let kept = [host.home.as_deref(), Some(host.root.as_str())];
-        if protected_path(path.as_str(), kept.into_iter().flatten()) {
+        let path = host.rooted(path.as_str()).map_err(HostAccessError::from)?;
+        if protected_path(&path, kept.into_iter().flatten()) {
             return Err(ApiError::new(
                 StatusCode::CONFLICT,
                 ErrorCode::ProtectedPath,
@@ -191,7 +194,7 @@ pub(super) async fn remove(
             recursive: true,
             force: true,
         };
-        HostFs::rm(&host.host, path.as_str(), options)
+        HostFs::rm(&host.host, &path, options)
             .await
             .map_err(ApiError::host_operation)?;
         Ok(StatusCode::NO_CONTENT)
@@ -222,7 +225,7 @@ pub(super) async fn text(
 ) -> Result<Response, ApiError> {
     let held = header(&headers, IF_NONE_MATCH).map(|held| held.trim().to_owned());
     let (read, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
-        let path = path.as_str().to_owned();
+        let path = host.path(path.as_str());
         let read = match held.as_deref() {
             Some(held) => host.host.read_pipe_unless(&path, TEXT_RANGE, held).await,
             None => host

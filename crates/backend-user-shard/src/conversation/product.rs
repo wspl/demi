@@ -595,14 +595,14 @@ impl demi_agent_server::ReplyFiles for ShardReplyFiles {
                 .ok_or(PictureFailure::HostUnavailable)?;
             // A path from the Host's home is read from the home its runner
             // reported.
-            let path = match path.strip_prefix("~/") {
-                Some(rest) => {
+            let paths = shard
+                .host_paths(&conversation)
+                .await
+                .map_err(|_| PictureFailure::HostUnavailable)?;
+            let path = match paths.home_relative(path) {
+                Some(_) => {
                     let home = shard.devices().home(&device).ok_or(PictureFailure::HostUnavailable)?;
-                    shard
-                        .host_paths(&conversation)
-                        .await
-                        .map_err(|_| PictureFailure::HostUnavailable)?
-                        .join(&home, rest)
+                    paths.from_home(&home, path)
                 }
                 None => path.to_owned(),
             };

@@ -91,18 +91,15 @@ impl dyn HostShard + '_ {
 fn typed_directory(device: &DeviceRecord, path: &str) -> Result<String, ChangeRefusal> {
     let host = if device.kind == DeviceKind::Managed { "Cloud" } else { device.name.as_str() };
     let paths = host_paths(device.platform);
-    let path = match path.strip_prefix('~') {
-        Some(rest) if rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\') => {
+    let path = match paths.home_relative(path) {
+        Some(_) => {
             let home = match device.kind {
                 DeviceKind::Managed => device.home.as_deref().unwrap_or(demi_backend_database::CLOUD_HOME),
                 DeviceKind::User => device.home.as_deref().ok_or(ChangeRefusal::DeviceHomeUnknown)?,
             };
-            match rest.trim_start_matches(['/', '\\']) {
-                "" => home.to_owned(),
-                rest => paths.join(home, rest),
-            }
+            paths.from_home(home, path)
         }
-        _ => path.to_owned(),
+        None => path.to_owned(),
     };
     if !paths.is_absolute(&path) {
         return Err(ChangeRefusal::NotADirectory(format!("{path}: give an absolute directory on {host}")));
