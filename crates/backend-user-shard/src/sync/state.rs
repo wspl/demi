@@ -22,6 +22,7 @@ use demi_web_api_protocol::providers::{ProviderReading, ProviderState};
 use demi_web_api_protocol::state::{ProductState, SyncEvent};
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
+use std::time::Instant;
 use futures_util::future::join_all;
 
 use crate::provider_settings::CatalogError;
@@ -38,6 +39,36 @@ pub enum StateError {
     /// The model catalog could not be read.
     #[error("the model catalog could not be read: {0}")]
     Catalog(#[from] CatalogError),
+}
+
+/// The milliseconds each part of the product state's read took.
+#[derive(Default)]
+struct PartTimes {
+    preferences: u64,
+    providers: u64,
+    models: u64,
+    workspaces: u64,
+    projects: u64,
+    devices: u64,
+    conversations: u64,
+    archived: u64,
+    cloud: u64,
+    runner_release: u64,
+    plugins: u64,
+    plugin_states: u64,
+    manages: u64,
+}
+
+/// `work`'s output, and the milliseconds it took in `ms`.
+async fn timed<T>(ms: &mut u64, work: impl Future<Output = T>) -> T {
+    let started = Instant::now();
+    let output = work.await;
+    *ms = millis(started);
+    output
+}
+
+fn millis(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 /// The entity tag of `body`, the value a read answers with: the quoted hash
@@ -57,11 +88,16 @@ pub fn etag_of_json(json: &[u8]) -> String {
 impl Shard {
     /// The product state for `user`, this shard's user as the session
     /// resolved them.
+    ///
+    /// It writes how long each part took, which a page with no offline copy
+    /// waits for before it shows anything.
     pub async fn product_state(
         &self,
         user: UserDto,
     ) -> Result<ProductState, StateError> {
         let services = self.services();
+        let started = Instant::now();
+        let mut ms = PartTimes::default();
         // The version before anything is read: a change made while the state
         // is read is one after it.
         let version = services.sync.version(self.user());
@@ -69,16 +105,17 @@ impl Shard {
         // this read is learned from the logins part, and its account is
         // then read below or with that part.
         let logins = services.logins.listed(self.user());
-        let preferences = services.control.preferences(self.user().clone()).await?;
-        let providers = self.provider_states(&user).await?;
-        let models = services.known_model_catalog(self.user()).await?;
-        let workspaces = services.control.workspaces(self.user().clone()).await?;
-        let projects = services.control.projects(self.user().clone()).await?;
-        let devices = self.device_list().await?;
-        let mut conversations = self.conversation_summaries(false).await?;
-        conversations.extend(self.conversation_summaries(true).await?);
-        let cloud = self.cloud_shard().cloud_status().await?;
-        let runner_release = match services.runner_releases.current().await {
+        let preferences = timed(&mut ms.preferences, services.control.preferences(self.user().clone())).await?;
+        let providers = timed(&mut ms.providers, self.provider_states(&user)).await?;
+        let models = timed(&mut ms.models, services.known_model_catalog(self.user())).await?;
+        let workspaces = timed(&mut ms.workspaces, services.control.workspaces(self.user().clone())).await?;
+        let projects = timed(&mut ms.projects, services.control.projects(self.user().clone())).await?;
+        let devices = timed(&mut ms.devices, self.device_list()).await?;
+        let mut conversations = timed(&mut ms.conversations, self.conversation_summaries(false)).await?;
+        let active = conversations.len();
+        conversations.extend(timed(&mut ms.archived, self.conversation_summaries(true)).await?);
+        let cloud = timed(&mut ms.cloud, self.cloud_shard().cloud_status()).await?;
+        let runner_release = match timed(&mut ms.runner_release, services.runner_releases.current()).await {
             Ok(release) => release.map(|release| release.release),
             Err(error) => {
                 // The installers and the runners' updates report the
@@ -88,8 +125,32 @@ impl Shard {
                 None
             }
         };
-        let plugins = self.plugins().entries().await.map_err(StorageError::from)?;
-        let plugin_states = self.plugins().page_states().await?;
+        let plugins = timed(&mut ms.plugins, self.plugins().entries()).await.map_err(StorageError::from)?;
+        let plugin_states = timed(&mut ms.plugin_states, self.plugins().page_states()).await?;
+        let manages = timed(&mut ms.manages, services.vault.managed_kinds(self.user())).await?;
+        tracing::info!(
+            event = "state.read",
+            ms = millis(started),
+            preferences_ms = ms.preferences,
+            providers_ms = ms.providers,
+            providers = providers.len(),
+            models_ms = ms.models,
+            workspaces_ms = ms.workspaces,
+            projects_ms = ms.projects,
+            devices_ms = ms.devices,
+            conversations_ms = ms.conversations,
+            conversations = active,
+            archived_ms = ms.archived,
+            archived = conversations.len() - active,
+            cloud_ms = ms.cloud,
+            runner_release_ms = ms.runner_release,
+            plugins_ms = ms.plugins,
+            plugins = plugins.len(),
+            plugin_states_ms = ms.plugin_states,
+            plugin_states = plugin_states.len(),
+            manages_ms = ms.manages,
+            "the product state was read"
+        );
         let public_url = services
             .public_url
             .get()
@@ -100,7 +161,7 @@ impl Shard {
             user,
             mode: services.vault.mode(),
             shared_subscriptions: services.vault.shared_subscriptions(),
-            manages: services.vault.managed_kinds(self.user()).await?,
+            manages,
             preferences,
             providers,
             models,
@@ -287,12 +348,22 @@ impl Shard {
         let entries = services.vault.entries_for(&user.id).await?;
         let providers = join_all(entries.iter().map(|entry| async move {
             let disclose = Vault::manages(&user.id, entry);
+            let started = Instant::now();
             let details = match services.provider_registry.details(entry, disclose).await {
                 Ok(details) => ProviderReading::Read(Box::new(details)),
                 Err(error) => ProviderReading::Failed {
                     message: error.to_string(),
                 },
             };
+            // The entries are read at once: the slowest one is what the
+            // state's read waits for.
+            tracing::info!(
+                event = "provider_details.read",
+                provider = %entry.id,
+                family = %entry.family,
+                ms = millis(started),
+                "an entry's details were read"
+            );
             ProviderState {
                 provider: services.provider_registry.provider_dto(entry),
                 details,

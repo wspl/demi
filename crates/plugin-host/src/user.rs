@@ -1045,7 +1045,15 @@ impl UserPlugins {
         let mut states = BTreeMap::new();
         for (index, registered) in self.0.registry.plugins.iter().enumerate() {
             if enabled[index] && registered.state(Scope::User).is_some() {
+                // One plugin after another: the product state's read waits for them all.
+                let started = std::time::Instant::now();
                 let state = self.state_of(index, None, CancellationToken::new()).await?;
+                tracing::info!(
+                    event = "plugin_page_state.read",
+                    plugin = registered.id().as_str(),
+                    ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    "a plugin's page state was read"
+                );
                 states.insert(registered.id().as_str().to_owned(), state);
             }
         }
