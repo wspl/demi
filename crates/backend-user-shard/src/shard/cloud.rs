@@ -86,6 +86,10 @@ impl CloudShard for Shard {
             .expect("a shard's method runs while the shard lives")
     }
 
+    fn start_cloud(&self, device: &DeviceId) {
+        Shard::start_cloud(&Shard::this(self), device);
+    }
+
     fn activity(&self, conversation: &ConversationId) -> Activity {
         self.conversation_activity(conversation)
     }

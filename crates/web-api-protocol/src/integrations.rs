@@ -1,7 +1,7 @@
 //! The user's integrations (`crates/backend-user-shard/src/integrations.rs`):
 //! what Settings › Integrations reads and sends.
 
-use demi_shared_types::{IntegrationCapabilities, Timestamp};
+use demi_shared_types::{CloudSizing, IntegrationCapabilities, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,11 @@ pub struct IntegrationDto {
     pub init_script: Option<String>,
     /// Where each of its Clouds mounts its shared folder.
     pub shared_path: String,
+    /// How each of its Clouds is sized; a null field is the server's.
+    pub cloud_sizing: CloudSizing,
+    /// How long each of its Clouds runs without activity before it stops,
+    /// in minutes; null for the server's hour.
+    pub cloud_idle_minutes: Option<u32>,
     /// How many Clouds it holds.
     pub clouds: u32,
     /// How many conversations it holds.
@@ -74,4 +79,14 @@ pub struct IntegrationPatch {
     #[schemars(with = "String")]
     #[garde(skip)]
     pub shared_path: Option<String>,
+    /// A new sizing of its Clouds, whole.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "CloudSizing")]
+    #[garde(dive)]
+    pub cloud_sizing: Option<CloudSizing>,
+    /// A new idle window, or null for the server's.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[schemars(with = "Option<u32>", range(min = 1))]
+    #[garde(inner(inner(range(min = 1))))]
+    pub cloud_idle_minutes: Option<Option<u32>>,
 }

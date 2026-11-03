@@ -19,7 +19,7 @@ use std::{
 };
 
 use clap::{CommandFactory, FromArgMatches, parser::ValueSource};
-use demi_machine_manager_protocol::SandboxMachine;
+use demi_machine_manager_protocol::{SandboxLimits, SandboxMachine};
 use demi_machine_manager_protocol::runtime::RuntimeRelease;
 use ipnet::Ipv4Net;
 
@@ -281,6 +281,43 @@ impl Limits {
     pub fn memory_bytes(&self) -> NonZeroU64 {
         mebibytes(self.memory_mib)
     }
+
+    /// These limits with the CPU budget and the memory limit a wake names
+    /// in place of the settings'.
+    pub fn sized(self, named: SandboxLimits) -> Self {
+        Self {
+            cpus: named.cpus.unwrap_or(self.cpus),
+            memory_mib: named.memory_mib.unwrap_or(self.memory_mib),
+            ..self
+        }
+    }
+
+    /// Why a sandbox of these limits cannot run on a host of `cpus` CPUs and
+    /// `memory_mib` MiB, with each limit beyond the host's; none when it
+    /// fits. A cgroup takes a budget over the host's, which would only let
+    /// one sandbox take the host from the others.
+    pub fn beyond(&self, cpus: u32, memory_mib: u64) -> Option<String> {
+        let mut beyond = Vec::new();
+        if self.cpus.get() > cpus {
+            beyond.push(format!("{} CPUs, where the host has {cpus}", self.cpus));
+        }
+        if u64::from(self.memory_mib.get()) > memory_mib {
+            beyond.push(format!("{} MiB of memory, where the host has {memory_mib}", self.memory_mib));
+        }
+        (!beyond.is_empty()).then(|| beyond.join(" and "))
+    }
+}
+
+/// The host's CPUs and its memory in MiB, from `/proc/meminfo`.
+pub fn host_resources() -> std::io::Result<(u32, u64)> {
+    let cpus = std::thread::available_parallelism()?.get();
+    let meminfo = fs_err::read_to_string("/proc/meminfo")?;
+    let kib = meminfo
+        .lines()
+        .find_map(|line| line.strip_prefix("MemTotal:"))
+        .and_then(|rest| rest.trim().trim_end_matches("kB").trim().parse::<u64>().ok())
+        .ok_or_else(|| std::io::Error::other("/proc/meminfo names no MemTotal"))?;
+    Ok((u32::try_from(cpus).unwrap_or(u32::MAX), kib / 1024))
 }
 
 /// A setting that stops the manager from starting.

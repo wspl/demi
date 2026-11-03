@@ -17,6 +17,7 @@ use super::{
 };
 use crate::{
     blocking::{self, OffLoop},
+    config::Limits,
     linux::{freeze, loopdev, mount, trim},
     manager::Core,
     network::{
@@ -185,6 +186,7 @@ impl Sandbox {
         runner_release: &str,
         boot: &ManagedBoot,
         machine: SandboxMachine,
+        limits: Option<Limits>,
         shared: Option<(&Path, &str)>,
     ) -> Result<(), SandboxError> {
         self.programs = Some(programs_base.clone());
@@ -249,9 +251,9 @@ impl Sandbox {
         let spec = oci::spec(&oci::Boot {
             directory: &self.directory,
             namespace: &core.gvisor().network.namespace_file(&self.slot),
-            cgroup: core.config.limits.map(|limits| oci::Cgroup {
+            cgroup: limits.map(|limits| oci::Cgroup {
                 name: self.record.id.as_str(),
-                limits: limits.of(machine),
+                limits,
             }),
             runner_release,
             backend_socket: &backend_socket,

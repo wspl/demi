@@ -6,7 +6,7 @@
 //! token is kept as its hash, as a session's is: the token is shown once, when
 //! it is made.
 
-use demi_shared_types::{IntegrationCapabilities, Timestamp};
+use demi_shared_types::{CloudSizing, IntegrationCapabilities, Timestamp};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, IntegrationId, UserId, WorkspaceId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
@@ -37,6 +37,11 @@ pub struct IntegrationRecord {
     /// Where each of its Clouds mounts its shared folder: `~/...` or a
     /// top-level directory.
     pub shared_path: String,
+    /// How each of its Clouds is sized from its next start.
+    pub cloud_sizing: CloudSizing,
+    /// How long each of its Clouds runs without activity before it stops,
+    /// in minutes, from its next start; none for the server's.
+    pub cloud_idle_minutes: Option<u32>,
 }
 
 /// A change of an integration's settings; a field left out stays.
@@ -47,6 +52,9 @@ pub struct IntegrationPatch {
     /// A new init script, or none for none.
     pub init_script: Option<Option<String>>,
     pub shared_path: Option<String>,
+    pub cloud_sizing: Option<CloudSizing>,
+    /// A new idle window, or none for the server's.
+    pub cloud_idle_minutes: Option<Option<u32>>,
 }
 
 /// What an integration's conversation keeps beside the conversation's own
@@ -74,6 +82,8 @@ pub struct IntegrationCloud {
     pub integration: IntegrationId,
     pub key: Option<String>,
     pub init: InitRun,
+    /// It has no idle stop, and starts again after its lifetime cap's stop.
+    pub always_on: bool,
 }
 
 /// Where a Cloud's run of its integration's init script is, and how its
@@ -121,9 +131,9 @@ impl InitState {
     }
 }
 
-const COLUMNS: &str = "id, user_id, workspace_id, name, capabilities, created_at, init_script, shared_path";
+const COLUMNS: &str = "id, user_id, workspace_id, name, capabilities, created_at, init_script, shared_path, cloud_sizing, cloud_idle_minutes";
 
-const CLOUD_COLUMNS: &str = "device_id, integration_id, external_key, init, init_exit_code, init_output";
+const CLOUD_COLUMNS: &str = "device_id, integration_id, external_key, init, init_exit_code, always_on";
 
 impl ControlService {
     /// Makes an integration of `user`'s with every setting at its default,
@@ -196,14 +206,13 @@ impl ControlService {
     }
 
     /// The integration whose token hashes to `token`; none for a token no
-    /// integration has, and for one of an account that is disabled.
+    /// integration has.
     pub async fn integration_by_token(&self, token: TokenHash) -> Result<Option<IntegrationRecord>, StorageError> {
         self.call(move |connection, _| {
             Ok(connection
                 .query_row(
                     &format!(
-                        "SELECT {COLUMNS} FROM integrations WHERE token_hash = ?1
-                           AND user_id IN (SELECT id FROM users WHERE disabled = 0)"
+                        "SELECT {COLUMNS} FROM integrations WHERE token_hash = ?1"
                     ),
                     [token.as_str()],
                     |row| Ok(integration_row(row)),
@@ -244,6 +253,18 @@ impl ControlService {
                 transaction.execute(
                     "UPDATE integrations SET shared_path = ?2 WHERE id = ?1",
                     params![id.as_str(), path],
+                )?;
+            }
+            if let Some(minutes) = &patch.cloud_idle_minutes {
+                transaction.execute(
+                    "UPDATE integrations SET cloud_idle_minutes = ?2 WHERE id = ?1",
+                    params![id.as_str(), minutes],
+                )?;
+            }
+            if let Some(sizing) = &patch.cloud_sizing {
+                transaction.execute(
+                    "UPDATE integrations SET cloud_sizing = ?2 WHERE id = ?1",
+                    params![id.as_str(), to_json(sizing)],
                 )?;
             }
             let record = integration_in(&transaction, &id)?;
@@ -443,12 +464,13 @@ impl ControlService {
     }
 
     /// Makes a Cloud of the integration's, of the integration's user, with
-    /// `key`; a key another Cloud of the integration has answers that Cloud
-    /// instead, and makes nothing.
+    /// `key`, always on or not; a key another Cloud of the integration has
+    /// answers that Cloud instead, and makes nothing.
     pub async fn create_integration_cloud(
         &self,
         integration: IntegrationId,
         key: Option<String>,
+        always_on: bool,
     ) -> Result<IntegrationCloud, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
@@ -464,8 +486,8 @@ impl ControlService {
             })?;
             let device = super::devices::insert_cloud(&transaction, &record.user, now)?;
             transaction.execute(
-                "INSERT INTO integration_clouds (device_id, integration_id, external_key) VALUES (?1, ?2, ?3)",
-                params![device.id.as_str(), integration.as_str(), key],
+                "INSERT INTO integration_clouds (device_id, integration_id, external_key, always_on) VALUES (?1, ?2, ?3, ?4)",
+                params![device.id.as_str(), integration.as_str(), key, always_on],
             )?;
             transaction.commit()?;
             Ok(IntegrationCloud {
@@ -476,7 +498,40 @@ impl ControlService {
                     state: InitState::Pending,
                     exit_code: None,
                 },
+                always_on,
             })
+        })
+        .await
+    }
+
+    /// Every always-on Cloud of an integration, with its user.
+    pub async fn always_on_clouds(&self) -> Result<Vec<(DeviceId, UserId)>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare_cached(
+                "SELECT c.device_id, i.user_id FROM integration_clouds c
+                 JOIN integrations i ON i.id = c.integration_id WHERE c.always_on = 1",
+            )?;
+            let mut rows = statement.query([])?;
+            let mut clouds = Vec::new();
+            while let Some(row) = rows.next()? {
+                clouds.push((
+                    decode("integration_clouds", "device_id", DeviceId::try_from(row.get::<_, String>(0)?))?,
+                    decode(TABLE, "user_id", UserId::try_from(row.get::<_, String>(1)?))?,
+                ));
+            }
+            Ok(clouds)
+        })
+        .await
+    }
+
+    /// Makes the Cloud `device` always on or not; false for no integration's
+    /// Cloud.
+    pub async fn set_cloud_always_on(&self, device: DeviceId, always_on: bool) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            Ok(connection.execute(
+                "UPDATE integration_clouds SET always_on = ?2 WHERE device_id = ?1",
+                params![device.as_str(), always_on],
+            )? == 1)
         })
         .await
     }
@@ -485,7 +540,8 @@ impl ControlService {
     pub async fn integration_clouds(&self, integration: IntegrationId) -> Result<Vec<IntegrationCloud>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(
-                "SELECT c.device_id, c.integration_id, c.external_key, c.init, c.init_exit_code, c.init_output FROM integration_clouds c
+                "SELECT c.device_id, c.integration_id, c.external_key, c.init, c.init_exit_code, c.always_on
+                 FROM integration_clouds c
                  JOIN devices d ON d.id = c.device_id
                  WHERE c.integration_id = ?1 ORDER BY d.claimed_at, d.id",
             )?;
@@ -667,6 +723,8 @@ fn integration_row(row: &Row<'_>) -> Result<IntegrationRecord, StorageError> {
         created_at: decode(TABLE, "created_at", Timestamp::from_millisecond(row.get("created_at")?))?,
         init_script: row.get("init_script")?,
         shared_path: row.get("shared_path")?,
+        cloud_sizing: json(TABLE, "cloud_sizing", &row.get::<_, String>("cloud_sizing")?)?,
+        cloud_idle_minutes: row.get("cloud_idle_minutes")?,
     })
 }
 
@@ -738,5 +796,6 @@ fn integration_cloud_row(row: &Row<'_>) -> Result<IntegrationCloud, StorageError
             state: decode(TABLE, "init", InitState::parse(&row.get::<_, String>(3)?))?,
             exit_code: row.get(4)?,
         },
+        always_on: row.get(5)?,
     })
 }

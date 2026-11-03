@@ -164,7 +164,7 @@ pub use quota::{
 pub use kept::{KeptMessage, choose_kept, kept_words_budget, text_tokens};
 pub use read_at::ReadAt;
 pub use schema::Nullable;
-pub use integration::IntegrationCapabilities;
+pub use integration::{CloudSizing, IntegrationCapabilities};
 pub use workflow::WorkflowChoice;
 pub use session::{
     ContextRow, ContextRowKind, ContextUsage, PendingCall, PendingSteer,

@@ -1,7 +1,7 @@
 //! The socket's messages: one JSON document per line, a request from the
 //! backend, the manager's reply to it, and the manager's unsolicited events. Fields are declared in the order a message is written.
 
-use std::num::NonZeroU64;
+use std::num::{NonZeroU32, NonZeroU64};
 
 use demi_runner_protocol::boot::ManagedBoot;
 use demi_shared_types::LogLine;
@@ -165,6 +165,30 @@ pub struct WakeParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub shared: Option<SharedFolder>,
+    /// The sandbox's CPU budget and memory limit with the resource limits
+    /// on, which an integration sizes; the manager's own settings for a
+    /// field that is none. A limit beyond the host's CPUs or memory refuses
+    /// the wake.
+    #[serde(default, skip_serializing_if = "SandboxLimits::is_empty")]
+    #[garde(skip)]
+    pub limits: SandboxLimits,
+}
+
+/// A sandbox's CPU budget, in CPUs, and memory limit, in MiB; none for the
+/// manager's setting.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SandboxLimits {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpus: Option<NonZeroU32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_mib: Option<NonZeroU32>,
+}
+
+impl SandboxLimits {
+    pub fn is_empty(&self) -> bool {
+        self.cpus.is_none() && self.memory_mib.is_none()
+    }
 }
 
 /// An integration's shared folder (`crate::shared`): an image of its own,

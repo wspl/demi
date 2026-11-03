@@ -16,7 +16,7 @@ import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDia
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import {
   settingsSections,
-  withCloudSection,
+  withMasterSections,
   withUpdatesSection,
   withUsersSection,
 } from '@demicodes/web-ui/settings/sections'
@@ -83,14 +83,14 @@ const pluginSettings = usePluginSettings()
 const router = useRouter()
 const lifetime = new AbortController()
 /**
- * The rail lists Users for the master and admins only, Cloud for the
- * master only, and Updates for the master and admins on a server that offers
- * updates, whose state then carries it.
+ * The rail lists Users for the master and admins only, Cloud and
+ * Integrations for the master only, and Updates for the master and admins
+ * on a server that offers updates, whose state then carries it.
  */
 const withUsers = computed(() => {
   const role = product.snapshot?.user?.role ?? 'user'
   return withUpdatesSection(
-    withCloudSection(withUsersSection(settingsSections(), role), role),
+    withMasterSections(withUsersSection(settingsSections(), role), role),
     !!product.snapshot?.serverUpgrade,
   )
 })
@@ -486,7 +486,7 @@ function resetShortcuts(): void {
     <ProvidersPanel v-else-if="section === 'models' && resources.canConfigure" />
     <DevicesPanel v-else-if="section === 'devices'" />
     <PortForwardsPanel v-else-if="section === 'portForwards'" />
-    <IntegrationsPanel v-else-if="section === 'integrations'" />
+    <IntegrationsPanel v-else-if="section === 'integrations' && product.snapshot?.user?.role === 'master'" />
     <UsersPanel v-else-if="section === 'users' && product.snapshot?.user?.role !== 'user'" />
     <CloudPanel v-else-if="section === 'cloud' && product.snapshot?.user?.role === 'master'" />
     <CredentialsPanel v-else-if="section === 'credentials'" />

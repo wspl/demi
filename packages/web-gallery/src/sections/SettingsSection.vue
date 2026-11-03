@@ -20,7 +20,7 @@ import GalleryWebSearchShowcase from '../components/GalleryWebSearchShowcase.vue
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import {
   settingsSections as productSections,
-  withCloudSection,
+  withMasterSections,
   withUpdatesSection,
   withUsersSection,
 } from '@demicodes/web-ui/settings/sections'
@@ -233,10 +233,10 @@ providePageHost(
   ),
 )
 // The full mock's user is the master of a server that offers updates, whose
-// rail lists Users, Cloud and Updates.
+// rail lists Users, Cloud, Integrations and Updates.
 const sections = computed(() =>
   withUpdatesSection(
-    withCloudSection(
+    withMasterSections(
       withUsersSection(
         withPluginSections(productSections(), PLUGIN_PAGES, (plugin) =>
           full.plugins.some((entry) => entry.id === plugin && entry.enabled),

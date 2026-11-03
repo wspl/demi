@@ -15,6 +15,9 @@ import { slow } from '../fixtures/slow'
  * - Replace Token shows a new token in place of the hidden one.
  * - The init script saves, and the shared folder's path takes a path in ~ or
  *   a top-level directory, as the backend checks it.
+ * - The Clouds' idle time and sizes save as they are committed, an empty
+ *   field the server's. Support Desk's page shows the sizes as a user who is
+ *   no administrator reads them.
  * - Delete Integration removes it and shows the list again.
  */
 const all = {
@@ -37,6 +40,8 @@ const integrations = ref<SettingsIntegration[]>([
     createdAt: '2026-10-02T09:12:00Z',
     initScript: 'sudo apt-get install -y ripgrep jq\nnpm install -g @example/chat-cli\n',
     sharedPath: '~/team',
+    cloudSizing: { cpus: 4, memoryMib: 8192, systemGb: null, homeGb: 64 },
+    cloudIdleMinutes: 15,
     clouds: 14,
     conversations: 238,
   },
@@ -47,6 +52,8 @@ const integrations = ref<SettingsIntegration[]>([
     createdAt: '2026-10-20T16:40:00Z',
     initScript: null,
     sharedPath: '~/shared',
+    cloudSizing: { cpus: null, memoryMib: null, systemGb: 32, homeGb: null },
+    cloudIdleMinutes: null,
     clouds: 1,
     conversations: 12,
   },
@@ -72,7 +79,18 @@ async function add(): Promise<void> {
   const id = `new${made}`
   integrations.value = [
     ...integrations.value,
-    { id, name, capabilities: { ...all }, createdAt: new Date().toISOString(), initScript: null, sharedPath: '~/shared', clouds: 0, conversations: 0 },
+    {
+      id,
+      name,
+      capabilities: { ...all },
+      createdAt: new Date().toISOString(),
+      initScript: null,
+      sharedPath: '~/shared',
+      cloudSizing: { cpus: null, memoryMib: null, systemGb: null, homeGb: null },
+      cloudIdleMinutes: null,
+      clouds: 0,
+      conversations: 0,
+    },
   ]
   tokens.value = { ...tokens.value, [id]: token() }
   shown.value = id

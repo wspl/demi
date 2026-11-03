@@ -208,6 +208,22 @@ impl<S: Send + Sync> FromRequestParts<S> for AdminUser {
     }
 }
 
+/// The signed-in master. Any other caller answers 403 `forbidden`.
+#[derive(Debug, Clone)]
+pub(super) struct MasterUser(pub(super) UserDto);
+
+impl<S: Send + Sync> FromRequestParts<S> for MasterUser {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, ApiError> {
+        let AuthUser(user) = AuthUser::from_request_parts(parts, state).await?;
+        if user.role != Role::Master {
+            return Err(ApiError::forbidden("Only the master may do this"));
+        }
+        Ok(Self(user))
+    }
+}
+
 /// Passes a request whose cookie names a live session, with its user and the
 /// session, and renews the cookie with the session.
 ///

@@ -1097,7 +1097,13 @@ CREATE TABLE integrations (
   init_script  TEXT,
   -- Where each of its Clouds mounts its shared folder from its next
   -- start: a path in the home, `~/...`, or a top-level directory.
-  shared_path  TEXT NOT NULL DEFAULT '~/shared'
+  shared_path  TEXT NOT NULL DEFAULT '~/shared',
+  -- How each of its Clouds is sized from its next start, CloudSizing as
+  -- JSON: a field it leaves out is the server's.
+  cloud_sizing TEXT NOT NULL DEFAULT '{}',
+  -- How long each of its Clouds runs without activity before it stops, in
+  -- minutes, from its next start; none for the server's.
+  cloud_idle_minutes INTEGER CHECK (cloud_idle_minutes > 0)
 ) STRICT;
 CREATE INDEX integrations_by_user ON integrations (user_id);
 CREATE TABLE integration_conversations (
@@ -1128,7 +1134,10 @@ CREATE TABLE integration_clouds (
     CHECK (init IN ('pending', 'running', 'done', 'failed', 'unscripted')),
   -- The last run's exit code and its output; none before a run ended.
   init_exit_code INTEGER,
-  init_output    TEXT
+  init_output    TEXT,
+  -- 1 for a Cloud with no idle stop, which starts again after its lifetime
+  -- cap's stop.
+  always_on      INTEGER NOT NULL DEFAULT 0 CHECK (always_on IN (0, 1))
 ) STRICT;
 CREATE UNIQUE INDEX integration_clouds_by_key
   ON integration_clouds (integration_id, external_key) WHERE external_key IS NOT NULL;

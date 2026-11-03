@@ -24,7 +24,7 @@ use std::io;
 
 use std::rc::Rc;
 
-use demi_machine_manager_protocol::{BaseVersion, Capacity, DeviceId, Isolation, LeftSandbox, LeftSimple, SandboxMachine, SharedFolder};
+use demi_machine_manager_protocol::{BaseVersion, Capacity, DeviceId, Isolation, LeftSandbox, LeftSimple, SandboxLimits, SandboxMachine, SharedFolder};
 use demi_runner_protocol::boot::ManagedBoot;
 use tokio::sync::mpsc;
 
@@ -41,6 +41,7 @@ pub enum DeviceOp {
         machine: SandboxMachine,
         capacity: Capacity,
         shared: Option<SharedFolder>,
+        limits: SandboxLimits,
     },
     /// Stop and save; also what shutdown does to every device.
     Hibernate { retention: Retention },

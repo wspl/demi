@@ -681,6 +681,7 @@ mod linux {
                         machine: params.machine,
                         capacity: params.capacity,
                         shared: params.shared,
+                        limits: params.limits,
                     };
                     self.run(&device, op).await?;
                     Ok(reply::<WakeParams>(()))

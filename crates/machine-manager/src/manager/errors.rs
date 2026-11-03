@@ -35,6 +35,9 @@ pub enum OpError {
     Simple(#[from] crate::runtime::simple::SimpleError),
     #[error("Cloud start and cleanup failed; working storage retained")]
     StartAndCleanup(#[source] Parts),
+    /// A wake that names limits the host cannot give one sandbox.
+    #[error("The Cloud asks for {0}")]
+    BeyondHost(String),
     #[error("Cloud checkpoint recovery failed")]
     CheckpointRecovery(#[source] Parts),
     #[error("Cloud shutdown failed; working state retained")]

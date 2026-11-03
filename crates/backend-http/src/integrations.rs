@@ -1,5 +1,7 @@
-//! The caller's integrations (`crates/backend-user-shard/src/integrations.rs`),
-//! which Settings › Integrations makes and changes.
+//! The master's integrations (`crates/backend-user-shard/src/integrations.rs`),
+//! which Settings › Integrations makes and changes. Only the master has
+//! integrations: one sizes the Clouds of the server, which is the master's
+//! to give.
 //!
 //! Each route acts in the caller's shard. A token reaches a page only in the
 //! answer of the request that made it.
@@ -14,12 +16,12 @@ use demi_web_api_protocol::integrations::{IntegrationAnswer, IntegrationList, In
 use super::AppState;
 use super::body::JsonBody;
 use super::error::ApiError;
-use super::gate::AuthUser;
+use super::gate::MasterUser;
 
 /// `GET /integrations`.
 pub(super) async fn list(
     State(state): State<AppState>,
-    AuthUser(user): AuthUser,
+    MasterUser(user): MasterUser,
 ) -> Result<Json<IntegrationList>, ApiError> {
     let integrations = state
         .shards
@@ -32,7 +34,7 @@ pub(super) async fn list(
 /// `POST /integrations`: answers 201 with the integration and its token.
 pub(super) async fn create(
     State(state): State<AppState>,
-    AuthUser(user): AuthUser,
+    MasterUser(user): MasterUser,
 ) -> Result<(StatusCode, Json<IntegrationWithToken>), ApiError> {
     let created = state
         .shards
@@ -45,7 +47,7 @@ pub(super) async fn create(
 /// `PATCH /integrations/:id`.
 pub(super) async fn patch(
     State(state): State<AppState>,
-    AuthUser(user): AuthUser,
+    MasterUser(user): MasterUser,
     Path(id): Path<String>,
     JsonBody(patch): JsonBody<IntegrationPatch>,
 ) -> Result<Json<IntegrationAnswer>, ApiError> {
@@ -63,7 +65,7 @@ pub(super) async fn patch(
 /// `DELETE /integrations/:id`: Delete Integration.
 pub(super) async fn delete(
     State(state): State<AppState>,
-    AuthUser(user): AuthUser,
+    MasterUser(user): MasterUser,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let id = integration_id(id)?;
@@ -83,7 +85,7 @@ pub(super) async fn delete(
 /// opens.
 pub(super) async fn replace_token(
     State(state): State<AppState>,
-    AuthUser(user): AuthUser,
+    MasterUser(user): MasterUser,
     Path(id): Path<String>,
 ) -> Result<Json<IntegrationWithToken>, ApiError> {
     let id = integration_id(id)?;

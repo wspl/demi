@@ -21,7 +21,7 @@ use demi_command_declarations::{NativeOperation, Node};
 use demi_conversation_lane_protocol::{JobModel, JobPhase, TranscriptPatch, Version};
 use demi_host_interface::{PortRequest, PortResponse};
 use demi_shared_types::{
-    Block, BlockId, FileExtension, IntegrationCapabilities, NodeId, ProviderErrorDiagnostics, SessionPhase, Timestamp, TurnCause, TurnId,
+    Block, BlockId, CloudSizing, FileExtension, IntegrationCapabilities, NodeId, ProviderErrorDiagnostics, SessionPhase, Timestamp, TurnCause, TurnId,
 };
 use demi_web_api_protocol::cloud::CloudState;
 use demi_web_api_protocol::conversations::{ConversationStatus, TurnOutcome};
@@ -58,6 +58,13 @@ pub struct Integration {
     /// Where each of its Clouds mounts its shared folder: `~/...`, or a
     /// top-level directory such as `/data`.
     pub shared_path: String,
+    /// How each of its Clouds is sized, which the server's master sets in
+    /// Settings › Integrations; a null field is the server's. Each Cloud
+    /// takes it at its next start; a smaller disk stays as large as it was.
+    pub cloud_sizing: CloudSizing,
+    /// How long each of its Clouds runs without activity before it stops,
+    /// in minutes; null for the server's hour.
+    pub cloud_idle_minutes: Option<u32>,
 }
 
 /// `PATCH /integration`: a change of its settings; a field left out stays.
@@ -80,6 +87,12 @@ pub struct IntegrationPatch {
     #[schemars(with = "String")]
     #[garde(skip)]
     pub shared_path: Option<String>,
+    /// A new idle window of its Clouds, which each takes at its next start,
+    /// or null for the server's.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[schemars(with = "Option<u32>", range(min = 1))]
+    #[garde(inner(inner(range(min = 1))))]
+    pub cloud_idle_minutes: Option<Option<u32>>,
 }
 
 /// One of the integration's Clouds.
@@ -93,6 +106,9 @@ pub struct Cloud {
     /// Its run of the integration's init script; null while the integration
     /// has none, or the Cloud's system was made while it had none.
     pub init: Option<CloudInit>,
+    /// It has no idle stop, and starts again at once after its lifetime
+    /// cap's stop, a day after it started.
+    pub always_on: bool,
 }
 
 /// A Cloud's run of its integration's init script.
@@ -129,6 +145,24 @@ pub struct CreateCloud {
     #[schemars(length(min = 1, max = 1024))]
     #[garde(inner(length(chars, min = 1, max = KEY_CHARS)))]
     pub key: Option<String>,
+    /// Whether a new Cloud stays running, as [`Cloud::always_on`] says;
+    /// false when left out. The Cloud `key` finds keeps its own, which
+    /// `PATCH /clouds/:cloud` changes.
+    #[serde(default)]
+    #[garde(skip)]
+    pub always_on: bool,
+}
+
+/// `PATCH /clouds/:cloud`: a change of a Cloud; a field left out stays.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CloudPatch {
+    /// Whether it stays running: one that turns on starts now, and one that
+    /// turns off stops once it has been idle for the idle window.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub always_on: Option<bool>,
 }
 
 /// `GET /clouds`.

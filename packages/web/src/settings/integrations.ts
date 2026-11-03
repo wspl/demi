@@ -17,9 +17,20 @@ function refusedField(error: unknown): boolean {
   return error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 404
 }
 
-/** An integration as the page shows it: an answer that leaves out its script has none. */
+/** An integration as the page shows it: an answer that leaves out a value has none. */
 function shown(integration: IntegrationDto): SettingsIntegration {
-  return { ...integration, initScript: integration.initScript ?? null }
+  const sizing = integration.cloudSizing
+  return {
+    ...integration,
+    initScript: integration.initScript ?? null,
+    cloudSizing: {
+      cpus: sizing.cpus ?? null,
+      memoryMib: sizing.memoryMib ?? null,
+      systemGb: sizing.systemGb ?? null,
+      homeGb: sizing.homeGb ?? null,
+    },
+    cloudIdleMinutes: integration.cloudIdleMinutes ?? null,
+  }
 }
 
 /**

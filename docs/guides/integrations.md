@@ -25,14 +25,17 @@ explains how the parts fit together and doesn't repeat the fields.
 
 - A Demi server that your program can reach. Every integration runs against
   a server, your own or a hosted one; Demi can't run inside your program.
-- A Demi account with at least one model provider. An integration uses every
-  provider of the account that creates it, so create a separate account for
-  each product, with its own providers, rather than using your own.
+- The server's master account, with at least one model provider. Only the
+  master has integrations, and every integration of a server uses the
+  master's providers and keeps its attachments among the master's: a product
+  that needs its own, or its own apart from another's, runs a server of its
+  own.
 
 ## Create the integration
 
-1. In Demi, open **Settings** > **Integrations** and click **Add
-   Integration**.
+1. Sign in to Demi as the server's master, the account that set the server
+   up: only the master has integrations. Open **Settings** >
+   **Integrations** and click **Add Integration**.
 2. Copy the token. Demi shows it only once; **Replace Token…** makes a new one
    and stops the old one at once.
 3. On the same page, turn off what the integration's agents shouldn't do:
@@ -119,8 +122,30 @@ A Cloud sleeps when nobody uses it and wakes at the next command, with its
 files as they were. `POST /v1/clouds/{cloud}/reset` gives it a new system and
 keeps its home directory.
 
-A conversation runs on one Cloud at a time, and changes Cloud only between
-turns. To run a person's request on their Cloud, name it on their message:
+### Size and sleep
+
+A Cloud sleeps after an hour without work: no conversation's turn, no
+command and no file transfer on it. A Cloud that watches something around the
+clock should never sleep: create it with `"alwaysOn": true`, or
+`PATCH /v1/clouds/{cloud}` with it; a `POST /v1/clouds` that finds a Cloud by
+its key leaves the Cloud as it is. An always-on Cloud starts at once and runs its init
+script. Once a day it's saved and started again, which ends what runs on it;
+start your watch again from a command then.
+
+`PATCH /v1/integration` with `{"cloudIdleMinutes": 15}` makes every Cloud of
+the integration sleep after 15 minutes without work instead, or `null` after
+the server's hour. Each Cloud takes it at its next start.
+
+You size the integration's Clouds in Settings › Integrations: their CPUs,
+memory and disks. `GET /v1/integration` shows them as `cloudSizing`, where
+`null` is the server's size: the CPUs and memory of every Cloud, and 16 GB
+for each disk. Each Cloud takes a new size at its next start. A disk only
+grows: a smaller size leaves a larger disk as it is. A Cloud that asks for
+more CPUs or memory than the server has doesn't start: the turn or the
+command that woke it fails with the reason.
+
+A conversation runs on one Cloud at a time. To run a person's request on their
+Cloud, name it on their message:
 
 ```json
 {"text": "Make the weekly report.", "cloud": "<sam's Cloud id>"}

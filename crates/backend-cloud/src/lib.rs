@@ -190,6 +190,9 @@ pub trait CloudShard {
     fn closed(&self) -> WaitForCancellationFuture<'_>;
     /// The shard, for a task that outlives the call that starts it.
     fn this(&self) -> Rc<dyn CloudShard>;
+    /// Starts the Cloud `device` in the background, as its first use
+    /// would, with its init script.
+    fn start_cloud(&self, device: &DeviceId);
 
     /// What the conversation is doing: a turn of its tree, an operation
     /// holding its file gate, or a user stream someone has open.

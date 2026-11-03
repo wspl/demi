@@ -24,6 +24,7 @@ demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
+demi-shared-types = { path = "../shared-types" }
 futures-util.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -6,7 +6,7 @@ use std::{net::Ipv4Addr, path::Path, rc::Rc};
 
 use demi_machine_manager_protocol::image::PROGRAMS_PATH;
 use demi_machine_manager_protocol::{
-    BaseVersion, Capacity, DeviceId, LeftSandbox, MachineImageState, SandboxMachine, SharedFolder, Volume,
+    BaseVersion, Capacity, DeviceId, LeftSandbox, MachineImageState, SandboxLimits, SandboxMachine, SharedFolder, Volume,
 };
 use demi_runner_protocol::boot::ManagedBoot;
 
@@ -136,7 +136,8 @@ impl Device {
                 machine,
                 capacity,
                 shared,
-            } => self.wake(&boot, machine, capacity, shared.as_ref()).await,
+                limits,
+            } => self.wake(&boot, machine, capacity, shared.as_ref(), limits).await,
             DeviceOp::Hibernate { retention } => {
                 self.stop().await?;
                 self.save(retention).await
@@ -281,9 +282,19 @@ impl Device {
         machine: SandboxMachine,
         capacity: Capacity,
         shared: Option<&SharedFolder>,
+        named: SandboxLimits,
     ) -> Result<(), OpError> {
         if self.sandbox.is_some() {
             return Ok(());
+        }
+        // The limits the sandbox's cgroup gets, refused before anything is
+        // staged when they are beyond the host's.
+        let limits = self.core.config.limits.map(|limits| limits.of(machine).sized(named));
+        if let Some(limits) = limits {
+            let (cpus, memory_mib) = blocking::run(move |_| crate::config::host_resources()).await?;
+            if let Some(beyond) = limits.beyond(cpus, memory_mib) {
+                return Err(OpError::BeyondHost(beyond));
+            }
         }
         self.save(Retention::of(machine)).await?;
         let state = match self.committed().await? {
@@ -321,6 +332,7 @@ impl Device {
                 &runner_release,
                 boot,
                 machine,
+                limits,
                 mount.as_ref().map(|(source, path)| (source.as_path(), path.as_str())),
             )
             .await;

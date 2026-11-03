@@ -17,7 +17,11 @@ import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import {
   CAPABILITIES,
+  CLOUD_SIZES,
+  SIZE_UNITS,
   integrationSummary,
+  parseSize,
+  type CloudSizing,
   type IntegrationCapability,
   type IntegrationChange,
   type SettingsIntegration,
@@ -34,6 +38,9 @@ import {
  * - a switch per capability, saved as it turns;
  * - its Clouds' init script, saved with Save, and the path of their shared
  *   folder, saved as it is committed;
+ * - how long its Clouds stay awake without work, and their CPUs, memory and
+ *   disks, which only an administrator changes and anyone else reads; an
+ *   empty field is the server's, each saved as it is committed;
  * - Delete Integration, which asks first and names what goes.
  */
 const props = defineProps<{
@@ -107,6 +114,35 @@ const savingScript = computed(() => ({ action: 'save', target: `integration-scri
 const scriptButton = ref<InstanceType<typeof Button> | null>(null)
 async function saveScript(): Promise<void> {
   await save('initScript', { initScript: script.value.trim() ? script.value : null })
+}
+
+/** Each size's refusal, under its row, until it is committed again. */
+const sizeProblems = ref<Partial<Record<keyof CloudSizing | 'idle', SentenceText>>>({})
+
+function sizeProblem(value: string): SentenceText | null {
+  return Number.isNaN(parseSize(value)) ? t('integrations.page.sizeProblem') : null
+}
+
+function sizeText(size: number | null): string {
+  return size === null ? '' : String(size)
+}
+
+async function saveIdle(value: string): Promise<void> {
+  try {
+    await props.onChange({ cloudIdleMinutes: parseSize(value) })
+    sizeProblems.value = { ...sizeProblems.value, idle: undefined }
+  } catch (error) {
+    sizeProblems.value = { ...sizeProblems.value, idle: shownError(error).message }
+  }
+}
+
+async function saveSize(size: keyof CloudSizing, value: string): Promise<void> {
+  try {
+    await props.onChange({ cloudSizing: { ...props.integration.cloudSizing, [size]: parseSize(value) } })
+    sizeProblems.value = { ...sizeProblems.value, [size]: undefined }
+  } catch (error) {
+    sizeProblems.value = { ...sizeProblems.value, [size]: shownError(error).message }
+  }
 }
 
 const deleteOpen = ref(false)
@@ -235,6 +271,56 @@ async function replace(): Promise<void> {
           @problem="problems.sharedPath = $event ?? undefined"
           @commit="save('sharedPath', { sharedPath: $event.trim() })"
         />
+      </SettingsRow>
+    </SettingsGroup>
+
+    <SettingsGroup
+      :title="t('integrations.page.clouds')"
+      :description="t('integrations.page.cloudsDescription')"
+    >
+      <SettingsRow :label="t('integrations.page.idle')" :description="t('integrations.page.idleDescription')">
+        <template v-if="sizeProblems.idle" #detail>
+          <InlineError :message="sizeProblems.idle" />
+        </template>
+        <span class="inline-flex items-center gap-1.5 text-[13px] text-fg-muted">
+          <CommitTextInput
+            :model-value="sizeText(integration.cloudIdleMinutes)"
+            :aria-label="t('integrations.page.idle')"
+            :placeholder="t('integrations.page.serverDefault')"
+            :validate="sizeProblem"
+            inputmode="numeric"
+            literal
+            trim
+            class="w-32"
+            @problem="sizeProblems.idle = $event ?? undefined"
+            @commit="saveIdle"
+          />
+          <span class="w-14">{{ t('integrations.page.minutes') }}</span>
+        </span>
+      </SettingsRow>
+      <SettingsRow
+        v-for="size in CLOUD_SIZES"
+        :key="size"
+        :label="t(`integrations.page.${size}`)"
+      >
+        <template v-if="sizeProblems[size]" #detail>
+          <InlineError :message="sizeProblems[size]" />
+        </template>
+        <span class="inline-flex items-center gap-1.5 text-[13px] text-fg-muted">
+          <CommitTextInput
+            :model-value="sizeText(integration.cloudSizing[size])"
+            :aria-label="t(`integrations.page.${size}`)"
+            :placeholder="t('integrations.page.serverDefault')"
+            :validate="sizeProblem"
+            inputmode="numeric"
+            literal
+            trim
+            class="w-32"
+            @problem="sizeProblems[size] = $event ?? undefined"
+            @commit="saveSize(size, $event)"
+          />
+          <span class="w-14">{{ SIZE_UNITS[size] ? t(`integrations.page.${SIZE_UNITS[size]}`) : '' }}</span>
+        </span>
       </SettingsRow>
     </SettingsGroup>
 

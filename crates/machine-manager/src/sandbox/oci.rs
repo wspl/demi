@@ -197,6 +197,9 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
         );
     let linux = match &boot.cgroup {
         Some(cgroup) => {
+            // gVisor shows the sandbox no fewer than two CPUs, because some
+            // programs skip their locks on one; the quota still caps the CPU
+            // time it takes at `cpus`.
             let quota = i64::from(cgroup.limits.cpus.get()) * CPU_PERIOD as i64;
             let memory = i64::try_from(cgroup.limits.memory_bytes().get())
                 .expect("a memory limit fits in i64");

@@ -260,6 +260,28 @@ async fn recover_in_background(
     start_step("stopped_clouds", forget_stopped_clouds(&running, &services)).await;
     let taken: Vec<_> = running.iter().map(|device| device.id.clone()).collect();
     start_step("cloud_commands", take_up_stopped_clouds(&taken, &services.control, &shards)).await;
+    start_step("always_on_clouds", start_always_on_clouds(&taken, &services.control, &shards)).await;
+}
+
+/// Starts each always-on Cloud of an integration that the manager does not
+/// run, as after the server itself restarted.
+async fn start_always_on_clouds(
+    taken: &[demi_web_api_protocol::ids::DeviceId],
+    control: &demi_backend_database::control::ControlService,
+    shards: &demi_backend_user_shard::shard::Shards,
+) -> Result<(), String> {
+    let clouds = control.always_on_clouds().await.map_err(|error| error.to_string())?;
+    for (device, owner) in clouds {
+        if taken.contains(&device) {
+            continue;
+        }
+        shards
+            .of(&owner)
+            .call(move |shard, _| async move { shard.start_cloud(&device) })
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 /// Hands each running Cloud to its owner's shard, which takes it over

@@ -3,10 +3,11 @@
 //! A running Cloud has two:
 //!
 //! - Its idle watch stops it once no conversation using it has been active for
-//!   the idle window. For the Claude Code machine, it stops it once no work has
-//!   held it.
+//!   the idle window, the server's or the one its integration sets, read as it
+//!   starts. For the Claude Code machine, it stops it once no work has held
+//!   it. An integration's Cloud that is always on counts as active.
 //! - Its maintenance loop saves it every checkpoint interval and stops it at
-//!   its lifetime cap.
+//!   its lifetime cap; an always-on Cloud starts again at once.
 //!
 //! Both belong to the running phase and end with it. Maintenance holds the
 //! Cloud's gate for maintenance, not demand, so it never restarts the idle
@@ -41,14 +42,27 @@ impl dyn CloudShard {
     /// Starts the idle watch and the maintenance loop of a machine that just
     /// started running.
     pub(crate) fn cloud_schedules(&self, machine: &Rc<Machine>) -> Vec<AbortOnDropHandle<()>> {
-        let window = self.idle_window();
         let sweep = self.cloud_services().tuning.sweep;
         let idle = CloudIdle {
             shard: Rc::downgrade(&self.this()),
             machine: machine.clone(),
         };
-        let watch = demi_backend_idle_watch::watch(idle, window, sweep, self.tasks().clone())
-            .instrument(tracing::info_span!("idle_watch", host_id = %machine.device.id));
+        let shard = self.this();
+        let device = machine.device.id.clone();
+        let tasks = self.tasks().clone();
+        let watch = async move {
+            let window = match crate::machine::integration_settings(shard.control(), &device).await {
+                Ok(settings) => settings.and_then(|settings| settings.idle()),
+                Err(error) => {
+                    tracing::warn!(event = "cloud.idle_window_failed", %error, "the Cloud's idle window was not read; it takes the server's");
+                    None
+                }
+            };
+            let window = window.unwrap_or_else(|| shard.idle_window());
+            drop(shard);
+            demi_backend_idle_watch::watch(idle, window, sweep, tasks).await
+        }
+        .instrument(tracing::info_span!("idle_watch", host_id = %machine.device.id));
         let maintenance = maintain(Rc::downgrade(&self.this()), machine.clone());
         vec![
             AbortOnDropHandle::new(self.tasks().spawn_local(watch)),
@@ -212,9 +226,20 @@ impl dyn CloudShard {
         let shard = self.this();
         let machine = machine.clone();
         self.tasks().spawn_local(async move {
-            let _held = (reserved, held);
-            if let Err(error) = shard.hibernate_reserved(&machine).await {
+            let saved = {
+                let _held = (reserved, held);
+                shard.hibernate_reserved(&machine).await
+            };
+            if let Err(error) = saved {
                 tracing::warn!(event = "cloud.save_failed", host_id = %machine.device.id, step = "lifetime_cap", %error, "the Cloud was not saved at its lifetime cap");
+                return;
+            }
+            // An always-on Cloud starts again over what was saved.
+            let always_on = crate::machine::integration_settings(shard.control(), &machine.device.id)
+                .await
+                .is_ok_and(|settings| settings.is_some_and(|settings| settings.always_on));
+            if always_on {
+                shard.start_cloud(&machine.device.id);
             }
         });
     }
@@ -251,6 +276,10 @@ impl IdlePolicy for CloudIdle {
             .link(&machine.device.id)
             .map_or(0, |link| link.running_jobs());
         activity.busy |= jobs > 0;
+        activity.busy |= crate::machine::integration_settings(shard.control(), &machine.device.id)
+            .await
+            .map_err(|error| error.to_string())?
+            .is_some_and(|settings| settings.always_on);
         Ok(activity.and(shard.cloud_conversations_activity(machine).await?))
     }
 

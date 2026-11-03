@@ -202,12 +202,6 @@ export function settingsSections(): SettingsNavGroup[] {
       id: 'system',
       items: [
         {
-          id: 'integrations',
-          label: t('integrations.title'),
-          icon: PlugZap,
-          keywords: words(t('sections.integrations.keywords')),
-        },
-        {
           id: 'developer',
           label: t('developer.title'),
           icon: Code,
@@ -270,17 +264,36 @@ export function cloudSection(): SettingsNavItem {
   }
 }
 
-/** The rail with Cloud after Users, for the master; the rail unchanged for anyone else. */
-export function withCloudSection(groups: SettingsNavGroup[], role: UserRole): SettingsNavGroup[] {
+/** Settings › Integrations, which only the master has. */
+export function integrationsSection(): SettingsNavItem {
+  return {
+    id: 'integrations',
+    label: t('integrations.title'),
+    icon: PlugZap,
+    keywords: words(t('sections.integrations.keywords')),
+  }
+}
+
+/**
+ * The rail with Cloud after Users and Integrations before Developer,
+ * for the master; the rail unchanged for anyone else.
+ */
+export function withMasterSections(groups: SettingsNavGroup[], role: UserRole): SettingsNavGroup[] {
   if (role !== 'master') {
     return groups
   }
   const cloud = cloudSection()
-  return groups.map((group) =>
-    group.items.some((item) => item.id === 'users')
-      ? { ...group, items: group.items.flatMap((item) => (item.id === 'users' ? [item, cloud] : [item])) }
-      : group,
-  )
+  const integrations = integrationsSection()
+  return groups.map((group) => ({
+    ...group,
+    items: group.items.flatMap((item) => {
+      if (item.id === 'users')
+        return [item, cloud]
+      if (item.id === 'developer')
+        return [integrations, item]
+      return [item]
+    }),
+  }))
 }
 
 /** Settings › Updates, which only the master and admins of a server that offers updates have. */

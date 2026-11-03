@@ -28,6 +28,38 @@ export const CAPABILITIES: readonly IntegrationCapability[] = [
   'titles',
 ]
 
+/**
+ * How every Cloud of an integration is sized, which only an administrator
+ * changes; null is the server's: the Cloud manager's CPUs and memory, the
+ * account's disks.
+ */
+export interface CloudSizing {
+  cpus: number | null
+  memoryMib: number | null
+  systemGb: number | null
+  homeGb: number | null
+}
+
+/** The sizes in the order the page lists them. */
+export const CLOUD_SIZES: readonly (keyof CloudSizing)[] = ['cpus', 'memoryMib', 'systemGb', 'homeGb']
+
+/** The unit a size is in, as its message's key; a count of CPUs has none. */
+export const SIZE_UNITS: Readonly<Record<keyof CloudSizing, 'memoryMibUnit' | 'systemGbUnit' | 'homeGbUnit' | null>> = {
+  cpus: null,
+  memoryMib: 'memoryMibUnit',
+  systemGb: 'systemGbUnit',
+  homeGb: 'homeGbUnit',
+}
+
+/** A whole number of at least 1 as a field holds it; null for an empty field, NaN for anything else. */
+export function parseSize(text: string): number | null {
+  const trimmed = text.trim()
+  if (!trimmed)
+    return null
+  const size = /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN
+  return size >= 1 && Number.isSafeInteger(size) ? size : Number.NaN
+}
+
 /** An integration as Settings › Integrations shows and edits it. */
 export interface SettingsIntegration {
   id: string
@@ -38,6 +70,9 @@ export interface SettingsIntegration {
   initScript: string | null
   /** Where each of its Clouds mounts its shared folder: `~/...` or a top-level directory. */
   sharedPath: string
+  cloudSizing: CloudSizing
+  /** How long each of its Clouds runs without activity before it stops, in minutes; null for the server's hour. */
+  cloudIdleMinutes: number | null
   clouds: number
   conversations: number
 }
@@ -48,6 +83,9 @@ export interface IntegrationChange {
   capabilities?: IntegrationCapabilities
   initScript?: string | null
   sharedPath?: string
+  /** Whole: only an administrator's is taken. */
+  cloudSizing?: CloudSizing
+  cloudIdleMinutes?: number | null
 }
 
 /** What an integration's row says under its name: *2 Clouds · 14 conversations*. */

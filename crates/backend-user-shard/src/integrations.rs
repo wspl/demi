@@ -81,6 +81,8 @@ impl Shard {
             capabilities: patch.capabilities,
             init_script: patch.init_script,
             shared_path: patch.shared_path,
+            cloud_sizing: patch.cloud_sizing,
+            cloud_idle_minutes: patch.cloud_idle_minutes,
         };
         match self.change_integration(id, stored).await? {
             Some(record) => Ok(Some(self.integration_dto(record).await?)),
@@ -144,6 +146,8 @@ impl Shard {
             created_at: record.created_at,
             init_script: record.init_script,
             shared_path: record.shared_path,
+            cloud_sizing: record.cloud_sizing,
+            cloud_idle_minutes: record.cloud_idle_minutes,
             clouds,
             conversations,
         })
@@ -249,11 +253,12 @@ impl Shard {
     }
 
     /// Makes a Cloud of the integration's, or with `key` answers the one that
-    /// has it. It boots at its first use.
+    /// has it, as it is. It boots at its first use, or now when it is always
+    /// on.
     pub async fn create_integration_cloud(
-        &self,
+        self: &Rc<Self>,
         integration: &IntegrationRecord,
-        key: Option<String>,
+        request: api::CreateCloud,
     ) -> Result<api::Cloud, IntegrationRefusal> {
         let _lease = self
             .integration_deletions
@@ -262,11 +267,61 @@ impl Shard {
         let cloud = self
             .services()
             .control
-            .create_integration_cloud(integration.id.clone(), key)
+            .create_integration_cloud(integration.id.clone(), request.key, request.always_on)
             .await?;
+        if cloud.always_on {
+            self.start_cloud(&cloud.device);
+        }
         self.integration_cloud_shown(cloud)
             .await?
             .ok_or(IntegrationRefusal::NotFound("Cloud"))
+    }
+
+    /// Changes the integration's Cloud `device`: one that turns always on
+    /// starts now.
+    pub async fn patch_integration_cloud(
+        self: &Rc<Self>,
+        integration: &IntegrationRecord,
+        device: &DeviceId,
+        patch: api::CloudPatch,
+    ) -> Result<api::Cloud, IntegrationRefusal> {
+        if self.integration_cloud(integration, device).await?.is_none() {
+            return Err(IntegrationRefusal::NotFound("Cloud"));
+        }
+        if let Some(always_on) = patch.always_on {
+            self.services().control.set_cloud_always_on(device.clone(), always_on).await?;
+            if always_on {
+                self.start_cloud(device);
+            }
+        }
+        self.integration_cloud(integration, device)
+            .await?
+            .ok_or(IntegrationRefusal::NotFound("Cloud"))
+    }
+
+    /// Starts the Cloud `device` in the background, as its first use would,
+    /// with its init script.
+    pub fn start_cloud(self: &Rc<Self>, device: &DeviceId) {
+        let shard = self.clone();
+        let device = device.clone();
+        self.tasks().spawn_local(async move {
+            let Ok(Some(record)) = shard.services().control.device(device.clone()).await else {
+                return;
+            };
+            let started = async {
+                let _access = shard.cloud_shard().access(record.clone()).await?;
+                shard.ready_machine(&record).await;
+                Ok::<_, demi_backend_cloud::machine::CloudError>(())
+            };
+            tokio::select! {
+                started = started => {
+                    if let Err(error) = started {
+                        tracing::warn!(event = "cloud.always_on_start_failed", host_id = %device, %error, "an always-on Cloud did not start");
+                    }
+                }
+                () = shard.closed() => {}
+            }
+        });
     }
 
     /// Resets the integration's Cloud `device` now: its system is rebuilt,
@@ -331,6 +386,7 @@ impl Shard {
             key: cloud.key,
             state,
             init,
+            always_on: cloud.always_on,
         }))
     }
 

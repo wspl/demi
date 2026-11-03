@@ -1991,6 +1991,7 @@ dependencies = [
  "demi-runner-client",
  "demi-runner-protocol",
  "demi-shared-gates",
+ "demi-shared-types",
  "demi-web-api-protocol",
  "futures-util",
  "serde_json",

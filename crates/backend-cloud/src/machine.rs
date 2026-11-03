@@ -28,14 +28,16 @@
 use std::cell::{Cell, RefCell, RefMut};
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
-use std::num::NonZeroU64;
+use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::time::Duration;
 
 use demi_backend_database::StorageError;
+use demi_shared_types::CloudSizing;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::devices::{DeviceRecord, ManagedMachine};
+use demi_backend_database::integrations::IntegrationRecord;
 use demi_backend_database::managed::ManagedOperation;
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_runner_client::Admission;
@@ -44,8 +46,8 @@ use demi_host_interface::{HostError, HostErrorKind};
 use demi_backend_database::control::ControlService;
 use demi_machine_manager_protocol::shared::mount_path;
 use demi_machine_manager_protocol::{
-    Capacity, CurrentBaseVersionParams, HibernateParams, ResetParams, RuntimeState, RuntimeStateParams, SandboxMachine,
-    SharedFolder, WakeParams,
+    Capacity, HibernateParams, RuntimeState, RuntimeStateParams, SandboxMachine,
+    SandboxLimits, SharedFolder, WakeParams,
 };
 use demi_runner_protocol::boot::ManagedBoot;
 use demi_shared_gates::{ActivityGate, GateLease, Purpose};
@@ -72,22 +74,31 @@ pub(crate) fn sandbox_machine(device: &DeviceRecord) -> SandboxMachine {
 }
 
 /// The capacities the backend names for the disks of `device`, a managed
-/// machine: its account's Cloud storage, and always the default for the
-/// Claude Code machine.
+/// machine: for a Cloud of an integration, each disk its `integration`
+/// sizing names and the default for the others; for a person's Cloud, its
+/// account's Cloud storage; always the default for the Claude Code machine.
 pub(crate) async fn capacity(
     control: &ControlService,
     device: &DeviceRecord,
+    integration: Option<CloudSizing>,
 ) -> Result<Capacity, StorageError> {
-    let storage = match device.machine.unwrap_or(ManagedMachine::Cloud) {
-        ManagedMachine::ClaudeCode => CloudStorage::DEFAULT,
-        ManagedMachine::Cloud => control
-            .cloud_storage(device.user.clone())
-            .await?
-            .ok_or_else(|| StorageError::Corrupt {
-                table: "devices",
-                column: "user_id",
-                reason: format!("the Cloud {} names no account", device.id),
-            })?,
+    let storage = match (device.machine.unwrap_or(ManagedMachine::Cloud), integration) {
+        (ManagedMachine::ClaudeCode, _) => CloudStorage::DEFAULT,
+        (ManagedMachine::Cloud, Some(sizing)) => CloudStorage {
+            system_gb: sizing.system_gb.unwrap_or(CloudStorage::DEFAULT.system_gb),
+            home_gb: sizing.home_gb.unwrap_or(CloudStorage::DEFAULT.home_gb),
+        },
+        (ManagedMachine::Cloud, None) => {
+            let account = control
+                .cloud_storage(device.user.clone())
+                .await?
+                .ok_or_else(|| StorageError::Corrupt {
+                    table: "devices",
+                    column: "user_id",
+                    reason: format!("the Cloud {} names no account", device.id),
+                })?;
+            account
+        }
     };
     let bytes = |bytes| NonZeroU64::new(bytes).expect("a Cloud disk has at least 1 GB");
     Ok(Capacity {
@@ -96,33 +107,69 @@ pub(crate) async fn capacity(
     })
 }
 
-/// The shared folder a Cloud of an integration mounts, at its home's
-/// capacity, where the integration's settings say; none for a Cloud of no
-/// integration. A path the settings no longer allow, which no change lets
-/// through, mounts none.
-pub(crate) async fn shared_folder(
+/// What the integration of a Cloud says of it.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct IntegrationCloudSettings {
+    /// None once the integration is deleted, while its Clouds are.
+    integration: Option<IntegrationRecord>,
+    pub(crate) always_on: bool,
+}
+
+impl IntegrationCloudSettings {
+    pub(crate) fn sizing(&self) -> CloudSizing {
+        self.integration
+            .as_ref()
+            .map(|integration| integration.cloud_sizing)
+            .unwrap_or_default()
+    }
+
+    /// Its idle window; none for the server's.
+    pub(crate) fn idle(&self) -> Option<Duration> {
+        self.integration
+            .as_ref()
+            .and_then(|integration| integration.cloud_idle_minutes)
+            .map(|minutes| Duration::from_secs(u64::from(minutes) * 60))
+    }
+
+    /// The shared folder the Cloud `device` mounts, at its home's
+    /// capacity, where the integration's settings say. A path the settings
+    /// no longer allow, which no change lets through, mounts none.
+    fn shared_folder(&self, device: &DeviceId, capacity: Capacity) -> Option<SharedFolder> {
+        let integration = self.integration.as_ref()?;
+        let path = match mount_path(&integration.shared_path) {
+            Ok(path) => path,
+            Err(reason) => {
+                tracing::warn!(event = "cloud.shared_path_refused", host_id = %device, %reason, "an integration's shared folder path was not mounted");
+                return None;
+            }
+        };
+        Some(SharedFolder {
+            id: integration.id.to_string(),
+            capacity_bytes: capacity.home_bytes,
+            path,
+        })
+    }
+}
+
+/// What the integration of the Cloud `device` says of it; none for a Cloud
+/// of no integration.
+pub(crate) async fn integration_settings(
     control: &ControlService,
     device: &DeviceId,
-    capacity: Capacity,
-) -> Result<Option<SharedFolder>, StorageError> {
+) -> Result<Option<IntegrationCloudSettings>, StorageError> {
     let Some(cloud) = control.integration_cloud(device.clone()).await? else {
         return Ok(None);
     };
-    let Some(integration) = control.integration(cloud.integration).await? else {
-        return Ok(None);
-    };
-    let path = match mount_path(&integration.shared_path) {
-        Ok(path) => path,
-        Err(reason) => {
-            tracing::warn!(event = "cloud.shared_path_refused", host_id = %device, %reason, "an integration's shared folder path was not mounted");
-            return Ok(None);
-        }
-    };
-    Ok(Some(SharedFolder {
-        id: integration.id.to_string(),
-        capacity_bytes: capacity.home_bytes,
-        path,
+    Ok(Some(IntegrationCloudSettings {
+        integration: control.integration(cloud.integration).await?,
+        always_on: cloud.always_on,
     }))
+}
+
+/// The sizing the integration of the Cloud `device` gives it; none for a
+/// Cloud of no integration.
+pub(crate) async fn sizing(control: &ControlService, device: &DeviceId) -> Result<Option<CloudSizing>, StorageError> {
+    Ok(integration_settings(control, device).await?.map(|settings| settings.sizing()))
 }
 
 /// Why the Cloud admits no operation, or why one of its transitions failed.
@@ -652,30 +699,6 @@ impl dyn CloudShard {
         booted
     }
 
-    /// Gives the stopped machine the new system it owes, on the configured
-    /// base with its home kept, as a reset's disk step does. Nothing runs on
-    /// it, so no conversation is held: the boot that follows waits for it,
-    /// and the conversations that reach the Cloud hear of it as of a reset.
-    async fn rebuild(&self, machine: &Machine) -> Result<(), CloudError> {
-        let device = &machine.device.id;
-        let operation = OperationId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
-        let base_version = self.cloud_services().machines.call(CurrentBaseVersionParams {}).await?;
-        let reset = ResetParams {
-            device_id: device.to_string(),
-            operation_id: operation.to_string(),
-            base_version: base_version.to_string(),
-            capacity: capacity(self.control(), &machine.device).await?,
-            machine: sandbox_machine(&machine.device),
-        };
-        self.cloud_services().machines.call(reset).await?;
-        machine.clear_deaths();
-        self.control()
-            .announce_cloud_reset(self.user().clone(), operation, device.clone())
-            .await?;
-        self.reset_paid(device).await;
-        Ok(())
-    }
-
     async fn start_sandbox(&self, machine: &Machine) -> Result<(), CloudError> {
         let device = &machine.device.id;
         let token = new_device_token();
@@ -687,7 +710,10 @@ impl dyn CloudShard {
             .get()
             .cloned()
             .ok_or_else(|| CloudError::Failed("The backend does not listen yet".into()))?;
-        let capacity = capacity(self.control(), &machine.device).await?;
+        let settings = integration_settings(self.control(), device).await?;
+        let sizing = settings.as_ref().map(IntegrationCloudSettings::sizing);
+        let capacity = capacity(self.control(), &machine.device, sizing).await?;
+        let sizing = sizing.unwrap_or_default();
         let wake = WakeParams {
             device_id: device.to_string(),
             capacity,
@@ -697,7 +723,11 @@ impl dyn CloudShard {
                 abstract_socket: None,
             },
             machine: sandbox_machine(&machine.device),
-            shared: shared_folder(self.control(), device, capacity).await?,
+            shared: settings.and_then(|settings| settings.shared_folder(device, capacity)),
+            limits: SandboxLimits {
+                cpus: sizing.cpus.and_then(NonZeroU32::new),
+                memory_mib: sizing.memory_mib.and_then(NonZeroU32::new),
+            },
         };
         let cloud = self.cloud_services();
         cloud.machines.call(wake).await?;

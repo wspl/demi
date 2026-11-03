@@ -34,6 +34,34 @@ pub struct IntegrationCapabilities {
     pub titles: bool,
 }
 
+/// How every Cloud of an integration is sized, from its next start; a
+/// field that is none is the server's: the Cloud manager's CPU budget and
+/// memory limit, and a Cloud's default disks.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CloudSizing {
+    /// Its CPU budget, in CPUs.
+    #[serde(default)]
+    #[schemars(range(min = 1))]
+    #[garde(inner(range(min = 1)))]
+    pub cpus: Option<u32>,
+    /// Its memory limit, in MiB.
+    #[serde(default)]
+    #[schemars(range(min = 1))]
+    #[garde(inner(range(min = 1)))]
+    pub memory_mib: Option<u32>,
+    /// The size of its system disk, in GB.
+    #[serde(default)]
+    #[schemars(range(min = 1))]
+    #[garde(inner(range(min = 1)))]
+    pub system_gb: Option<u16>,
+    /// The size of its home disk, in GB.
+    #[serde(default)]
+    #[schemars(range(min = 1))]
+    #[garde(inner(range(min = 1)))]
+    pub home_gb: Option<u16>,
+}
+
 impl Default for IntegrationCapabilities {
     /// Every capability on: a new integration's agents do what a user's do,
     /// short of what no integration has.

@@ -112,7 +112,8 @@ fn routes() -> Vec<Route> {
         json("get", "/clouds", "The integration's Clouds", None, (200, Some(of::<CloudList>))),
         json("post", "/clouds", "Make a Cloud, or find the one of a key", Some(of::<CreateCloud>), (201, Some(of::<Cloud>))).refuses(409, "The integration is being deleted (`integration_refused`)."),
         json("get", "/clouds/{cloud}", "A Cloud", None, (200, Some(of::<Cloud>))),
-        json("delete", "/clouds/{cloud}", "Delete a Cloud no conversation works on", None, (204, None)).refuses(409, "A conversation works on the Cloud, and the message names each; or the Cloud is being deleted, or its machine refused (`integration_refused`)."),
+        json("patch", "/clouds/{cloud}", "Make a Cloud always on, or not", Some(of::<CloudPatch>), (200, Some(of::<Cloud>))),
+        json("delete", "/clouds/{cloud}", "Delete a Cloud, with its files; a conversation that worked on it has no Cloud until it moves to one", None, (204, None)).refuses(409, "The Cloud is being deleted, or its machine refused (`integration_refused`)."),
         json("post", "/clouds/{cloud}/reset", "Reset a Cloud's system; /home stays", None, (200, Some(of::<Cloud>))).refuses(409, "The Cloud's machine refused the reset, as the message says (`integration_refused`)."),
         json("post", "/clouds/{cloud}/commands", "Run a script on a Cloud as `demi`, outside any conversation, once its init script ends; it answers at once", Some(of::<StartCloudCommand>), (201, Some(of::<CloudCommand>))),
         json("get", "/clouds/{cloud}/commands/{command}", "A command on a Cloud, with its output from `after`; an hour after it ends, or once the server restarts, it is gone", None, (200, Some(of::<CloudCommand>)))

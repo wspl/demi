@@ -225,7 +225,8 @@ impl dyn CloudShard {
         self.save(machine).await?;
         self.record_phase(machine, &operation, ResetPhase::Rebuilding, None)
             .await?;
-        let capacity = crate::machine::capacity(self.control(), &machine.device).await?;
+        let sizing = crate::machine::sizing(self.control(), &machine.device.id).await?;
+        let capacity = crate::machine::capacity(self.control(), &machine.device, sizing).await?;
         self.cloud_services()
             .machines
             .call(reset_params(machine, &operation, capacity))
@@ -300,7 +301,7 @@ pub async fn recover_clouds(
             device_id: device.to_string(),
             operation_id: operation.id.to_string(),
             base_version: operation.base_version.to_string(),
-            capacity: crate::machine::capacity(control, &record).await?,
+            capacity: crate::machine::capacity(control, &record, crate::machine::sizing(control, &device).await?).await?,
             machine: crate::machine::sandbox_machine(&record),
         };
         // The reset stops a sandbox that still runs before its disk step.

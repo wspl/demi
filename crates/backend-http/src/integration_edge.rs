@@ -55,7 +55,7 @@ pub(super) fn routes() -> Router<AppState> {
             .route("/integration", get(integration).patch(patch_integration))
             .route("/models", get(models))
             .route("/clouds", get(clouds).post(create_cloud))
-            .route("/clouds/{cloud}", get(cloud).delete(delete_cloud))
+            .route("/clouds/{cloud}", get(cloud).patch(patch_cloud).delete(delete_cloud))
             .route("/clouds/{cloud}/reset", post(reset_cloud))
             .route("/clouds/{cloud}/commands", post(start_cloud_command))
             .route(
@@ -151,6 +151,8 @@ fn integration_answer(record: IntegrationRecord) -> api::Integration {
         capabilities: record.capabilities,
         init_script: record.init_script,
         shared_path: record.shared_path,
+        cloud_sizing: record.cloud_sizing,
+        cloud_idle_minutes: record.cloud_idle_minutes,
     }
 }
 
@@ -183,6 +185,8 @@ async fn patch_integration(
         capabilities: patch.capabilities,
         init_script: patch.init_script,
         shared_path: patch.shared_path,
+        cloud_sizing: None,
+        cloud_idle_minutes: patch.cloud_idle_minutes,
     };
     let record = state
         .shards
@@ -250,7 +254,7 @@ async fn create_cloud(
     let cloud = state
         .shards
         .of(&record.user.clone())
-        .call(move |shard, _| async move { shard.create_integration_cloud(&record, request.key).await })
+        .call(move |shard, _| async move { shard.create_integration_cloud(&record, request).await })
         .await?
         .map_err(refused)?;
     Ok((StatusCode::CREATED, Json(cloud)))
@@ -285,6 +289,24 @@ async fn reset_cloud(
         .shards
         .of(&record.user.clone())
         .call(move |shard, _| async move { shard.reset_integration_cloud(&record, &device).await })
+        .await?
+        .map_err(refused)?;
+    Ok(Json(cloud))
+}
+
+/// `PATCH /v1/clouds/:cloud`: makes it always on, or not.
+async fn patch_cloud(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(cloud): Path<String>,
+    JsonBody(patch): JsonBody<api::CloudPatch>,
+) -> Result<Json<api::Cloud>, ApiError> {
+    let record = authenticated(&state, &headers).await?;
+    let device = device_id(cloud)?;
+    let cloud = state
+        .shards
+        .of(&record.user.clone())
+        .call(move |shard, _| async move { shard.patch_integration_cloud(&record, &device, patch).await })
         .await?
         .map_err(refused)?;
     Ok(Json(cloud))
