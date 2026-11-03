@@ -337,6 +337,11 @@
     "pictureTooLarge": "Le fichier fait {size}, trop volumineux pour être conservé",
     "pictureNotAnImage": "Le fichier est de type {type}, pas une image",
     "pictureHostUnavailable": "L’hôte n’était pas disponible pour le copier",
-    "pictureUnreadable": "Le fichier n’a pas pu être lu"
+    "pictureUnreadable": "Le fichier n’a pas pu être lu",
+    "credential": {
+      "saved": "Identifiant enregistré",
+      "missing": "N’est plus enregistré",
+      "confirm": "Confirmez votre identité pour utiliser « {name} »."
+    }
   }
 }

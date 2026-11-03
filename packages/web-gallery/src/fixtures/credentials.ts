@@ -1,5 +1,7 @@
 import { reactive } from 'vue'
+import type { CredentialLookup, MessageCredentials } from '@demicodes/web-ui/markdown/types'
 import type { SettingsCredential } from '@demicodes/web-ui/settings/types'
+import { galleryVerification } from './handoff'
 import { ahead } from './time'
 
 const DAY = 24 * 60 * 60_000
@@ -111,3 +113,52 @@ export function createCredentialState(credentials: SettingsCredential[] = demoCr
 }
 
 export type CredentialState = ReturnType<typeof createCredentialState>
+
+/** The secret values of `demoCredentials`, by credential and field, as the backend would answer them. */
+const secrets: Record<string, Record<string, string>> = {
+  'cred-github': { token: 'ghp_ExampleOnly0000000000000000000000' },
+  'cred-google': { key: 'AIzaExampleOnly-0000000000000000000' },
+  'cred-linear': { password: 'correct-horse-battery-staple' },
+}
+
+/**
+ * `demoCredentials` as a gallery reply's cards read them, as the product's
+ * backend would answer: the list is in at once, and a secret's value needs a
+ * confirmation that holds five minutes (`galleryVerification`: the password
+ * `wrong` is refused, any other confirms).
+ */
+export function galleryCredentials(): MessageCredentials {
+  const saved = demoCredentials()
+  const verification = galleryVerification()
+  return {
+    hold: () => () => {},
+    find(name): CredentialLookup {
+      const found = saved.find((credential) => credential.name.toLowerCase() === name.toLowerCase())
+      return found ? { state: 'found', credential: found } : { state: 'missing' }
+    },
+    async reveal(id, field) {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      if (!verification.verified())
+        return { kind: 'needsVerification' }
+      const value = secrets[id]?.[field]
+      return value === undefined ? { kind: 'failed' } : { kind: 'revealed', value }
+    },
+    verification: verification.host,
+    email: 'alex@example.com',
+  }
+}
+
+/** A reply that hands the user saved credentials: one field, several, one field of several, and one removed since. */
+export const credentialMarkdown = `The token is saved:
+
+<credential name="GitHub token for deploys" />
+
+The Linear sign-in, and its password alone:
+
+<credential name="Linear sign-in for alex" />
+
+<credential name="Linear sign-in for alex" field="password" />
+
+The old token was removed:
+
+<credential name="Old API token" />`

@@ -114,7 +114,7 @@ pub struct NewField {
 }
 
 /// A field as Settings lists it: a visible field with its value, a secret one
-/// without, which only an agent reads.
+/// without, which an agent reads and a reply's card asks for alone.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListedField {
@@ -173,6 +173,13 @@ pub struct CredentialDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CredentialList {
     pub credentials: Vec<CredentialDto>,
+}
+
+/// `POST /credentials/:id/fields/:field/reveal`: one field's value, which
+/// a card in a reply copies or shows to the vault's owner.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RevealedValue {
+    pub value: String,
 }
 
 /// What a route that saves a credential answers.

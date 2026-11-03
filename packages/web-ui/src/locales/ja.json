@@ -337,6 +337,11 @@
     "pictureTooLarge": "ファイルは {size} あり、大きすぎて保存できません",
     "pictureNotAnImage": "ファイルは {type} で、画像ではありません",
     "pictureHostUnavailable": "ホストを利用できず、コピーできませんでした",
-    "pictureUnreadable": "ファイルを読み込めません"
+    "pictureUnreadable": "ファイルを読み込めません",
+    "credential": {
+      "saved": "保存された認証情報",
+      "missing": "保存されていません",
+      "confirm": "「{name}」を使うには、本人確認が必要です。"
+    }
   }
 }

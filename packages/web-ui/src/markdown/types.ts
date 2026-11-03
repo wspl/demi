@@ -2,6 +2,8 @@ import type { MessageAgents } from '../agent/agent-links'
 import type { CommitHistorySource } from '../files/history'
 import type { FileContents } from '../files/types'
 import type { PictureCopy } from '@demicodes/protocol'
+import type { VerificationHost } from '../auth/verification'
+import type { SettingsCredential } from '../settings/types'
 
 /**
  * An attachment of the conversation, sent in a message or uploaded by the agent
@@ -136,6 +138,12 @@ export interface ConversationFiles {
    */
   openAttachment?(id: string, attachment: MessageAttachment): void
   /**
+   * The user's saved credentials, which a reply's credential card names;
+   * absent where the reader is not their owner, as on a share, and a card
+   * then shows the credential's name alone.
+   */
+  credentials?: MessageCredentials
+  /**
    * The full path on the conversation's Host of the file `attachment` was
    * uploaded from, which a card of a file that is no image or video opens in
    * the Files panel, as a link to it does: its Host is the conversation's and
@@ -203,6 +211,41 @@ export interface MessageBranchTarget {
 export interface MessageCommitTarget {
   commit: string
   root?: string
+}
+
+/**
+ * What the page knows of a saved credential a reply's card names: it still
+ * reads the user's credentials, could not read them, has the credential,
+ * or none is saved by that name.
+ */
+export type CredentialLookup =
+  | { state: 'loading' }
+  | { state: 'failed' }
+  | { state: 'found'; credential: SettingsCredential }
+  | { state: 'missing' }
+
+/**
+ * A secret field's value as the backend answered it, or that the user must
+ * confirm it is them first; `failed` once the page told the user why it has
+ * none.
+ */
+export type CredentialReveal =
+  | { kind: 'revealed'; value: string }
+  | { kind: 'needsVerification' }
+  | { kind: 'failed' }
+
+/** The user's credentials as the cards of their replies read them. */
+export interface MessageCredentials {
+  /** Reads and follows the user's credentials while a card shows; the function it answers lets them go. */
+  hold(): () => void
+  /** The saved credential named `name`. */
+  find(name: string): CredentialLookup
+  /** The value of the field `field` of the credential `id`, which Copy and Show ask for. */
+  reveal(id: string, field: string): Promise<CredentialReveal>
+  /** How the user confirms it is them when a reveal needs it. */
+  verification: VerificationHost
+  /** The account's email, which the password manager files the password under. */
+  email: string
 }
 
 /**

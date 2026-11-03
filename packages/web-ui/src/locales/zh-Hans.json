@@ -337,6 +337,11 @@
     "pictureTooLarge": "文件为 {size}，太大无法保留",
     "pictureNotAnImage": "文件类型为 {type}，不是图片",
     "pictureHostUnavailable": "主机不可用，未能复制",
-    "pictureUnreadable": "无法读取该文件"
+    "pictureUnreadable": "无法读取该文件",
+    "credential": {
+      "saved": "已保存的凭据",
+      "missing": "已不再保存",
+      "confirm": "请确认是你本人，以使用“{name}”。"
+    }
   }
 }

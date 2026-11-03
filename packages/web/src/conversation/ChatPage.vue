@@ -23,6 +23,7 @@ import { provideHostNames } from '@demicodes/web-ui/agent/host-names'
 import type { CredentialKinds } from '@demicodes/web-ui/agent/credential-kinds'
 import { useProviderSettings } from '../settings/providers'
 import { useSettingsAddress } from '../settings/address'
+import { messageCredentials } from '../settings/credentials'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useWorkPanel } from './work'
@@ -269,6 +270,8 @@ const selectEdit = computed<EditSelectionHandler | undefined>(() => {
 const attachments = useMessageAttachments(() => props.id)
 /** The facts of the plugins' reply blocks the conversation's messages name. */
 const replyBlocks = useReplyBlockFacts(() => props.id)
+/** The user's credentials, which the cards of the replies name. */
+const credentials = messageCredentials()
 
 /**
  * The Host files the conversation's messages name:
@@ -283,6 +286,7 @@ const replyBlocks = useReplyBlockFacts(() => props.id)
  *   `~/` path starts from.
  * - The attachments they deliver, a card's opened through the `attachment`
  *   intent while a plugin opens it.
+ * - The user's credentials their credential cards name.
  */
 const files = computed<ConversationFiles | undefined>(() => {
   const current = conversation.value
@@ -318,6 +322,7 @@ const files = computed<ConversationFiles | undefined>(() => {
     },
     ...(attachments.value ? { attachment: attachments.value } : {}),
     ...(replyBlocks.value ? { replyBlock: replyBlocks.value } : {}),
+    credentials,
     attachmentOrigin: (id, attachment) => attachmentOrigin(id, attachment, {
       conversation: current.id,
       device: executionFor(current).deviceId ?? null,

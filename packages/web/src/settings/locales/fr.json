@@ -72,5 +72,8 @@
     "nameFailed": "Impossible de modifier votre nom",
     "emailFailed": "Impossible de modifier l’adresse e-mail",
     "passwordFailed": "Impossible de modifier le mot de passe"
+  },
+  "credentials": {
+    "revealFailed": "Impossible de lire l’identifiant"
   }
 }

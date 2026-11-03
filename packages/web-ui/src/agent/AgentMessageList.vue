@@ -396,7 +396,7 @@ const conversationFiles = (): MessageFiles | undefined => {
   const files = shownFiles()
   if (!props.elsewhere || !files)
     return files
-  return { cwd: files.cwd, attachment: files.attachment, openAttachment: files.openAttachment }
+  return { cwd: files.cwd, attachment: files.attachment, openAttachment: files.openAttachment, credentials: files.credentials }
 }
 provideMessageFiles(conversationFiles)
 const mediaAddress = useMediaAddress()

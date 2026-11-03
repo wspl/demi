@@ -629,6 +629,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/credentials/{id}",
             patch(credentials::change).delete(credentials::delete),
         )
+        .route("/credentials/{id}/fields/{field}/reveal", post(credentials::reveal))
         .route("/subagents", put(subagents::switch))
         .route("/subagents/profiles", post(subagents::create))
         .route(

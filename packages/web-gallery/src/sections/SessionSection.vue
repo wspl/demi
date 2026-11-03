@@ -92,6 +92,7 @@ import { galleryAttachmentOrigin, galleryConversationFiles, namedCodeFiles, name
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import GalleryMessageFiles from '../components/GalleryMessageFiles.vue'
+import { credentialMarkdown, galleryCredentials } from '../fixtures/credentials'
 import GalleryAgentLinks from '../components/GalleryAgentLinks.vue'
 import { attachmentMarkdown, audioAttachmentMarkdown, frameMediaMarkdown, edgedImagesMarkdown, fiveMediaMarkdown, hostPicturesKept, hostPicturesMarkdown, listAttachmentMarkdown, loneImageMarkdown, twoMediaMarkdown, unloadedImageMarkdown, unloadedImageReached } from '../fixtures/attachments'
 import { reloadFailedMedia } from '@demicodes/web-ui/files/media-reload'
@@ -809,6 +810,8 @@ const sessionFiles = {
   }),
   attachmentOrigin: galleryAttachmentOrigin(project.source, () => hostOnline.value),
 }
+/** The user's credentials the credential cards name. */
+const sessionCredentials = galleryCredentials()
 // The session's pictures and videos open in the Media tab of the frame's panel, as a conversation's do.
 provideMediaViewer({
   reveal: () => {
@@ -2377,6 +2380,17 @@ onBeforeUnmount(() => {
         </GallerySpecimen>
         <GallerySpecimen variant="pictures of the Host a reply shows: copied, being copied, not copied with why, and written before copies were kept" wide>
           <GalleryMessageFiles :files="sessionFiles" :cwd="project.root" :content="hostPicturesMarkdown" :pictures="hostPicturesKept" />
+        </GallerySpecimen>
+      </GallerySection>
+      <GallerySection
+        title="Credentials in a Message"
+        note="A saved credential the agent hands the user: <credential name=&quot;GitHub token for deploys&quot; /> on a line of its own, field=&quot;password&quot; naming one field of several. It is a card 360px wide at most, with a key, the credential's name and, for one field, its value under the name; several fields are rows under it, each with its label. A secret is dots until Show, and Copy copies it without showing it; either asks the page for the value, and the first time in five minutes asks the user to confirm it's them, then goes on: the password “wrong” is refused, any other confirms. A visible field shows its value, with Copy. A name with no saved credential, or a field the credential does not have, says No longer saved. On a share, and wherever the reader is not the vault's owner, the card shows the name alone."
+      >
+        <GallerySpecimen variant="one field, several, one field of several, and one removed since" wide>
+          <GalleryMessageFiles :files="{ ...sessionFiles, credentials: sessionCredentials }" :cwd="project.root" :content="credentialMarkdown" />
+        </GallerySpecimen>
+        <GallerySpecimen variant="on a share: the name alone" wide>
+          <GalleryMessageFiles :files="sessionFiles" :cwd="project.root" :content="credentialMarkdown" />
         </GallerySpecimen>
       </GallerySection>
       <GallerySection

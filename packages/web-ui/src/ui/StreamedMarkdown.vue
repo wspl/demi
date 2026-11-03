@@ -19,7 +19,8 @@ import { GitCommitHorizontal, Link, MessagesSquare } from '@lucide/vue'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import AudioPlayer from '@demicodes/web-ui/files/AudioPlayer.vue'
 import AttachmentCard from '@demicodes/web-ui/files/AttachmentCard.vue'
-import { ATTACHMENT_AUDIO_ATTRIBUTE, ATTACHMENT_CARD_ATTRIBUTE, messageAttachment } from '@demicodes/web-ui/markdown/render'
+import CredentialCard from '@demicodes/web-ui/markdown/CredentialCard.vue'
+import { ATTACHMENT_AUDIO_ATTRIBUTE, ATTACHMENT_CARD_ATTRIBUTE, CREDENTIAL_CARD_ATTRIBUTE, CREDENTIAL_FIELD_ATTRIBUTE, messageAttachment } from '@demicodes/web-ui/markdown/render'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { REPLY_BLOCK_ATTRIBUTE, REPLY_BLOCK_ID_ATTRIBUTE } from '@demicodes/web-ui/markdown/reply-block'
 import { PageScope, useReplyBlocks } from '@demicodes/web-ui/plugins/page'
@@ -152,6 +153,8 @@ interface Places {
   audios: HTMLElement[]
   /** The places of attachment blocks' cards. */
   cards: HTMLElement[]
+  /** The places of credential blocks' cards. */
+  credentials: HTMLElement[]
   /** The places of plugins' reply blocks. */
   blocks: HTMLElement[]
   media: (HTMLImageElement | HTMLVideoElement)[]
@@ -161,6 +164,7 @@ const linkIcons = shallowRef<HTMLElement[]>([])
 const agentLinks = shallowRef<HTMLElement[]>([])
 const audios = shallowRef<HTMLElement[]>([])
 const cards = shallowRef<HTMLElement[]>([])
+const credentialCards = shallowRef<HTMLElement[]>([])
 const blocks = shallowRef<HTMLElement[]>([])
 /** The message's pictures, each a tile with its preview on hover. */
 const pictures = shallowRef<MessagePicture[]>([])
@@ -184,6 +188,7 @@ function placesIn(nodes: readonly ChildNode[], fresh: readonly ChildNode[]): Pla
     agentLinks: within('[data-agent-link]'),
     audios: within(`[${ATTACHMENT_AUDIO_ATTRIBUTE}]`),
     cards: within(`[${ATTACHMENT_CARD_ATTRIBUTE}]`),
+    credentials: within(`[${CREDENTIAL_CARD_ATTRIBUTE}]`),
     blocks: within(`[${REPLY_BLOCK_ATTRIBUTE}]`),
     media: elements.flatMap((element) => messagePictures(element).map((picture) => picture.element)),
   }
@@ -205,6 +210,7 @@ useMarkdownBlocks({
     agentLinks.value = found.flatMap((places) => places.agentLinks)
     audios.value = found.flatMap((places) => places.audios)
     cards.value = found.flatMap((places) => places.cards)
+    credentialCards.value = found.flatMap((places) => places.credentials)
     blocks.value = found.flatMap((places) => places.blocks)
     pictures.value = found.flatMap((places) => places.media).map((medium) => {
       const picture = pictureOf.get(medium) ?? messagePicture(medium)
@@ -332,6 +338,13 @@ function onMediumLoad(event: Event): void {
       :file="cardAttachment(place).attachment"
       :openable="files()?.openAttachment !== undefined"
       @open="void openCard(place)"
+    />
+  </Teleport>
+  <Teleport v-for="(place, index) in credentialCards" :key="index" :to="place">
+    <CredentialCard
+      :name="place.getAttribute(CREDENTIAL_CARD_ATTRIBUTE) ?? ''"
+      :field="place.getAttribute(CREDENTIAL_FIELD_ATTRIBUTE)"
+      :credentials="files()?.credentials"
     />
   </Teleport>
   <AgentLinkMark

@@ -172,6 +172,7 @@ pub fn web() -> Vec<Root> {
         receives::<push::PushMessage>(),
         receives::<credentials::CredentialList>(),
         receives::<credentials::CredentialAnswer>(),
+        receives::<credentials::RevealedValue>(),
         sends::<credentials::NewCredential>(),
         sends::<credentials::CredentialPatch>(),
         receives::<port_forwards::PortForwardList>(),

@@ -337,6 +337,11 @@
     "pictureTooLarge": "파일이 {size}로 너무 커서 보관할 수 없습니다",
     "pictureNotAnImage": "파일이 {type} 형식이라 이미지가 아닙니다",
     "pictureHostUnavailable": "호스트를 사용할 수 없어 복사하지 못했습니다",
-    "pictureUnreadable": "파일을 읽을 수 없습니다"
+    "pictureUnreadable": "파일을 읽을 수 없습니다",
+    "credential": {
+      "saved": "저장된 자격 증명",
+      "missing": "더 이상 저장되어 있지 않음",
+      "confirm": "“{name}”을(를) 사용하려면 본인 확인이 필요합니다."
+    }
   }
 }

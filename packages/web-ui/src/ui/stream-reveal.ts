@@ -1,6 +1,7 @@
 import { sliceHead } from '@demicodes/utils'
 import { openBlockMathAt } from '../markdown/math-syntax'
 import { ATTACHMENT_TAG } from '../markdown/attachment-block'
+import { CREDENTIAL_TAG } from '../markdown/credential-block'
 import type { TextArrival } from '@demicodes/conversation-client'
 
 /**
@@ -128,10 +129,12 @@ export function nextStepEnd(text: string, from: number, ceiling: number, safe: (
 //
 // An image is read as Marked reads it, its alt text holding brackets in pairs
 // and its address parentheses in pairs, and an attachment block as a line of
-// its own, as `attachment-block.ts` reads it.
+// its own, as `attachment-block.ts` reads it, and a credential block as
+// `credential-block.ts` does.
 const MARKDOWN_SYNTAX = new RegExp([
   String.raw`!\[(?:\[[^\]\n]*\]|\\.|[^[\]\\\n])*\]\([ \t]*(?:<[^<>\n]*>|(?:[^()\s]|\([^()\s]*\))*)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^()\n]*\)))?[ \t]*\)`,
   String.raw`^ {0,3}${ATTACHMENT_TAG}$`,
+  String.raw`^ {0,3}${CREDENTIAL_TAG}$`,
   String.raw`^ {0,3}(?:\`{3,}|~{3,}).*$|^ {0,3}(?:-{3,}|\|?(?: *:?-+:? *\|)+(?: *:?-+:? *)?) *$|^ {0,3}\| *| *\|(?<=^ {0,3}\|.*\|) *|\]\([^)\n]*\)|^ {0,3}(?:#{1,6} |> ?|[-*+] |\d+[.)] )|[*_~\`[\]\n]`,
 ].join('|'), 'gm')
 
