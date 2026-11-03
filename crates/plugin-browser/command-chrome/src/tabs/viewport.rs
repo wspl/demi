@@ -145,12 +145,6 @@ pub fn ratio_for(device_ratio: f64, width: u32, height: u32) -> f64 {
     screen_ratio(device_ratio).min(limit).max(1.0)
 }
 
-/// A tab's window's width before and after it was fitted to a viewport.
-struct WindowWidth {
-    before: u32,
-    after: u32,
-}
-
 /// The virtual screen every window of the browser shares: the size of the
 /// viewer's screen in CSS pixels, and its pixel ratio.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -292,7 +286,7 @@ impl BrowserTab {
         );
         // Resizing the native window after the emulated viewport can leave
         // macOS capture letterboxed at the old size, with mismatched input.
-        let window = self.fit_window(viewport).await?;
+        self.fit_window(viewport).await?;
         self.page.execute(metrics.clone()).await?;
         // Publishes the viewport only after the page has painted.
         //
@@ -313,18 +307,18 @@ impl BrowserTab {
             painted = paint(&self.page) => { painted?; true }
             () = &mut replaced => false,
         };
-        // A window narrower than macOS allows keeps its smallest width, and
-        // Chrome lays a window that changed width out only after the resize's
-        // answer, which gives the page the window's width again: the capture
-        // would shrink the page into the viewport between black bands. The
-        // metrics set again once the page painted hold.
-        if window.after != window.before && window.after > viewport.width {
-            self.page.execute(metrics).await?;
-            if painted {
-                tokio::select! {
-                    painted = paint(&self.page) => painted?,
-                    () = &mut replaced => {}
-                }
+        // A window keeps the smallest width Chrome allows, and Chrome lays a
+        // resized window out only after the resize's answer, which gives the
+        // page the window's width again: the capture would shrink the page
+        // into the viewport between black bands. The metrics set again once
+        // the page painted hold. They are set again after every resize, since
+        // the window's bounds include a frame of the platform's own width and
+        // so cannot tell a held width from an asked one.
+        self.page.execute(metrics).await?;
+        if painted {
+            tokio::select! {
+                painted = paint(&self.page) => painted?,
+                () = &mut replaced => {}
             }
         }
         self.state.viewport.send_modify(|viewports| {
@@ -337,26 +331,24 @@ impl BrowserTab {
         Ok(())
     }
 
-    /// Sizes the tab's window so that its page's area is `viewport` and
-    /// answers its width before and after, which the system's smallest window
-    /// can make wider than asked.
+    /// Sizes the tab's window so that its page's area is `viewport`, or as
+    /// near as the smallest window allows.
     ///
     /// The page's area is asked for, not the window's size: a popup's window
     /// has a location bar alone and a tab's a tab strip and a toolbar too, so
     /// a window sized by one chrome height held a popup's page taller than its
     /// viewport, which the capture shrank between black bands.
-    async fn fit_window(&self, viewport: BrowserViewport) -> Result<WindowWidth> {
+    async fn fit_window(&self, viewport: BrowserViewport) -> Result<()> {
         let browser = self.browser.call()?;
-        let found = browser
+        let window = browser
             .execute(
                 GetWindowForTargetParams::builder()
                     .target_id(self.page.target_id().clone())
                     .build(),
             )
             .await?
-            .result;
-        let window = found.window_id;
-        let before = found.bounds.width;
+            .result
+            .window_id;
         browser
             .execute(
                 SetContentsSizeParams::builder()
@@ -367,23 +359,7 @@ impl BrowserTab {
                     .map_err(BrowserError::InvalidResult)?,
             )
             .await?;
-        let after = browser
-            .execute(
-                GetWindowForTargetParams::builder()
-                    .target_id(self.page.target_id().clone())
-                    .build(),
-            )
-            .await?
-            .result
-            .bounds
-            .width;
-        let width = |width: Option<i64>| {
-            width.map_or(viewport.width, |width| u32::try_from(width).unwrap_or(viewport.width))
-        };
-        Ok(WindowWidth {
-            before: width(before),
-            after: width(after),
-        })
+        Ok(())
     }
 
     /// Sets the virtual screen all windows share; windows keep their tabs'
