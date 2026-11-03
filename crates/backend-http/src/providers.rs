@@ -76,6 +76,7 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
         | ProviderRefusal::SearchesNo(..)
         | ProviderRefusal::UnmadeKind { .. }
         | ProviderRefusal::CacheTtl { .. }
+        | ProviderRefusal::Headers(_)
         | ProviderRefusal::Order => {
             return ApiError::invalid_body(message);
         }
@@ -88,7 +89,9 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
         ProviderRefusal::LoginFamily(_)
         | ProviderRefusal::SubscriptionOnly
         | ProviderRefusal::OwnModels(_) => (StatusCode::BAD_REQUEST, ErrorCode::SubscriptionOnly),
-        ProviderRefusal::VendorEndpoint(_) | ProviderRefusal::VendorProtocol(_) => {
+        ProviderRefusal::VendorEndpoint(_)
+        | ProviderRefusal::VendorProtocol(_)
+        | ProviderRefusal::VendorHeaders(_) => {
             (StatusCode::BAD_REQUEST, ErrorCode::EndpointKind)
         }
         ProviderRefusal::DuplicateModel(_) => (StatusCode::BAD_REQUEST, ErrorCode::DuplicateModel),

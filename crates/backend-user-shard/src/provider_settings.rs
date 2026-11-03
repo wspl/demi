@@ -36,7 +36,8 @@ use demi_shared_types::{AudioShape, CacheTtl, ImageShape, MediaKind, MediaShapes
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::ids::{DeviceId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{
-    ConfiguredModel, ConfiguredModels, CreateProvider, CredentialKind, ModelKind, ModelMatch, ProviderPatch, Rotation,
+    ConfiguredModel, ConfiguredModels, CreateProvider, CredentialKind, ModelKind, ModelMatch, ProviderHeader, ProviderPatch,
+    Rotation,
 };
 use demi_web_api_protocol::text::EndpointUrl;
 use std::sync::Arc;
@@ -83,6 +84,14 @@ pub enum ProviderRefusal {
     /// the entry.
     #[error("{0} speaks its vendor’s protocol; it can’t be changed.")]
     VendorProtocol(String),
+    /// Headers for a vendor entry, which sends its vendor's; it names the
+    /// entry.
+    #[error("{0} sends its vendor’s headers; it takes none of its own.")]
+    VendorHeaders(String),
+    /// A list of headers with a name or a value no request can carry, as
+    /// [`ProviderHeader::problem`] says it.
+    #[error("{0}")]
+    Headers(String),
     /// A rotation other than manual for an entry with fewer than two
     /// accounts.
     #[error("Rotation needs at least two accounts")]
@@ -234,6 +243,7 @@ impl Services {
                     image_shape: None,
                     video_shape: None,
                     audio_shape: None,
+                    headers: Vec::new(),
                 };
                 (vendor.provider_type, label, config)
             }
@@ -256,6 +266,7 @@ impl Services {
                     image_shape: None,
                     video_shape: None,
                     audio_shape: None,
+                    headers: Vec::new(),
                 };
                 (provider_type, label, config)
             }
@@ -279,6 +290,7 @@ impl Services {
                     image_shape: None,
                     video_shape: None,
                     audio_shape: None,
+                    headers: Vec::new(),
                 };
                 (provider_type, label, config)
             }
@@ -323,6 +335,7 @@ impl Services {
         let lists = patch.models.is_some();
         let reconfigures = patch.api_key.is_some()
             || patch.base_url.is_some()
+            || patch.headers.is_some()
             || lists
             || shaped
             || protocol;
@@ -349,6 +362,17 @@ impl Services {
                     return Err(ProviderRefusal::VendorEndpoint(entry.label.clone()));
                 }
                 config.base_url = base_url;
+            }
+            // A vendor's API takes the headers its vendor documents, which
+            // its provider sends; the user's own are a gateway's.
+            if let Some(headers) = patch.headers {
+                if !config.is_compatible() {
+                    return Err(ProviderRefusal::VendorHeaders(entry.label.clone()));
+                }
+                if let Some(problem) = ProviderHeader::problem(&headers) {
+                    return Err(ProviderRefusal::Headers(problem));
+                }
+                config.headers = headers;
             }
             if protocol {
                 if !config.is_compatible() {

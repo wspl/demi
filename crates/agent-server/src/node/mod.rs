@@ -918,6 +918,11 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         self.record.borrow().side.is_some().then(|| self.root.to_string())
     }
 
+    /// A tree's root is named by its conversation's ID.
+    fn conversation(&self) -> Option<String> {
+        Some(self.root.to_string())
+    }
+
     /// The commands the node's shells run, oldest first, each with its
     /// call's title, and the node's live children in spawn order.
     fn running_work(&self) -> LocalBoxFuture<'_, RunningWork> {

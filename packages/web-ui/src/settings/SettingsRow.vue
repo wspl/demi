@@ -58,8 +58,10 @@ import type { SentenceText } from '../ui/ui-text'
  *   not fit beside it they move under it (the Writing page's rule for long text).
  * - The `below` slot holds what needs the row's whole width, such as an account's
  *   usage bars. It takes a line of its own under the name and the controls at
- *   every width, from the row's start to its end, and the controls then align
- *   with the name's line, as they do beside `detail`.
+ *   every width, from the row's start to its end; the controls stay centered on
+ *   the name and its description, as System Settings centers a row's button on
+ *   its text. Beside `detail`, which grows the text, they align with the name's
+ *   line.
  * - The `problem` slot holds what is wrong with the row's value, such as an
  *   `InlineError`. It takes a line of its own under the row, so the row grows
  *   when it shows and its controls stay where they were.
@@ -97,8 +99,8 @@ const clickable = computed(() => props.interactive === true || props.navigable =
 // the slots the row first rendered with.
 const accessory = () => props.navigable === true || slots['accessory'] !== undefined
 const below = () => slots['below'] !== undefined
-/** The controls align with the name's line rather than the row's middle. */
-const topAligned = () => slots['detail'] !== undefined || below()
+/** The controls align with the name's line rather than the text's middle. */
+const topAligned = () => slots['detail'] !== undefined
 // The accessory's square: as wide as the row is tall. CSS cannot size a
 // stretched flex item's width from its height, so the row is measured.
 const rowElement = ref<HTMLElement>()

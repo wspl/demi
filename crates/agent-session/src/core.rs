@@ -3051,6 +3051,7 @@ impl SessionCore {
         InferenceRequest {
             session_id: self.id.to_string(),
             affinity: self.runtime.affinity(),
+            conversation: self.runtime.conversation(),
             turn_id: turn.to_string(),
             request_id,
             model_id: self.model.model.id.clone(),
@@ -3141,6 +3142,7 @@ impl SessionCore {
         InferenceRequest {
             session_id: self.id.to_string(),
             affinity: self.runtime.affinity(),
+            conversation: self.runtime.conversation(),
             turn_id: String::new(),
             request_id,
             model_id: model.model.id.clone(),

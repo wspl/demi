@@ -721,6 +721,20 @@
       "throughRemoved": "已移除的设备",
       "throughRemovedDescription": "该设备已被移除：选择其他设备之前请求会失败。"
     },
+    "headers": {
+      "title": "请求头",
+      "description": "每次请求都会带上。值里的 {token} 会换成对话的 ID。",
+      "add": "添加请求头",
+      "namePlaceholder": "名称",
+      "valuePlaceholder": "值",
+      "nameOf": "第 {n} 个请求头的名称",
+      "valueOf": "第 {n} 个请求头的值",
+      "remove": "移除请求头",
+      "removeOf": "移除第 {n} 个请求头",
+      "invalidName": "请输入不含空格和冒号等符号的名称，例如 X-Session-Id。",
+      "takenName": "已有同名的请求头。",
+      "invalidValue": "请去掉值里的换行。"
+    },
     "cli": {
       "title": "命令行工具",
       "version": "版本",

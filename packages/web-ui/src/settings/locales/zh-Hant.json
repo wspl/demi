@@ -721,6 +721,20 @@
       "throughRemoved": "已移除的裝置",
       "throughRemovedDescription": "該裝置已被移除：選擇其他裝置之前請求會失敗。"
     },
+    "headers": {
+      "title": "請求標頭",
+      "description": "每次請求都會帶上。值中的 {token} 會換成對話的 ID。",
+      "add": "新增請求標頭",
+      "namePlaceholder": "名稱",
+      "valuePlaceholder": "值",
+      "nameOf": "第 {n} 個請求標頭的名稱",
+      "valueOf": "第 {n} 個請求標頭的值",
+      "remove": "移除請求標頭",
+      "removeOf": "移除第 {n} 個請求標頭",
+      "invalidName": "請輸入不含空格與冒號等符號的名稱，例如 X-Session-Id。",
+      "takenName": "已有同名的請求標頭。",
+      "invalidValue": "請移除值中的換行。"
+    },
     "cli": {
       "title": "命令列工具",
       "version": "版本",

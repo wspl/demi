@@ -12,6 +12,67 @@ use serde_with::rust::unwrap_or_skip;
 
 use crate::{Nullable, Timestamp};
 
+/// One of the headers every request of a compatible provider entry carries,
+/// as its user set it.
+///
+/// `{conversation}` in its value stands for the ID of the conversation the
+/// request serves; a request that serves none leaves out a header whose
+/// value names it. A header without a name, which the user has added and
+/// not named yet, sends nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderHeader {
+    pub name: String,
+    pub value: String,
+}
+
+impl ProviderHeader {
+    /// What a value says for the conversation's ID.
+    pub const CONVERSATION: &str = "{conversation}";
+
+    /// What is wrong with `headers` as an entry's list, or none: a name that
+    /// is no HTTP field name (RFC 9110 § 5.1), a name another header has in
+    /// any case, or a value with an ASCII control character other than a tab
+    /// (§ 5.5).
+    pub fn problem(headers: &[Self]) -> Option<String> {
+        let mut named = std::collections::HashSet::new();
+        for (index, header) in headers.iter().enumerate() {
+            let n = index + 1;
+            if !header.name.is_empty() && !is_field_name(&header.name) {
+                return Some(format!(
+                    "headers: header {n}’s name holds a space or a symbol such as a colon; a name is like X-Session-Id"
+                ));
+            }
+            if !header.name.is_empty() && !named.insert(header.name.to_ascii_lowercase()) {
+                return Some(format!("headers: header {n} has the name of another header"));
+            }
+            if header.value.chars().any(|c| (c < ' ' && c != '\t') || c == '\u{7f}') {
+                return Some(format!("headers: header {n}’s value holds a line break"));
+            }
+        }
+        None
+    }
+
+    /// The value a request serving `conversation` sends, or none when it
+    /// sends no such header: the header has no name, or its value names the
+    /// conversation and the request serves none.
+    pub fn value_for(&self, conversation: Option<&str>) -> Option<String> {
+        if self.name.is_empty() {
+            return None;
+        }
+        if !self.value.contains(Self::CONVERSATION) {
+            return Some(self.value.clone());
+        }
+        conversation.map(|id| self.value.replace(Self::CONVERSATION, id))
+    }
+}
+
+/// Whether `name` is an HTTP token, as a field name is.
+fn is_field_name(name: &str) -> bool {
+    name.bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte))
+}
+
 /// The wire format an `openai` entry speaks (`crates/provider-common/src/endpoint.rs`): the
 /// Responses API, or Chat Completions as OpenAI-compatible vendors serve it.
 /// An entry that names none speaks Responses.

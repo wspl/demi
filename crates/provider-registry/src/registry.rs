@@ -176,11 +176,21 @@ impl ProviderRegistry {
 
     fn http_of(&self, entry: Option<&ProviderEntry>, client: reqwest::Client) -> ProviderHttp {
         let through = entry.and_then(|entry| Some((entry, entry.through_device.as_ref()?)));
-        match (through, self.devices.get()) {
+        let http = match (through, self.devices.get()) {
             (Some((entry, device)), Some(route)) => {
                 ProviderHttp::through_device(client, route.clone(), entry.owner.as_str(), device.as_str())
             }
             _ => ProviderHttp::new(client),
+        };
+        // A compatible entry's headers go to its endpoint, which one that
+        // has headers but no endpoint yet has no request to.
+        let own = entry.and_then(|entry| match &entry.credential {
+            EntryCredential::ApiKey(config) => Some((entry.headers(), config.base_url.as_ref()?)),
+            EntryCredential::Subscription { .. } => None,
+        });
+        match own {
+            Some((headers, endpoint)) => http.with_headers(headers, endpoint.url()),
+            None => http,
         }
     }
 

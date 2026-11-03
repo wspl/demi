@@ -42,6 +42,7 @@ pub(crate) fn run(
             return;
         }
         let model = request.model_id.clone();
+        let conversation = request.conversation.clone();
         // Only a session's request marks what it caches.
         let lifetime = shared
             .cache_ttl
@@ -62,7 +63,7 @@ pub(crate) fn run(
                 return;
             }
         };
-        let mut send = http.post(shared.messages_url.clone());
+        let mut send = http.post(shared.messages_url.clone()).for_conversation(conversation.as_deref());
         if let Some(key) = &shared.api_key {
             send = send.header("x-api-key", key.clone());
         }

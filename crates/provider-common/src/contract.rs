@@ -350,6 +350,11 @@ pub struct InferenceRequest {
     /// session is state of its own, such as a CLI's resumed session, keeps
     /// `session_id` for that state.
     pub affinity: Option<String>,
+    /// The conversation the request serves, whose ID an entry's headers
+    /// fill in: the same for its agent, its subagents and its side
+    /// questions. None for a request that serves none, such as a connection
+    /// test.
+    pub conversation: Option<String>,
     /// The turn the request belongs to; continuations inside a turn share it.
     pub turn_id: String,
     /// This request, unique per attempt.

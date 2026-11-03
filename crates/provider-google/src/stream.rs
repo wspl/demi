@@ -33,6 +33,7 @@ pub(crate) fn run(
         }
         let url = shared.stream_url(&request.model_id);
         let model = request.model_id.clone();
+        let conversation = request.conversation.clone();
         let body = encode_body(LABEL, move || request::encode(&request));
         let body = tokio::select! {
             biased;
@@ -47,7 +48,7 @@ pub(crate) fn run(
                 return;
             }
         };
-        let mut send = http.post(url);
+        let mut send = http.post(url).for_conversation(conversation.as_deref());
         if let Some(key) = &shared.api_key {
             send = send.header("x-goog-api-key", key.clone());
         }

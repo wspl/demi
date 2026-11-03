@@ -145,6 +145,12 @@ pub trait SessionRuntime {
         None
     }
 
+    /// The conversation the node's requests serve, whose ID a provider
+    /// entry's headers fill in: its tree's root's. None by default.
+    fn conversation(&self) -> Option<String> {
+        None
+    }
+
     /// The node's working directory now, where its `shell` calls start.
     ///
     /// It is read as a step starts without reaching its Host: the files a call

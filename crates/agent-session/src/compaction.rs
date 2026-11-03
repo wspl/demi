@@ -1072,6 +1072,11 @@ impl SessionRuntime for CopyRuntime {
         self.session.agent()
     }
 
+    /// It serves its session's conversation.
+    fn conversation(&self) -> Option<String> {
+        self.session.conversation()
+    }
+
     fn is_below(&self, node: &NodeId) -> bool {
         self.session.is_below(node)
     }

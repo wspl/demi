@@ -721,6 +721,20 @@
       "throughRemoved": "削除されたデバイス",
       "throughRemovedDescription": "デバイスは削除されました。別のデバイスを選ぶまでリクエストは失敗します。"
     },
+    "headers": {
+      "title": "リクエストヘッダー",
+      "description": "すべてのリクエストに付けて送信します。値の {token} はチャットの ID に置き換わります。",
+      "add": "ヘッダーを追加",
+      "namePlaceholder": "名前",
+      "valuePlaceholder": "値",
+      "nameOf": "ヘッダー {n} の名前",
+      "valueOf": "ヘッダー {n} の値",
+      "remove": "ヘッダーを削除",
+      "removeOf": "ヘッダー {n} を削除",
+      "invalidName": "スペースやコロンなどの記号を含まない名前を入力してください（例：X-Session-Id）。",
+      "takenName": "同じ名前のヘッダーがすでにあります。",
+      "invalidValue": "値から改行を取り除いてください。"
+    },
     "cli": {
       "title": "コマンドラインツール",
       "version": "バージョン",
