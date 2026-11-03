@@ -13,8 +13,9 @@ Before you write a crate, check whether the service needs one:
 - A vendor that models.dev lists with a supported client package appears in the
   vendor catalog without any code
   (`crates/provider-registry/src/vendors.rs`).
-- A field that one vendor requires or refuses is a typed setting of the
-  backend's vendor policy, not a crate.
+- How a model wants thinking sent and sent back is a fact of the model
+  (`ModelWire`): models.dev states it for a vendor's model, and the user sets
+  it for a compatible API's model in Edit Model. It is not a crate.
 
 Write a crate when the service has its own wire, its own login, or runs as a
 process.

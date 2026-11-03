@@ -158,6 +158,9 @@ impl GrokModel {
             service_tiers: Vec::new(),
             default_service_tier_id: None,
             cost: None,
+            // The Responses API reads neither.
+            thinking_form: Default::default(),
+            interleaved_thinking: false,
         })
     }
 }

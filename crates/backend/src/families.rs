@@ -79,7 +79,7 @@ impl ProviderFamily for AnthropicFamily {
         let config = AnthropicConfig {
             api_key: settings.api_key,
             base_url: settings.base_url,
-            policy: settings.vendor,
+            models: settings.models,
             cache_ttl: args.cache_ttl,
         };
         let text: Arc<dyn Provider> = Arc::new(AnthropicProvider::new(config, args.clock.clone()));
@@ -148,7 +148,7 @@ impl ProviderFamily for OpenAiFamily {
             base_url: settings.base_url,
             // An entry that names no wire speaks Responses.
             wire: settings.wire_api.unwrap_or_default(),
-            policy: settings.vendor,
+            models: settings.models,
             vendor_id: settings.vendor_id,
             entry_id: args.entry_id.clone(),
             label: args.label.clone(),

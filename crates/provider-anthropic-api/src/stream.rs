@@ -50,10 +50,10 @@ pub(crate) fn run(
             .filter(|_| matches!(request.prompt_cache, PromptCache::Session { .. }))
             .map(CacheTtl::duration);
         // A body with images is megabytes of base64, built off the shard.
-        let policy = shared.policy;
+        let form = shared.models.of(&request.model_id).thinking_form;
         let ttl = shared.cache_ttl.clone();
         let body = match encode_body(LABEL, move || {
-            request::encode(&request, policy, ttl.as_ref().map(CacheTtl::as_str))
+            request::encode(&request, form, ttl.as_ref().map(CacheTtl::as_str))
         })
         .await
         {

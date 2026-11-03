@@ -6,10 +6,13 @@
 //! knows nothing of vendors: its readers pick what they need, such as one
 //! vendor's model list.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use demi_shared_types::{Clock, ModelCost, ProviderModel, ProviderModelList, Timestamp, modality_extensions};
+use demi_shared_types::{
+    Clock, ModelCost, ModelWire, ProviderModel, ProviderModelList, ThinkingForm, Timestamp, modality_extensions,
+};
 use futures_util::FutureExt;
 use futures_util::future::{BoxFuture, Shared, WeakShared};
 use indexmap::IndexMap;
@@ -325,6 +328,21 @@ impl ModelsDevSnapshot {
         self.listed(vendor_id, ModelsDevModel::agentic)
     }
 
+    /// How each model of vendor `vendor_id` wants thinking sent and sent back,
+    /// by its id, as its catalog model states it; empty for a vendor the
+    /// document does not list.
+    pub fn wires(&self, vendor_id: &str) -> HashMap<String, ModelWire> {
+        self.vendor(vendor_id)
+            .map(|vendor| {
+                vendor
+                    .models
+                    .iter()
+                    .map(|(id, model)| (id.clone(), model.wire(vendor_id)))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// The models of vendor `vendor_id` that `kept` keeps, as a catalog.
     fn listed(
         &self,
@@ -337,7 +355,7 @@ impl ModelsDevSnapshot {
                 .models
                 .iter()
                 .filter(|(_, model)| kept(model))
-                .map(|(id, model)| model.catalog(id))
+                .map(|(id, model)| model.catalog(vendor_id, id))
                 .collect(),
             default_model_id: None,
             warnings: self.warnings.clone(),
@@ -371,7 +389,7 @@ impl Listing<'_> {
         ModelsDevMatch {
             vendor: self.vendor.clone(),
             id: self.id.clone(),
-            model: self.model.catalog(self.id),
+            model: self.model.catalog(self.vendor, self.id),
             release_date: self.model.release_date.clone(),
         }
     }
@@ -473,6 +491,11 @@ struct ModelsDevModel {
     reasoning: Option<bool>,
     #[serde(default)]
     reasoning_options: Option<Vec<ReasoningOption>>,
+    /// `true`, or `{"field": …}` naming the field the model wants its earlier
+    /// thinking back in. Read as any value, so a shape the document adds
+    /// later states nothing rather than failing the model.
+    #[serde(default)]
+    interleaved: Option<serde_json::Value>,
     #[serde(default)]
     tool_call: Option<bool>,
     #[serde(default)]
@@ -556,9 +579,12 @@ impl ModelsDevModel {
     /// - `reasoning` is its thinking support, and the values of its `effort`
     ///   reasoning option are its efforts.
     /// - `tool_call` is its tool support and `cost` its prices.
+    /// - How it takes thinking is [`ModelsDevModel::wire`]'s, for vendor
+    ///   `vendor_id`.
     ///
     /// What the document does not state is unknown.
-    fn catalog(&self, id: &str) -> ProviderModel {
+    fn catalog(&self, vendor_id: &str, id: &str) -> ProviderModel {
+        let wire = self.wire(vendor_id);
         let limit = self.limit.as_ref();
         let context_window = limit.and_then(|limit| tokens(limit.context));
         let output_limit = limit
@@ -587,6 +613,34 @@ impl ModelsDevModel {
                 cache_read: cost.cache_read,
                 cache_write: cost.cache_write,
             }),
+            thinking_form: wire.thinking_form,
+            interleaved_thinking: wire.interleaved_thinking,
+        }
+    }
+
+    /// How the model of vendor `vendor_id` wants thinking sent and sent back:
+    ///
+    /// - An effort goes as one when the record is Anthropic's and lists an
+    ///   `effort` option, and as a budget otherwise: no other vendor documents
+    ///   what its `effort` means on the Messages API.
+    /// - Its thinking goes back when `interleaved` is `true` or names
+    ///   `reasoning_content`, the one field Demi reads thinking from.
+    fn wire(&self, vendor_id: &str) -> ModelWire {
+        let takes_effort = vendor_id == "anthropic"
+            && self
+                .reasoning_options
+                .iter()
+                .flatten()
+                .any(|option| option.kind == "effort");
+        ModelWire {
+            thinking_form: if takes_effort { ThinkingForm::Effort } else { ThinkingForm::Budget },
+            interleaved_thinking: match &self.interleaved {
+                Some(serde_json::Value::Bool(on)) => *on,
+                Some(serde_json::Value::Object(object)) => {
+                    object.get("field").and_then(serde_json::Value::as_str) == Some("reasoning_content")
+                }
+                _ => false,
+            },
         }
     }
 

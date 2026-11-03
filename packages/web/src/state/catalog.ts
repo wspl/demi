@@ -87,6 +87,8 @@ export function settingsModel(
         (extension) => `.${extension}`,
       ) ?? null,
     fastTier: model.serviceTiers.find((tier) => tier.fast)?.id ?? null,
+    thinkingForm: model.thinkingForm,
+    interleavedThinking: model.interleavedThinking,
     enabled,
   }
 }

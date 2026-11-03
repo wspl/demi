@@ -4,7 +4,7 @@
 pub use demi_shared_types::ProviderHeader;
 use demi_shared_types::{
     AccountInfo, AudioKind, AudioShape, AuthState, CacheTtl, DownloadProgress, FileExtension, ImageShape, LoginStage, MediaKind, ModelSelection, VideoShape,
-    Nullable, ProviderModel, QuotaSnapshot, RequestId, RuntimeState, Timestamp, WireApi,
+    ModelWire, Nullable, ProviderModel, QuotaSnapshot, RequestId, RuntimeState, ThinkingForm, Timestamp, WireApi,
 };
 use garde::Validate;
 use schemars::JsonSchema;
@@ -98,6 +98,27 @@ pub struct ConfiguredModel {
     #[schemars(with = "Nullable<String>")]
     #[garde(length(chars, min = 1))]
     pub fast_tier: Option<String>,
+    /// On the Messages API, how a reasoning level goes; Effort when absent,
+    /// what every model stored before it was sent.
+    #[serde(default)]
+    #[garde(skip)]
+    pub thinking_form: ThinkingForm,
+    /// On Chat Completions, whether the model's earlier thinking goes back
+    /// (`crates/shared-types/src/model.rs`); off when absent, as every model
+    /// stored before it was sent.
+    #[serde(default)]
+    #[garde(skip)]
+    pub interleaved_thinking: bool,
+}
+
+impl ConfiguredModel {
+    /// How the model wants thinking sent and sent back.
+    pub fn wire(&self) -> ModelWire {
+        ModelWire {
+            thinking_form: self.thinking_form,
+            interleaved_thinking: self.interleaved_thinking,
+        }
+    }
 }
 
 /// An output limit is at most the context window, when the window is known.
@@ -1074,6 +1095,11 @@ pub struct ModelMatch {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Vec<FileExtension>>")]
     pub accepted_extensions: Option<Vec<FileExtension>>,
+    /// How a reasoning level goes on the Messages API, from the record.
+    pub thinking_form: ThinkingForm,
+    /// Whether its earlier thinking goes back on Chat Completions, from the
+    /// record's `interleaved`.
+    pub interleaved_thinking: bool,
     /// The release date as models.dev states it, such as `2026-06-17`.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]

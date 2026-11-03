@@ -685,6 +685,11 @@ const takenIds = computed(() => {
   const provider = props.providers.find((entry) => entry.id === editor?.providerId)
   return provider?.models.map((m) => m.id).filter((id) => id !== editor?.original?.id) ?? []
 })
+/** The API the edited model's entry speaks, when the entry is a compatible API's. */
+const compatibleApi = computed(() => {
+  const provider = props.providers.find((entry) => entry.id === modelEditor.value?.providerId)
+  return provider?.compatible ? provider.wireApi : null
+})
 
 /** Add Model, a search over models.dev, for the entry `providerId`. */
 const modelSearch = ref<{
@@ -770,6 +775,8 @@ function toDraft(m: SettingsProviderModel): SettingsModelDraft {
     efforts: [...m.efforts],
     extensions: m.extensions === null ? null : [...m.extensions],
     fastTier: m.fastTier,
+    thinkingForm: m.thinkingForm,
+    interleavedThinking: m.interleavedThinking,
   }
 }
 
@@ -1863,6 +1870,7 @@ a vendor entry's switch and its vendor's
       :operation="modelSaving(modelEditor)"
       :model="modelEditor.model"
       :taken-ids="takenIds"
+      :compatible-api="compatibleApi"
       @close="modelEditor.open = false"
       @save="saveModel"
       @delete="deleteEditedModel"

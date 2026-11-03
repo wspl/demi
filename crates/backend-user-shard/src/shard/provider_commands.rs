@@ -22,7 +22,7 @@ use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc};
 use demi_agent_tools::EFFORT_OFF;
 use demi_shared_types::{
-    FileExtension, AudioShape, ImageShape, ModelSelection, VideoShape, WireApi, model_reads_images,
+    FileExtension, AudioShape, ImageShape, ModelSelection, ThinkingForm, VideoShape, WireApi, model_reads_images,
     output::{Cell, Fields, Table, warning},
 };
 use demi_web_api_protocol::ids::DeviceId;
@@ -101,6 +101,8 @@ const OUTPUT: &str = "The output limit in tokens, at most the context window, or
 const EFFORTS: &str = "The thinking efforts, comma-separated, the default first, such as low,medium,high; none for a model without thinking.";
 const EXTENSIONS: &str = "The file types the model reads, comma-separated, such as png,jpg,pdf; none for no file, unknown when not known.";
 const FAST_TIER: &str = "The service tier that is the model's Fast, such as priority, or none.";
+const THINKING: &str = "A compatible API's model on the Messages API: how a thinking effort is sent, effort, as Anthropic's adaptive thinking, or budget, as a number of tokens. A vendor's model takes it from models.dev.";
+const INTERLEAVED_THINKING: &str = "A compatible API's model on Chat Completions: whether its earlier thinking goes back with each tool call, as DeepSeek and Kimi need, on or off. A vendor's model takes it from models.dev.";
 
 /// The input of `list`.
 #[derive(Deserialize, JsonSchema)]
@@ -196,6 +198,22 @@ struct ModelFields {
     efforts: Option<String>,
     extensions: Option<String>,
     fast_tier: Option<String>,
+    thinking: Option<ThinkingForm>,
+    interleaved_thinking: Option<Switch>,
+}
+
+/// An option that turns something on or off.
+#[derive(Deserialize, JsonSchema, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum Switch {
+    On,
+    Off,
+}
+
+impl Switch {
+    fn on(self) -> bool {
+        matches!(self, Self::On)
+    }
 }
 
 /// The input of `models remove`.
@@ -437,6 +455,8 @@ fn model_leaf<A: JsonSchema>(name: &str, summary: &str) -> LeafBuilder {
         .describe("efforts", EFFORTS)
         .describe("extensions", EXTENSIONS)
         .describe("fast-tier", FAST_TIER)
+        .describe("thinking", THINKING)
+        .describe("interleaved-thinking", INTERLEAVED_THINKING)
         .json_output::<ConfiguredModel>()
         .permission(MANAGE)
 }
@@ -762,6 +782,7 @@ async fn add_model(
     let user = user(&shard).await?;
     let scope = shard.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, &args.entry).map_err(failed)?;
+    wire_fields_for(entry, &args.fields)?;
     // An entry that follows its vendor's list starts its own from the
     // models the vendor offers now, so adding one removes none.
     let (mut models, started) = match list_of(entry)? {
@@ -828,6 +849,8 @@ fn vendor_list(scope: &Scope, entry: &ProviderEntry) -> Vec<ConfiguredModel> {
                     .iter()
                     .find(|tier| tier.fast)
                     .map(|tier| tier.id.clone()),
+                thinking_form: model.thinking_form,
+                interleaved_thinking: model.interleaved_thinking,
             }
         })
         .collect()
@@ -842,6 +865,7 @@ async fn edit_model(
     let user = user(&shard).await?;
     let entries = entries(&shard).await.map_err(failed)?;
     let entry = named(&entries, &args.entry).map_err(failed)?;
+    wire_fields_for(entry, &args.fields)?;
     let mut models = owned_list(entry)?;
     let index = listed(entry, &models, &args.model)?;
     let fields = args.fields;
@@ -863,6 +887,12 @@ async fn edit_model(
     }
     if let Some(extensions) = fields.extensions {
         model.accepted_extensions = extensions_of(&extensions)?;
+    }
+    if let Some(form) = fields.thinking {
+        model.thinking_form = form;
+    }
+    if let Some(switch) = fields.interleaved_thinking {
+        model.interleaved_thinking = switch.on();
     }
     if let Some(tier) = fields.fast_tier {
         model.fast_tier = (tier != NONE).then_some(tier);
@@ -995,6 +1025,20 @@ fn list_of(entry: &ProviderEntry) -> Result<Option<Vec<ConfiguredModel>>, RpcErr
     }
 }
 
+/// Refuses `--thinking` and `--interleaved-thinking` but on a compatible
+/// entry: a vendor's model takes both from models.dev, as Edit Model shows
+/// neither for it.
+fn wire_fields_for(entry: &ProviderEntry, fields: &ModelFields) -> Result<(), RpcError> {
+    let compatible = matches!(&entry.credential, EntryCredential::ApiKey(config) if config.is_compatible());
+    if compatible || fields.thinking.is_none() && fields.interleaved_thinking.is_none() {
+        return Ok(());
+    }
+    Err(failed(format!(
+        "--thinking and --interleaved-thinking set a compatible API's model; {}'s models take both from models.dev",
+        entry.label
+    )))
+}
+
 /// The entry's own model list, which `models edit` and `remove` change.
 fn owned_list(entry: &ProviderEntry) -> Result<Vec<ConfiguredModel>, RpcError> {
     list_of(entry)?.ok_or_else(|| {
@@ -1075,6 +1119,8 @@ fn new_model(found: Option<&ModelMatch>, kind: ModelKind, fields: ModelFields) -
             thinking_efforts: Vec::new(),
             accepted_extensions: None,
             fast_tier: None,
+            thinking_form: ThinkingForm::default(),
+            interleaved_thinking: false,
         });
     }
     Ok(ConfiguredModel {
@@ -1086,6 +1132,15 @@ fn new_model(found: Option<&ModelMatch>, kind: ModelKind, fields: ModelFields) -
         thinking_efforts,
         accepted_extensions,
         fast_tier: fields.fast_tier.filter(|tier| tier != NONE),
+        thinking_form: fields
+            .thinking
+            .or_else(|| found.map(|found| found.thinking_form))
+            .unwrap_or_default(),
+        interleaved_thinking: fields
+            .interleaved_thinking
+            .map(Switch::on)
+            .or_else(|| found.map(|found| found.interleaved_thinking))
+            .unwrap_or(false),
     })
 }
 

@@ -172,9 +172,6 @@ pub struct ResponsesDialect<'a> {
 pub enum AssistantReplay {
     /// Type, role and content only: relay gateways refuse anything else.
     Minimal,
-    /// With `status: completed`, which gateways that validate the full item
-    /// schema require.
-    Completed,
     /// With `status: completed` and an id derived from the item's position,
     /// model and text, as the Codex backend receives it.
     Identified,
@@ -314,7 +311,6 @@ pub fn responses_input<'a>(
             InferenceItem::AssistantText { model_id, text } => {
                 let (id, status) = match dialect.assistant {
                     AssistantReplay::Minimal => (None, None),
-                    AssistantReplay::Completed => (None, Some("completed")),
                     AssistantReplay::Identified => {
                         let hash = short_hash(&format!("{index}:{model_id}:{text}"));
                         (Some(format!("msg_{hash}")), Some("completed"))
@@ -613,24 +609,21 @@ impl<'a> From<&'a ToolDefinition> for ChatTool<'a> {
     }
 }
 
-/// How a vendor's Chat Completions endpoint wants a transcript replayed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ChatDialect {
-    /// Earlier thinking is sent back as `reasoning_content` on the assistant
-    /// message it preceded, and as an empty one on a tool-call message without
-    /// thinking.
-    ///
-    /// DeepSeek's thinking mode requires it; OpenAI refuses the field.
-    pub reasoning_content: bool,
-}
-
-/// The transcript as Chat Completions messages, in `dialect`: a system
+/// The transcript as Chat Completions messages for model `model_id`: a system
 /// message when the prompt is not blank, then consecutive assistant text and
 /// tool calls as one assistant message, each tool result as a tool message.
+///
+/// With `interleaved_thinking` ([`ModelWire`](demi_shared_types::ModelWire)),
+/// the thinking `model_id` wrote goes back as `reasoning_content` on the
+/// assistant message it preceded, and an empty one on a tool-call message
+/// without thinking. Thinking is read from `reasoning_content` only, so only
+/// unsigned thinking of the same model goes back: another model's, or one
+/// another API signed, is no reasoning this endpoint gave.
 pub fn chat_messages<'a>(
     system_prompt: &'a str,
     items: &'a [InferenceItem],
-    dialect: ChatDialect,
+    model_id: &str,
+    interleaved_thinking: bool,
 ) -> Vec<ChatMessage<'a>> {
     let mut messages = Vec::new();
     if !demi_shared_types::is_blank(system_prompt) {
@@ -642,7 +635,7 @@ pub fn chat_messages<'a>(
     for item in items {
         match item {
             InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
-                turn.flush(&mut messages, dialect);
+                turn.flush(&mut messages, interleaved_thinking);
                 messages.push(ChatMessage::User {
                     content: chat_user_content(content),
                 });
@@ -670,22 +663,27 @@ pub fn chat_messages<'a>(
                 output,
                 ..
             } => {
-                turn.flush(&mut messages, dialect);
+                turn.flush(&mut messages, interleaved_thinking);
                 messages.push(ChatMessage::Tool {
                     tool_call_id: tool_use_id,
                     content: tool_output_text(output),
                 });
                 push_tool_media(&mut messages, tool_use_id, output);
             }
-            InferenceItem::AssistantThinking { text, .. } => {
-                if dialect.reasoning_content {
+            InferenceItem::AssistantThinking {
+                model_id: thinker,
+                text,
+                signature,
+                ..
+            } => {
+                if interleaved_thinking && signature.is_none() && thinker == model_id {
                     turn.think(text);
                 }
             }
             InferenceItem::Opaque { .. } => {}
         }
     }
-    turn.flush(&mut messages, dialect);
+    turn.flush(&mut messages, interleaved_thinking);
     messages
 }
 
@@ -724,12 +722,12 @@ impl<'a> AssistantTurn<'a> {
 
     /// Ends the assistant message; thinking that no message followed goes
     /// with it, since it belonged to nothing the vendor will see.
-    fn flush(&mut self, messages: &mut Vec<ChatMessage<'a>>, dialect: ChatDialect) {
+    fn flush(&mut self, messages: &mut Vec<ChatMessage<'a>>, interleaved_thinking: bool) {
         self.pending_reasoning.clear();
         let Some(open) = self.open.take() else {
             return;
         };
-        let reasoning_content = (dialect.reasoning_content
+        let reasoning_content = (interleaved_thinking
             && (!open.reasoning.is_empty() || !open.tool_calls.is_empty()))
         .then_some(open.reasoning);
         messages.push(ChatMessage::Assistant {

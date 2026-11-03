@@ -151,7 +151,7 @@ pub use media::{
 };
 pub use model::{
     ATTACHMENT_FILE_EXTENSIONS, FileExtension, IMAGE_FILE_EXTENSIONS, modality_extensions, Model, ModelSelection, THINKING_OFF,
-    ThinkingCapability, ThinkingConfig, ThinkingSummary, TokenUsage, VIDEO_FILE_EXTENSIONS,
+    ModelWire, ThinkingCapability, ThinkingConfig, ThinkingForm, ThinkingSummary, TokenUsage, VIDEO_FILE_EXTENSIONS,
     file_extension_support, model_accepts_images, model_accepts_video,
 };
 pub use provider_state::{

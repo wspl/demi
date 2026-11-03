@@ -8,9 +8,9 @@ use std::borrow::Cow;
 
 use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, Medium, PromptCache, ResultPart, ToolDefinition,
-    UserPart, VendorPolicy, json_body, thinking::effort_budget, wire::messages,
+    UserPart, json_body, thinking::effort_budget, wire::messages,
 };
-use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, is_blank};
+use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingForm, ThinkingSummary, is_blank};
 use serde::Serialize;
 
 /// The prefix this provider puts on the signatures and redacted data it
@@ -34,8 +34,8 @@ fn cache_mark(ttl: Option<&str>) -> CacheControl<'_> {
 }
 
 /// The JSON body of `request`, whose cache marks ask for `ttl`.
-pub(crate) fn encode(request: &InferenceRequest, policy: VendorPolicy, ttl: Option<&str>) -> Vec<u8> {
-    json_body(&body(request, policy, ttl))
+pub(crate) fn encode(request: &InferenceRequest, form: ThinkingForm, ttl: Option<&str>) -> Vec<u8> {
+    json_body(&body(request, form, ttl))
 }
 
 #[derive(Serialize)]
@@ -213,11 +213,11 @@ struct OutputConfig<'a> {
     effort: &'a str,
 }
 
-fn body<'a>(request: &'a InferenceRequest, policy: VendorPolicy, ttl: Option<&'a str>) -> Body<'a> {
+fn body<'a>(request: &'a InferenceRequest, form: ThinkingForm, ttl: Option<&'a str>) -> Body<'a> {
     let max_tokens = request
         .max_output_tokens()
         .map_or(DEFAULT_MAX_TOKENS, |limit| limit.get());
-    let (thinking, output_config) = thinking(request.thinking.as_ref(), max_tokens, policy);
+    let (thinking, output_config) = thinking(request.thinking.as_ref(), max_tokens, form);
     let mut system = Vec::new();
     if !is_blank(&request.system_prompt) {
         let prompt = Block::Text {
@@ -310,16 +310,15 @@ fn last_position(messages: &[Message<'_>]) -> Option<Position> {
 ///   `max_tokens`.
 /// - An effort or an adaptive setting is adaptive thinking at that effort,
 ///   which streams a summary unless the setting turns summaries off. For a
-///   vendor that takes only budgets, it is the effort's budget.
+///   model whose form is a budget, it is the effort's budget.
 /// - Off or no setting is no thinking field.
 ///
-/// The newest Claude models refuse a token budget, which is why an effort never
-/// becomes one on Anthropic's own API. Adaptive thinking and `output_config`
-/// are Anthropic's own, so a vendor on the same wire gets the budget.
+/// The newest Claude models refuse a token budget, and adaptive thinking and
+/// `output_config` are Anthropic's own, so the model's form decides.
 fn thinking(
     config: Option<&ThinkingConfig>,
     max_tokens: u32,
-    policy: VendorPolicy,
+    form: ThinkingForm,
 ) -> (Option<Thinking>, Option<OutputConfig<'_>>) {
     let budget = |budget_tokens: u32| {
         let ceiling = MIN_THINKING_BUDGET.max(max_tokens.saturating_sub(MIN_THINKING_BUDGET));
@@ -330,7 +329,7 @@ fn thinking(
         None | Some(ThinkingConfig::Disabled {}) => (None, None),
         Some(ThinkingConfig::Budget { budget_tokens }) => budget(*budget_tokens),
         Some(ThinkingConfig::Adaptive { effort } | ThinkingConfig::Effort { effort, .. })
-            if policy.effort_as_budget =>
+            if form == ThinkingForm::Budget =>
         {
             budget(effort_budget(effort))
         }

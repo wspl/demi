@@ -2,8 +2,9 @@
 //! has one.
 //!
 //! It speaks the Responses API or, for OpenAI-compatible endpoints, Chat
-//! Completions, with the typed vendor policy its entry names and the standard
-//! reading of its failure records. The key also makes media:
+//! Completions, sending thinking back as each model of the entry wants it,
+//! with the standard reading of its failure records. The key also makes
+//! media:
 //!
 //! - an OpenAI or xAI vendor entry's key makes images;
 //! - an xAI vendor entry's key makes videos;
@@ -23,7 +24,7 @@ use std::sync::Arc;
 
 use demi_provider_common::{
     Capabilities, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, VendorPolicy, endpoint_url, read_http_failure,
+    ModelWires, RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, endpoint_url, read_http_failure,
     audio::AudioMaker,
     images::ImageMaker,
     media::MediaVendor,
@@ -53,7 +54,8 @@ pub struct OpenAiConfig {
     /// already ends with it.
     pub base_url: Option<Url>,
     pub wire: WireApi,
-    pub policy: VendorPolicy,
+    /// How each of the entry's models wants its thinking sent back.
+    pub models: ModelWires,
     /// The models.dev vendor the entry was added from, such as `openai` or
     /// `xai`; none for a compatible API.
     ///
@@ -114,7 +116,7 @@ struct Shared {
     label: Arc<str>,
     url: Url,
     wire: WireApi,
-    policy: VendorPolicy,
+    models: ModelWires,
     cache_ttl: Option<CacheTtl>,
     clock: Arc<dyn Clock>,
 }
@@ -160,7 +162,7 @@ impl OpenAiProvider {
                 label,
                 url: endpoint_url(&base, path),
                 wire: config.wire,
-                policy: config.policy,
+                models: config.models,
                 cache_ttl: config.cache_ttl,
                 clock,
             }),

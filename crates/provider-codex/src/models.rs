@@ -212,6 +212,9 @@ impl CodexModel {
                 .collect(),
             default_service_tier_id: self.default_service_tier.map(|tier| tier.0),
             cost: None,
+            // The backend's own protocol reads neither.
+            thinking_form: Default::default(),
+            interleaved_thinking: false,
         }
     }
 

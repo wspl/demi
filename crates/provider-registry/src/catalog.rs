@@ -60,6 +60,8 @@ pub fn configured_model(model: &ConfiguredModel) -> ProviderModel {
             .collect(),
         default_service_tier_id: None,
         cost: None,
+        thinking_form: model.thinking_form,
+        interleaved_thinking: model.interleaved_thinking,
     }
 }
 

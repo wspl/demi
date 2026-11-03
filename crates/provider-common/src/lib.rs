@@ -53,6 +53,7 @@ pub mod images;
 pub mod kept;
 pub mod media;
 pub mod media_catalog;
+mod model_wires;
 pub mod models_dev;
 mod model_words;
 pub mod oauth;
@@ -63,7 +64,6 @@ mod secret;
 #[cfg(feature = "testing")]
 pub mod testing;
 pub mod thinking;
-mod vendor;
 pub mod videos;
 pub mod wire;
 
@@ -82,4 +82,4 @@ pub use failure::{EarlyEnd, ErrorCode, FailureReader, ProviderFailure, request_i
 pub use http_record::{HttpFailureRecord, http_failure, read_http_failure, retry_at};
 pub use model_words::model_words;
 pub use secret::{Secret, SecretError};
-pub use vendor::VendorPolicy;
+pub use model_wires::ModelWires;

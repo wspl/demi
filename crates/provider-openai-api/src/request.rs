@@ -1,13 +1,13 @@
 //! The request bodies of the two wires (`crates/shared-types/src/model.rs`):
 //! the Responses API's, and Chat Completions' for OpenAI-compatible
-//! endpoints, each with the vendor policy the entry names.
+//! endpoints.
 
 use std::borrow::Cow;
 
 use demi_provider_common::{
     InferenceRequest, json_body,
     openai_request::{
-        AssistantReplay, ChatDialect, ChatMessage, ChatTool, InputItem, Reasoning,
+        AssistantReplay, ChatMessage, ChatTool, InputItem, Reasoning,
         ReasoningReplay, ResponsesDialect, ResponsesTool, SummaryOff, ToolMedia, chat_messages,
         PromptCacheOptions, prompt_cache_key, reasoning_effort, responses_input, responses_reasoning,
     },
@@ -15,25 +15,17 @@ use demi_provider_common::{
 use demi_shared_types::is_blank;
 use serde::Serialize;
 
-use demi_provider_common::VendorPolicy;
-
-
 /// The JSON body of a Responses request.
 /// `signature_tag` names the entry's vendor, whose reasoning alone is
 /// replayed.
 pub(crate) fn responses(
     request: &InferenceRequest,
-    policy: VendorPolicy,
     signature_tag: &str,
     cache_ttl: Option<&str>,
 ) -> Vec<u8> {
     let dialect = ResponsesDialect {
         signature_tag,
-        assistant: if policy.replay_assistant_status {
-            AssistantReplay::Completed
-        } else {
-            AssistantReplay::Minimal
-        },
+        assistant: AssistantReplay::Minimal,
         reasoning: ReasoningReplay::Replayable,
         tool_media: ToolMedia::FollowUp,
         searches: None,
@@ -103,18 +95,16 @@ struct ResponsesBody<'a> {
 /// The JSON body of a Chat Completions request. It carries a cache field only
 /// when the entry asks for a lifetime: OpenAI and most compatible vendors
 /// cache by prefix on their own, and some compatible vendors refuse fields
-/// they do not know.
+/// they do not know. `interleaved_thinking` is the model's
+/// ([`chat_messages`]).
 pub(crate) fn chat_completions<'a>(
     request: &'a InferenceRequest,
-    policy: VendorPolicy,
+    interleaved_thinking: bool,
     cache_ttl: Option<&'a str>,
 ) -> Vec<u8> {
-    let dialect = ChatDialect {
-        reasoning_content: policy.pass_back_reasoning_content,
-    };
     let body = ChatBody {
         model: &request.model_id,
-        messages: chat_messages(&request.system_prompt, &request.items, dialect),
+        messages: chat_messages(&request.system_prompt, &request.items, &request.model_id, interleaved_thinking),
         stream: true,
         tools: request.tools.iter().map(ChatTool::from).collect(),
         tool_choice: (!request.tools.is_empty()).then_some("auto"),
