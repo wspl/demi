@@ -16,21 +16,33 @@
 use axum::Json;
 use axum::Router;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::body::Body;
+use axum::extract::{ConnectInfo, Path, State};
+use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::response::Response;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
+use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::integrations::{IntegrationPatch as StoredPatch, IntegrationRecord};
 use demi_backend_user_shard::integrations::IntegrationRefusal;
 use demi_integration_api_protocol as api;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId};
-use demi_shared_types::NodeId;
+use demi_conversation_lane_protocol::ClientFrame;
+use demi_web_api_protocol::conversations::{TranscriptQuery, WholeBlock};
+use demi_web_api_protocol::files::{
+    CreateDirectory, CreatedDirectory, DirectoryQuery, RawFileQuery, RemoveQuery, SearchRequest,
+    UploadQuery as FileUploadQuery,
+};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
+use demi_web_api_protocol::query::StrictBool;
+use demi_shared_types::{BlockId, CommandId, NodeId, TurnId};
 
 use super::AppState;
-use super::body::JsonBody;
+use super::body::{JsonBody, OptionalJsonBody};
 use super::error::ApiError;
+use super::files;
+use super::listener::Peer;
+use super::query::{CheckedQuery, QueryParams};
 
 /// The routes of the integration API, under its prefix.
 pub(super) fn routes() -> Router<AppState> {
@@ -48,9 +60,30 @@ pub(super) fn routes() -> Router<AppState> {
                 "/conversations/{conversation}",
                 get(conversation).patch(patch_conversation).delete(delete_conversation),
             )
-            .route("/conversations/{conversation}/messages", post(send_message))
+            .route("/conversations/{conversation}/messages", post(send_message).delete(clear_queue))
+            .route("/conversations/{conversation}/messages/{message}", delete(withdraw_message))
+            .route("/conversations/{conversation}/messages/{message}/send-now", post(send_now))
             .route("/conversations/{conversation}/stop", post(stop))
+            .route("/conversations/{conversation}/resume", post(resume))
+            .route("/conversations/{conversation}/retry", post(retry))
+            .route("/conversations/{conversation}/compact", post(compact))
+            .route("/conversations/{conversation}/fork", post(fork))
+            .route("/conversations/{conversation}/commands/{command}/stop", post(stop_command))
+            .route("/conversations/{conversation}/agents/{agent}/stop", post(stop_agent))
+            .route("/conversations/{conversation}/agents/{agent}/compact", post(compact_agent))
+            .route("/conversations/{conversation}/agents/{agent}/messages", post(message_agent))
             .route("/conversations/{conversation}/agents/{agent}/transcript", get(transcript))
+            .route("/conversations/{conversation}/agents/{agent}/blocks/{block}", get(block))
+            .route(
+                "/conversations/{conversation}/fs",
+                get(list_files).post(make_directory).delete(remove_file),
+            )
+            .route("/conversations/{conversation}/fs/raw", get(read_file).put(write_file))
+            .route("/conversations/{conversation}/fs/search", post(search_files))
+            .route(
+                "/conversations/{conversation}/hosts/{device}/fs",
+                get(list_files_on).post(make_directory_on),
+            )
             .route("/socket", get(socket))
             .route(
                 "/attachments",
@@ -160,11 +193,20 @@ async fn models(State(state): State<AppState>, headers: HeaderMap) -> Result<Jso
         .flat_map(|provider| {
             let entry = provider.provider_id.to_string();
             let name = provider.display_name.clone();
-            provider.models.into_iter().map(move |model| api::Model {
-                provider_id: entry.clone(),
-                provider: name.clone(),
-                model_id: model.model.id.clone(),
-                name: model.model.display_name.clone(),
+            provider.models.into_iter().map(move |model| {
+                let model = model.model;
+                api::Model {
+                    provider_id: entry.clone(),
+                    provider: name.clone(),
+                    model_id: model.id,
+                    name: model.display_name,
+                    context_window: model.context_window,
+                    output_limit: model.output_limit,
+                    efforts: model.supported_thinking_efforts.unwrap_or_default(),
+                    can_disable_thinking: model.can_disable_thinking.unwrap_or(false),
+                    service_tiers: model.service_tiers.into_iter().map(|tier| tier.id).collect(),
+                    file_types: model.accepted_extensions,
+                }
             })
         })
         .collect();
@@ -254,7 +296,7 @@ async fn delete_cloud(
 /// user's blobs, as the composer uploads one.
 async fn upload(
     State(state): State<AppState>,
-    super::query::QueryParams(query): super::query::QueryParams<api::UploadQuery>,
+    CheckedQuery(query): CheckedQuery<api::AttachmentQuery>,
     request: axum::extract::Request,
 ) -> Result<(StatusCode, Json<api::Attachment>), ApiError> {
     let record = authenticated(&state, request.headers()).await?;
@@ -344,7 +386,7 @@ async fn conversation_attachment(
 async fn usage(
     State(state): State<AppState>,
     headers: HeaderMap,
-    super::query::QueryParams(query): super::query::QueryParams<api::UsageQuery>,
+    CheckedQuery(query): CheckedQuery<api::UsageQuery>,
 ) -> Result<Json<api::Usage>, ApiError> {
     use demi_backend_database::usage::UsageKey;
     let record = authenticated(&state, &headers).await?;
@@ -372,18 +414,20 @@ async fn usage(
     Ok(Json(api::Usage { rows }))
 }
 
-/// `GET /v1/conversations`.
+/// `GET /v1/conversations`: a page, newest first, or the one of a key.
 async fn conversations(
     State(state): State<AppState>,
     headers: HeaderMap,
+    CheckedQuery(query): CheckedQuery<api::ConversationQuery>,
 ) -> Result<Json<api::ConversationList>, ApiError> {
     let record = authenticated(&state, &headers).await?;
-    let conversations = state
+    let list = state
         .shards
         .of(&record.user.clone())
-        .call(move |shard, _| async move { shard.integration_conversations(&record).await })
-        .await??;
-    Ok(Json(api::ConversationList { conversations }))
+        .call(move |shard, _| async move { shard.integration_conversation_page(&record, query).await })
+        .await?
+        .map_err(refused)?;
+    Ok(Json(list))
 }
 
 /// `POST /v1/conversations`.
@@ -472,53 +516,365 @@ async fn send_message(
     Ok(Json(answer))
 }
 
-/// `POST /v1/conversations/:conversation/stop`.
+/// `POST /v1/conversations/:conversation/stop`: every agent, or those the
+/// body's `scope` names.
 async fn stop(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(conversation): Path<String>,
+    OptionalJsonBody(api::StopRequest { scope }): OptionalJsonBody<api::StopRequest>,
 ) -> Result<StatusCode, ApiError> {
     let record = authenticated(&state, &headers).await?;
     let id = conversation_id(conversation)?;
     state
         .shards
         .of(&record.user.clone())
-        .call(move |shard, _| async move { shard.stop_integration_conversation(&record, &id).await })
+        .call(move |shard, _| async move { shard.stop_integration_conversation(&record, &id, scope).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `GET /v1/conversations/:conversation/agents/:agent/transcript`: the
-/// agent's latest page, as the web app reads it
-/// (`crates/backend-http/src/history.rs`).
-async fn transcript(
+/// Hands the conversation the web app's frame `frame` makes of its id, as
+/// the control of a page does: 204 once it took it.
+async fn act(
+    state: &AppState,
+    headers: &HeaderMap,
+    conversation: String,
+    frame: ClientFrame,
+) -> Result<StatusCode, ApiError> {
+    let record = authenticated(state, headers).await?;
+    let id = conversation_id(conversation)?;
+    state
+        .shards
+        .of(&record.user.clone())
+        .call(move |shard, _| async move { shard.act_on_integration_conversation(&record, &id, frame).await })
+        .await?
+        .map_err(refused)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /v1/conversations/:conversation/agents/:agent/stop`: one subagent.
+async fn stop_agent(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((conversation, agent)): Path<(String, String)>,
-) -> Result<Json<api::Transcript>, ApiError> {
+) -> Result<StatusCode, ApiError> {
+    act(&state, &headers, conversation, ClientFrame::AbortSubagent { subagent_id: node_id(agent)? }).await
+}
+
+/// `POST /v1/conversations/:conversation/resume`.
+async fn resume(State(state): State<AppState>, headers: HeaderMap, Path(conversation): Path<String>) -> Result<StatusCode, ApiError> {
+    act(&state, &headers, conversation, ClientFrame::Resume {}).await
+}
+
+/// `POST /v1/conversations/:conversation/retry`.
+async fn retry(State(state): State<AppState>, headers: HeaderMap, Path(conversation): Path<String>) -> Result<StatusCode, ApiError> {
+    act(&state, &headers, conversation, ClientFrame::Retry {}).await
+}
+
+/// `POST /v1/conversations/:conversation/compact`: the main agent's context.
+async fn compact(State(state): State<AppState>, headers: HeaderMap, Path(conversation): Path<String>) -> Result<StatusCode, ApiError> {
+    act(&state, &headers, conversation, ClientFrame::Compact { node: None }).await
+}
+
+/// `POST /v1/conversations/:conversation/agents/:agent/compact`.
+async fn compact_agent(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((conversation, agent)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    act(&state, &headers, conversation, ClientFrame::Compact { node: Some(node_id(agent)?) }).await
+}
+
+/// `DELETE /v1/conversations/:conversation/messages`: the whole queue.
+async fn clear_queue(State(state): State<AppState>, headers: HeaderMap, Path(conversation): Path<String>) -> Result<StatusCode, ApiError> {
+    act(&state, &headers, conversation, ClientFrame::ClearMessageQueue {}).await
+}
+
+/// `DELETE /v1/conversations/:conversation/messages/:message`: a queued
+/// message, or a steer the turn has not taken yet.
+async fn withdraw_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((conversation, message)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    act_on_message(
+        &state,
+        &headers,
+        (conversation, message),
+        |message_id| ClientFrame::DequeueMessage { message_id },
+        |steer_id| ClientFrame::CancelPendingSteer { steer_id },
+    )
+    .await
+}
+
+/// `POST /v1/conversations/:conversation/messages/:message/send-now`: a
+/// queued message into the running turn, or a pending steer at once.
+async fn send_now(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((conversation, message)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    act_on_message(
+        &state,
+        &headers,
+        (conversation, message),
+        |message_id| ClientFrame::SendQueuedMessage { message_id },
+        |steer_id| ClientFrame::SteerNow { steer_id },
+    )
+    .await
+}
+
+/// Hands a waiting message of the conversation the frame `queued` or
+/// `steered` makes, as it waits queued or as a steer: 204 once it took it.
+async fn act_on_message(
+    state: &AppState,
+    headers: &HeaderMap,
+    (conversation, message): (String, String),
+    queued: fn(TurnId) -> ClientFrame,
+    steered: fn(BlockId) -> ClientFrame,
+) -> Result<StatusCode, ApiError> {
+    let record = authenticated(state, headers).await?;
+    let id = conversation_id(conversation)?;
+    state
+        .shards
+        .of(&record.user.clone())
+        .call(move |shard, _| async move {
+            shard.act_on_integration_message(&record, &id, message, queued, steered).await
+        })
+        .await?
+        .map_err(refused)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /v1/conversations/:conversation/commands/:command/stop`.
+async fn stop_command(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((conversation, command)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    let command_id = CommandId::try_from(command).map_err(|_| refused(IntegrationRefusal::NotFound("command")))?;
+    act(&state, &headers, conversation, ClientFrame::ShellAbort { command_id }).await
+}
+
+/// `POST /v1/conversations/:conversation/agents/:agent/messages`: a message
+/// to a subagent, as its user's.
+async fn message_agent(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((conversation, agent)): Path<(String, String)>,
+    JsonBody(message): JsonBody<api::SubagentMessage>,
+) -> Result<StatusCode, ApiError> {
     let record = authenticated(&state, &headers).await?;
     let id = conversation_id(conversation)?;
-    let node = NodeId::try_from(agent).map_err(|_| refused(IntegrationRefusal::NotFound("agent")))?;
-    let owner = record.user.clone();
+    let agent = node_id(agent)?;
+    state
+        .shards
+        .of(&record.user.clone())
+        .call(move |shard, _| async move { shard.message_integration_subagent(&record, &id, &agent, message).await })
+        .await?
+        .map_err(refused)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /v1/conversations/:conversation/fork`: answers 201 with the new
+/// conversation, or 200 with the one of the body's key.
+async fn fork(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(conversation): Path<String>,
+    JsonBody(request): JsonBody<api::ForkRequest>,
+) -> Result<(StatusCode, Json<api::Conversation>), ApiError> {
+    let record = authenticated(&state, &headers).await?;
+    let id = conversation_id(conversation)?;
+    let (forked, created) = state
+        .shards
+        .of(&record.user.clone())
+        .call(move |shard, _| async move { shard.fork_integration_conversation(&record, &id, request).await })
+        .await?
+        .map_err(refused)?;
+    let status = if created { StatusCode::CREATED } else { StatusCode::OK };
+    Ok((status, Json(forked)))
+}
+
+/// The record of the integration's conversation `conversation`, whose
+/// history and Host the web app's routes read for it.
+async fn owned_conversation(
+    state: &AppState,
+    record: IntegrationRecord,
+    conversation: String,
+) -> Result<ConversationRecord, ApiError> {
+    let id = conversation_id(conversation)?;
     let id = state
         .shards
-        .of(&owner)
+        .of(&record.user.clone())
         .call(move |shard, _| async move { shard.integration_conversation_of(&record, &id).await })
         .await?
         .map_err(refused)?
         .id;
-    let conversation = state
+    state
         .services
         .control
         .conversation(id)
         .await?
-        .ok_or_else(|| refused(IntegrationRefusal::NotFound("conversation")))?;
-    let page = super::history::latest_page(&state, &owner, conversation, node).await?;
+        .ok_or_else(|| refused(IntegrationRefusal::NotFound("conversation")))
+}
+
+/// `GET /v1/conversations/:conversation/agents/:agent/transcript`: a page
+/// of the agent's transcript, as the web app reads it
+/// (`crates/backend-http/src/history.rs`), the latest without a query.
+async fn transcript(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((conversation, agent)): Path<(String, String)>,
+    CheckedQuery(query): CheckedQuery<api::TranscriptQuery>,
+) -> Result<Json<api::Transcript>, ApiError> {
+    let record = authenticated(&state, &headers).await?;
+    let node = node_id(agent)?;
+    let owner = record.user.clone();
+    let conversation = owned_conversation(&state, record, conversation).await?;
+    let api::TranscriptQuery { before, after, around, edge } = query;
+    let latest = before.is_none() && after.is_none() && around.is_none();
+    let query = TranscriptQuery {
+        latest: StrictBool(latest),
+        blocks: None,
+        before,
+        after,
+        around,
+        edge,
+    };
+    let page = super::history::read_transcript(&state, &owner, conversation, node, query).await?;
+    let end = page.start + page.blocks.len() as u32;
     Ok(Json(api::Transcript {
         version: page.version,
+        start: page.start,
+        at_start: page.start == 0,
+        at_end: end == page.length,
         blocks: page.blocks,
     }))
+}
+
+/// `GET /v1/conversations/:conversation/agents/:agent/blocks/:block`: a
+/// block whole, as a row the page opens.
+async fn block(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((conversation, agent, block)): Path<(String, String, String)>,
+) -> Result<Json<WholeBlock>, ApiError> {
+    let record = authenticated(&state, &headers).await?;
+    let node = node_id(agent)?;
+    let block = BlockId::try_from(block).map_err(|_| refused(IntegrationRefusal::NotFound("block")))?;
+    let conversation = owned_conversation(&state, record, conversation).await?;
+    super::history::whole_block(&state, &conversation, node, block).await.map(Json)
+}
+
+/// The id of the integration's conversation `conversation` and its user,
+/// once the conversation is the integration's: what the web app's file
+/// routes take (`crates/backend-http/src/files.rs`).
+async fn files_of(state: &AppState, headers: &HeaderMap, conversation: String) -> Result<(UserId, String), ApiError> {
+    let record = authenticated(state, headers).await?;
+    let user = record.user.clone();
+    let conversation = owned_conversation(state, record, conversation).await?;
+    Ok((user, conversation.id.to_string()))
+}
+
+/// `GET /v1/conversations/:conversation/fs`: a directory's entries on the
+/// conversation's Host.
+async fn list_files(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(conversation): Path<String>,
+    QueryParams(query): QueryParams<DirectoryQuery>,
+) -> Result<Response, ApiError> {
+    let (user, id) = files_of(&state, &headers, conversation).await?;
+    files::list_on(&state, &user, &id, None, query).await
+}
+
+/// `GET /v1/conversations/:conversation/hosts/:device/fs`: a directory's
+/// entries on another Host the conversation reaches.
+async fn list_files_on(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((conversation, device)): Path<(String, String)>,
+    QueryParams(query): QueryParams<DirectoryQuery>,
+) -> Result<Response, ApiError> {
+    let (user, id) = files_of(&state, &headers, conversation).await?;
+    files::list_on(&state, &user, &id, Some(&device), query).await
+}
+
+/// `POST /v1/conversations/:conversation/fs`: a directory, with its parents.
+async fn make_directory(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(conversation): Path<String>,
+    JsonBody(body): JsonBody<CreateDirectory>,
+) -> Result<(StatusCode, Json<CreatedDirectory>), ApiError> {
+    let (user, id) = files_of(&state, &headers, conversation).await?;
+    files::make_directory_on(&state, &user, &id, None, body).await
+}
+
+/// `POST /v1/conversations/:conversation/hosts/:device/fs`.
+async fn make_directory_on(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((conversation, device)): Path<(String, String)>,
+    JsonBody(body): JsonBody<CreateDirectory>,
+) -> Result<(StatusCode, Json<CreatedDirectory>), ApiError> {
+    let (user, id) = files_of(&state, &headers, conversation).await?;
+    files::make_directory_on(&state, &user, &id, Some(&device), body).await
+}
+
+/// `DELETE /v1/conversations/:conversation/fs`: a file, or a directory with
+/// what it holds.
+async fn remove_file(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(conversation): Path<String>,
+    QueryParams(query): QueryParams<RemoveQuery>,
+) -> Result<StatusCode, ApiError> {
+    let (user, id) = files_of(&state, &headers, conversation).await?;
+    files::remove_of(&state, &user, &id, query).await
+}
+
+/// `GET /v1/conversations/:conversation/fs/raw`: a file's bytes.
+async fn read_file(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<Peer>,
+    method: Method,
+    headers: HeaderMap,
+    Path(conversation): Path<String>,
+    QueryParams(query): QueryParams<RawFileQuery>,
+) -> Result<Response, ApiError> {
+    let (user, id) = files_of(&state, &headers, conversation).await?;
+    files::raw_of(&state, &user, &peer, method, &headers, &id, query).await
+}
+
+/// `PUT /v1/conversations/:conversation/fs/raw`: a file's bytes, written
+/// whole or not at all.
+async fn write_file(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<Peer>,
+    headers: HeaderMap,
+    Path(conversation): Path<String>,
+    QueryParams(query): QueryParams<FileUploadQuery>,
+    body: Body,
+) -> Result<StatusCode, ApiError> {
+    let (user, id) = files_of(&state, &headers, conversation).await?;
+    files::upload_of(&state, &user, &peer, &id, query, body).await
+}
+
+/// `POST /v1/conversations/:conversation/fs/search`: the names and text
+/// that match, one JSON object per line.
+async fn search_files(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<Peer>,
+    headers: HeaderMap,
+    Path(conversation): Path<String>,
+    JsonBody(request): JsonBody<SearchRequest>,
+) -> Result<Response, ApiError> {
+    let (user, id) = files_of(&state, &headers, conversation).await?;
+    files::search_of(&state, &user, &peer, &id, request).await
 }
 
 /// `GET /v1/socket`: every change of the integration's conversations, as
@@ -592,3 +948,8 @@ fn conversation_id(id: String) -> Result<ConversationId, ApiError> {
 fn device_id(id: String) -> Result<DeviceId, ApiError> {
     DeviceId::try_from(id).map_err(|_| refused(IntegrationRefusal::NotFound("Cloud")))
 }
+
+fn node_id(id: String) -> Result<NodeId, ApiError> {
+    NodeId::try_from(id).map_err(|_| refused(IntegrationRefusal::NotFound("agent")))
+}
+

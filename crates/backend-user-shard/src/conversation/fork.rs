@@ -166,11 +166,26 @@ impl Shard {
                 // The destination keeps the source's directory: on the
                 // Cloud, the source's own.
                 let resolved = self.host_shard().resolve_target(&source).await?;
-                let target = match &source.target {
-                    Selection::Cloud { path: None } => ConversationTarget::Cloud {
+                // The page's form of a target names a Cloud's directory as
+                // the user's own Cloud's, which an integration's Cloud is
+                // not: its fork stays on its Cloud.
+                let integration_cloud = match &source.target {
+                    Selection::Home { device_id } | Selection::Directory { device_id, .. } => self
+                        .cloud_capabilities(device_id)
+                        .await
+                        .map_err(ForkRefusal::Failed)?
+                        .map(|_| device_id.clone()),
+                    _ => None,
+                };
+                let target = match (&source.target, integration_cloud) {
+                    (_, Some(device_id)) => ConversationTarget::Device {
+                        device_id,
+                        path: resolved.path().to_owned(),
+                    },
+                    (Selection::Cloud { path: None }, None) => ConversationTarget::Cloud {
                         path: Some(resolved.path().to_owned()),
                     },
-                    selection => selection.shown(&resolved),
+                    (selection, None) => selection.shown(&resolved),
                 };
                 let operation = ForkOperation {
                     id: destination.clone(),

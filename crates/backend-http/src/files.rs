@@ -63,7 +63,7 @@ pub(super) async fn list_on_host(
 
 /// A directory's entries, the Host's starting directory when the query
 /// names none, read at the Host's number it answers.
-async fn list_on(
+pub(super) async fn list_on(
     state: &AppState,
     user: &UserId,
     id: &str,
@@ -154,7 +154,7 @@ pub(super) async fn make_directory_on_host(
 }
 
 /// Makes a directory, with its parents.
-async fn make_directory_on(
+pub(super) async fn make_directory_on(
     state: &AppState,
     user: &UserId,
     id: &str,
@@ -178,9 +178,19 @@ pub(super) async fn remove(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-    QueryParams(RemoveQuery { path }): QueryParams<RemoveQuery>,
+    QueryParams(query): QueryParams<RemoveQuery>,
 ) -> Result<StatusCode, ApiError> {
-    on_host(&state, &user.id, &id, None, async move |host| {
+    remove_of(&state, &user.id, &id, query).await
+}
+
+/// A delete of `user`'s conversation `id`, as [`remove`] answers it.
+pub(super) async fn remove_of(
+    state: &AppState,
+    user: &UserId,
+    id: &str,
+    RemoveQuery { path }: RemoveQuery,
+) -> Result<StatusCode, ApiError> {
+    on_host(state, user, id, None, async move |host| {
         let kept = [host.home.as_deref(), Some(host.root.as_str())];
         let path = host.rooted(path.as_str()).map_err(HostAccessError::from)?;
         if protected_path(&path, kept.into_iter().flatten()) {
@@ -280,7 +290,21 @@ pub(super) async fn raw(
     Path(id): Path<String>,
     QueryParams(query): QueryParams<RawFileQuery>,
 ) -> Result<Response, ApiError> {
-    let conversation = conversation_id(&id)?;
+    raw_of(&state, &user.id, &peer, method, &headers, &id, query).await
+}
+
+/// A read of a file's bytes on `user`'s conversation `id`, as [`raw`]
+/// answers it.
+pub(super) async fn raw_of(
+    state: &AppState,
+    user: &UserId,
+    peer: &Peer,
+    method: Method,
+    headers: &HeaderMap,
+    id: &str,
+    query: RawFileQuery,
+) -> Result<Response, ApiError> {
+    let conversation = conversation_id(id)?;
     let path = query.path.as_str().to_owned();
     // The bytes of a version a request names can only be that version's.
     let versioned = query.version.is_some();
@@ -288,12 +312,12 @@ pub(super) async fn raw(
         path: DownloadPath::Named(path.clone()),
         version: query.version.map(|version| version.as_str().to_owned()),
         head: method == Method::HEAD,
-        range: header(&headers, RANGE),
-        if_none_match: header(&headers, IF_NONE_MATCH),
+        range: header(headers, RANGE),
+        if_none_match: header(headers, IF_NONE_MATCH),
     };
     let download = state
         .shards
-        .of(&user.id)
+        .of(user)
         .call(move |shard, cancel| async move {
             shard
                 .host_shard()
@@ -306,7 +330,7 @@ pub(super) async fn raw(
         query.download.0,
         file_name(&path).as_deref(),
     );
-    download_answer(download, &peer, versioned, content)
+    download_answer(download, peer, versioned, content)
 }
 
 /// What a read of a file's bytes answers, with the `content` headers that say
@@ -388,13 +412,24 @@ pub(super) async fn search(
     AuthUser(user): AuthUser,
     ConnectInfo(peer): ConnectInfo<Peer>,
     Path(id): Path<String>,
-    JsonBody(SearchRequest { root, query }): JsonBody<SearchRequest>,
+    JsonBody(request): JsonBody<SearchRequest>,
 ) -> Result<Response, ApiError> {
-    let conversation = conversation_id(&id)?;
+    search_of(&state, &user.id, &peer, &id, request).await
+}
+
+/// A search on `user`'s conversation `id`, as [`search`] answers it.
+pub(super) async fn search_of(
+    state: &AppState,
+    user: &UserId,
+    peer: &Peer,
+    id: &str,
+    SearchRequest { root, query }: SearchRequest,
+) -> Result<Response, ApiError> {
+    let conversation = conversation_id(id)?;
     let root = root.map(|root| root.as_str().to_owned());
     let opened = state
         .shards
-        .of(&user.id)
+        .of(user)
         .call(move |shard, cancel| async move {
             shard
                 .host_shard()
@@ -419,14 +454,26 @@ pub(super) async fn upload(
     AuthUser(user): AuthUser,
     ConnectInfo(peer): ConnectInfo<Peer>,
     Path(id): Path<String>,
-    QueryParams(UploadQuery { path, replace }): QueryParams<UploadQuery>,
+    QueryParams(query): QueryParams<UploadQuery>,
     body: Body,
 ) -> Result<StatusCode, ApiError> {
-    let conversation = conversation_id(&id)?;
+    upload_of(&state, &user.id, &peer, &id, query, body).await
+}
+
+/// An upload to `user`'s conversation `id`, as [`upload`] answers it.
+pub(super) async fn upload_of(
+    state: &AppState,
+    user: &UserId,
+    peer: &Peer,
+    id: &str,
+    UploadQuery { path, replace }: UploadQuery,
+    body: Body,
+) -> Result<StatusCode, ApiError> {
+    let conversation = conversation_id(id)?;
     let path = path.as_str().to_owned();
     let open = state
         .shards
-        .of(&user.id)
+        .of(user)
         .call(move |shard, cancel| async move {
             shard
                 .host_shard()

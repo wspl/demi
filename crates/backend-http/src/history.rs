@@ -26,7 +26,6 @@ use demi_web_api_protocol::conversations::{CommandCall, TranscriptPage, Transcri
 use demi_web_api_protocol::error::ErrorCode;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_web_api_protocol::ids::UserId;
-use demi_web_api_protocol::query::StrictBool;
 
 use super::AppState;
 use super::conversations::owned;
@@ -49,27 +48,11 @@ pub(super) async fn transcript(
     read_transcript(&state, &user.id, record, node, query).await.map(Json)
 }
 
-/// The latest page of the transcript of the agent `node` of `user`'s
-/// conversation `record`, as the web app's latest read answers it: what an
-/// integration's transcript route answers too
-/// (`crates/backend-http/src/integration_edge.rs`), which checked whose the
-/// conversation is.
-pub(super) async fn latest_page(
-    state: &AppState,
-    user: &UserId,
-    record: ConversationRecord,
-    node: NodeId,
-) -> Result<TranscriptPage, ApiError> {
-    let query = TranscriptQuery {
-        latest: StrictBool(true),
-        ..TranscriptQuery::default()
-    };
-    read_transcript(state, user, record, node, query).await
-}
-
 /// A page of the transcript of the agent `node` of `user`'s conversation
-/// `record`, as `query` asks.
-async fn read_transcript(
+/// `record`, as `query` asks: what an integration's transcript route
+/// answers too (`crates/backend-http/src/integration_edge.rs`), which
+/// checked whose the conversation is.
+pub(super) async fn read_transcript(
     state: &AppState,
     user: &UserId,
     record: ConversationRecord,
@@ -298,10 +281,23 @@ pub(super) async fn block(
     AuthUser(user): AuthUser,
     Path((id, node, block)): Path<(String, String, String)>,
 ) -> Result<Json<WholeBlock>, ApiError> {
-    let services = &state.services;
-    let record = owned(services, &user.id, &id).await?;
+    let record = owned(&state.services, &user.id, &id).await?;
     let block = BlockId::try_from(block).map_err(|_| no_block())?;
-    let transcript = Transcript::Agent(NodeId::try_from(node).map_err(|_| no_node())?);
+    let node = NodeId::try_from(node).map_err(|_| no_node())?;
+    whole_block(&state, &record, node, block).await.map(Json)
+}
+
+/// The block `block` of the agent `node` of the conversation `record`
+/// whole, as [`block`] answers it for a row the page opens and an
+/// integration's block route for its program.
+pub(super) async fn whole_block(
+    state: &AppState,
+    record: &ConversationRecord,
+    node: NodeId,
+    block: BlockId,
+) -> Result<WholeBlock, ApiError> {
+    let services = &state.services;
+    let transcript = Transcript::Agent(node);
     let read = services
         .conversations
         .read(&record.id, move |connection| {
@@ -311,10 +307,10 @@ pub(super) async fn block(
         .map_err(ApiError::conversation_unreadable)?;
     let found = block_answer(read, no_node, no_block)?;
     let failures = failure_facts(&services.vault, &services.provider_registry, std::slice::from_ref(&found)).await;
-    Ok(Json(WholeBlock {
+    Ok(WholeBlock {
         block: found,
         failures,
-    }))
+    })
 }
 
 /// A block read as its route answers it: a conversation without a database

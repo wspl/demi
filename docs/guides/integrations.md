@@ -151,6 +151,21 @@ thread or a ticket, written as any string up to 1,024 characters. Asking for
 a conversation with a key that already has one returns that conversation, so
 a retry or two requests at once never make two.
 
+`GET /v1/conversations?key=<key>` finds the conversation of a key without
+making one. Without `key`, it lists the conversations newest first, 100 at a
+time, or `limit` at a time; pass the answer's `next` as `after` for the next
+page.
+
+### Model
+
+The conversation's `model` names one of `GET /v1/models`, with its `effort`
+and `serviceTier` if you want other than the model's first effort and the
+vendor's default tier. Each model of `GET /v1/models` lists its efforts,
+service tiers, context window, output limit and the file types it reads.
+
+`PATCH /v1/conversations/{conversation}` with a `model` changes it from the
+main agent's next request. A subagent keeps the model it started with.
+
 ### Instructions and subagents
 
 You pass a workflow when you create the conversation, in the format of a
@@ -187,6 +202,11 @@ Cloud's projects, a user's personal instructions and a user's own subagent
 profiles never apply to an integration's conversations: their agents start
 only the workflow's profiles, whatever its `user_profiles` says.
 
+When your product's instructions change, `PATCH` each conversation with the
+new `workflow`, or `null` for none. Every agent reads it from its next
+request. A `workflow` that isn't a valid workflow file is refused with `400`
+and the reason.
+
 ### Messages
 
 A message sent while a turn runs waits until the turn ends. With
@@ -202,8 +222,59 @@ When an agent attaches a file to its reply, the transcript names it, such as
 `a3`. Download it with
 `GET /v1/conversations/{conversation}/attachments/{attachment}`.
 
-`POST /v1/conversations/{conversation}/stop` stops every agent of the
-conversation.
+`GET /v1/conversations/{conversation}` lists the waiting messages: each
+agent's `queue`, and its `pendingSteers`, which the running turn has not read
+yet. With a message's `id`:
+
+- `DELETE /v1/conversations/{conversation}/messages/{id}` withdraws it.
+- `POST /v1/conversations/{conversation}/messages/{id}/send-now` sends it
+  now. A queued message ends the running turn at once and runs next. A steer
+  cuts the agent's current step short, and the turn goes on with it.
+
+`DELETE /v1/conversations/{conversation}/messages` empties the queue.
+
+### Control a turn
+
+These do what the same controls do in the Demi app. Each path starts with
+`/v1/conversations/{conversation}`:
+
+| Request | What it does |
+| --- | --- |
+| `POST …/stop` | Stops every agent. With `{"scope": "main"}`, only the main agent; with `{"scope": "subagents"}`, only the subagents. |
+| `POST …/agents/{agent}/stop` | Stops one of the main agent's subagents. |
+| `POST …/resume` | Resumes a turn that stopped or failed. |
+| `POST …/retry` | Retries the request that failed. |
+| `POST …/compact`, `POST …/agents/{agent}/compact` | Compacts an agent's context. |
+| `POST …/commands/{command}/stop` | Stops a command an agent runs. |
+| `POST …/fork` | Makes a new conversation with the transcript up to `blockId`, a reply of the main agent's, and the source's workflow. Give it a `key` as you would a new conversation. |
+
+`POST …/agents/{agent}/messages` sends a subagent a message, as if from its
+user: a working subagent reads it after its current step, an idle one starts
+working on it, and a subagent that ended resumes with it.
+
+### Transcripts
+
+`GET …/agents/{agent}/transcript` returns the latest page of an agent's
+transcript. Its blocks are short forms; read one in full with
+`GET …/agents/{agent}/blocks/{block}`. For older blocks, pass `before` with
+the page's `start`, and the block at `start` as `edge`; `atStart` says when
+there's nothing before. A `409` means the transcript changed since: read the
+latest page again.
+
+### Files
+
+The conversation's files are on its Cloud. With the paths these take, you
+read what an agent made and put files where it works:
+
+| Request | What it does |
+| --- | --- |
+| `GET …/fs?path=` | Lists a directory, the conversation's working directory without `path`. |
+| `POST …/fs` `{"path": …}` | Makes a directory, with its parents. |
+| `DELETE …/fs?path=` | Deletes a file, or a directory with what it holds. |
+| `GET …/fs/raw?path=` | Downloads a file. `Range` reads part of it. |
+| `PUT …/fs/raw?path=&replace=true` | Uploads a file. Without `replace=true`, an existing file stays and the answer is `409`. |
+| `POST …/fs/search` | Searches the names and the text of files, one JSON object per line. |
+| `GET …/hosts/{device}/fs`, `POST …/hosts/{device}/fs` | The same on another Host the conversation reaches. |
 
 ## Hear what happens
 
@@ -217,6 +288,8 @@ JSON event:
 - `conversation`: a conversation's status changed. A turn has ended when the
   status leaves `running` and `compacting`; `completed`, `stopped` or `error`
   says how. That's when a chat program usually posts the reply.
+- `retry_scheduled`: the main agent's request failed for a reason that
+  passes, and it retries after `delayMs`. Tell your users it's still working.
 
 The socket sends only what happens while it's open. After you reconnect, read
 the transcripts again and apply the patches that follow their versions.

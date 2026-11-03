@@ -310,7 +310,7 @@ impl TryFrom<String> for TreePath {
 
 /// `?path=` naming a directory to list: the Host's starting directory when
 /// omitted. Queries are the backend's alone and are not emitted.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, JsonSchema)]
 pub struct DirectoryQuery {
     #[serde(default)]
     pub path: Option<NonEmptyPath>,
@@ -332,13 +332,13 @@ pub struct FileQuery {
 
 /// `?path=` of a delete: from the root or the home, so what it would take
 /// with it can be told.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct RemoveQuery {
     pub path: RootedPath,
 }
 
 /// `?path=&version=&download=` of the raw file route.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct RawFileQuery {
     pub path: NonEmptyPath,
     /// The ETag the request expects the file to still have.
@@ -349,7 +349,7 @@ pub struct RawFileQuery {
 }
 
 /// `?path=&replace=` of an upload.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct UploadQuery {
     pub path: NonEmptyPath,
     #[serde(default)]
@@ -448,8 +448,9 @@ impl TryFrom<String> for CommitName {
 }
 
 /// A nonempty query text, such as a path or an ETag.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, JsonSchema)]
 #[serde(try_from = "String")]
+#[schemars(with = "String")]
 pub struct NonEmptyPath(String);
 
 impl NonEmptyPath {

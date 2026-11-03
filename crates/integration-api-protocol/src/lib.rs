@@ -18,9 +18,11 @@
 use std::num::NonZeroU32;
 
 use demi_command_declarations::{NativeOperation, Node};
-use demi_conversation_lane_protocol::{TranscriptPatch, Version};
+use demi_conversation_lane_protocol::{JobModel, JobPhase, TranscriptPatch, Version};
 use demi_host_interface::{PortRequest, PortResponse};
-use demi_shared_types::{Block, IntegrationCapabilities, NodeId, Timestamp};
+use demi_shared_types::{
+    Block, BlockId, FileExtension, IntegrationCapabilities, NodeId, ProviderErrorDiagnostics, SessionPhase, Timestamp,
+};
 use demi_web_api_protocol::cloud::CloudState;
 use demi_web_api_protocol::conversations::ConversationStatus;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, IntegrationId};
@@ -144,6 +146,13 @@ pub struct CloudList {
 pub struct ModelChoice {
     pub provider_id: String,
     pub model_id: String,
+    /// A thinking effort the model lists, or `off`; the model's first when
+    /// none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// A service tier the model lists; the vendor's default when none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_tier: Option<String>,
 }
 
 /// One of the integration's conversations.
@@ -183,7 +192,8 @@ pub struct CreateConversation {
 }
 
 /// `PATCH /conversations/:id`: moves it to another Cloud, which its main
-/// agent works on from its next command, or renames it.
+/// agent works on from its next command, renames it, or changes its model
+/// or its workflow, from its main agent's next request.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConversationPatch {
@@ -194,6 +204,36 @@ pub struct ConversationPatch {
     #[schemars(length(min = 1))]
     #[garde(inner(length(chars, min = 1)))]
     pub title: Option<String>,
+    /// Its model: a subagent keeps the one its spawn gave it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub model: Option<ModelChoice>,
+    /// Its workflow, in the format of a project's workflow file; null for
+    /// none.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[schemars(with = "Option<String>")]
+    #[garde(skip)]
+    pub workflow: Option<Option<String>>,
+}
+
+/// `GET /conversations?key=&limit=&after=`: a page of the integration's
+/// conversations, the latest made first; with `key` the one of that key,
+/// or none.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationQuery {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(length(chars, min = 1, max = KEY_CHARS)))]
+    pub key: Option<String>,
+    /// How many, 1 to 500; 100 when none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(range(min = 1, max = 500))]
+    #[garde(inner(range(min = 1, max = 500)))]
+    pub limit: Option<u32>,
+    /// The `next` of the page before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub after: Option<String>,
 }
 
 /// `GET /conversations`.
@@ -201,6 +241,8 @@ pub struct ConversationPatch {
 #[serde(rename_all = "camelCase")]
 pub struct ConversationList {
     pub conversations: Vec<Conversation>,
+    /// The `after` of the next page; null on the last.
+    pub next: Option<String>,
 }
 
 /// `POST /conversations/:id/messages`: a message. While a turn runs it waits
@@ -267,7 +309,7 @@ pub struct ConversationAttachment {
 /// holds, sent with its media type as `Content-Type`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct UploadQuery {
+pub struct AttachmentQuery {
     #[garde(length(chars, min = 1, max = 255))]
     pub name: String,
 }
@@ -329,7 +371,7 @@ pub struct MessageAnswer {
     pub id: String,
 }
 
-/// An agent of a conversation.
+/// An agent of a conversation, as the Agents window shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Agent {
@@ -340,11 +382,111 @@ pub struct Agent {
     pub parent: Option<NodeId>,
     /// Its spawn's description; empty for the main agent.
     pub description: String,
-    /// Whether its turn runs.
-    pub running: bool,
+    /// Where its session is: `idle`, `running`, `compacting`, or
+    /// `compacting_idle` for a compaction that no one asked for.
+    pub phase: SessionPhase,
     /// The Cloud it works on when that is not the conversation's; null on
     /// the conversation's.
     pub cloud: Option<DeviceId>,
+    /// A subagent's round; null for the main agent.
+    pub round: Option<Round>,
+    /// The messages that wait for its turn to end, in the order they run.
+    pub queue: Vec<Waiting>,
+    /// The steers it took that wait for its next step, in order.
+    pub pending_steers: Vec<Waiting>,
+}
+
+/// A subagent's round: on what it runs, and where it is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Round {
+    /// 1 for the spawn's, one more at each resume.
+    pub number: u64,
+    /// The profile's name; null for the inherit profile.
+    pub profile: Option<String>,
+    /// The provider entry's id and name, the model's name, and the effort.
+    pub model: JobModel,
+    /// `running`, or how it closed: `completed`, `aborted` or `error`.
+    pub state: JobPhase,
+    pub started_at: Timestamp,
+    /// Null while it runs.
+    pub ended_at: Option<Timestamp>,
+}
+
+/// A message that waits in an agent's queue or as its pending steer: its
+/// id, the one it was sent with, and its text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Waiting {
+    pub id: String,
+    pub text: String,
+}
+
+/// `POST /conversations/:id/stop`: which agents stop; every agent when
+/// none.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StopRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub scope: Option<StopScope>,
+}
+
+/// What a stop stops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StopScope {
+    /// The main agent's turn, as the web app's Stop.
+    Main,
+    /// Every subagent the main agent runs.
+    Subagents,
+}
+
+/// `POST /conversations/:id/agents/:agent/messages`: a message to a
+/// subagent, which it takes into its turn, starts a turn with, or is
+/// resumed with. It takes no id of the program's: a closed subagent is
+/// resumed as `demi agent resume` resumes one, which names no message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SubagentMessage {
+    #[schemars(length(min = 1))]
+    #[garde(length(chars, min = 1))]
+    pub text: String,
+}
+
+/// `GET /conversations/:id/agents/:agent/transcript`'s query: a page around
+/// a place, as the web app reads one; the latest page when it names none.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[garde(allow_unvalidated)]
+pub struct TranscriptQuery {
+    /// The page that ends before the block at this index.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<u32>,
+    /// The page that starts after the block at this index.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<u32>,
+    /// The page around this block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub around: Option<BlockId>,
+    /// The block the page holds at `before` or `after`, which a page that
+    /// moved since answers 409 for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge: Option<BlockId>,
+}
+
+/// `POST /conversations/:id/fork`: a new conversation of the integration's
+/// with the transcript up to `blockId`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ForkRequest {
+    #[garde(skip)]
+    pub block_id: BlockId,
+    /// The new conversation's key; none for none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(length(min = 1, max = KEY_CHARS))]
+    #[garde(inner(length(chars, min = 1, max = KEY_CHARS)))]
+    pub key: Option<String>,
 }
 
 /// `GET /conversations/:id`: the conversation with its agents.
@@ -362,7 +504,12 @@ pub struct ConversationDetail {
 #[serde(rename_all = "camelCase")]
 pub struct Transcript {
     pub version: Option<Version>,
+    /// The index of the page's first block in the agent's path.
+    pub start: u32,
     pub blocks: Vec<Block>,
+    /// Whether the page holds the path's first block, and its last.
+    pub at_start: bool,
+    pub at_end: bool,
 }
 
 /// What the socket (`GET /v1/socket`) sends: every change of each of the
@@ -382,6 +529,16 @@ pub enum Event {
     Agent {
         conversation: ConversationId,
         agent: Agent,
+    },
+    /// The main agent retries a transient provider failure after `delayMs`,
+    /// as the web app hears it. It is not kept: the turn's outcome is.
+    RetryScheduled {
+        conversation: ConversationId,
+        attempt: u32,
+        delay_ms: u64,
+        code: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        diagnostics: Option<ProviderErrorDiagnostics>,
     },
     /// The conversation's status changed. A turn has ended when it leaves
     /// `running` and `compacting`: `completed`, `stopped` or `error` says
@@ -501,6 +658,19 @@ pub struct Model {
     pub model_id: String,
     /// The model's name.
     pub name: String,
+    /// Its context window and the most it writes in one answer, in tokens;
+    /// null where the catalog does not know.
+    pub context_window: Option<u32>,
+    pub output_limit: Option<u32>,
+    /// The thinking efforts it offers, in the vendor's words; empty for none.
+    pub efforts: Vec<String>,
+    /// Whether thinking can be turned off, with the effort `off`.
+    pub can_disable_thinking: bool,
+    /// The service tiers it offers; empty for none.
+    pub service_tiers: Vec<String>,
+    /// The file types it reads natively; null where the catalog does not
+    /// say.
+    pub file_types: Option<Vec<FileExtension>>,
 }
 
 /// `GET /models`.

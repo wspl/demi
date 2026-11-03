@@ -1,6 +1,10 @@
 //! Query parameters. Queries are read by the backend alone and are not part of
-//! the generated TypeScript.
+//! the generated TypeScript; the integration API's document describes those
+//! it shares with the web app.
 
+use std::borrow::Cow;
+
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, de};
 
 /// A boolean query parameter: spelled exactly `true` or `false`, and false
@@ -19,6 +23,16 @@ impl<'de> Deserialize<'de> for StrictBool {
                 "must be true or false, not {other:?}"
             ))),
         }
+    }
+}
+
+impl JsonSchema for StrictBool {
+    fn schema_name() -> Cow<'static, str> {
+        "StrictBool".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({ "type": "boolean", "default": false })
     }
 }
 

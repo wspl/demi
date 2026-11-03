@@ -309,6 +309,50 @@ impl ControlService {
         .await
     }
 
+    /// A page of the integration's conversations, newest first: at most
+    /// `limit` of those made before `after`, a conversation's creation and
+    /// id, or from the newest without it.
+    pub async fn integration_conversation_page(
+        &self,
+        integration: IntegrationId,
+        after: Option<(Timestamp, ConversationId)>,
+        limit: u32,
+    ) -> Result<Vec<(IntegrationConversation, Timestamp)>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare_cached(
+                "SELECT i.conversation_id, i.integration_id, i.external_key, i.workflow, c.created_at
+                 FROM integration_conversations i JOIN conversations c ON c.id = i.conversation_id
+                 WHERE i.integration_id = ?1
+                   AND (?2 IS NULL OR c.created_at < ?2 OR (c.created_at = ?2 AND c.id > ?3))
+                 ORDER BY c.created_at DESC, c.id LIMIT ?4",
+            )?;
+            let (at, id) = match &after {
+                Some((at, id)) => (Some(at.as_millisecond()), Some(id.as_str())),
+                None => (None, None),
+            };
+            let mut rows = statement.query(params![integration.as_str(), at, id, limit])?;
+            let mut page = Vec::new();
+            while let Some(row) = rows.next()? {
+                let created = decode("conversations", "created_at", Timestamp::from_millisecond(row.get(4)?))?;
+                page.push((integration_conversation_row(row)?, created));
+            }
+            Ok(page)
+        })
+        .await
+    }
+
+    /// Replaces the workflow of the integration's conversation `id`, YAML,
+    /// or none; false when it is no integration's.
+    pub async fn set_integration_workflow(&self, id: ConversationId, workflow: Option<String>) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            Ok(connection.execute(
+                "UPDATE integration_conversations SET workflow = ?2 WHERE conversation_id = ?1",
+                params![id.as_str(), workflow],
+            )? == 1)
+        })
+        .await
+    }
+
     /// The plugin the integration last declared, as JSON; none before its
     /// first declaration.
     pub async fn integration_declaration(&self, id: IntegrationId) -> Result<Option<String>, StorageError> {

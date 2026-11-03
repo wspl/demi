@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
 use demi_agent_server::{Observer, TreeObservers};
+use demi_agent_tools::parse_workflow;
 use demi_backend_host_access::{conversation_of, root_of};
 use demi_conversation_lane_protocol::ServerFrame;
 use demi_shared_types::NodeId;
@@ -19,20 +20,24 @@ use tokio::sync::{Notify, mpsc};
 use demi_backend_database::StorageError;
 use demi_backend_database::usage::Attribution;
 use demi_machine_manager_protocol::shared::mount_path;
-use demi_backend_database::conversation_index::{ConversationRecord, ConversationStart, Creation, RecordChange};
+use demi_backend_database::conversation_index::{
+    ConversationChange, ConversationRecord, ConversationStart, Creation, RecordChange, SettingsChange,
+};
 use demi_backend_database::integrations::{
     InitState, IntegrationCloud, IntegrationConversation, IntegrationPatch as StoredPatch, IntegrationRecord,
 };
 use demi_backend_host_access::transition::ChangeRefusal;
 use demi_conversation_lane_protocol::{AgentEntry, AgentRole, ClientContent, ClientFrame, Refusal, SendMessage};
 use demi_integration_api_protocol as api;
-use demi_shared_types::{BlockId, SessionPhase, TurnId, WorkflowChoice};
-use demi_web_api_protocol::conversations::{ConversationStatus, ConversationTarget, ModelSettings};
+use demi_shared_types::{BlockId, Timestamp, TurnId, UserContentBlock, WorkflowChoice};
+use demi_web_api_protocol::conversations::{ConversationStatus, ConversationTarget, ModelChoice, ModelSettings};
+use demi_web_api_protocol::error::ErrorCode;
 
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, IntegrationId, OperationId, ProviderId};
 use demi_web_api_protocol::integrations::{IntegrationDto, IntegrationPatch, IntegrationWithToken};
 use tokio_util::sync::CancellationToken;
 
+use crate::conversation::ForkRefusal;
 use crate::shard::Shard;
 
 impl Shard {
@@ -164,6 +169,38 @@ impl From<Refusal> for IntegrationRefusal {
     fn from(refusal: Refusal) -> Self {
         Self::Refused(refusal.reason)
     }
+}
+
+/// How many conversations a page of `GET /v1/conversations` holds when the
+/// request names no limit: one answer reads each one's checkpoint, so it
+/// stays bounded, and the program asks for the rest by `next`.
+const CONVERSATION_PAGE: u32 = 100;
+
+/// A model choice's refusal: one that names no model, or an effort or a
+/// tier the model does not offer, is the request's mistake.
+fn model_refused(refusal: ChangeRefusal) -> IntegrationRefusal {
+    match refusal {
+        ChangeRefusal::ProviderNotFound | ChangeRefusal::ModelNotFound | ChangeRefusal::SettingUnavailable(_) => {
+            IntegrationRefusal::Invalid(refusal.to_string())
+        }
+        refusal => refusal.into(),
+    }
+}
+
+/// Refuses a workflow that does not read as a workflow file, which its
+/// agents would otherwise run without, told only in their instructions.
+fn checked_workflow(workflow: Option<&str>) -> Result<(), IntegrationRefusal> {
+    match workflow.map(parse_workflow) {
+        Some(Err(error)) => Err(IntegrationRefusal::Invalid(format!("`workflow` is no workflow: {}", error.reason()))),
+        _ => Ok(()),
+    }
+}
+
+/// The creation and the id a page's `next` names, `<ms>.<id>`.
+fn page_cursor(cursor: &str) -> Option<(Timestamp, ConversationId)> {
+    let (at, id) = cursor.split_once('.')?;
+    let at = Timestamp::from_millisecond(at.parse().ok()?).ok()?;
+    Some((at, ConversationId::try_from(id).ok()?))
 }
 
 /// The name a conversation's own workflow goes by, which its integration
@@ -299,6 +336,39 @@ impl Shard {
         Ok(shown)
     }
 
+    /// A page of the integration's conversations, newest first, as `query`
+    /// asks: with a key, the one of that key or none.
+    pub async fn integration_conversation_page(
+        &self,
+        integration: &IntegrationRecord,
+        query: api::ConversationQuery,
+    ) -> Result<api::ConversationList, IntegrationRefusal> {
+        let control = &self.services().control;
+        if let Some(key) = query.key {
+            let conversations = match control.integration_conversation_by_key(integration.id.clone(), key).await? {
+                Some(id) => vec![self.integration_conversation_of(integration, &id).await?],
+                None => Vec::new(),
+            };
+            return Ok(api::ConversationList { conversations, next: None });
+        }
+        let after = match query.after.as_deref() {
+            Some(cursor) => Some(page_cursor(cursor).ok_or_else(|| IntegrationRefusal::Invalid("`after` is no page's `next`.".to_owned()))?),
+            None => None,
+        };
+        let limit = query.limit.unwrap_or(CONVERSATION_PAGE);
+        let page = control.integration_conversation_page(integration.id.clone(), after, limit).await?;
+        let next = (page.len() == limit as usize)
+            .then(|| page.last().map(|(kept, at)| format!("{}.{}", at.as_millisecond(), kept.conversation)))
+            .flatten();
+        let mut conversations = Vec::new();
+        for (kept, _) in page {
+            if let Some(record) = control.conversation(kept.conversation.clone()).await? {
+                conversations.push(self.integration_conversation_shown(record, kept.key).await?);
+            }
+        }
+        Ok(api::ConversationList { conversations, next })
+    }
+
     /// Makes a conversation of the integration's on its Cloud `request.cloud`,
     /// or with a key answers the one that has it, as it is.
     pub async fn create_integration_conversation(
@@ -307,6 +377,7 @@ impl Shard {
         request: api::CreateConversation,
     ) -> Result<api::Conversation, IntegrationRefusal> {
         let control = &self.services().control;
+        checked_workflow(request.workflow.as_deref())?;
         if let Some(key) = &request.key
             && let Some(id) = control.integration_conversation_by_key(integration.id.clone(), key.clone()).await?
         {
@@ -324,16 +395,11 @@ impl Shard {
                 provider_id: ProviderId::try_from(request.model.provider_id.clone())
                     .map_err(|_| IntegrationRefusal::Invalid("No provider has that id.".to_owned()))?,
                 model_id: request.model.model_id.clone(),
-                thinking_effort: None,
-                service_tier_id: None,
+                thinking_effort: request.model.effort.clone(),
+                service_tier_id: request.model.service_tier.clone(),
             })
             .await
-            .map_err(|refusal| match refusal {
-                ChangeRefusal::ProviderNotFound | ChangeRefusal::ModelNotFound => {
-                    IntegrationRefusal::Invalid(refusal.to_string())
-                }
-                refusal => refusal.into(),
-            })?;
+            .map_err(model_refused)?;
         let id = ConversationId::try_from(uuid::Uuid::new_v4().to_string().as_str()).expect("a UUID is a conversation id");
         let start = ConversationStart {
             workspace: integration.workspace.clone(),
@@ -381,8 +447,13 @@ impl Shard {
         Ok(api::ConversationDetail { conversation, agents })
     }
 
-    /// Moves the integration's conversation `id` to another of its Clouds, or
-    /// renames it.
+    /// Moves the integration's conversation `id` to another of its Clouds,
+    /// renames it, or changes its model or its workflow.
+    ///
+    /// What the patch names is checked before anything changes, so a
+    /// refusal of its workflow, its Cloud or its model leaves the
+    /// conversation as it was. The move goes last, since only it can be
+    /// refused after its checks, by another move that came first.
     pub async fn patch_integration_conversation(
         &self,
         integration: &IntegrationRecord,
@@ -390,25 +461,47 @@ impl Shard {
         patch: api::ConversationPatch,
     ) -> Result<api::Conversation, IntegrationRefusal> {
         let id = &self.integration_conversation_of(integration, id).await?.id;
+        if let Some(Some(workflow)) = &patch.workflow {
+            checked_workflow(Some(workflow))?;
+        }
         // Held until the move is written.
         let mut _lease = None;
-        if let Some(cloud) = patch.cloud {
+        if let Some(cloud) = &patch.cloud {
             _lease = Some(
                 self.integration_deletions
                     .lease(&[cloud.as_str()])
                     .ok_or_else(|| IntegrationRefusal::Refused("the integration or its Cloud is being deleted".to_owned()))?,
             );
-            if self.integration_cloud(integration, &cloud).await?.is_none() {
+            if self.integration_cloud(integration, cloud).await?.is_none() {
                 return Err(IntegrationRefusal::NotFound("Cloud"));
             }
+        }
+        if let Some(model) = patch.model {
+            let change = SettingsChange {
+                model: Some(ModelChoice {
+                    provider_id: ProviderId::try_from(model.provider_id)
+                        .map_err(|_| IntegrationRefusal::Invalid("No provider has that id.".to_owned()))?,
+                    model_id: model.model_id,
+                }),
+                thinking_effort: model.effort,
+                service_tier_id: Some(model.service_tier),
+            };
+            self.transition(id, ConversationChange::Settings(change))
+                .await
+                .map_err(model_refused)?;
+        }
+        if let Some(workflow) = patch.workflow {
+            self.services().control.set_integration_workflow(id.clone(), workflow).await?;
+        }
+        if let Some(title) = patch.title {
+            self.transition(id, RecordChange::Title(title).into()).await?;
+        }
+        if let Some(cloud) = patch.cloud {
             let target = ConversationTarget::Device {
                 device_id: cloud,
                 path: CONVERSATION_DIRECTORY.to_owned(),
             };
             self.move_to(id, target, &CancellationToken::new()).await?;
-        }
-        if let Some(title) = patch.title {
-            self.transition(id, RecordChange::Title(title).into()).await?;
         }
         self.integration_conversation_of(integration, id).await
     }
@@ -539,16 +632,174 @@ impl Shard {
         Ok(control.delete_integration(integration.id).await?)
     }
 
-    /// Stops every agent of the integration's conversation `id`, as Stop does.
+    /// Stops the agents of the integration's conversation `id` that `scope`
+    /// names, every one without it, as the web app's stops do.
     pub async fn stop_integration_conversation(
         self: &Rc<Self>,
         integration: &IntegrationRecord,
         id: &ConversationId,
+        scope: Option<api::StopScope>,
     ) -> Result<(), IntegrationRefusal> {
         let id = &self.integration_conversation_of(integration, id).await?.id;
-        self.admit_frame(id, ClientFrame::AbortSubagents {}).await?;
-        self.admit_frame(id, ClientFrame::Abort {}).await?;
+        if scope != Some(api::StopScope::Main) {
+            self.admit_frame(id, ClientFrame::AbortSubagents {}).await?;
+        }
+        if scope != Some(api::StopScope::Subagents) {
+            self.admit_frame(id, ClientFrame::Abort {}).await?;
+        }
         Ok(())
+    }
+
+    /// Hands the integration's conversation `id` one of the web app's
+    /// frames that act on its turn, its queue or a command, as a page's
+    /// control does. A frame that names a subagent the conversation does
+    /// not have is refused, which the session would take without a word.
+    pub async fn act_on_integration_conversation(
+        self: &Rc<Self>,
+        integration: &IntegrationRecord,
+        id: &ConversationId,
+        frame: ClientFrame,
+    ) -> Result<(), IntegrationRefusal> {
+        let id = &self.integration_conversation_of(integration, id).await?.id;
+        let named = match &frame {
+            ClientFrame::AbortSubagent { subagent_id } => Some(subagent_id),
+            ClientFrame::Compact { node } => node.as_ref(),
+            _ => None,
+        };
+        if let Some(node) = named {
+            let (_, entries) = self
+                .conversation_agents(id)
+                .await
+                .map_err(|error| IntegrationRefusal::Refused(error.to_string()))?;
+            let parent = entries.iter().find_map(|entry| match &entry.role {
+                AgentRole::Subagent(child) if &entry.id == node => Some(&child.parent),
+                _ => None,
+            });
+            let Some(parent) = parent else {
+                return Err(IntegrationRefusal::NotFound("agent"));
+            };
+            // The page's Stop on a subagent stops one of the main agent's
+            // own, never a subagent's subagent.
+            if matches!(frame, ClientFrame::AbortSubagent { .. }) && parent.as_str() != id.as_str() {
+                return Err(IntegrationRefusal::Refused(
+                    "only the main agent's own subagents stop this way".to_owned(),
+                ));
+            }
+        }
+        self.admit_frame(id, frame).await?;
+        Ok(())
+    }
+
+    /// Acts on the message `message` of the integration's conversation `id`
+    /// that waits, queued or as a steer the turn has not taken: `queued`
+    /// makes the frame for a queued one, `steered` for a steer, as the
+    /// page's control on either row does. The main agent's entry says which
+    /// it is, since a session answers a frame for an id it does not hold
+    /// with nothing.
+    pub async fn act_on_integration_message(
+        self: &Rc<Self>,
+        integration: &IntegrationRecord,
+        id: &ConversationId,
+        message: String,
+        queued: fn(TurnId) -> ClientFrame,
+        steered: fn(BlockId) -> ClientFrame,
+    ) -> Result<(), IntegrationRefusal> {
+        let id = &self.integration_conversation_of(integration, id).await?.id;
+        let (_, entries) = self
+            .conversation_agents(id)
+            .await
+            .map_err(|error| IntegrationRefusal::Refused(error.to_string()))?;
+        let root = entries.into_iter().find(|entry| matches!(entry.role, AgentRole::Root));
+        let frame = root.and_then(|root| {
+            if let Some(waiting) = root.queue.into_iter().find(|waiting| waiting.id.as_str() == message) {
+                return Some(queued(waiting.id));
+            }
+            let steer = root.pending_steers.into_iter().find(|steer| steer.id.as_str() == message)?;
+            Some(steered(steer.id))
+        });
+        let frame = frame.ok_or(IntegrationRefusal::NotFound("waiting message"))?;
+        // A message that left the queue since it was read is gone.
+        self.admit_frame(id, frame).await.map_err(|refusal| {
+            if refusal.code == ErrorCode::NotFound.to_string() {
+                IntegrationRefusal::NotFound("waiting message")
+            } else {
+                refusal.into()
+            }
+        })
+    }
+
+    /// Hands the subagent `agent` of the integration's conversation `id` a
+    /// message, as its user's.
+    pub async fn message_integration_subagent(
+        self: &Rc<Self>,
+        integration: &IntegrationRecord,
+        id: &ConversationId,
+        agent: &NodeId,
+        message: api::SubagentMessage,
+    ) -> Result<(), IntegrationRefusal> {
+        let id = &self.integration_conversation_of(integration, id).await?.id;
+        let (_, entries) = self
+            .conversation_agents(id)
+            .await
+            .map_err(|error| IntegrationRefusal::Refused(error.to_string()))?;
+        let held = entries
+            .iter()
+            .any(|entry| &entry.id == agent && matches!(entry.role, AgentRole::Subagent(_)));
+        if !held {
+            return Err(IntegrationRefusal::NotFound("subagent"));
+        }
+        let block = BlockId::try_from(uuid::Uuid::new_v4().simple().to_string()).expect("a UUID is a block id");
+        let root = root_of(id);
+        let text = message.text;
+        self.with_open_tree(id, async || {
+            self.agent()
+                .message_subagent(&root, agent, block, text)
+                .await
+                .map_err(|reason| Refusal::new(ErrorCode::SendFailed, reason))
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// Forks the integration's conversation `id` through `request.block_id`
+    /// into a new conversation of the integration's, with the source's
+    /// workflow and the key the request names; or finds the one of that
+    /// key, which the flag says.
+    pub async fn fork_integration_conversation(
+        self: &Rc<Self>,
+        integration: &IntegrationRecord,
+        id: &ConversationId,
+        request: api::ForkRequest,
+    ) -> Result<(api::Conversation, bool), IntegrationRefusal> {
+        let control = &self.services().control;
+        let id = self.integration_conversation_of(integration, id).await?.id;
+        let source = control
+            .integration_conversation(id.clone())
+            .await?
+            .ok_or(IntegrationRefusal::NotFound("conversation"))?;
+        if let Some(key) = &request.key
+            && let Some(existing) = control.integration_conversation_by_key(integration.id.clone(), key.clone()).await?
+        {
+            return Ok((self.integration_conversation_of(integration, &existing).await?, false));
+        }
+        let destination = ConversationId::try_from(uuid::Uuid::new_v4().to_string().as_str()).expect("a UUID is a conversation id");
+        let forked = self.fork(id, destination, request.block_id).await.map_err(|refusal| match refusal {
+            ForkRefusal::SourceNotFound => IntegrationRefusal::NotFound("conversation"),
+            ForkRefusal::Target(reason) => IntegrationRefusal::Invalid(reason),
+            ForkRefusal::Storage(error) => IntegrationRefusal::Storage(error),
+            refusal => IntegrationRefusal::Refused(refusal.to_string()),
+        })?;
+        let kept = IntegrationConversation {
+            conversation: forked.record.id.clone(),
+            integration: integration.id.clone(),
+            key: request.key.clone(),
+            workflow: source.workflow,
+        };
+        if let Some(first) = control.record_integration_conversation(kept).await? {
+            let _ = self.delete_conversation(&forked.record.id).await;
+            return Ok((self.integration_conversation_of(integration, &first).await?, false));
+        }
+        Ok((self.integration_conversation_shown(forked.record, request.key).await?, true))
     }
 
     /// The integration's conversation `id`, as the integration sees it; not
@@ -600,26 +851,66 @@ impl Shard {
 /// An agent entry as an integration sees it; none for a side question,
 /// which is the web app's.
 fn api_agent(entry: AgentEntry) -> Option<api::Agent> {
-    let running = !matches!(entry.phase, SessionPhase::Idle);
+    let queue = entry
+        .queue
+        .iter()
+        .map(|message| api::Waiting {
+            id: message.id.to_string(),
+            text: content_text(&message.content),
+        })
+        .collect();
+    let pending_steers = entry
+        .pending_steers
+        .iter()
+        .map(|steer| api::Waiting {
+            id: steer.id.to_string(),
+            text: content_text(&steer.content),
+        })
+        .collect();
     match entry.role {
         AgentRole::Root => Some(api::Agent {
             id: entry.id,
             number: 0,
             parent: None,
             description: String::new(),
-            running,
+            phase: entry.phase,
             cloud: None,
+            round: None,
+            queue,
+            pending_steers,
         }),
         AgentRole::Subagent(child) => Some(api::Agent {
             id: entry.id,
             number: child.number,
             parent: Some(child.parent),
             description: child.description,
-            running,
+            phase: entry.phase,
             cloud: child.device.and_then(|device| DeviceId::try_from(device).ok()),
+            round: Some(api::Round {
+                number: child.round,
+                profile: child.profile,
+                model: child.model,
+                state: child.state,
+                started_at: child.started_at,
+                ended_at: child.ended_at,
+            }),
+            queue,
+            pending_steers,
         }),
         AgentRole::Side(_) => None,
     }
+}
+
+/// The text of a message's content, its text parts joined.
+fn content_text(content: &[UserContentBlock]) -> String {
+    content
+        .iter()
+        .filter_map(|part| match part {
+            UserContentBlock::Text { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// The sockets of the user's integrations (`GET /v1/socket`), each of which
@@ -818,6 +1109,13 @@ fn events_of(conversation: &ConversationId, frame: &ServerFrame) -> Vec<api::Eve
             })
             .into_iter()
             .collect(),
+        ServerFrame::RetryScheduled { attempt, delay_ms, code, diagnostics } => vec![api::Event::RetryScheduled {
+            conversation: conversation.clone(),
+            attempt: *attempt,
+            delay_ms: *delay_ms,
+            code: code.clone(),
+            diagnostics: diagnostics.clone(),
+        }],
         _ => Vec::new(),
     }
 }

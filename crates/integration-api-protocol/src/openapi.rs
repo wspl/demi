@@ -7,6 +7,7 @@ use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde_json::{Map, Value, json};
 
 use crate::*;
+use demi_web_api_protocol::files;
 
 /// A route as the document describes it.
 struct Route {
@@ -24,6 +25,9 @@ struct Route {
     /// Whether the ids in its path name things of the integration's own,
     /// which another integration's answer 404 for.
     owned_ids: bool,
+    /// Whether a request may leave its body out, which then reads as the
+    /// body's defaults.
+    body_optional: bool,
 }
 
 impl Route {
@@ -31,6 +35,37 @@ impl Route {
         self.refusals.push((status, when));
         self
     }
+
+    /// The route, its query's parameters the fields of `make`'s object.
+    fn query(mut self, make: Make) -> Self {
+        self.query = Some(make);
+        self
+    }
+
+    /// The route, with the HTTP method `method`.
+    fn method(mut self, method: &'static str) -> Self {
+        self.method = method;
+        self
+    }
+
+    /// The route, whose body a request may leave out.
+    fn body_optional(mut self) -> Self {
+        self.body_optional = true;
+        self
+    }
+
+    /// The route, answering a file's bytes or a stream with `status`.
+    fn bytes(mut self, status: u16) -> Self {
+        self.answer = (status, Some(Content::Bytes));
+        self
+    }
+}
+
+/// A route that stops, resumes or compacts, answering 204 once the
+/// conversation took it.
+fn act(path: &'static str, summary: &'static str) -> Route {
+    json("post", path, summary, None, (204, None))
+        .refuses(409, "The conversation did not take it, as the message says (`integration_refused`).")
 }
 
 type Make = fn(&mut SchemaGenerator) -> Schema;
@@ -57,6 +92,7 @@ fn json(method: &'static str, path: &'static str, summary: &'static str, body: O
         answer: (answer.0, answer.1.map(Content::Json)),
         refusals: Vec::new(),
         owned_ids: true,
+        body_optional: false,
     }
 }
 
@@ -71,24 +107,70 @@ fn routes() -> Vec<Route> {
         json("get", "/clouds/{cloud}", "A Cloud", None, (200, Some(of::<Cloud>))),
         json("delete", "/clouds/{cloud}", "Delete a Cloud no conversation works on", None, (204, None)).refuses(409, "A conversation works on the Cloud, and the message names each; or the Cloud is being deleted, or its machine refused (`integration_refused`)."),
         json("post", "/clouds/{cloud}/reset", "Reset a Cloud's system; /home stays", None, (200, Some(of::<Cloud>))).refuses(409, "The Cloud's machine refused the reset, as the message says (`integration_refused`)."),
-        json("get", "/conversations", "The integration's conversations", None, (200, Some(of::<ConversationList>))),
-        json("post", "/conversations", "Make a conversation, or find the one of a key", Some(of::<CreateConversation>), (201, Some(of::<Conversation>))).refuses(400, "`providerId` and `modelId` name no model of `GET /models` (`integration_refused`).").refuses(404, "The integration has no Cloud of the body's `cloud` (`not_found`).").refuses(409, "The integration or the Cloud is being deleted, or the conversation could not be made, as the message says (`integration_refused`)."),
+        json("get", "/conversations", "A page of the integration's conversations, newest first; or with `key`, the one of that key, `limit` and `after` aside", None, (200, Some(of::<ConversationList>)))
+            .query(of::<ConversationQuery>)
+            .refuses(400, "`after` is no page's `next` (`integration_refused`)."),
+        json("post", "/conversations", "Make a conversation, or find the one of a key", Some(of::<CreateConversation>), (201, Some(of::<Conversation>))).refuses(400, "`providerId` and `modelId` name no model of `GET /models`, or `workflow` is no workflow file (`integration_refused`).").refuses(404, "The integration has no Cloud of the body's `cloud` (`not_found`).").refuses(409, "The integration or the Cloud is being deleted, or the conversation could not be made, as the message says (`integration_refused`)."),
         json("get", "/conversations/{conversation}", "A conversation with its agents", None, (200, Some(of::<ConversationDetail>))).refuses(409, "Its agents could not be read, as the message says (`integration_refused`)."),
-        json("patch", "/conversations/{conversation}", "Move a conversation to another Cloud, or rename it", Some(of::<ConversationPatch>), (200, Some(of::<Conversation>))).refuses(404, "The integration has no Cloud of the body's `cloud` (`not_found`).").refuses(409, "The Cloud it moves to is being deleted, or another move of it came first (`integration_refused`)."),
+        json("patch", "/conversations/{conversation}", "Move a conversation to another Cloud, rename it, or change its model or its workflow", Some(of::<ConversationPatch>), (200, Some(of::<Conversation>))).refuses(400, "`model` names no model of `GET /models`, or an effort or a service tier it does not offer; or `workflow` is no workflow file (`integration_refused`).").refuses(404, "The integration has no Cloud of the body's `cloud` (`not_found`).").refuses(409, "The Cloud it moves to is being deleted, or another move of it came first (`integration_refused`)."),
         json("delete", "/conversations/{conversation}", "Delete a conversation", None, (204, None)).refuses(409, "The conversation could not be deleted, as the message says (`integration_refused`)."),
         json("post", "/conversations/{conversation}/messages", "Send a message", Some(of::<SendMessage>), (200, Some(of::<MessageAnswer>))).refuses(409, "The conversation did not take the message, as the message says (`integration_refused`)."),
-        json("post", "/conversations/{conversation}/stop", "Stop every agent of a conversation", None, (204, None)).refuses(409, "The conversation did not take the stop, as the message says (`integration_refused`)."),
-        json("get", "/conversations/{conversation}/agents/{agent}/transcript", "An agent's latest transcript", None, (200, Some(of::<Transcript>))),
+        act("/conversations/{conversation}/messages", "Empty the queue").method("delete"),
+        act("/conversations/{conversation}/messages/{message}", "Withdraw a queued message or a steer the turn has not taken").method("delete"),
+        act("/conversations/{conversation}/messages/{message}/send-now", "Send a waiting message now: a queued one ends the running turn and runs next, a steer cuts the current step short"),
+        json("post", "/conversations/{conversation}/stop", "Stop a conversation's agents: every one, or those `scope` names", Some(of::<StopRequest>), (204, None)).body_optional().refuses(409, "The conversation did not take the stop, as the message says (`integration_refused`)."),
+        act("/conversations/{conversation}/resume", "Resume a turn that stopped or failed"),
+        act("/conversations/{conversation}/retry", "Retry the last failed request"),
+        act("/conversations/{conversation}/compact", "Compact the main agent's context"),
+        json("post", "/conversations/{conversation}/fork", "A new conversation with the transcript up to a block, or the one of the body's key", Some(of::<ForkRequest>), (201, Some(of::<Conversation>)))
+            .refuses(400, "`blockId` is no completed reply of the main agent's (`integration_refused`).")
+            .refuses(409, "The fork failed, as the message says (`integration_refused`)."),
+        act("/conversations/{conversation}/commands/{command}/stop", "Stop a running command"),
+        act("/conversations/{conversation}/agents/{agent}/stop", "Stop one of the main agent's subagents; one that already ended has nothing to stop")
+            .refuses(409, "The agent is a subagent's subagent, which this route does not stop, as the page's Stop does not (`integration_refused`)."),
+        act("/conversations/{conversation}/agents/{agent}/compact", "Compact a subagent's context"),
+        json("post", "/conversations/{conversation}/agents/{agent}/messages", "Send a subagent a message; a closed one resumes with it", Some(of::<SubagentMessage>), (204, None)).refuses(409, "The subagent did not take the message, as the message says (`integration_refused`)."),
+        json("get", "/conversations/{conversation}/agents/{agent}/transcript", "A page of an agent's transcript, the latest without a query", None, (200, Some(of::<Transcript>)))
+            .query(of::<TranscriptQuery>)
+            .refuses(400, "The query names more than one of `before`, `after` and `around`, `before` or `after` without `edge`, or an index outside the transcript (`invalid_query`).")
+            .refuses(409, "The page moved since: `edge` is no longer the block at `before` or `after` (`transcript_changed`)."),
+        json("get", "/conversations/{conversation}/agents/{agent}/blocks/{block}", "A block whole, where the transcript's is light", None, (200, Some(of::<demi_web_api_protocol::conversations::WholeBlock>))),
+        json("get", "/conversations/{conversation}/fs", "A directory's entries on the conversation's Cloud, its working directory without `path`", None, (200, Some(of::<files::Directory>)))
+            .query(of::<files::DirectoryQuery>),
+        json("post", "/conversations/{conversation}/fs", "Make a directory, with its parents", Some(of::<files::CreateDirectory>), (201, Some(of::<files::CreatedDirectory>))),
+        json("delete", "/conversations/{conversation}/fs", "Delete a file, or a directory with what it holds", None, (204, None))
+            .query(of::<files::RemoveQuery>)
+            .refuses(409, "The path is the root, the home directory or the working directory, or holds one (`protected_path`)."),
+        json("get", "/conversations/{conversation}/fs/raw", "A file's bytes: 206 with the part a `Range` names, 304 when `If-None-Match` names its ETag", None, (200, None))
+            .query(of::<files::RawFileQuery>)
+            .bytes(200)
+            .refuses(404, "Nothing, or no file, is at the path (`fs_error`, `not_found`)."),
+        Route {
+            method: "put",
+            path: "/conversations/{conversation}/fs/raw",
+            summary: "Write a file's bytes, whole or not at all",
+            query: Some(of::<files::UploadQuery>),
+            body: Some(Content::Bytes),
+            answer: (204, None),
+            refusals: vec![(409, "A directory is at the path (`is_directory`), or a file and `replace` is false (`file_exists`).")],
+            owned_ids: true,
+            body_optional: false,
+        },
+        json("post", "/conversations/{conversation}/fs/search", "Search the names and the text of the files under a directory: one JSON object per line", Some(of::<files::SearchRequest>), (200, None)).bytes(200),
+        json("get", "/conversations/{conversation}/hosts/{device}/fs", "A directory's entries on another Host the conversation reaches", None, (200, Some(of::<files::Directory>)))
+            .query(of::<files::DirectoryQuery>),
+        json("post", "/conversations/{conversation}/hosts/{device}/fs", "Make a directory on another Host the conversation reaches", Some(of::<files::CreateDirectory>), (201, Some(of::<files::CreatedDirectory>))),
         json("get", "/conversations/{conversation}/attachments/{attachment}", "An attachment a conversation holds, such as an agent's `a3`", None, (200, Some(of::<ConversationAttachment>))),
         Route {
             method: "post",
             path: "/attachments",
             summary: "Upload a file a message carries, at most 25 MiB, sent with its media type",
-            query: Some(of::<UploadQuery>),
+            query: Some(of::<AttachmentQuery>),
             body: Some(Content::Bytes),
             answer: (201, Some(Content::Json(of::<Attachment>))),
             refusals: vec![(400, "The body is empty, or `Content-Type` is missing, invalid or multipart (`invalid_body`).")],
             owned_ids: true,
+            body_optional: false,
         },
         Route {
             method: "get",
@@ -102,6 +184,7 @@ fn routes() -> Vec<Route> {
                 "No file of the integration's user has that SHA-256 (`not_found`); every integration of the user reads the files any of them uploaded or was sent.",
             )],
             owned_ids: false,
+            body_optional: false,
         },
         Route {
             method: "get",
@@ -112,6 +195,7 @@ fn routes() -> Vec<Route> {
             answer: (200, Some(Content::Json(of::<Usage>))),
             refusals: Vec::new(),
             owned_ids: true,
+            body_optional: false,
         },
     ]
 }
@@ -222,7 +306,7 @@ pub fn openapi(server: &str) -> Value {
                 json!({ "description": when, "content": { "application/json": { "schema": error.clone() } } });
         }
         if let Some(body) = &route.body {
-            operation["requestBody"] = json!({ "required": true, "content": content(body, &mut generator) });
+            operation["requestBody"] = json!({ "required": !route.body_optional, "content": content(body, &mut generator) });
         }
         let path = paths.entry(route.path.to_owned()).or_insert_with(|| json!({}));
         path[route.method] = operation;

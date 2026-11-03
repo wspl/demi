@@ -458,10 +458,10 @@ impl Shard {
         }
     }
 
-    /// Hands the conversation `frame`, a `send`, a `steer` or a stop,
-    /// through a connection of its own that opens the conversation first, as
-    /// a page's lane would: the frame is handled as a page's is. Answers
-    /// once the session took it, or why it was refused.
+    /// Hands the conversation `frame` through a connection of its own that
+    /// opens the conversation first, as a page's lane would: the frame is
+    /// handled as a page's is. Answers once the session took it, or why it
+    /// was refused; a removal of what is no longer there is refused as gone.
     pub(crate) async fn admit_frame(self: &Rc<Self>, conversation: &ConversationId, frame: ClientFrame) -> Result<(), Refusal> {
         let resolver = Rc::new(ConversationFiles {
             shard: Rc::downgrade(self),
@@ -482,8 +482,11 @@ impl Shard {
                     matches!(reply, ServerFrame::SteerResult { steer_id, outcome: SteerOutcome::Accepted { .. } } if *steer_id == id)
                 }))
             }
-            ClientFrame::AbortSubagents {} => None,
-            _ => Some(Box::new(|reply| matches!(reply, ServerFrame::AbortResult { .. }))),
+            ClientFrame::Abort {} => Some(Box::new(|reply| matches!(reply, ServerFrame::AbortResult { .. }))),
+            ClientFrame::DequeueMessage { .. } | ClientFrame::CancelPendingSteer { .. } => {
+                Some(Box::new(|reply| matches!(reply, ServerFrame::RemoveResult { .. })))
+            }
+            _ => None,
         };
         let steps = [ClientFrame::Open { draft: None, follows: Vec::new() }, frame];
         for (index, frame) in steps.into_iter().enumerate() {
@@ -501,6 +504,9 @@ impl Shard {
                 match reply {
                     ServerFrame::Rejected { refusal, .. }
                     | ServerFrame::SteerResult { outcome: SteerOutcome::Rejected { refusal }, .. } => return Err(refusal),
+                    ServerFrame::RemoveResult { outcome: RemoveOutcome::GoneOn, .. } if index == 1 => {
+                        return Err(Refusal::new(ErrorCode::NotFound, "Nothing waits under that id"));
+                    }
                     ServerFrame::Error { message, code, .. } => {
                         let code = code.unwrap_or_else(|| ErrorCode::SendFailed.to_string());
                         return Err(Refusal::new(code, message));
@@ -514,6 +520,37 @@ impl Shard {
             }
         }
         Err(Refusal::new(ErrorCode::SendFailed, "The session did not answer the message"))
+    }
+
+    /// Runs `work` while a connection of its own holds the conversation
+    /// open, as a page's lane would, for what reaches the live tree without
+    /// a frame.
+    pub(crate) async fn with_open_tree<T>(
+        self: &Rc<Self>,
+        conversation: &ConversationId,
+        work: impl AsyncFnOnce() -> Result<T, Refusal>,
+    ) -> Result<T, Refusal> {
+        let resolver = Rc::new(ConversationFiles {
+            shard: Rc::downgrade(self),
+            conversation: conversation.clone(),
+        });
+        let (connection, mut frames) = self.agent().connect(root_of(conversation), resolver);
+        let open = ClientFrame::Open { draft: None, follows: Vec::new() };
+        let mut answered = match self.handle_frame(conversation, &connection, open).await {
+            Handled::Replies(replies) | Handled::Opened { replies } | Handled::OpenRefused { replies } => replies,
+            Handled::Following { .. } | Handled::NotJson => Vec::new(),
+        };
+        while let Some(Outgoing::Frames(step)) = frames.try_recv() {
+            answered.extend(step);
+        }
+        for reply in answered {
+            if let ServerFrame::Rejected { refusal, .. } = reply {
+                return Err(refusal);
+            }
+        }
+        let done = work().await;
+        drop(connection);
+        done
     }
 
     /// Whether the backend would deliver the user's Resume of the

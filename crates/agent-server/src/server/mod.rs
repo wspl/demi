@@ -626,6 +626,38 @@ impl<H: HostResolver> AgentServer<H> {
         }
     }
 
+    /// Hands the subagent `node` of the conversation `root`'s open tree a
+    /// message of its user's, `id`, as the root takes one: a live subagent
+    /// takes it as a steer, which starts a turn when it is idle, and a
+    /// closed one is resumed with it, as `demi agent resume` resumes one
+    /// for its parent. An error when no tree is open, the conversation has
+    /// no such subagent, or it refused the message.
+    pub async fn message_subagent(&self, root: &NodeId, node: &NodeId, id: BlockId, text: String) -> Result<(), String> {
+        let tree = self.tree(root).ok_or("the conversation's tree is not open")?;
+        if node == root {
+            return Err("the main agent takes messages as the conversation's".into());
+        }
+        if let Some(live) = tree.live_agent(node) {
+            return live
+                .session()
+                .steer(vec![UserContentBlock::Text { text }], id)
+                .map_err(|error| error.to_string());
+        }
+        let record = tree
+            .store()
+            .node(node)
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or("the conversation has no such agent")?;
+        let parent = record.parent.ok_or("the conversation has no such subagent")?;
+        let input = tree::StartInput::Resume {
+            id: node.clone(),
+            message: text,
+            profile_name: None,
+        };
+        tree.start(&parent, input).await.map(drop)
+    }
+
     /// The live node `node` of the conversation `root`: where the backend's
     /// command router dispatches a job's `rpc` calls (`Node::commands`). A
     /// job of a node that is not live has none.
