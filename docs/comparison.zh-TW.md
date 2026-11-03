@@ -1,6 +1,6 @@
 # Demi 比較
 
-[English](comparison.md) · [Deutsch](comparison.de.md) · [Español (Latinoamérica)](comparison.es.md) · [Français](comparison.fr.md) · [Português (Brasil)](comparison.pt-BR.md) · [简体中文](comparison.zh-CN.md) · **繁體中文** · [日本語](comparison.ja.md) · [한국어](comparison.ko.md)
+[English](comparison.md) · [Deutsch](comparison.de.md) · [Español](comparison.es.md) · [Français](comparison.fr.md) · [Português](comparison.pt-BR.md) · [简体中文](comparison.zh-CN.md) · **繁體中文** · [日本語](comparison.ja.md) · [한국어](comparison.ko.md)
 
 Demi 與同類智慧體應用程式的差異，截至 2026 年 10 月，依據各產品的文件和原始碼整理。只列出各產品之間有差異的項目，以及一項目前都不支援的能力。各欄按與 Demi 的接近程度，從最接近排到最不接近。
 

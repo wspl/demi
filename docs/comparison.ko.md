@@ -1,6 +1,6 @@
 # Demi 비교
 
-[English](comparison.md) · [Deutsch](comparison.de.md) · [Español (Latinoamérica)](comparison.es.md) · [Français](comparison.fr.md) · [Português (Brasil)](comparison.pt-BR.md) · [简体中文](comparison.zh-CN.md) · [繁體中文](comparison.zh-TW.md) · [日本語](comparison.ja.md) · **한국어**
+[English](comparison.md) · [Deutsch](comparison.de.md) · [Español](comparison.es.md) · [Français](comparison.fr.md) · [Português](comparison.pt-BR.md) · [简体中文](comparison.zh-CN.md) · [繁體中文](comparison.zh-TW.md) · [日本語](comparison.ja.md) · **한국어**
 
 같은 종류의 에이전트 앱과 Demi의 차이를 2026년 10월 기준, 각 제품의 문서와 소스 코드를 바탕으로 정리했습니다. 제품 간에 차이가 있는 항목과, 아직 어느 제품도 지원하지 않는 기능 하나를 실었습니다. 열은 Demi와 가까운 제품부터 먼 제품 순으로 놓았습니다.
 

@@ -28,9 +28,9 @@ export type LanguageChoice = 'system' | Language
 export const LANGUAGE_NAMES: Readonly<Record<Language, string>> = {
   'en': 'English',
   'de': 'Deutsch',
-  'es-419': 'Español (Latinoamérica)',
+  'es-419': 'Español',
   'fr': 'Français',
-  'pt-BR': 'Português (Brasil)',
+  'pt-BR': 'Português',
   'zh-Hans': '简体中文',
   'zh-Hant': '繁體中文',
   'ja': '日本語',

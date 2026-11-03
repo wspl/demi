@@ -1,6 +1,6 @@
 # Demi comparado
 
-[English](comparison.md) · [Deutsch](comparison.de.md) · [Español (Latinoamérica)](comparison.es.md) · [Français](comparison.fr.md) · **Português (Brasil)** · [简体中文](comparison.zh-CN.md) · [繁體中文](comparison.zh-TW.md) · [日本語](comparison.ja.md) · [한국어](comparison.ko.md)
+[English](comparison.md) · [Deutsch](comparison.de.md) · [Español](comparison.es.md) · [Français](comparison.fr.md) · **Português** · [简体中文](comparison.zh-CN.md) · [繁體中文](comparison.zh-TW.md) · [日本語](comparison.ja.md) · [한국어](comparison.ko.md)
 
 Como o Demi se diferencia dos apps de agentes do mesmo tipo, em outubro de 2026, com base na documentação e no código-fonte de cada produto. A tabela mostra uma linha só onde os produtos diferem, além de um recurso que nenhum deles tem ainda. As colunas vão do produto mais próximo do Demi ao mais distante.
 
