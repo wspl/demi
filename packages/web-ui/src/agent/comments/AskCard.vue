@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { ArrowUpRight, ChevronDown, ChevronUp, MessageCircleQuestionMark, Square, Trash2 } from '@lucide/vue'
 import type { Block, ProviderFailureFacts } from '@demicodes/protocol'
 import Button from '../../ui/Button.vue'
@@ -25,12 +25,15 @@ import type { CardTurn } from './asks'
  *   failure shows its record with Retry.
  * - A square Stop at the header's end, before ↗, ends a working question; the
  *   turn keeps what it answered, under a muted Stopped, and the focus moves to
- *   Reply.
+ *   the follow-up field.
  * - The chevron at the card's corner, or a click on its header, folds it to
  *   the header alone, which stands where it stood, and opens it again. Open
  *   Full Conversation, beside it, shows every step in the subagent window.
  * - A question still on its first answer is deleted from the card's menu.
- * - Reply opens a field for a follow-up.
+ * - The open card ends with its follow-up field, in every state, so nothing
+ *   comes or goes under the answer when it ends. While the question works the
+ *   field takes what is typed and sends nothing; a failure's Retry stands
+ *   above it.
  *
  * Only the header's icon is purple.
  */
@@ -50,10 +53,9 @@ const props = defineProps<{
 }>()
 
 /**
- * Reply's field is open, and what it holds: the owner keeps them, so a pinned
- * specimen can open it.
+ * What the follow-up field holds: the owner keeps it, so it stays while the
+ * card is folded or out of view.
  */
-const replying = defineModel<boolean>('replying', { default: false })
 const reply = defineModel<DraftMessage>('reply', { default: () => ({ text: '', fileIds: [] }) })
 
 const emit = defineEmits<{
@@ -67,10 +69,11 @@ const emit = defineEmits<{
 }>()
 
 const root = ref<HTMLElement>()
+const field = ref<InstanceType<typeof MessageSendField>>()
 
 /**
- * The last turn is still made, its status shown or its answer streaming: Reply
- * comes back with the answer.
+ * The last turn is still made, its status shown or its answer streaming: the
+ * follow-up waits for the answer.
  */
 const working = computed(() => {
   const last = props.turns.at(-1)
@@ -78,8 +81,9 @@ const working = computed(() => {
 })
 
 /**
- * Stop was pressed: once the turn is over, the focus it leaves with the button
- * goes to Reply, which comes in its place.
+ * Stop was pressed: once the turn is over, the focus it leaves with the
+ * button, which goes, moves to the follow-up field, or to the card while it
+ * is folded and has none.
  */
 const stopPressed = ref(false)
 function stop(): void {
@@ -91,31 +95,11 @@ watch(working, async (now) => {
     return
   stopPressed.value = false
   await nextTick()
-  root.value?.querySelector<HTMLElement>('[data-ask-reply]')?.focus()
+  if (field.value)
+    field.value.focus()
+  else
+    root.value?.focus()
 })
-
-function send(message: DraftMessage): void {
-  replying.value = false
-  emit('ask', message)
-}
-
-function cancel(): void {
-  replying.value = false
-  reply.value = { text: '', fileIds: [] }
-}
-
-/**
- * An empty reply field closes when a press lands outside the card. A press on
- * one of the card's controls does that control's action, and typed text stays.
- * A press, not the field's blur, decides, since the blur comes before the click
- * it would undo.
- */
-function onPointerDown(event: PointerEvent): void {
-  if (replying.value && reply.value.text.trim() === '' && reply.value.fileIds.length === 0 && !root.value?.contains(event.target as Node))
-    replying.value = false
-}
-onMounted(() => document.addEventListener('pointerdown', onPointerDown, { capture: true }))
-onBeforeUnmount(() => document.removeEventListener('pointerdown', onPointerDown, { capture: true }))
 
 // The card is a place of its own in the reply: text selected in it is copied,
 // never asked about or commented on again.
@@ -202,22 +186,15 @@ defineExpose({ element: root, failed: () => props.failure != null })
         <Button size="xs" @click="emit('retry')">{{ t('ask.retry') }}</Button>
       </div>
       <MessageSendField
-        v-if="replying"
+        ref="field"
         v-model="reply"
         :files="files"
         :placeholder="t('ask.followUpPlaceholder')"
         :send-label="t('ask.reply')"
-        focus
-        @send="send"
-        @cancel="cancel"
+        :can-send="!working"
+        data-ask-reply
+        @send="emit('ask', $event)"
       />
-    </div>
-    <div v-if="!folded && !replying && !failure && !working" class="mt-2.5 flex items-center">
-      <!--
-        Its label reads at the card's size, the reply's, as the question and
-        answer do.
-      -->
-      <Button size="sm" data-ask-reply @click="replying = true"><span class="text-conversation">{{ t('ask.reply') }}</span></Button>
     </div>
   </div>
 </template>

@@ -1,5 +1,5 @@
 ---
-status: accepted, superseded in part by 0092
+status: accepted, superseded in part by 0092 and 0210
 ---
 
 # A side question can be stopped

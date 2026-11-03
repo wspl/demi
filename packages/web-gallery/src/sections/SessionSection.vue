@@ -3757,22 +3757,22 @@ onBeforeUnmount(() => {
           <GalleryAsks seed="working" />
         </div>
       </GallerySection>
-      <GallerySection title="Ask · Stopped" note="Stop ended the answer where it was: the header's Stop is gone, the card keeps the answer so far, a muted Stopped stands under it, and Reply asks a follow-up as before.">
+      <GallerySection title="Ask · Stopped" note="Stop ended the answer where it was: the header's Stop is gone, the card keeps the answer so far, a muted Stopped stands under it, and the field under it, which takes the focus from Stop (the card takes it while folded), sends a follow-up as before.">
         <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="stopped" />
         </div>
       </GallerySection>
-      <GallerySection title="Ask · Stopped Before an Answer" note="Stopped before the answer began: the card shows the question and a muted Stopped, and Reply still asks a follow-up.">
+      <GallerySection title="Ask · Stopped Before an Answer" note="Stopped before the answer began: the card shows the question and a muted Stopped, and its field still sends a follow-up.">
         <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="stopped-empty" />
         </div>
       </GallerySection>
-      <GallerySection title="Ask · Answered" note="The question in bold and its short answer, with a bordered Reply below it.">
+      <GallerySection title="Ask · Answered" note="The question in bold and its short answer, with the follow-up field below it, which an open card shows in every state: while the question works it takes what is typed and sends nothing, so nothing comes or goes under the answer when it ends.">
         <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="answered" />
         </div>
       </GallerySection>
-      <GallerySection title="Ask · Follow-Up" note="Reply opened a field with a send button and a follow-up typed: Return sends it as the side conversation's next turn, Shift-Return makes a new line, Escape cancels; the card's other controls still do what they say, and an empty field closes when a click lands outside the card.">
+      <GallerySection title="Ask · Follow-Up" note="A follow-up typed into the card's field: Return or the send button sends it as the side conversation's next turn, Shift-Return makes a new line; the card's other controls still do what they say.">
         <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="follow-up" />
         </div>
@@ -3782,7 +3782,7 @@ onBeforeUnmount(() => {
           <GalleryAsks seed="folded" />
         </div>
       </GallerySection>
-      <GallerySection title="Ask · Failed" note="A failed answer shows the failure's words and its ID, as a turn's failure does, with Retry, which runs the turn again.">
+      <GallerySection title="Ask · Failed" note="A failed answer shows the failure's words and its ID, as a turn's failure does, with Retry, which runs the turn again; the field under it sends a follow-up instead.">
         <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="failed" />
         </div>
