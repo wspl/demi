@@ -202,6 +202,12 @@ interface EarlyReads {
   root: Promise<TranscriptRead> | null
 }
 
+/** What the user pressed on a message on its way, which waits to be carried out. */
+type Wish = Withdrawal | 'sendNow'
+
+/** What takes a waiting message away: Recall gives it back to the user, Delete does not. */
+type Withdrawal = 'recall' | 'delete'
+
 type TakenBack =
   | { kind: 'refilled'; text: string; fileIds: string[]; comments: WaitingComment[] }
   | { kind: 'recalled'; toast: string }
@@ -318,11 +324,11 @@ export const useConversations = defineStore('conversations', () => {
    */
   let deliveries = new SerialQueue()
   /**
-   * Recall or Steer pressed on a steer or a queued message still on
+   * Recall, Delete or Steer pressed on a steer or a queued message still on
    * its way, by its message id: the user's latest wish, carried out once the
    * session holds the message.
    */
-  const wishes = new Map<string, 'recall' | 'sendNow'>()
+  const wishes = new Map<string, Wish>()
   /**
    * The messages on their way that a comment's Steer made, each holding
    * that comment alone: one not delivered leaves no failed message, its
@@ -3788,7 +3794,10 @@ export const useConversations = defineStore('conversations', () => {
         // A message not delivered is no steer or queued message to act on.
         wishes.delete(pending.id)
         stopRemoving(conversation, pending.id)
-        if (wish === 'recall' && pending.saved) {
+        if (wish === 'delete') {
+          // One the user deleted meanwhile goes as a message not delivered does.
+          deleteNotDelivered(conversation, pending)
+        } else if (wish === 'recall' && pending.saved) {
           // One from the list the user took back meanwhile is listed again.
           dropSubmission(conversation, pending.id, 'withdrawn')
           recordSync.unsend(conversation, pending.id)
@@ -4087,21 +4096,33 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Delete on a message not delivered: it goes at once, with its files. One sent from the list goes from the list, as the
-   * list's Delete takes it.
+   * Delete on a message the agent has not read: not delivered, on its way,
+   * a steer or a queued one. Its row goes at once, with its files and its
+   * comments, and nothing goes back to the composer. One on its way is
+   * deleted once the session holds it, or as one not delivered when it
+   * turns out to be.
    */
-  function deleteSend(conversation: Conversation, id: string): void {
+  function deleteUnsent(conversation: Conversation, id: string): void {
     const pending = conversation.pendingSends.find((each) => each.id === id)
-    if (pending?.error == null) {
-      return
+    if (pending && pending.error !== null) {
+      deleteNotDelivered(conversation, pending)
+    } else {
+      withdraw(conversation, id, 'delete')
     }
+  }
+
+  /**
+   * Delete on a message not delivered: it goes at once, with its files. One
+   * sent from the list goes from the list, as the list's Delete takes it.
+   */
+  function deleteNotDelivered(conversation: Conversation, pending: PendingSend): void {
     if (pending.saved) {
-      backToList(conversation, id)
+      backToList(conversation, pending.id)
       void deleteSaved(conversation, pending.saved)
       return
     }
-    wishes.delete(id)
-    dropSubmission(conversation, id, 'withdrawn')
+    wishes.delete(pending.id)
+    dropSubmission(conversation, pending.id, 'withdrawn')
   }
 
   /** The message `id`, sent from the list and not delivered, is no longer on its way, and is listed again. */
@@ -4162,10 +4183,10 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Keeps Recall or Steer pressed on a message on its way as the
+   * Keeps Recall, Delete or Steer pressed on a message on its way as the
    * user's wish, when `id` is one; false for any other.
    */
-  function keepWish(conversation: Conversation, id: string, wish: 'recall' | 'sendNow'): boolean {
+  function keepWish(conversation: Conversation, id: string, wish: Wish): boolean {
     if (!conversation.pendingSends.some((pending) => pending.id === id && pending.error === null)) {
       return false
     }
@@ -4180,9 +4201,9 @@ export const useConversations = defineStore('conversations', () => {
    * have joined the queue; one already in the transcript is past both, which
    * a removal tells.
    */
-  function carryOut(conversation: Conversation, id: string, wish: 'recall' | 'sendNow'): void {
-    if (wish === 'recall') {
-      carryOutRecall(conversation, id)
+  function carryOut(conversation: Conversation, id: string, wish: Wish): void {
+    if (wish !== 'sendNow') {
+      carryOutRemoval(conversation, id, wish)
     } else if (conversation.pendingSteers.some((steer) => steer.id === id)) {
       action(conversation, (runtime) => runtime.interruptPendingSteer(id))
     } else if (conversation.queue.some((message) => message.id === id)) {
@@ -4190,33 +4211,39 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  /**
-   * Recall on a steer or a queued message, or on a message on its way
-   * that will be one: its row goes at once, and the rest follows once the
-   * session holds the message.
-   */
+  /** Recall on a steer or a queued message, or on a message on its way that will be one. */
   function recall(conversation: Conversation, id: string): void {
+    withdraw(conversation, id, 'recall')
+  }
+
+  /**
+   * Recall or Delete on a steer or a queued message, or on a message on its
+   * way that will be one: its row goes at once, and the rest follows once
+   * the session holds the message.
+   */
+  function withdraw(conversation: Conversation, id: string, wish: Withdrawal): void {
     if (conversation.removing.includes(id)) {
       return
     }
     conversation.removing = [...conversation.removing, id]
-    if (!keepWish(conversation, id, 'recall')) {
-      carryOutRecall(conversation, id)
+    if (!keepWish(conversation, id, wish)) {
+      carryOutRemoval(conversation, id, wish)
     }
   }
 
   /**
-   * Takes back the message `id` the session holds: the message goes back to
-   * the user at once (`takeBack`), and its removal follows. A removal that
-   * fails takes back what `takeBack` did. One the agent beat, as when it read
-   * the steer meanwhile, is no failure: the message shows where the agent
-   * took it, with no toast; any other failure brings the row back with a toast.
+   * Takes the message `id` the session holds out of the steers or the
+   * queue. Recall gives it back to the user at once (`takeBack`), which a
+   * removal that fails takes back; Delete gives nothing back. One the agent
+   * beat, as when it read the steer meanwhile, is no failure: the message
+   * shows where the agent took it, with no toast; any other failure brings
+   * the row back with a toast.
    */
-  function carryOutRecall(conversation: Conversation, id: string): void {
+  function carryOutRemoval(conversation: Conversation, id: string, wish: Withdrawal): void {
     const steer = conversation.pendingSteers.find((each) => each.id === id)
     const waiting = steer ?? conversation.queue.find((each) => each.id === id)
     const removal = runtimeFor(conversation).then((runtime) => runtime.removeWaiting(id))
-    const back = waiting
+    const back = waiting && wish === 'recall'
       ? takeBack(conversation, { copy: contentCopy(waiting.content), comments: waiting.comments ?? [] }, steer ? 'steer' : 'queue', removal)
       : null
     void removal
@@ -4231,7 +4258,8 @@ export const useConversations = defineStore('conversations', () => {
           giveBack(conversation, back)
         }
         if (!(error instanceof RemovalRefusedError)) {
-          report('failures.recallMessage', t('failures.recallMessage'), error)
+          const failure = wish === 'recall' ? 'failures.recallMessage' : 'failures.deleteMessage'
+          report(failure, t(failure), error)
         }
       })
       .finally(() => stopRemoving(conversation, id))
@@ -4618,7 +4646,7 @@ export const useConversations = defineStore('conversations', () => {
     send,
     retrySend,
     editSend,
-    deleteSend,
+    deleteUnsent,
     submissions,
     commenting,
     sendSuggestion,

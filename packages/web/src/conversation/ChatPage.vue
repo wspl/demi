@@ -418,7 +418,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :removing="conversation.removing"
     @retry-undelivered="store.retrySend(conversation, $event)"
     @edit-submission="store.editSend(conversation, $event)"
-    @delete-submission="store.deleteSend(conversation, $event)"
+    @delete-unsent="store.deleteUnsent(conversation, $event)"
     @retry="store.start(conversation)"
     @continue-with="(providerId, credentialId) => conversation && continueWith(conversation, providerId, credentialId)"
     @open-providers="void settingsAddress.open('models')"

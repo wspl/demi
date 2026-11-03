@@ -95,8 +95,11 @@ const emit = defineEmits<{
    * composer.
    */
   editSubmission: [id: string]
-  /** Delete on the message `id`, whose delivery failed: it goes at once. */
-  deleteSubmission: [id: string]
+  /**
+   * Delete on the message `id`, which the agent has not read: not
+   * delivered, on its way, a steer or a queued one. It goes at once.
+   */
+  deleteUnsent: [id: string]
   /** Retry on a session-level failure: the session opens again. */
   retryLoad: []
 }>()
@@ -137,7 +140,8 @@ const bubble = computed(() => {
 /**
  * Recall and Steer on the message being sent: the same requests as on
  * the steer or the queued message it will be, by the id it keeps, which the
- * host carries out once the session holds it.
+ * host carries out once the session holds it. Delete is one request for
+ * every message the agent has not read, so it needs no way.
  */
 function recallSubmission(submission: PendingSubmissionState): void {
   if (submission.way === 'steer') {
@@ -172,7 +176,7 @@ function shownComments(comments: readonly MessageComment[] | undefined): ShownCo
       v-bind="{ ...attrs, ...block.submission }"
       :pending="waitingAs(block)"
       @edit="emit('editSubmission', block.submission.id)"
-      @delete="emit('deleteSubmission', block.submission.id)"
+      @delete="emit('deleteUnsent', block.submission.id)"
       @recall="recallSubmission(block.submission)"
       @send-now="sendSubmissionNow(block.submission)"
       @retry="emit('retryUndelivered', block.submission.id)"
@@ -220,6 +224,7 @@ function shownComments(comments: readonly MessageComment[] | undefined): ShownCo
       :waiting-id="block.pendingSteerId"
       @recall="emit('recallSteer', block.pendingSteerId)"
       @send-now="emit('interruptPendingSteer', block.pendingSteerId)"
+      @delete="emit('deleteUnsent', block.pendingSteerId)"
     />
     <UserBlock
       v-else-if="block.type === 'queued_message'"
@@ -231,6 +236,7 @@ function shownComments(comments: readonly MessageComment[] | undefined): ShownCo
       :waiting-id="block.queueId"
       @recall="emit('recallQueued', block.queueId)"
       @send-now="emit('sendQueued', block.queueId)"
+      @delete="emit('deleteUnsent', block.queueId)"
     />
     <QueueDivider
       v-else-if="block.type === 'queue_divider'"

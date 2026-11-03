@@ -1841,20 +1841,22 @@ impl SessionCore {
         let Some(mut action) = self.take_queued(id) else {
             return false;
         };
-        self.log_recalled(id.as_str(), "queued");
+        self.log_withdrawn(id.as_str(), "queued");
         action.end(ActionEnd::Dropped);
         true
     }
 
-    fn log_recalled(&self, input: &str, from: &'static str) {
+    /// Logs a waiting message taken away unread, which the user's Recall,
+    /// Delete or Clear does alike.
+    fn log_withdrawn(&self, input: &str, from: &'static str) {
         session_log!(
             self,
             info,
-            event = "input.recalled",
+            event = "input.withdrawn",
             node = %self.id,
             input,
             from,
-            "a waiting message was taken back"
+            "a waiting message was withdrawn"
         );
     }
 
@@ -1911,7 +1913,7 @@ impl SessionCore {
             false
         });
         for turn in &cleared {
-            self.log_recalled(turn.as_str(), "queued");
+            self.log_withdrawn(turn.as_str(), "queued");
         }
         cleared.len()
     }
@@ -2014,7 +2016,7 @@ impl SessionCore {
     pub(super) fn cancel_steer(&mut self, id: &BlockId) -> bool {
         let recalled = self.inputs.cancel_steer(id);
         if recalled {
-            self.log_recalled(id.as_str(), "pending");
+            self.log_withdrawn(id.as_str(), "pending");
         }
         recalled
     }

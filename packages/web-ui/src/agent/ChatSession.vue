@@ -100,7 +100,7 @@ const props = withDefaults(defineProps<{
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions?: readonly PendingSubmissionState[]
   /**
-   * The waiting messages whose Recall is on its way, by id. Their rows are gone
+   * The waiting messages whose Recall or Delete is on its way, by id. Their rows are gone
    * from the press, and come back only when the removal is refused.
    */
   removing?: readonly string[]
@@ -331,8 +331,11 @@ const emit = defineEmits<{
    * composer.
    */
   editSubmission: [id: string]
-  /** Delete on the message `id`, whose delivery failed: it goes at once. */
-  deleteSubmission: [id: string]
+  /**
+   * Delete on the message `id`, which the agent has not read: not
+   * delivered, on its way, a steer or a queued one. It goes at once.
+   */
+  deleteUnsent: [id: string]
   abortSubagents: []
   abortSubagent: [id: string]
   abortTerminal: [id: string]
@@ -1055,7 +1058,7 @@ watch(
             :commenting="commenting"
             :asking="shownAsking"
             @edit-submission="(id) => emit('editSubmission', id)"
-            @delete-submission="(id) => emit('deleteSubmission', id)"
+            @delete-unsent="(id) => emit('deleteUnsent', id)"
             :bottom-offset="surface?.dockHeight ?? 0"
             :persisted-scroll-state="conversation.scroll ?? undefined"
             :reveal-block-id="reveal?.node === null ? reveal.blockId : null"

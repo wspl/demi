@@ -118,7 +118,7 @@ const emit = defineEmits<{
   retry: []
   /** Open this message's editor. */
   edit: []
-  /** Delete the message, which was not delivered. */
+  /** Delete the message, which was not delivered or waits for the agent. */
   delete: []
 }>()
 
@@ -226,7 +226,7 @@ const own = computed(() => typeof props.brief !== 'string')
 /**
  * The message's menu: what its controls offer, Copy and, where it can be
  * edited, Edit, then Send to Conversation, which takes it with its files. A
- * message not yet read has its Steer and Recall.
+ * message not yet read has its Send, Recall and Delete.
  */
 const menu: ContextMenuDeclaration = {
   entries: () => {
@@ -234,6 +234,7 @@ const menu: ContextMenuDeclaration = {
       return [[
         { label: t('composer.send'), run: () => emit('sendNow') },
         { label: t('transcript.user.recall'), run: () => emit('recall') },
+        { label: shared('common.delete'), run: () => emit('delete') },
       ]]
     }
     return [[
@@ -488,8 +489,8 @@ watch(() => props.pending, measure, { flush: 'post' })
       </div>
       <!--
         Under the text, labels in line with the text's start: Show More, and a
-        waiting message's Send and Recall after it, as one row of the bubble's
-        own controls, with what happens to the message at its end.
+        waiting message's Send, Recall and Delete after it, as one row of the
+        bubble's own controls, with what happens to the message at its end.
       -->
       <div v-if="clip || pending" class="on-fill -ml-2 mt-1 flex select-none flex-wrap items-center gap-x-1">
         <Button
@@ -501,7 +502,7 @@ watch(() => props.pending, measure, { flush: 'post' })
         >{{ expanded ? t('transcript.user.showLess') : t('transcript.user.showMore') }}</Button>
         <template v-if="pending">
           <span v-if="clip" class="mx-0.5 h-4 w-px bg-line" aria-hidden="true" />
-          <!-- The two stay on one line, wrapping together, each a finger's height on a phone. -->
+          <!-- The three stay on one line, wrapping together, each a finger's height on a phone. -->
           <span class="flex items-center gap-x-1">
             <Button
               :size="phone ? 'lg' : 'sm'"
@@ -510,6 +511,7 @@ watch(() => props.pending, measure, { flush: 'post' })
               @click.stop="emit('sendNow')"
             >{{ t('composer.send') }}</Button>
             <Button :size="phone ? 'lg' : 'sm'" variant="ghost" @click.stop="emit('recall')">{{ t('transcript.user.recall') }}</Button>
+            <Button :size="phone ? 'lg' : 'sm'" variant="ghost" @click.stop="emit('delete')">{{ shared('common.delete') }}</Button>
           </span>
           <span
             class="ml-auto flex items-center gap-1 ps-2 text-detail text-fg-faint"
