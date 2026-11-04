@@ -309,9 +309,6 @@ const files = computed<ConversationFiles | undefined>(() => {
     },
     ...(attachments.value ? { attachment: attachments.value } : {}),
     ...(replyBlocks.value ? { replyBlock: replyBlocks.value } : {}),
-    openReplyBlock: work.canOpen('block')
-      ? (tag, id, title) => work.openIn(current.id, { intent: 'block', payload: { tag, id, title } })
-      : undefined,
     attachmentOrigin: (id, attachment) => attachmentOrigin(id, attachment, {
       conversation: current.id,
       device: executionFor(current).deviceId ?? null,

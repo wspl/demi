@@ -23,11 +23,11 @@ const documents = new Map<string, string>()
 
 /**
  * The facts of a reply block the gallery's replies name, as a transcript
- * brings them with its replies: the widgets' frames and names.
+ * brings them with its replies: the widgets' frames and titles.
  */
 export function galleryReplyBlock(tag: string, id: string): ReplyBlockLookup {
   const widget = tag === 'widget' ? GALLERY_WIDGETS[id] : undefined
-  return widget ? { state: 'found', facts: { frame: widget.frame, name: widget.name } } : { state: 'missing' }
+  return widget ? { state: 'found', facts: { frame: widget.frame, title: widget.title } } : { state: 'missing' }
 }
 
 /** The widget plugin as the gallery's replies reach it: the guide's pages, by their IDs. */

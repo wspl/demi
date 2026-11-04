@@ -44,12 +44,11 @@ pub(crate) async fn create(invocation: &RpcInvocation, port: &PluginPort) -> Res
             return Ok(1);
         }
     };
-    let names = args.page.clone();
     let widget = store::add(
         port,
         &invocation.context.conversation,
         args.page.clone(),
-        |number| page::file_name(&names, number),
+        page::title(&args.page),
         frame.clone(),
     )
     .await?;
@@ -167,12 +166,12 @@ pub(crate) async fn guide(invocation: &RpcInvocation, port: &PluginPort) -> Resu
 }
 
 /// A widget's facts, which a reply's data carries for its block: its frame
-/// and its file's name.
+/// and its page's title, none for a page without one.
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct WidgetFacts {
     pub(crate) frame: FrameSize,
-    pub(crate) name: String,
+    pub(crate) title: Option<String>,
 }
 
 /// The facts of the widgets `ids`, null for one the user does not have, or
@@ -182,7 +181,7 @@ pub(crate) async fn facts(ids: Vec<String>, port: &PluginPort) -> Result<Map<Str
     for id in ids {
         let widget = store::read_facts(port, &id).await.ok().flatten().map(|widget| WidgetFacts {
             frame: widget.frame,
-            name: widget.name,
+            title: widget.title,
         });
         facts.insert(id, serde_json::to_value(widget).map_err(PluginError::failed)?);
     }
@@ -214,7 +213,7 @@ pub fn specimens() -> Vec<(String, Value)> {
         let number = index as u32 + 1;
         let specimen = serde_json::json!({
             "frame": frame::declared(kind).expect("a guide's page declares a frame that reads"),
-            "name": page::file_name(kind, number),
+            "title": page::title(kind),
             "document": page::bootstrapped(kind, ""),
         });
         (format!("w{number}"), specimen)

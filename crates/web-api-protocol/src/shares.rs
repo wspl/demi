@@ -1,6 +1,6 @@
-//! Shares: what was said in a conversation or in one answer of it, read-only
-//! behind a random link. The owner makes, takes again and removes one; anyone with
-//! its link reads it.
+//! Shares: what was said in a conversation or in one answer of it, or one
+//! of its reply blocks, read-only behind a random link. The owner makes,
+//! takes again and removes one; anyone with its link reads it.
 
 use std::borrow::Cow;
 
@@ -12,8 +12,9 @@ use crate::conversations::CompactionSummary;
 
 use crate::ids::ShareToken;
 
-/// What a share holds: the conversation, or one answer of it, named by the
-/// text that ends the agent's reply.
+/// What a share holds: the conversation, one answer of it, named by the
+/// text that ends the agent's reply, or a plugin's reply block, such as a
+/// widget, alone.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase", deny_unknown_fields)]
 pub enum ShareTarget {
@@ -21,6 +22,19 @@ pub enum ShareTarget {
     Answer {
         #[garde(skip)]
         block_id: BlockId,
+    },
+    ReplyBlock {
+        /// The tag of its line, such as `widget`.
+        #[garde(length(chars, min = 1, max = 64))]
+        tag: String,
+        /// Its ID, such as `w1`.
+        #[garde(length(chars, min = 1, max = 64))]
+        id: String,
+        /// What its component names it, such as a widget's page title: the
+        /// shared page's title. A share of the same block holds the title
+        /// it was made with.
+        #[garde(length(chars, max = 255))]
+        title: String,
     },
 }
 
@@ -42,6 +56,13 @@ pub enum ShareAnswer {
         block_id: BlockId,
         taken_at: Timestamp,
     },
+    ReplyBlock {
+        token: ShareToken,
+        url: String,
+        tag: String,
+        id: String,
+        taken_at: Timestamp,
+    },
 }
 
 impl ShareAnswer {
@@ -55,6 +76,13 @@ impl ShareAnswer {
                 block_id,
                 taken_at,
             },
+            ShareTarget::ReplyBlock { tag, id, .. } => Self::ReplyBlock {
+                token,
+                url,
+                tag,
+                id,
+                taken_at,
+            },
         }
     }
 }
@@ -66,6 +94,7 @@ impl ShareAnswer {
 pub enum ConversationShare {
     Conversation { token: ShareToken },
     Answer { token: ShareToken, block_id: BlockId },
+    ReplyBlock { token: ShareToken, tag: String, id: String },
 }
 
 impl ConversationShare {
@@ -73,12 +102,13 @@ impl ConversationShare {
         match target {
             ShareTarget::Conversation => Self::Conversation { token },
             ShareTarget::Answer { block_id } => Self::Answer { token, block_id },
+            ShareTarget::ReplyBlock { tag, id, .. } => Self::ReplyBlock { token, tag, id },
         }
     }
 
     pub fn token(&self) -> &ShareToken {
         match self {
-            Self::Conversation { token } | Self::Answer { token, .. } => token,
+            Self::Conversation { token } | Self::Answer { token, .. } | Self::ReplyBlock { token, .. } => token,
         }
     }
 }
@@ -89,6 +119,7 @@ impl ConversationShare {
 pub enum ShareKind {
     Conversation,
     Answer,
+    ReplyBlock,
 }
 
 impl ShareTarget {
@@ -96,23 +127,29 @@ impl ShareTarget {
         match self {
             Self::Conversation => ShareKind::Conversation,
             Self::Answer { .. } => ShareKind::Answer,
+            Self::ReplyBlock { .. } => ShareKind::ReplyBlock,
         }
     }
 }
 
 /// `GET /shares/:token`: what the shared page shows above what the share
 /// holds.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SharedConversation {
     pub kind: ShareKind,
     /// The conversation's title when it was shared; null while it was the
     /// placeholder, which the page shows as New conversation in the reader's
-    /// language.
+    /// language. A reply block's share has the title it was made with.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub title: Option<String>,
     pub taken_at: Timestamp,
+    /// A reply block's share: the block, with its facts as its plugin
+    /// answers them while it is on, and null facts otherwise, which the page
+    /// shows as missing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_block: Option<demi_conversation_lane_protocol::ReplyBlockFacts>,
 }
 
 /// `GET /shares/:token/transcript`: a page of what the share holds, as a

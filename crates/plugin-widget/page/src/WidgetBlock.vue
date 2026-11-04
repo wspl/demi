@@ -8,7 +8,7 @@
  *
  * - The frame, inside the card's line, has the size the page declares
  *   (`demi-frame`) from the first moment: the reply's data brings each
- *   widget's frame and name with the reply (`facts`), as it brings the
+ *   widget's frame and title with the reply (`facts`), as it brings the
  *   attachments a reply names, and the block asks nothing of the plugin.
  *   One that declares none starts 320px
  *   high and follows the height the page reports, at most the window's. A
@@ -23,10 +23,15 @@
  *   document its route could not serve, and so does a plugin turned off,
  *   while the block shows or before, in the room the widget had; turned on
  *   again, once the backend has it on, the widget shows again.
- * - A button in the card's corner, always shown since the frame takes the
- *   pointer's hover from the card, opens the widget whole in a tab of the
- *   work panel, where it has the panel's room; where no panel is, as on a
- *   share, it opens the widget's page in a new tab of the web browser.
+ * - Two buttons in the card's corner, always shown since the frame takes the
+ *   pointer's hover from the card: Copy as Image puts a PNG of what the frame
+ *   shows now on the clipboard (`WidgetFrame`'s `picture`), and Share, where
+ *   the page can share (`share`), opens the share dialog for the widget
+ *   under its page's title.
+ * - `whole` draws the widget alone with no card, as a widget's share shows
+ *   it: as wide as its box, as high as in a reply but at most the box's
+ *   height, and centered in the box's height when it is lower, the corner's
+ *   buttons on the frame's corner.
  */
 
 /**
@@ -48,13 +53,13 @@ const grown = new Set<string>()
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ExternalLink, PanelRight } from '@lucide/vue'
-import { IconButton, usePage, windowHeight } from '@demicodes/plugin-sdk'
+import { Check, Images, Share } from '@lucide/vue'
+import { IconButton, useCopy, usePage, windowHeight } from '@demicodes/plugin-sdk'
 import { widgetFactsSchema, type FrameSize, type WidgetFacts } from './generated/plugin'
 import { t } from './locales/text'
 import WidgetFrame from './WidgetFrame.vue'
 
-const props = defineProps<{ id: string, facts: unknown, open?: (title: string) => void }>()
+const props = defineProps<{ id: string, facts: unknown, share?: (title: string) => void, whole?: boolean }>()
 const page = usePage()
 
 /** The frame's height while a page that declares no size has not reported its own. */
@@ -65,6 +70,12 @@ const widget = computed<WidgetFacts | null>(() => {
   const read = widgetFactsSchema.safeParse(props.facts)
   return read.success ? read.data : null
 })
+
+/**
+ * The widget's title: its page's, else the widget by its number, as an
+ * untitled document is named by the app that shows it.
+ */
+const title = computed(() => widget.value?.title ?? t('block.untitled', { number: props.id.replace(/^w/, '') }))
 
 /** Whether the frame's document could not be served. */
 const unavailable = ref(false)
@@ -110,6 +121,16 @@ const frameStyle = computed<Record<string, string>>(() => {
     const grows = size.height != null && size.aspectRatio == null && reported.value != null
     const grownTo = grows ? Math.min(reported.value!, windowHeight.value, size.maxHeight ?? Infinity) : 0
     const least = Math.max(size.minHeight ?? 0, grownTo)
+    // Whole, a floor would hold the frame past its box, which a flex item
+    // cannot shrink below: a frame of a height takes the one it would hold
+    // to, and either shrinks to the box from there.
+    if (props.whole) {
+      return {
+        ...(size.height != null ? { height: `${Math.max(size.height, least)}px` } : {}),
+        ...(size.aspectRatio != null ? { aspectRatio: `${size.aspectRatio.width} / ${size.aspectRatio.height}` } : {}),
+        ...(size.maxHeight != null ? { maxHeight: `${Math.max(size.maxHeight, least)}px` } : {}),
+      }
+    }
     return {
       ...(size.height != null ? { height: `${size.height}px` } : {}),
       ...(size.aspectRatio != null ? { aspectRatio: `${size.aspectRatio.width} / ${size.aspectRatio.height}` } : {}),
@@ -129,39 +150,54 @@ const note = computed(() => {
   }
 })
 
-/**
- * Opens the widget whole: in the work panel, under its page's title as a web
- * browser names a page's tab, or where no panel is, in a new tab of the web
- * browser.
- */
-function openWhole(): void {
-  if (props.open)
-    props.open(widget.value!.name.replace(/\.html$/, ''))
-  else
-    window.open(page.plugin.blockDocument('widget', props.id), '_blank', 'noopener')
+const frame = ref<InstanceType<typeof WidgetFrame>>()
+// The item's picture is still being drawn when it is written: Safari lets a
+// page write the clipboard only inside the click.
+const { copy, copied } = useCopy(() => frame.value
+  ? new ClipboardItem({ 'image/png': frame.value.picture() })
+  : undefined)
+
+/** Opens the share dialog for the widget, under its page's title. */
+function shareWidget(): void {
+  props.share?.(title.value)
 }
 </script>
 
 <template>
-  <div class="relative overflow-hidden rounded-xl border border-line">
-    <div class="w-full" :style="frameStyle">
-      <WidgetFrame
+  <!-- Whole, the frame shrinks to the box's height as a flex item may. -->
+  <div :class="whole ? 'flex size-full flex-col justify-center' : 'contents'">
+    <div class="relative overflow-hidden" :class="whole ? 'flex max-h-full min-h-0 flex-col' : 'rounded-xl border border-line'">
+      <div class="w-full" :class="whole ? 'min-h-0 shrink' : ''" :style="frameStyle">
+        <WidgetFrame
+          v-if="state === 'shown'"
+          :id="id"
+          ref="frame"
+          :title="title"
+          @height="onHeight"
+          @unavailable="unavailable = true"
+        />
+      </div>
+      <div
         v-if="state === 'shown'"
-        :id="id"
-        :title="widget!.name"
-        @height="onHeight"
-        @unavailable="unavailable = true"
-      />
+        class="absolute end-2 top-2 flex gap-0.5 opacity-60 transition-opacity hover:opacity-100 focus-within:opacity-100"
+      >
+        <IconButton
+          :icon="copied ? Check : Images"
+          size="sm"
+          variant="ghost"
+          :aria-label="t('block.copyAsImage')"
+          @click="copy"
+        />
+        <IconButton
+          v-if="share"
+          :icon="Share"
+          size="sm"
+          variant="ghost"
+          :aria-label="t('block.share')"
+          @click="shareWidget"
+        />
+      </div>
+      <p v-if="note" class="absolute inset-0 m-0 flex items-center justify-center text-fg-muted">{{ note }}</p>
     </div>
-    <IconButton
-      v-if="state === 'shown'"
-      :icon="open ? PanelRight : ExternalLink"
-      size="sm"
-      variant="ghost"
-      :aria-label="open ? t('block.openInPanel') : t('block.openInTab')"
-      class="absolute end-2 top-2 opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100"
-      @click="openWhole"
-    />
-    <p v-if="note" class="absolute inset-0 m-0 flex items-center justify-center text-fg-muted">{{ note }}</p>
   </div>
 </template>

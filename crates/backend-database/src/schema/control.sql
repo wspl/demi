@@ -721,16 +721,26 @@ CREATE TABLE shares (
   token           TEXT PRIMARY KEY,
   user_id         TEXT NOT NULL REFERENCES users (id),
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  kind            TEXT NOT NULL CHECK (kind IN ('conversation', 'answer')),
+  kind            TEXT NOT NULL CHECK (kind IN ('conversation', 'answer', 'reply_block')),
   block_id        TEXT,
+  -- A reply block's share: the tag of its line and its ID, which its
+  -- plugin keeps.
+  reply_block_tag TEXT,
+  reply_block_id  TEXT,
   -- The conversation's title when the snapshot was taken; null while it
-  -- was the placeholder.
+  -- was the placeholder. A reply block's share holds the title its
+  -- component gave it.
   title           TEXT,
   taken_at        INTEGER NOT NULL,
-  CHECK ((kind = 'answer') = (block_id IS NOT NULL))
+  CHECK ((kind = 'answer') = (block_id IS NOT NULL)),
+  CHECK ((kind = 'reply_block') = (reply_block_tag IS NOT NULL)),
+  CHECK ((kind = 'reply_block') = (reply_block_id IS NOT NULL)),
+  CHECK (kind <> 'reply_block' OR title IS NOT NULL)
 ) STRICT;
 CREATE UNIQUE INDEX shares_of_conversation ON shares (conversation_id) WHERE kind = 'conversation';
 CREATE UNIQUE INDEX shares_of_answer ON shares (conversation_id, block_id) WHERE kind = 'answer';
+CREATE UNIQUE INDEX shares_of_reply_block ON shares (conversation_id, reply_block_tag, reply_block_id)
+  WHERE kind = 'reply_block';
 
 -- A conversation's deletion that has not reached its last step: its record
 -- is gone, and a start finishes what is left (`storage.md` § Deleting a

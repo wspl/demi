@@ -1,1 +1,13 @@
-{ "block": { "missing": "小工具 {id} 無法使用。", "off": "小工具已關閉。在設定中開啟後即可檢視。", "openInPanel": "在工作面板中開啟", "openInTab": "在新分頁中開啟" } }
+{
+  "block": {
+    "missing": "小工具 {id} 無法使用。",
+    "off": "小工具已關閉。在設定中開啟後即可檢視。",
+    "copyAsImage": "複製為影像",
+    "share": "分享",
+    "untitled": "小工具 {number}"
+  },
+  "picture": {
+    "notLoaded": "小工具尚未載入完成。",
+    "timedOut": "小工具未能及時產生影像。請將其捲動到可見區域後再試一次。"
+  }
+}

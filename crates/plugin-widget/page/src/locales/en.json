@@ -1,1 +1,13 @@
-{ "block": { "missing": "Widget {id} isn't available.", "off": "Widgets are turned off. Turn them on in Settings to see this one.", "openInPanel": "Open in Work Panel", "openInTab": "Open in New Tab" } }
+{
+  "block": {
+    "missing": "Widget {id} isn't available.",
+    "off": "Widgets are turned off. Turn them on in Settings to see this one.",
+    "copyAsImage": "Copy as Image",
+    "share": "Share",
+    "untitled": "Widget {number}"
+  },
+  "picture": {
+    "notLoaded": "The widget hasn’t finished loading.",
+    "timedOut": "The widget didn’t finish drawing the image. Scroll it into view and try again."
+  }
+}

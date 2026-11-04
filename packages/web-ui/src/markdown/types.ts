@@ -124,11 +124,10 @@ export interface ConversationFiles {
    */
   replyBlock?(tag: string, id: string): ReplyBlockLookup
   /**
-   * Opens the reply block `id` of `tag` whole in the work panel, under
-   * `title`, through the `block` intent; absent while no plugin the user has
-   * on opens it, as on a share.
+   * Opens the share dialog for the reply block `id` of `tag` alone, under
+   * `title`; absent where the page cannot share, as on a share.
    */
-  openReplyBlock?(tag: string, id: string, title: string): void
+  shareReplyBlock?(tag: string, id: string, title: string): void
   /**
    * Opens attachment `id`, a file that is no image, video or audio, in the
    * work panel through the `attachment` intent, previewed from its copy; absent

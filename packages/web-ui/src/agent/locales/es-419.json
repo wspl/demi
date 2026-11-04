@@ -248,8 +248,10 @@
   "share": {
     "titleConversation": "Compartir chat",
     "titleAnswer": "Compartir respuesta",
+    "titleReplyBlock": "Compartir “{title}”",
     "whoConversation": "Cualquier persona con el enlace puede leer los mensajes de este chat, pero no el trabajo entre ellos. Los mensajes posteriores no se incluyen.",
     "whoAnswer": "Cualquier persona con el enlace puede leer esta respuesta y el mensaje al que responde.",
+    "whoReplyBlock": "Cualquier persona con el enlace puede verlo.",
     "field": "Enlace para compartir",
     "copyLink": "Copiar enlace",
     "creating": "Creando enlace…",
@@ -261,6 +263,7 @@
     "updatedMessage": "El enlace ahora muestra el chat como está.",
     "failedConversation": "No se pudo compartir el chat",
     "failedAnswer": "No se pudo compartir la respuesta",
+    "failedReplyBlock": "No se pudo compartir",
     "failedUpdate": "No se pudo actualizar el enlace",
     "failedStop": "No se pudo dejar de compartir"
   },

@@ -2,7 +2,12 @@
   "block": {
     "missing": "Das Widget {id} ist nicht verfügbar.",
     "off": "Widgets sind deaktiviert. Aktiviere sie in den Einstellungen, um dieses zu sehen.",
-    "openInPanel": "Im Arbeitspanel öffnen",
-    "openInTab": "In neuem Tab öffnen"
+    "copyAsImage": "Als Bild kopieren",
+    "share": "Teilen",
+    "untitled": "Widget {number}"
+  },
+  "picture": {
+    "notLoaded": "Das Widget ist noch nicht fertig geladen.",
+    "timedOut": "Das Bild des Widgets wurde nicht rechtzeitig erstellt. Scrolle es in den sichtbaren Bereich und versuche es erneut."
   }
 }

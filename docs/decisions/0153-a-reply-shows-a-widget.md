@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, superseded in part by 0261
 ---
 
 # A reply shows a widget

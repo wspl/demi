@@ -248,8 +248,10 @@
   "share": {
     "titleConversation": "Partager la conversation",
     "titleAnswer": "Partager la réponse",
+    "titleReplyBlock": "Partager « {title} »",
     "whoConversation": "Toute personne disposant du lien peut lire les messages de cette conversation, mais pas le travail effectué entre eux. Les messages ultérieurs ne sont pas inclus.",
     "whoAnswer": "Toute personne disposant du lien peut lire cette réponse et le message auquel elle répond.",
+    "whoReplyBlock": "Toute personne disposant du lien peut le voir.",
     "field": "Lien de partage",
     "copyLink": "Copier le lien",
     "creating": "Création du lien…",
@@ -261,6 +263,7 @@
     "updatedMessage": "Le lien affiche désormais la conversation dans son état actuel.",
     "failedConversation": "Impossible de partager la conversation",
     "failedAnswer": "Impossible de partager la réponse",
+    "failedReplyBlock": "Impossible de partager",
     "failedUpdate": "Impossible de mettre à jour le lien",
     "failedStop": "Impossible d’arrêter le partage"
   },

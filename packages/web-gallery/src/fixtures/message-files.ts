@@ -49,8 +49,8 @@ export function galleryAttachmentOrigin(
  *   outside a panel says what the product would do.
  * - A subagent's bar reads its branch from `history` and opens it through
  *   `openBranch`, which outside a panel says what the product would do.
- * - A widget's button opens it through `openReplyBlock`, which outside a
- *   panel says what the product would do.
+ * - A widget's Share goes to `shareReplyBlock`, which says what the product
+ *   would do; a session's opens its share dialog.
  */
 export function galleryConversationFiles(
   source: MemoryFileSource,
@@ -60,10 +60,10 @@ export function galleryConversationFiles(
   openAttachment: NonNullable<ConversationFiles['openAttachment']> = (_id, { name }) => productWould(`Open ${name} in the Work Panel`),
   history: NonNullable<ConversationFiles['history']> = () => sharedHistory.source,
   openBranch: NonNullable<ConversationFiles['openBranch']> = ({ branch }) => productWould(`Open ${branch ?? 'HEAD'} in the Change View’s Commits`),
-  openReplyBlock: NonNullable<ConversationFiles['openReplyBlock']> = (_tag, _id, title) => productWould(`Open ${title} in the Work Panel`),
+  shareReplyBlock: NonNullable<ConversationFiles['shareReplyBlock']> = (_tag, _id, title) => productWould(`Share ${title}`),
 ): ConversationFiles {
   return {
-    openReplyBlock,
+    shareReplyBlock,
     history,
     openBranch,
     openCommit,

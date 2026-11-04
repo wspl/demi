@@ -26,8 +26,9 @@ const COUNT: &str = "count";
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Widget {
     pub(crate) number: u32,
-    /// Its file's name, which a download of it takes.
-    pub(crate) name: String,
+    /// Its page's title (`page::title`); none for a page without one, which
+    /// the page names by its number.
+    pub(crate) title: Option<String>,
     pub(crate) frame: FrameSize,
     pub(crate) page: BlobRef,
     /// The conversations it belongs to.
@@ -39,13 +40,13 @@ fn key(number: u32) -> String {
     format!("w{number}")
 }
 
-/// Keeps `page` as the user's next widget, with its `name` made from its
-/// number and its `frame`, and answers it.
+/// Keeps `page` as the user's next widget, with its `title` and its `frame`,
+/// and answers it.
 pub(crate) async fn add(
     port: &PluginPort,
     conversation: &str,
     page: String,
-    name: impl Fn(u32) -> String,
+    title: Option<String>,
     frame: FrameSize,
 ) -> Result<Widget, PluginError> {
     let blob = port.put_blob(B64Bytes::new(page.into_bytes())).await?;
@@ -65,7 +66,7 @@ pub(crate) async fn add(
     };
     let widget = Widget {
         number,
-        name: name(number),
+        title,
         frame,
         page: blob.clone(),
         conversations: vec![conversation.to_owned()],

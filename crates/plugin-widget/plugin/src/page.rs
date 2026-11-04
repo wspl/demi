@@ -43,7 +43,7 @@ const TAILWIND: &str = "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4";
 /// The appearance the product fixes for every user
 /// (`packages/web-ui/src/theme/productAppearance.ts`), and the tone and
 /// accent a user starts with, which a widget drawn away from a reply takes,
-/// as in its screenshots or in a tab of its own.
+/// as in its screenshots.
 pub(crate) const DEFAULT_LOOK: [(&str, &str); 5] = [
     ("data-tone", "ink"),
     ("data-accent", "blue"),
@@ -124,26 +124,54 @@ fn theme_names() -> String {
         })
 }
 
-/// The name of a widget's file, which a download of it takes: its page's
-/// title made a file's name, else `widget-w<n>.html`.
-pub(crate) fn file_name(page: &str, number: u32) -> String {
-    let lower = page.to_ascii_lowercase();
-    let title = lower.find("<title").and_then(|start| {
-        let open = start + lower[start..].find('>')? + 1;
-        let close = open + lower[open..].find("</title")?;
-        Some(page[open..close].trim().to_owned())
-    });
-    let stem: String = title
-        .unwrap_or_default()
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { ' ' })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    if stem.is_empty() {
-        format!("widget-w{number}.html")
-    } else {
-        format!("{}.html", stem.chars().take(80).collect::<String>())
+/// The page's title as a browser shows it, its `<title>`'s text with its
+/// references read and its spaces collapsed; none for a page without one or
+/// with one of no text.
+pub(crate) fn title(page: &str) -> Option<String> {
+    let scanned = markup::scan(page);
+    let (start, open) = markup::find_tag(&scanned, "title")?;
+    // An SVG's `<title>` names its drawing, not the page.
+    if markup::find_tag(&scanned, "svg").is_some_and(|(svg, _)| svg < start) {
+        return None;
     }
+    // The title's text is blanked in the scan, its end tag is not.
+    let close = open + scanned[open..].find("</title")?;
+    let title = decoded(&page[open..close]).split_whitespace().collect::<Vec<_>>().join(" ");
+    (!title.is_empty()).then_some(title)
+}
+
+/// `text` with its character references, named and numeric, read as a
+/// browser reads a title's; one that names nothing stays as written.
+fn decoded(text: &str) -> String {
+    let mut decoded = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find('&') {
+        decoded.push_str(&rest[..at]);
+        rest = &rest[at..];
+        let reference = rest[1..].find(';').map(|end| &rest[1..1 + end]);
+        let characters = reference.and_then(|name| match name.strip_prefix('#') {
+            Some(number) => number
+                .strip_prefix(['x', 'X'])
+                .map_or_else(|| number.parse::<u32>(), |hex| u32::from_str_radix(hex, 16))
+                .ok()
+                // As a browser does, a reference to no character is U+FFFD.
+                .map(|code| char::from_u32(code).filter(|&c| c != '\0').unwrap_or('\u{fffd}').to_string()),
+            None => entities::ENTITIES
+                .iter()
+                .find(|entity| entity.entity.strip_prefix('&').and_then(|entity| entity.strip_suffix(';')) == Some(name))
+                .map(|entity| entity.characters.to_owned()),
+        });
+        match (reference, characters) {
+            (Some(name), Some(characters)) => {
+                decoded.push_str(&characters);
+                rest = &rest[name.len() + 2..];
+            }
+            _ => {
+                decoded.push('&');
+                rest = &rest[1..];
+            }
+        }
+    }
+    decoded.push_str(rest);
+    decoded
 }

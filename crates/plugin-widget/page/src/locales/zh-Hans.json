@@ -1,1 +1,13 @@
-{ "block": { "missing": "小组件 {id} 不可用。", "off": "小组件已关闭。在设置中打开后即可查看。", "openInPanel": "在工作面板中打开", "openInTab": "在新标签页中打开" } }
+{
+  "block": {
+    "missing": "小组件 {id} 不可用。",
+    "off": "小组件已关闭。在设置中打开后即可查看。",
+    "copyAsImage": "复制为图片",
+    "share": "分享",
+    "untitled": "小组件 {number}"
+  },
+  "picture": {
+    "notLoaded": "小组件尚未加载完成。",
+    "timedOut": "小组件未能及时生成图片。请将其滚动到可见区域后重试。"
+  }
+}

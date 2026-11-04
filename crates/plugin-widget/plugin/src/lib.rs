@@ -12,7 +12,7 @@
 //!                                     │ draw, light and dark
 //!                                     v
 //!                        browser package on the Host ──> two screenshots
-//!   reply "<widget id="w1" />" ── its facts, frame and name, with the reply
+//!   reply "<widget id="w1" />" ── its facts, frame and title, with the reply
 //!                             └── page ── frames the widget's document
 //! ```
 
@@ -47,11 +47,7 @@ impl Widgets {
         );
         manifest.commands = commands::manifest_commands(&commands::commands());
         manifest.conversations = true;
-        manifest.page = Some(
-            Page::new("@demicodes/plugin-widget")
-                .block::<widget::WidgetFacts>("widget", true)
-                .panel_kind("widget"),
-        );
+        manifest.page = Some(Page::new("@demicodes/plugin-widget").block::<widget::WidgetFacts>("widget", true));
         Self { manifest }
     }
 }
@@ -105,8 +101,7 @@ impl Plugin for Instance {
                 }),
                 Request::PageCall { .. } => Err(PluginError::undeclared("method")),
                 Request::PageState { .. } => Err(PluginError::undeclared("page state")),
-                // A widget's tab holds nothing of the plugin's to release when it closes.
-                Request::PanelTab { .. } => Ok(Reply::Done),
+                Request::PanelTab { .. } => Err(PluginError::undeclared("panel kind")),
                 Request::Context { .. } => Err(PluginError::undeclared("context source")),
                 Request::ProjectSearch { .. } => Err(PluginError::undeclared("project search")),
                 // The browser package it draws with keeps nothing of a

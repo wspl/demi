@@ -34,7 +34,9 @@ pub enum ShareRefusal {
     NoShare,
     #[error("Share the text that ends the agent's reply to a message")]
     TargetInvalid,
-    #[error("An answer's share is not taken again")]
+    #[error("No such reply block")]
+    NoReplyBlock,
+    #[error("Only a conversation's share is taken again")]
     NotUpdatable,
     #[error(transparent)]
     Storage(#[from] StorageError),
@@ -68,6 +70,26 @@ impl Shard {
         if let Some(existing) = control.share_of(record.id.clone(), target.clone()).await? {
             return Ok(existing);
         }
+        // A reply block is shared from the conversation a reply of which
+        // names it, which its share goes with, and its plugin keeps it: one
+        // it answers no facts of, on or off, is not the user's.
+        if let ShareTarget::ReplyBlock { tag, id, .. } = &target {
+            let (named_tag, named_id) = (tag.clone(), id.clone());
+            let named = self
+                .services()
+                .conversations
+                .read(&record.id, move |connection| shares::names_block(connection, &named_tag, &named_id))
+                .await?
+                .unwrap_or(false);
+            let held = [(tag.clone(), id.clone())].into_iter().collect();
+            if !named || super::reply_block_facts(self.plugins(), held).await.is_empty() {
+                return Err(ShareRefusal::NoReplyBlock);
+            }
+        }
+        let title = match &target {
+            ShareTarget::ReplyBlock { title, .. } => Some(title.clone()),
+            _ => record.title,
+        };
         let token = new_token();
         let started = std::time::Instant::now();
         let counts = self.make_list(&record.id, &token, &target).await?;
@@ -77,7 +99,7 @@ impl Shard {
             owner: self.user().clone(),
             conversation: record.id.clone(),
             target,
-            title: record.title,
+            title,
             taken_at: self.services().clock.now(),
         };
         match control.add_share(share).await? {
@@ -90,6 +112,7 @@ impl Shard {
                     target = match share.target {
                         ShareTarget::Conversation => "conversation",
                         ShareTarget::Answer { .. } => "answer",
+                        ShareTarget::ReplyBlock { .. } => "reply_block",
                     },
                     blocks = counts.blocks,
                     nodes = counts.nodes,
@@ -197,6 +220,8 @@ impl Shard {
                         true
                     }
                     ShareTarget::Answer { block_id } => shares::take_answer(&transaction, &token, block_id)?,
+                    // The record names the block; the list holds nothing.
+                    ShareTarget::ReplyBlock { .. } => true,
                 };
                 let counts = shares::counts(&transaction, &token)?;
                 transaction.commit()?;
@@ -295,9 +320,13 @@ impl Shard {
             .flatten())
     }
 
-    /// Whether the share shows the reply block `<tag id="id" />`
+    /// Whether the share shows the reply block `<tag id="id" />`: the block
+    /// a reply block's share is, or one a text of the list names
     /// (`shares::shows_block`).
     pub async fn shows_block(&self, share: &ShareRecord, tag: String, id: String) -> Result<bool, StorageError> {
+        if let ShareTarget::ReplyBlock { tag: shared_tag, id: shared_id, .. } = &share.target {
+            return Ok(*shared_tag == tag && *shared_id == id);
+        }
         let token = share.token.clone();
         Ok(self
             .services()

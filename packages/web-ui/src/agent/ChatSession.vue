@@ -275,6 +275,9 @@ const sharing = useShare(() => props.share)
 function shareAnswer(blockId: string): void {
   void sharing.start({ kind: 'answer', blockId })
 }
+function shareReplyBlock(tag: string, id: string, title: string): void {
+  void sharing.start({ kind: 'reply_block', tag, id, title })
+}
 function shownOutput() {
   return transcriptShown(props.conversation.load) ? props.conversation.requestOutputs[props.conversation.id] ?? null : null
 }
@@ -467,7 +470,11 @@ const latest = computed(() => toRaw(latestBlocks(props.conversation.history)).ma
 /** The blocks at the transcript's end the reader sees. */
 const latestVisible = computed(() => getVisibleBlocks(latest.value))
 // Relative paths resolve against the directory the conversation works in.
-provideMessageFiles(() => props.files && { ...props.files, cwd: props.conversation.cwd })
+provideMessageFiles(() => props.files && {
+  ...props.files,
+  cwd: props.conversation.cwd,
+  ...(props.share ? { shareReplyBlock } : {}),
+})
 const surface = ref<{ dockHeight: number }>()
 // The title shows whole while the header holds it. A longer one is cut first,
 // down to this width, while the controls beside it keep their labels; below
@@ -1201,7 +1208,7 @@ watch(
       v-if="sharing.shown.value"
       :is-open="sharing.isOpen.value"
       :overlay-store="appOverlayStore"
-      :kind="sharing.shown.value.target.kind"
+      :target="sharing.shown.value.target"
       :phase="sharing.shown.value"
       :copied="sharing.copied.value"
       :on-update="sharing.update"

@@ -2928,6 +2928,7 @@ dependencies = [
  "demi-host-interface",
  "demi-plugin-interface",
  "demi-shared-types",
+ "entities",
  "futures-util",
  "schemars",
  "serde",

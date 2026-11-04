@@ -242,18 +242,18 @@ function placeBlock(place: HTMLElement) {
 
 /**
  * The props of a reply block's component: its line's id, its facts, null when
- * it has none, and how it opens in the work panel, where one opens it.
+ * it has none, and how it is shared alone, where the page can share.
  */
-function blockProps(place: HTMLElement): { id: string, facts: unknown, open?: (title: string) => void } {
+function blockProps(place: HTMLElement): { id: string, facts: unknown, share?: (title: string) => void } {
   const tag = place.getAttribute(REPLY_BLOCK_ATTRIBUTE) ?? ''
   const id = place.getAttribute(REPLY_BLOCK_ID_ATTRIBUTE) ?? ''
   const shown = files()
   const found = shown?.replyBlock?.(tag, id)
-  const openBlock = shown?.openReplyBlock
+  const shareBlock = shown?.shareReplyBlock
   return {
     id,
     facts: found?.state === 'found' ? found.facts : null,
-    ...(openBlock ? { open: (title: string) => openBlock(tag, id, title) } : {}),
+    ...(shareBlock ? { share: (title: string) => shareBlock(tag, id, title) } : {}),
   }
 }
 
