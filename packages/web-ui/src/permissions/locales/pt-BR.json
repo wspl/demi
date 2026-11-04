@@ -36,10 +36,6 @@
       "action": "gerenciar provedores",
       "description": "Adicionar, alterar e remover suas entradas de provedores e os modelos delas, que todas as suas conversas podem usar."
     },
-    "conversation_use": {
-      "action": "usar suas outras conversas",
-      "description": "Permite que os agentes desta conversa listem suas conversas, leiam o que qualquer uma delas contém, enviem mensagens a elas e iniciem novas. Uma conversa para a qual eles enviam mensagens ou que iniciam pode fazer o mesmo. O que eles leem vai para o provedor do modelo desta conversa."
-    },
     "agent_profiles": {
       "action": "alterar os perfis de subagentes",
       "description": "Criar, editar e excluir os perfis de subagentes que todas as suas conversas podem usar."

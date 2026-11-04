@@ -1,18 +1,16 @@
 //! The product's `demi conversation` group
 //! (`crates/backend-host-access/src/host_commands.rs`).
 //!
-//! An agent renames its conversation at once, without asking: the title is
-//! the conversation's own, and the user renames it back as easily. Listing the user's projects only reads, so it asks no permission.
-//! Listing the user's conversations, reading one's transcript (`history.rs`),
-//! sending a message to another's main agent and starting a conversation need
-//! the user's Use Your Other Conversations ([`CONVERSATIONS`]), given once for
-//! the conversation: what they read goes to this conversation's model
-//! provider, and what they send wakes another conversation. The conversation
-//! a message reaches holds the category from then on ([`deliver`]), so it
-//! answers without asking. An archived conversation is listed nowhere and receives
-//! nothing, so an archive keeps it out of the way. Where the
-//! conversation runs decides its project, so an agent moves it into or out of
-//! one with `demi host move` (`host_commands.rs`).
+//! The group asks no permission. An agent renames its conversation at once:
+//! the title is the conversation's own, and the user renames it back as
+//! easily. Listing the user's projects and conversations, reading one's
+//! transcript (`history.rs`), sending a message to another's main agent and
+//! starting a conversation reach only the user's own conversations, all of
+//! which the user sees in the sidebar, stops and archives. An archived
+//! conversation is listed nowhere and receives nothing, so an archive keeps
+//! it out of the way. Where the conversation runs decides its project, so an
+//! agent moves it into or out of one with `demi host move`
+//! (`host_commands.rs`).
 //!
 //! A conversation an agent starts (`new`) is the user's own, as one they
 //! started: it takes the starting conversation's place and settings, and its
@@ -45,14 +43,6 @@ use super::cost_report::{ConversationCost, CostArgs, cost};
 use super::history::{history_group, shell_word};
 use super::search::search;
 use crate::shard::Shard;
-
-/// The permission category of the commands that read or message the user's
-/// other conversations.
-pub(crate) const CONVERSATIONS: &str = "conversation.use";
-
-const CONVERSATIONS_ACTION: &str = "use your other conversations";
-
-const CONVERSATIONS_DESCRIPTION: &str = "Use Your Other Conversations lets the agents of this conversation list your conversations, read what any of them holds, send messages to them and start new ones. A conversation they send to or start can do the same. What they read goes to this conversation’s model provider.";
 
 const SUMMARY: &str = "This conversation in the user's sidebar: rename it, and list the user's projects and conversations; send a message to another conversation, or start a new one; what a conversation's calls to the model cost; and transcripts, which history searches and reads: an agent's of this conversation, or of another conversation of the user.";
 
@@ -113,7 +103,6 @@ struct NoArgs {}
 pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
     GroupBuilder::new("conversation", SUMMARY)
         .index_entry(ENTRY)
-        .permission(CONVERSATIONS, CONVERSATIONS_ACTION, CONVERSATIONS_DESCRIPTION)
         .leaf(
             LeafBuilder::rpc("rename", RENAME_SUMMARY)
                 .input::<RenameArgs>()
@@ -132,7 +121,6 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["words"])
                 .success_output("a table of the page's conversations; on stderr, the page and the list of the next page")
                 .json_output::<Vec<ListedConversation>>()
-                .permission(CONVERSATIONS)
                 .bind(TypedRpc::new(verb(shard.clone(), list))),
         )
         .leaf(
@@ -141,7 +129,6 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["conversation"])
                 .stdin_field("message")
                 .success_output("the conversation the message reached")
-                .permission(CONVERSATIONS)
                 .bind(TypedRpc::new(verb(shard.clone(), send))),
         )
         .leaf(
@@ -149,7 +136,6 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<NewArgs>()
                 .stdin_field("message")
                 .success_output("the conversation started, its title and id")
-                .permission(CONVERSATIONS)
                 .bind(TypedRpc::new(verb(shard.clone(), new))),
         )
         .leaf(
@@ -157,7 +143,6 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<CostArgs>()
                 .success_output("the conversation's totals as labelled lines, with a table for each way they are broken down")
                 .json_output::<ConversationCost>()
-                .permission_when(CONVERSATIONS, "conversation")
                 .bind(TypedRpc::new(verb(shard.clone(), cost))),
         )
         .group(history_group(shard))
@@ -275,15 +260,7 @@ struct Sender {
 
 /// Admits `content` into the main agent of the user's conversation `to`, an
 /// agent's message from `sender`, as `send` and `new` deliver one.
-///
-/// The conversation it reaches holds [`CONVERSATIONS`] from then on, as the
-/// sending one does, so its agent answers and reads without asking. The grant
-/// comes first, so the agent the message wakes already holds it; a message
-/// that then fails to arrive leaves the grant in place.
 async fn deliver(shard: &Shard, sender: &Sender, to: &ConversationId, content: &str) -> Result<(), String> {
-    demi_backend_permissions::grant(shard.permission_shard(), to, CONVERSATIONS)
-        .await
-        .map_err(|error| format!("the grant was not recorded: {error}"))?;
     let id = BlockId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
     let timestamp = shard.services().clock.now();
     let message = |recipient: &NodeId| AgentMessage {

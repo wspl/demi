@@ -17,6 +17,29 @@ fn every_step_of_the_conversation_history_leads_to_the_current_schema() {
     every_step_leads_to_the_current_schema(DatabaseKind::Conversation);
 }
 
+#[test]
+fn the_grants_and_requests_of_the_other_conversations_go() {
+    let shipped = include_str!("../../src/schema/control/from_0_1_5960.sql");
+    let mut connection = Connection::open_in_memory().unwrap();
+    connection.execute_batch(shipped).unwrap();
+    connection.pragma_update(None, "user_version", version_of(shipped)).unwrap();
+    // The rows need no conversation of their own.
+    connection.pragma_update(None, "foreign_keys", false).unwrap();
+    connection
+        .execute_batch(
+            "INSERT INTO permission_grants VALUES ('c1', 'conversation.use', 1), ('c1', 'credentials.use', 1);
+             INSERT INTO permission_requests (id, conversation_id, kind, categories, command, node_id, created_at, decision, decided_at) VALUES
+               ('waits', 'c1', 'permission', '[\"conversation.use\"]', 'demi conversation list', 'n', 1, NULL, NULL),
+               ('reached', 'c1', 'permission', '[\"conversation.use\"]', 'demi conversation send', 'n', 1, 'reached', 2),
+               ('other', 'c1', 'permission', '[\"credentials.use\"]', 'demi credentials list', 'n', 1, NULL, NULL);",
+        )
+        .unwrap();
+    migrate(DatabaseKind::Control, &mut connection).unwrap();
+    let grants = query(&connection, "SELECT category FROM permission_grants", |row| row.get::<_, String>(0));
+    let requests = query(&connection, "SELECT id FROM permission_requests", |row| row.get::<_, String>(0));
+    assert_eq!((grants, requests), (vec!["credentials.use".to_owned()], vec!["other".to_owned()]));
+}
+
 fn every_step_leads_to_the_current_schema(kind: DatabaseKind) {
     let fresh = Connection::open_in_memory().unwrap();
     fresh.execute_batch(current(kind)).unwrap();

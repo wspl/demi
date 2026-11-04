@@ -7,9 +7,7 @@
 //! - The requests a call without a grant raises, which the call waits on until
 //!   the user decides.
 //! - The user's decisions, which end those waits.
-//! - The grants an allow records, and those another conversation's message
-//!   gives the conversation it reaches ([`grant`]), each kept for the
-//!   conversation's life.
+//! - The grants an allow records, each kept for the conversation's life.
 //! - The message each decision sends the agent that asked, delivered again at
 //!   start when a restart cut it off.
 //!
@@ -25,9 +23,7 @@
 //! and the directory. It asks only before acting on Demi itself, on what the
 //! user owns beyond the conversation. Each such power is one broad category,
 //! which the user judges once for a conversation and which covers every object
-//! and every step of it: every credential, every device, every other
-//! conversation. A conversation another one's agent reaches holds Use Your
-//! Other Conversations as the reaching one does, so it answers without asking.
+//! and every step of it: every credential, every device.
 //!
 //! ```text
 //! demi skills add ... -> dispatch: the check -- grant? -- yes --> handler
@@ -745,20 +741,6 @@ pub async fn decide(
             Ok(())
         }
     }
-}
-
-/// Grants `category` to `conversation` as the user's Allow does, such as
-/// when another conversation's agent reaches it: a request for it that waits
-/// is allowed and its agent hears so.
-///
-/// A page shows no grant, so one that allows no request changes nothing it
-/// shows and tells it nothing.
-pub async fn grant(shard: &dyn PermissionShard, conversation: &ConversationId, category: &str) -> Result<(), PermissionError> {
-    let allowed = shard.control().grant_permission(conversation.clone(), category).await?;
-    if !allowed.is_empty() {
-        settle(shard, conversation, allowed, PermissionOutcome::Reached);
-    }
-    Ok(())
 }
 
 /// Tells the agents of the requests `decided` the decision `outcome`, and

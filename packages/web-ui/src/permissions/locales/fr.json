@@ -36,10 +36,6 @@
       "action": "gérer les fournisseurs",
       "description": "Ajouter, modifier et supprimer vos entrées de fournisseurs et leurs modèles, que toutes vos conversations peuvent utiliser."
     },
-    "conversation_use": {
-      "action": "utiliser vos autres conversations",
-      "description": "Permet aux agents de cette conversation de lister vos conversations, de lire leur contenu, de leur envoyer des messages et d’en démarrer de nouvelles. Une conversation à laquelle ils écrivent ou qu’ils démarrent peut faire de même. Ce qu’ils lisent est envoyé au fournisseur du modèle de cette conversation."
-    },
     "agent_profiles": {
       "action": "modifier les profils de sous-agents",
       "description": "Créer, modifier et supprimer les profils de sous-agents que toutes vos conversations peuvent utiliser."

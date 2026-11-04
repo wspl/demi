@@ -346,7 +346,7 @@ impl ControlService {
                     }
                     (StoredAsk::Permission(category), PermissionDecision::Allow) => {
                         let category = category.clone();
-                        let requests = grant(&transaction, &conversation, &category, PermissionOutcome::Allowed, now)?;
+                        let requests = grant(&transaction, &conversation, &category, now)?;
                         transaction.commit()?;
                         return Ok(Ok(requests));
                     }
@@ -356,24 +356,6 @@ impl ControlService {
             let requests = decide(&transaction, decided, PermissionOutcome::Denied, now)?;
             transaction.commit()?;
             Ok(Ok(requests))
-        })
-        .await
-    }
-
-    /// Grants `category` to `conversation` as the user's allow of a request
-    /// for it does, such as when another conversation's agent reaches it:
-    /// records the grant and allows every undecided permission request of the
-    /// conversation for the category.
-    ///
-    /// Answers the requests it allowed, whose messages the backend delivers
-    /// next.
-    pub async fn grant_permission(&self, conversation: ConversationId, category: &str) -> Result<Vec<StoredRequest>, StorageError> {
-        let category = category.to_owned();
-        self.call(move |connection, now| {
-            let transaction = connection.transaction()?;
-            let requests = grant(&transaction, &conversation, &category, PermissionOutcome::Reached, now)?;
-            transaction.commit()?;
-            Ok(requests)
         })
         .await
     }
@@ -767,16 +749,13 @@ fn fitting(
     Ok(())
 }
 
-/// Records the grant of `category` to `conversation` and decides its
-/// undecided permission requests for it with `outcome`, which says who
-/// granted it: the user's allow through
-/// [`ControlService::decide_permission`], or a reach through
-/// [`ControlService::grant_permission`].
+/// Records the user's grant of `category` to `conversation`, through
+/// [`ControlService::decide_permission`], and allows its undecided permission
+/// requests for it.
 fn grant(
     transaction: &rusqlite::Transaction<'_>,
     conversation: &ConversationId,
     category: &str,
-    outcome: PermissionOutcome,
     now: Timestamp,
 ) -> Result<Vec<StoredRequest>, StorageError> {
     transaction.execute(
@@ -792,7 +771,7 @@ fn grant(
         )?
         .query_map(params![conversation.as_str(), to_json(&[category])], |row| row.get(0))?
         .collect::<Result<_, _>>()?;
-    decide(transaction, undecided, outcome, now)
+    decide(transaction, undecided, PermissionOutcome::Allowed, now)
 }
 
 /// Decides the requests `ids` with `outcome`, answering each as stored after.
