@@ -7,6 +7,9 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
+/// What `background` tells the model.
+const BACKGROUND: &str = "A command you do not wait for, such as a long build.";
+
 /// What `service` tells the model.
 const SERVICE: &str = "A command that runs until stopped, such as a development server.";
 
@@ -24,8 +27,34 @@ pub(super) struct ShellInput {
     #[schemars(description = "The script.")]
     pub(super) script: String,
     #[serde(default)]
+    #[schemars(description = BACKGROUND)]
+    pub(super) background: bool,
+    #[serde(default)]
     #[schemars(description = SERVICE)]
     pub(super) service: bool,
+}
+
+/// How long a call holds for its command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Hold {
+    /// Until the command ends, or its window passes.
+    UntilEnd,
+    /// Not at all: the model asked to work beside it.
+    Background,
+    /// Until a service's output is quiet.
+    Service,
+}
+
+impl ShellInput {
+    /// How the call holds, from its two switches, which exclude each other.
+    pub(super) fn hold(&self) -> Result<Hold, &'static str> {
+        match (self.background, self.service) {
+            (false, false) => Ok(Hold::UntilEnd),
+            (true, false) => Ok(Hold::Background),
+            (false, true) => Ok(Hold::Service),
+            (true, true) => Err("shell input is invalid:\nbackground, service: they exclude each other, and a service already returns once its output is quiet"),
+        }
+    }
 }
 
 // Text a call must not leave empty: the title of a step. (A doc comment

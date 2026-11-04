@@ -48,6 +48,11 @@
 //!   (`crates/agent-session/src/reports.rs`); nothing else wakes the node about
 //!   it. So no call chooses how it is told, and a hung command still reaches
 //!   the node.
+//! - `background: true` returns the call at once, for a command the model
+//!   works beside, such as a long build: the command is one that moved to
+//!   the background, as Claude Code's `run_in_background` makes one. Without
+//!   it, models detach a long command themselves and watch its log with a
+//!   schedule, where the user cannot see or stop it.
 //! - `service: true` is for a command that runs until stopped, such as a
 //!   development server: its call returns once its output has been quiet for
 //!   [`QUIET`], or after [`SERVICE_WINDOW`], and only its exit wakes the node.
@@ -103,7 +108,7 @@ use tokio_util::sync::CancellationToken;
 pub use environments::{Environments, Stopper};
 use environments::Handle;
 pub use frames::{shell_output, shell_status, stored_running_commands};
-use input::{ShellInput, parse};
+use input::{Hold, ShellInput, parse};
 pub use reports::{EndOf, end_report, fill_output, progress_report};
 pub use demi_agent_transcript::duration;
 pub use result::{
@@ -193,7 +198,7 @@ impl Directory for Option<ChildDirectory> {
 const SHELL: &str = "shell";
 
 /// What the `shell` tool does, as the model is told.
-const SHELL_DESCRIPTION: &str = "Run a shell script on the conversation's Host. The call returns the output when the script ends; a command that moves to the background wakes you when it ends. service: true runs a command until it is stopped, such as a server: the call returns once its output is quiet for 2 s, and only its exit wakes you. Calls in one response run in parallel.";
+const SHELL_DESCRIPTION: &str = "Run a shell script on the conversation's Host. The call returns the output when the script ends; a command that moves to the background wakes you when it ends. background: true starts a command you do not wait for, such as a long build: the call returns at once, and its end wakes you. service: true runs a command until it is stopped, such as a server: the call returns once its output is quiet for 2 s, and only its exit wakes you. Calls in one response run in parallel.";
 
 /// The definitions the model receives, made once: the `shell` tool alone.
 pub fn definitions() -> Arc<[ToolDefinition]> {
@@ -362,7 +367,8 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         }
     }
 
-    /// Starts a `shell` call's script and watches it for its window; a command
+    /// Starts a `shell` call's script and watches it for its window, or not
+    /// at all when the call asked for the background; a command
     /// that still runs then wakes the node when it ends, from now on.
     async fn shell(&self, call: ToolInvocation, input: ShellInput) -> Result<ToolOutcome, CallError> {
         // A call after one that the user's send now returned never
@@ -370,6 +376,11 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         if call.arrival.sent_now() {
             return Ok(ToolOutcome::not_run());
         }
+        let hold = match input.hold() {
+            Ok(hold) => hold,
+            Err(refusal) => return Ok(ToolOutcome::error(refusal.to_owned())),
+        };
+        let service = hold == Hold::Service;
         let began = std::time::Instant::now();
         let call_id = call.tool_use_id.clone();
         let turn = call.turn.clone();
@@ -399,7 +410,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 turn: Some(call.turn),
             },
             title: input.description.0.clone(),
-            service: input.service,
+            service,
             viewable: Viewable {
                 model: call.model.model.id.clone(),
                 media_types: call.request_limits.tool_results.viewable(&call.model.model),
@@ -430,19 +441,25 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         };
         call.command.started(StartedCommand {
             command: command.clone(),
-            service: input.service,
+            service,
         });
-        let window_ms = (!input.service).then_some(self.call_window_ms);
-        let (status, arrived) = watch(environment.as_ref(), &command, window_ms, &call.arrival).await?;
+        let (status, arrived) = match hold {
+            Hold::Background => (environment.status(&command)?, None),
+            Hold::UntilEnd | Hold::Service => {
+                let window_ms = (!service).then_some(self.call_window_ms);
+                watch(environment.as_ref(), &command, window_ms, &call.arrival).await?
+            }
+        };
         stopping.disarm();
         let running = matches!(status.state, CommandState::Running { .. });
-        let moved = match (arrived, running && !input.service) {
-            (Some(arrived), _) => Some(arrived),
-            (None, true) => Some(Moved::TimePassed),
+        let moved = match (arrived, running, hold) {
+            (Some(arrived), _, _) => Some(arrived),
+            (None, true, Hold::Background) => Some(Moved::Asked),
+            (None, true, Hold::UntilEnd) => Some(Moved::TimePassed),
             _ => None,
         };
         let (outcome_name, exit) = match &status.state {
-            CommandState::Running { .. } if input.service => ("service_running", None),
+            CommandState::Running { .. } if service => ("service_running", None),
             CommandState::Running { .. } => ("moved_to_background", None),
             CommandState::Exited { exit_code, .. } => ("exited", Some(*exit_code)),
             CommandState::Aborted => ("stopped", None),
@@ -456,6 +473,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 Moved::Input => "input",
                 Moved::Call => "call",
                 Moved::TimePassed => "time",
+                Moved::Asked => "asked",
             }),
             exit,
         );
@@ -470,10 +488,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         )
         .await;
         if running {
-            outcome.effect = Some(ToolEffect::Running {
-                command,
-                service: input.service,
-            });
+            outcome.effect = Some(ToolEffect::Running { command, service });
         } else {
             self.release(environment.as_ref(), &command).await;
         }

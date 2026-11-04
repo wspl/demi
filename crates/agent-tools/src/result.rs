@@ -94,6 +94,8 @@ pub enum Moved {
     Call,
     /// The window's time passed (`crates/agent-session/src/reports.rs`).
     TimePassed,
+    /// The call asked for the background.
+    Asked,
 }
 
 /// The `shell` call's outcome for `status`: its text, the media it attaches and
@@ -256,6 +258,9 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look) -> String 
                 Some(Moved::Call) => after.push(format!(
                     "[Another call returned, so command {command} moved to the background. It keeps running and its end wakes you. Do not wait for it: do other work meanwhile, or tell the user what is running and end your turn.]"
                 )),
+                Some(Moved::Asked) => {
+                    after.push(format!("[Command {command} runs in the background, as asked. Its end wakes you.]"));
+                }
                 Some(Moved::TimePassed) => {
                     after.push(
                         "[The command is still running, so it moved to the background. Its end wakes you. Do not wait for it: do other work meanwhile, or tell the user what is running and end your turn.]".to_owned(),
