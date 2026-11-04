@@ -20,6 +20,7 @@ use demi_backend_providers::vault::entries::Vault;
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_shared_gates::Reservation;
+use demi_web_api_protocol::cloud::CloudState;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::mpsc;
@@ -88,6 +89,10 @@ impl CloudShard for Shard {
 
     fn start_cloud(&self, device: &DeviceId) {
         Shard::start_cloud(&Shard::this(self), device);
+    }
+
+    fn cloud_state_changed(&self, device: &DeviceId, state: CloudState) {
+        Shard::integration_cloud_changed(&Shard::this(self), device, state);
     }
 
     fn activity(&self, conversation: &ConversationId) -> Activity {

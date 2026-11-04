@@ -121,6 +121,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use demi_backend_database::control::ControlService;
+use demi_web_api_protocol::cloud::CloudState;
 use demi_backend_idle_watch::Activity;
 use demi_backend_page_sync::UserMarks;
 use demi_provider_registry::registry::ProviderRegistry;
@@ -193,6 +194,9 @@ pub trait CloudShard {
     /// Starts the Cloud `device` in the background, as its first use
     /// would, with its init script.
     fn start_cloud(&self, device: &DeviceId);
+    /// The Cloud `device`'s state changed to `state`. Called while its
+    /// machine's phase is held, so it reads nothing of the machine.
+    fn cloud_state_changed(&self, device: &DeviceId, state: CloudState);
 
     /// What the conversation is doing: a turn of its tree, an operation
     /// holding its file gate, or a user stream someone has open.

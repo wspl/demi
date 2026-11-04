@@ -130,7 +130,8 @@ clock should never sleep: create it with `"alwaysOn": true`, or
 `PATCH /v1/clouds/{cloud}` with it; a `POST /v1/clouds` that finds a Cloud by
 its key leaves the Cloud as it is. An always-on Cloud starts at once and runs its init
 script. Once a day it's saved and started again, which ends what runs on it;
-start your watch again from a command then.
+start your watch again from a command then. The socket's `cloud` events tell
+you: the Cloud goes `saving`, `off`, `booting` and `running` again.
 
 `PATCH /v1/integration` with `{"cloudIdleMinutes": 15}` makes every Cloud of
 the integration sleep after 15 minutes without work instead, or `null` after
@@ -470,6 +471,9 @@ JSON event:
   said.
 - `retry_scheduled`: the main agent's request failed for a reason that
   passes, and it retries after `delayMs`. Tell your users it's still working.
+- `cloud`: one of your Clouds changed state, such as
+  `{"type": "cloud", "cloud": "…", "state": "booting"}`. Each change comes,
+  in order. `state` is what `GET /v1/clouds/{cloud}` says.
 - `command`: a command your program ran on a Cloud ended
   ([Commands and files outside a conversation](#commands-and-files-outside-a-conversation)).
 - `behind`: your program read too slowly, and events after the ones it read
@@ -499,7 +503,8 @@ The socket sends only what happens while it's open, so trust the state, not
 the events. After you connect, and after `behind`, list your conversations
 with `GET /v1/conversations` and compare each one's `lastTurn` and
 `revision` with what you handled: a turn that ended while you were away is
-there. Read a transcript you follow again from the version you hold.
+there. Read a transcript you follow again from the version you hold, and
+your Clouds' states with `GET /v1/clouds`.
 
 ## Give the agents your commands and context
 

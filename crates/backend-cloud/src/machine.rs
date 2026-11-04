@@ -30,7 +30,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
 use std::num::NonZeroU64;
 use std::ops::{Deref, DerefMut};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use demi_backend_database::StorageError;
@@ -298,17 +298,25 @@ pub(crate) struct Machine {
     deaths: RefCell<VecDeque<Instant>>,
     /// Why the last boot, save or reset failed, until a boot succeeds.
     pub(crate) error: RefCell<Option<String>>,
-    /// The user's pages, which show the Cloud's state; none for the Claude
-    /// Code machine, which no page shows.
-    marks: Option<UserMarks>,
+    /// Who hears the Cloud's state: none for the Claude Code machine,
+    /// which no page or integration shows.
+    told: Option<Told>,
+}
+
+/// Who hears a Cloud's state change: the user's pages, and the shard, which
+/// tells the Cloud's integration.
+pub(crate) struct Told {
+    pub(crate) marks: UserMarks,
+    pub(crate) shard: Weak<dyn CloudShard>,
 }
 
 /// The machine's phase held for a change: once a change of the Cloud's state
-/// is let go, the user's pages are told.
+/// is let go, the user's pages and the shard are told.
 pub(crate) struct PhaseChange<'a> {
     phase: RefMut<'a, Phase>,
     before: CloudState,
-    marks: Option<&'a UserMarks>,
+    device: &'a DeviceId,
+    told: Option<&'a Told>,
 }
 
 impl Deref for PhaseChange<'_> {
@@ -327,10 +335,14 @@ impl DerefMut for PhaseChange<'_> {
 
 impl Drop for PhaseChange<'_> {
     fn drop(&mut self) {
-        if let Some(marks) = self.marks
-            && state_of(&self.phase) != self.before
+        let state = state_of(&self.phase);
+        if let Some(told) = self.told
+            && state != self.before
         {
-            marks.mark(Part::Cloud);
+            told.marks.mark(Part::Cloud);
+            if let Some(shard) = told.shard.upgrade() {
+                shard.cloud_state_changed(self.device, state);
+            }
         }
     }
 }
@@ -379,7 +391,7 @@ impl Machine {
     fn new(
         device: DeviceRecord,
         operation: Option<ManagedOperation>,
-        marks: Option<UserMarks>,
+        told: Option<Told>,
     ) -> Self {
         Self {
             device,
@@ -389,7 +401,7 @@ impl Machine {
             operation: RefCell::new(operation),
             deaths: RefCell::new(VecDeque::new()),
             error: RefCell::new(None),
-            marks,
+            told,
         }
     }
 
@@ -399,7 +411,8 @@ impl Machine {
         PhaseChange {
             before: state_of(&phase),
             phase,
-            marks: self.marks.as_ref(),
+            device: &self.device.id,
+            told: self.told.as_ref(),
         }
     }
 
@@ -416,8 +429,8 @@ impl Machine {
     /// pages show.
     pub(crate) fn record_operation(&self, operation: ManagedOperation) {
         self.operation.replace(Some(operation));
-        if let Some(marks) = &self.marks {
-            marks.mark(Part::Cloud);
+        if let Some(told) = &self.told {
+            told.marks.mark(Part::Cloud);
         }
     }
 
@@ -536,8 +549,11 @@ impl dyn CloudShard {
         if let Some(machine) = cloud.machine(&device.id) {
             return Ok(machine);
         }
-        let marks = (kind == ManagedMachine::Cloud).then(|| self.marks());
-        let machine = Rc::new(Machine::new(device.clone(), operation, marks));
+        let told = (kind == ManagedMachine::Cloud).then(|| Told {
+            marks: self.marks(),
+            shard: Rc::downgrade(&self.this()),
+        });
+        let machine = Rc::new(Machine::new(device.clone(), operation, told));
         cloud.machines.borrow_mut().insert(device.id.clone(), machine.clone());
         Ok(machine)
     }

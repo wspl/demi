@@ -769,7 +769,7 @@ pub struct Transcript {
 }
 
 /// What the socket (`GET /v1/socket`) sends: every change of each of the
-/// integration's conversations, as it happens.
+/// integration's conversations and Clouds, as it happens.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum Event {
@@ -827,6 +827,9 @@ pub enum Event {
     },
     /// The agent stopped the call of the request `id`: its reply is not read.
     Cancel { id: u64 },
+    /// One of the integration's Clouds changed state: every change, in
+    /// order, as `GET /clouds/:cloud` gives the state.
+    Cloud { cloud: DeviceId, state: CloudState },
     /// A command the integration ran on its Cloud `cloud` ended, as
     /// `GET /clouds/:cloud/commands/:id` reads it.
     Command {

@@ -17,6 +17,7 @@ use demi_backend_host_access::{conversation_of, root_of};
 use demi_conversation_lane_protocol::ServerFrame;
 use demi_host_interface::PortResponse;
 use demi_shared_types::{B64Bytes, CommandId, NodeId};
+use demi_web_api_protocol::cloud::CloudState;
 use demi_web_api_protocol::devices::DeviceKind;
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::{Notify, mpsc};
@@ -1163,8 +1164,8 @@ fn content_text(content: &[UserContentBlock]) -> String {
 }
 
 /// The sockets of the user's integrations (`GET /v1/socket`), each of which
-/// hears every change of its integration's conversations, and the one that
-/// serves an integration's plugin (`crate::integration_plugins`).
+/// hears every change of its integration's conversations and Clouds, and the
+/// one that serves an integration's plugin (`crate::integration_plugins`).
 #[derive(Default)]
 pub struct IntegrationEvents {
     sockets: RefCell<HashMap<IntegrationId, Vec<Socket>>>,
@@ -1184,6 +1185,11 @@ pub struct IntegrationEvents {
     /// The conversations whose read for their sockets is under way: a
     /// change meanwhile is in what it reads.
     reading: RefCell<std::collections::HashSet<ConversationId>>,
+    /// The Clouds' state changes not told yet, in the order they came, and
+    /// whether a task tells them: each needs a read of the Cloud's
+    /// integration, and one task reading them in turn keeps their order.
+    cloud_changes: RefCell<std::collections::VecDeque<(DeviceId, CloudState)>>,
+    telling_clouds: Cell<bool>,
 }
 
 /// One socket of an integration's.
@@ -1585,6 +1591,34 @@ impl Shard {
             self.integration_events.observed.borrow_mut().remove(conversation);
         }
         self.integration_conversation_changed(conversation);
+    }
+
+    /// The Cloud `device` changed state: its integration's sockets hear it,
+    /// after every change before it. The user's own Cloud is of none.
+    pub(crate) fn integration_cloud_changed(self: &Rc<Self>, device: &DeviceId, state: CloudState) {
+        let events = &self.integration_events;
+        if events.sockets.borrow().is_empty() {
+            return;
+        }
+        events.cloud_changes.borrow_mut().push_back((device.clone(), state));
+        if events.telling_clouds.replace(true) {
+            return;
+        }
+        let shard = self.clone();
+        self.tasks().spawn_local(async move {
+            loop {
+                let next = shard.integration_events.cloud_changes.borrow_mut().pop_front();
+                let Some((device, state)) = next else {
+                    break;
+                };
+                if let Ok(Some(cloud)) = shard.services().control.integration_cloud(device.clone()).await {
+                    shard
+                        .integration_events
+                        .publish(&cloud.integration, api::Event::Cloud { cloud: device, state });
+                }
+            }
+            shard.integration_events.telling_clouds.set(false);
+        });
     }
 
     /// Something an integration's conversation shows may have changed, its
