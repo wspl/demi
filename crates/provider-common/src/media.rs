@@ -360,9 +360,10 @@ impl<T> MediaAnswer<T> {
     }
 }
 
-/// Why a vendor did not answer with what was asked. Each failure the
-/// vendor sent carries what it named to trace it, its own code and its
-/// request or trace ID, which the call's words end with.
+/// Why a vendor did not answer with what was asked: what kind of failure it
+/// is, in Demi's terms, and, for each failure the vendor sent, what the
+/// vendor said, its own words, code and request or trace ID, which the
+/// call's words end with.
 ///
 /// It crosses a channel as its kind and code: its words, its trace and its
 /// wait, which says when the lender's limit resets, stay with whoever
@@ -380,19 +381,18 @@ pub enum MediaFailure {
     /// The account's sign-in could not be used or renewed.
     #[serde(skip)]
     SignIn(AuthFailure),
-    /// The vendor refused the entry's API key, in its own words; `code` is
-    /// the failure's, `auth_expired` or `permission_denied`.
+    /// The vendor refused the entry's API key; `code` is the failure's,
+    /// `auth_expired` or `permission_denied`.
     KeyRefused {
-        #[serde(skip)]
-        message: String,
         code: ErrorCode,
         #[serde(skip)]
         trace: VendorTrace,
     },
-    /// The vendor refused the prompt or an image, in its own words.
+    /// The vendor refused the prompt or an image; `reason` is Demi's, for a
+    /// refusal it read out of an answer, such as an image withheld.
     Refused {
         #[serde(skip)]
-        message: String,
+        reason: Option<String>,
         code: Option<ErrorCode>,
         #[serde(skip)]
         trace: VendorTrace,
@@ -405,7 +405,8 @@ pub enum MediaFailure {
         #[serde(skip)]
         trace: VendorTrace,
     },
-    /// The vendor failed, or did not answer in time.
+    /// The vendor failed, or did not answer in time; `cause` is Demi's,
+    /// such as `HTTP 503` or the transport's error.
     Unanswered {
         #[serde(skip)]
         cause: String,
@@ -421,6 +422,17 @@ pub enum MediaFailure {
 }
 
 impl MediaFailure {
+    /// The vendor's limit of how often the entry may ask, which waiting
+    /// lifts, as the vendor said it in `trace`.
+    pub fn limited(trace: VendorTrace) -> Self {
+        Self::Unanswered { cause: "it is limiting requests".to_owned(), code: Some(ErrorCode::RateLimit), trace }
+    }
+
+    /// A failure of the vendor's own service, as it said it in `trace`.
+    pub fn service_failed(trace: VendorTrace) -> Self {
+        Self::Unanswered { cause: "its service failed".to_owned(), code: Some(ErrorCode::Overloaded), trace }
+    }
+
     /// The failure with what it lacks of its trace taken from `trace`,
     /// such as the request ID of the answer whose body named the failure.
     pub fn traced(mut self, trace: VendorTrace) -> Self {
@@ -669,19 +681,19 @@ impl MediaCall<'_> {
         let failure = (self.used_up)(http_failure(response, self.label, self.reader, self.clock).await);
         let diagnostics = failure.diagnostics.as_deref();
         let record = diagnostics.and_then(HttpFailureRecord::read);
+        // `record_trace` holds the vendor's words, which every kind below
+        // keeps.
         let trace = record.as_ref().map(record_trace).unwrap_or_default();
         if failure.code == Some(ErrorCode::UsageLimit) {
             let retry_at = diagnostics.and_then(|diagnostics| (self.reader)(diagnostics, self.clock.now()).retry_at);
             return MediaFailure::UsageLimit { retry_at, trace };
         }
         let body = record.map(|record| record.body).unwrap_or_default();
-        let said = vendor_message(&body);
         match self.credential {
             MediaCredential::Account { family } if status == StatusCode::UNAUTHORIZED => {
                 return MediaFailure::SignIn(AuthFailure::new(family, AuthReason::SignedOut));
             }
             MediaCredential::Key { refused } if refused(status, &body) => {
-                let message = said.unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
                 // A 401 or a 403 has the code its status gives; a vendor's
                 // own sign of a key it does not know, as Google's 400
                 // `API_KEY_INVALID`, is a refused credential.
@@ -689,19 +701,17 @@ impl MediaCall<'_> {
                     .code
                     .filter(|code| matches!(code, ErrorCode::AuthExpired | ErrorCode::PermissionDenied))
                     .unwrap_or(ErrorCode::AuthExpired);
-                return MediaFailure::KeyRefused { message, code, trace };
+                return MediaFailure::KeyRefused { code, trace };
             }
             _ => {}
         }
         if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::REQUEST_TIMEOUT {
-            let cause = match said {
-                Some(said) => format!("HTTP {}: {said}", status.as_u16()),
-                None => format!("HTTP {}", status.as_u16()),
-            };
+            let cause = format!("HTTP {}", status.as_u16());
             return MediaFailure::Unanswered { cause, code: failure.code, trace };
         }
-        let message = said.unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
-        MediaFailure::Refused { message, code: failure.code, trace }
+        // A refusal without words names its status, as Demi's reason.
+        let reason = trace.words.is_none().then(|| format!("HTTP {}", status.as_u16()));
+        MediaFailure::Refused { reason, code: failure.code, trace }
     }
 }
 
@@ -815,8 +825,9 @@ pub fn trace_id(headers: &HeaderMap) -> Option<String> {
     })
 }
 
-/// What a refused request's record names to trace it.
+/// What a refused request's record says.
 ///
+/// - The vendor's words ([`vendor_message`]).
 /// - The vendor's code: the body's `error.code`, or its `code` or
 ///   `base_resp.status_code`, as a number other than the HTTP status, which
 ///   says nothing more.
@@ -869,11 +880,11 @@ pub fn record_trace(record: &HttpFailureRecord) -> VendorTrace {
             Some((http::HeaderName::from_bytes(name.as_bytes()).ok()?, http::HeaderValue::from_str(value).ok()?))
         })
         .collect();
-    let message = vendor_message(&record.body).unwrap_or_default();
+    let words = vendor_message(&record.body);
     let id = trace_id(&headers)
         .or_else(|| body.as_ref().and_then(|body| body.request_id.clone().or_else(|| body.trace_id.clone())))
-        .or_else(|| crate::failure::request_id_in(&message));
-    VendorTrace { code, id }
+        .or_else(|| words.as_deref().and_then(crate::failure::request_id_in));
+    VendorTrace { words: None, code, id }.with_words(words)
 }
 
 /// What a vendor said in a refusal's body.
@@ -881,7 +892,8 @@ pub fn record_trace(record: &HttpFailureRecord) -> VendorTrace {
 /// In order of preference: `error.message`, `error` when it is text, `message`,
 /// or `detail`, as ElevenLabs and other FastAPI servers answer, text, an
 /// object's `message` or a validation list's first `msg`. A body of none of
-/// these is its text, trimmed.
+/// these is its text, trimmed, unless it is markup, such as a proxy's HTML
+/// error page, which is no one's words to quote.
 pub fn vendor_message(body: &str) -> Option<String> {
     #[derive(Deserialize)]
     struct Refusal {
@@ -897,7 +909,7 @@ pub fn vendor_message(body: &str) -> Option<String> {
         return None;
     }
     let Ok(refusal) = serde_json::from_str::<Refusal>(trimmed) else {
-        return Some(trimmed.to_owned());
+        return (!trimmed.starts_with('<')).then(|| trimmed.to_owned());
     };
     let text_of = |value: &serde_json::Value, field: &str| match value {
         serde_json::Value::String(text) => Some(text.clone()),

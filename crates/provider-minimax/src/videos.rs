@@ -355,12 +355,9 @@ fn read_v2_state(body: &[u8]) -> Result<JobState, MediaFailure> {
         "running" => Ok(JobState::Running { progress: None }),
         "failed" => {
             let error = task.error.unwrap_or(V2Error { code: None, message: None });
-            Ok(JobState::Failed {
-                message: error.message.filter(|message| !message.is_empty()).unwrap_or_else(|| "the task failed".to_owned()),
-                trace: VendorTrace { code: error.code, id: None },
-            })
+            Ok(JobState::Failed { reason: None, trace: VendorTrace { words: None, code: error.code, id: None }.with_words(error.message) })
         }
-        "cancelled" => Ok(JobState::Failed { message: "the task was cancelled".to_owned(), trace: Default::default() }),
+        "cancelled" => Ok(JobState::Failed { reason: Some("the task was cancelled".to_owned()), trace: Default::default() }),
         "succeeded" => made(task.content.and_then(|content| content.url)),
         other => Err(unreadable(format!("its task's state \"{other}\" is not one it documents"))),
     }
@@ -384,7 +381,7 @@ fn read_v1_state(body: &[u8]) -> Result<V1State, MediaFailure> {
     match state.status.as_str() {
         "Preparing" | "Queueing" => Ok(V1State::Other(JobState::Queued)),
         "Processing" => Ok(V1State::Other(JobState::Running { progress: None })),
-        "Fail" => Ok(V1State::Other(JobState::Failed { message: "the task failed".to_owned(), trace: Default::default() })),
+        "Fail" => Ok(V1State::Other(JobState::Failed { reason: None, trace: Default::default() })),
         "Success" => match state.file_id.filter(|id| !id.is_empty()) {
             Some(file_id) => Ok(V1State::Made { file_id }),
             None => Err(unreadable("its finished task named no file".to_owned())),

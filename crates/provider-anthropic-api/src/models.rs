@@ -2,7 +2,7 @@
 //! the key and the API's version as a run sends them
 //! ([List Models](https://docs.anthropic.com/en/api/models-list)).
 
-use demi_provider_common::ProviderHttp;
+use demi_provider_common::{ProviderHttp, refusal_words};
 use reqwest::Url;
 use reqwest::header::HeaderValue;
 use serde::Deserialize;
@@ -47,7 +47,7 @@ pub(crate) async fn list(http: &ProviderHttp, url: &Url, key: Option<&HeaderValu
         let response = send.send().await.map_err(|error| failed(error.without_url().to_string()))?;
         let status = response.status();
         if !status.is_success() {
-            return Err(failed(format!("HTTP {}", status.as_u16())));
+            return Err(failed(refusal_words(response, "Anthropic").await));
         }
         let body = response.bytes().await.map_err(|error| failed(error.without_url().to_string()))?;
         let listed: Page = serde_json::from_slice(&body).map_err(|error| failed(error.to_string()))?;

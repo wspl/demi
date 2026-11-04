@@ -35,10 +35,10 @@ fn shapes_taken(message: &str) -> Option<Vec<String>> {
 }
 
 /// `answer` with a refusal of the shape asked for told as the shapes xAI
-/// named, so a shape xAI adds needs no change.
+/// named, so a shape xAI adds needs no change; xAI's words stay with it.
 pub fn with_shapes(mut answer: MediaAnswer<MadeImage>) -> MediaAnswer<MadeImage> {
-    if let Err(MediaFailure::Refused { message, code, trace }) = &answer.result
-        && let Some(takes) = shapes_taken(message)
+    if let Err(MediaFailure::Refused { code, trace, .. }) = &answer.result
+        && let Some(takes) = trace.words.as_deref().and_then(shapes_taken)
     {
         answer.result = Err(MediaFailure::Shape { takes, code: code.clone(), trace: trace.clone() });
     }

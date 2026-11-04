@@ -10,7 +10,7 @@
 //!   Tracking](https://docs.x.ai/developers/cost-tracking)).
 
 use bytes::Bytes;
-use demi_shared_types::{Cost, Currency, TokenUsage, VideoResolution};
+use demi_shared_types::{Cost, Currency, TokenUsage, VendorTrace, VideoResolution};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
@@ -120,18 +120,17 @@ pub fn read_state(body: &[u8]) -> Result<JobState, MediaFailure> {
         serde_json::from_slice(body).map_err(|error| unreadable(format!("its job's state could not be read: {error}")))?;
     match state.status.as_str() {
         "pending" => Ok(JobState::Running { progress: state.progress }),
-        "failed" => Ok(JobState::Failed {
-            message: state.error.map_or_else(|| "the job failed".to_owned(), |error| error.message), trace: Default::default(),
-        }),
+        "failed" => Ok(JobState::Failed { reason: None, trace: VendorTrace::default().with_words(state.error.map(|error| error.message)) }),
         "expired" => Ok(JobState::Expired),
         "done" => {
             let video = state.video.ok_or_else(|| unreadable("its finished job named no video".to_owned()))?;
             let Some(url) = video.url.filter(|url| !url.is_empty()) else {
                 return Ok(JobState::Failed {
-                    message: match video.respect_moderation {
+                    reason: Some(match video.respect_moderation {
                         Some(false) => "the video was withheld by its moderation".to_owned(),
                         _ => "its finished job named no video".to_owned(),
-                    }, trace: Default::default(),
+                    }),
+                    trace: VendorTrace::default(),
                 });
             };
             let url = Url::parse(&url).map_err(|error| unreadable(format!("its video's address could not be read: {error}")))?;

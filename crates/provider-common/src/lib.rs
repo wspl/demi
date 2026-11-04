@@ -79,7 +79,7 @@ pub use contract::{
 };
 pub use endpoint::endpoint_url;
 pub use failure::{EarlyEnd, ErrorCode, FailureReader, ProviderFailure, request_id_in};
-pub use http_record::{HttpFailureRecord, http_failure, read_http_failure, retry_at};
+pub use http_record::{HttpFailureRecord, http_failure, read_http_failure, refusal_words, retry_at};
 pub use model_words::{is_snapshot, model_words};
 pub use secret::{Secret, SecretError};
 pub use model_wires::ModelWires;

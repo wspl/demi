@@ -18,7 +18,7 @@ use demi_provider_common::{
     },
     read_http_failure,
 };
-use demi_shared_types::{B64Bytes, Clock, TokenUsage};
+use demi_shared_types::{B64Bytes, Clock, TokenUsage, VendorTrace};
 use futures_util::future::BoxFuture;
 use reqwest::{
     StatusCode, Url,
@@ -309,11 +309,9 @@ fn read_answer(text: &[u8]) -> Result<MadeImage, MediaFailure> {
     let answer: Answer = serde_json::from_slice(text)
         .map_err(|error| unreadable(format!("its answer could not be read: {error}")))?;
     if let Some(PromptFeedback { block_reason: Some(reason), block_reason_message }) = answer.prompt_feedback {
-        let message = match block_reason_message {
-            Some(said) => format!("{said} ({reason})"),
-            None => format!("the prompt was blocked ({reason})"),
-        };
-        return Err(MediaFailure::Refused { message, code: Some(ErrorCode::Vendor(reason)), trace: Default::default() });
+        let trace = VendorTrace { words: None, code: Some(reason.clone()), id: None }.with_words(block_reason_message);
+        let refused = Some("the prompt was blocked".to_owned());
+        return Err(MediaFailure::Refused { reason: refused, code: Some(ErrorCode::Vendor(reason)), trace });
     }
     let candidate = answer.candidates.into_iter().next();
     let image = candidate
@@ -323,11 +321,9 @@ fn read_answer(text: &[u8]) -> Result<MadeImage, MediaFailure> {
     let Some(image) = image else {
         return Err(match candidate.and_then(|candidate| candidate.finish_reason.map(|reason| (reason, candidate.finish_message))) {
             Some((reason, said)) if reason != "STOP" => {
-                let message = match said {
-                    Some(said) => format!("{said} ({reason})"),
-                    None => format!("the answer was stopped ({reason})"),
-                };
-                MediaFailure::Refused { message, code: Some(ErrorCode::Vendor(reason)), trace: Default::default() }
+                let trace = VendorTrace { words: None, code: Some(reason.clone()), id: None }.with_words(said);
+                let stopped = Some("the answer was stopped".to_owned());
+                MediaFailure::Refused { reason: stopped, code: Some(ErrorCode::Vendor(reason)), trace }
             }
             _ => unreadable("its answer held no image".to_owned()),
         });
@@ -357,32 +353,12 @@ fn refused_key(status: StatusCode, body: &str) -> bool {
                 || vendor_message(body).is_some_and(|said| said.to_lowercase().contains("api key")))
 }
 
-/// A refusal whose quota is the day's, or one the key's tier allows none
-/// of: waiting minutes does not lift it. A quota of the minute is a rate
-/// limit.
+/// A refusal of HTTP 429 whose quota is used up ([`QuotaDetails::spent`]);
+/// any other is a rate limit.
 fn used_up(mut failure: ProviderFailure) -> ProviderFailure {
     #[derive(Deserialize)]
     struct Refusal {
-        error: Error,
-    }
-    #[derive(Deserialize)]
-    struct Error {
-        #[serde(default)]
-        details: Vec<Detail>,
-    }
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Detail {
-        #[serde(default)]
-        violations: Vec<Violation>,
-    }
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Violation {
-        #[serde(default)]
-        quota_id: Option<String>,
-        #[serde(default)]
-        quota_value: Option<String>,
+        error: QuotaDetails,
     }
     let refusal = failure
         .diagnostics
@@ -390,14 +366,45 @@ fn used_up(mut failure: ProviderFailure) -> ProviderFailure {
         .and_then(HttpFailureRecord::read)
         .filter(|record| record.status == 429)
         .and_then(|record| serde_json::from_str::<Refusal>(&record.body).ok());
-    let spent = refusal.is_some_and(|refusal| {
-        refusal.error.details.iter().flat_map(|detail| &detail.violations).any(|violation| {
-            violation.quota_id.as_deref().is_some_and(|id| id.contains("PerDay"))
-                || violation.quota_value.as_deref() == Some("0")
-        })
-    });
-    if spent {
+    if refusal.is_some_and(|refusal| refusal.error.spent()) {
         failure.code = Some(ErrorCode::UsageLimit);
     }
     failure
+}
+
+/// The quotas a Google error's `details` name, an HTTP refusal's and a
+/// stream's error alike, read in either case: the Interactions API names
+/// its own fields in snake case, `generateContent` in camel case.
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct QuotaDetails {
+    #[serde(default)]
+    details: Vec<Detail>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Detail {
+    #[serde(default)]
+    violations: Vec<Violation>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Violation {
+    #[serde(default, alias = "quota_id")]
+    quota_id: Option<String>,
+    #[serde(default, alias = "quota_value")]
+    quota_value: Option<String>,
+}
+
+impl QuotaDetails {
+    /// Whether a quota named is the day's, or one the key's tier allows none
+    /// of: waiting minutes does not lift it, so the key is used up. A quota
+    /// of the minute, or none named, is a rate limit.
+    pub(crate) fn spent(&self) -> bool {
+        self.details.iter().flat_map(|detail| &detail.violations).any(|violation| {
+            violation.quota_id.as_deref().is_some_and(|id| id.contains("PerDay"))
+                || violation.quota_value.as_deref() == Some("0")
+        })
+    }
 }

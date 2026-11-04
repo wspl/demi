@@ -70,7 +70,6 @@ fn told(unmade: Unmade) -> MediaFailure {
 fn crossing(failure: MediaFailure) -> MediaFailure {
     match failure {
         MediaFailure::SignIn(failure) => MediaFailure::KeyRefused {
-            message: String::new(),
             code: failure.failure().code.unwrap_or(ErrorCode::AuthExpired),
             trace: VendorTrace::default(),
         },

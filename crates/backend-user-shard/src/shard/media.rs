@@ -59,6 +59,7 @@ use demi_plugin_interface::{
     MediaPrice, MediaRefusal, MediaUnlisted, ModelEntry, PortFailure, PortRefusal, PriceRate, SentSource, Unable,
     VideoAsk, VideoChange, VideoFacts, VideoStep,
 };
+use demi_provider_common::ErrorCode;
 use demi_provider_common::credentials::AuthReason;
 use demi_provider_common::audio::{self, AudioFormatAsk, AudioRequest};
 use demi_provider_common::images::{Aspect, ImageRequest, InputImage};
@@ -1377,7 +1378,7 @@ fn asked_job(first: Option<MediaAnswer<JobStep>>) -> Result<String, MediaFailure
     };
     match answer.result? {
         JobStep::Asked(job) => Ok(job),
-        JobStep::State(JobState::Failed { message, trace }) => Err(MediaFailure::Refused { message, code: None, trace }),
+        JobStep::State(JobState::Failed { reason, trace }) => Err(MediaFailure::Refused { reason, code: None, trace }),
         JobStep::State(_) => Err(unreadable("its first answer named no job".to_owned())),
     }
 }
@@ -1504,8 +1505,8 @@ impl Job {
                 JobState::Queued => VideoStep::Queued,
                 JobState::Running { progress } => VideoStep::Running { progress },
                 JobState::Done(done) => return self.download(done).await,
-                JobState::Failed { message, trace } => {
-                    let result = Err(refused(MediaRefusal::JobFailed { vendor: self.vendor.clone(), message, trace }));
+                JobState::Failed { reason, trace } => {
+                    let result = Err(refused(MediaRefusal::JobFailed { vendor: self.vendor.clone(), reason, trace }));
                     return Waited::Ended { outcome: "failed".to_owned(), result };
                 }
                 JobState::Expired => {
@@ -1801,20 +1802,23 @@ pub(super) async fn on_accounts<T>(
 
 /// What the plugin is told of a call the vendor did not answer as asked;
 /// `manages` says whether the user manages the entry.
-fn vendor_refusal(failure: MediaFailure, vendor: String, account: Option<String>, manages: bool) -> MediaRefusal {
+pub(crate) fn vendor_refusal(failure: MediaFailure, vendor: String, account: Option<String>, manages: bool) -> MediaRefusal {
     match failure {
         MediaFailure::SignIn(failure) if matches!(failure.reason, AuthReason::Store(_)) => {
             MediaRefusal::Failed { message: failure.message() }
         }
         MediaFailure::SignIn(_) => MediaRefusal::Expired { vendor, account },
         MediaFailure::KeyRefused { trace, .. } => MediaRefusal::KeyRefused { vendor, manages, trace },
-        MediaFailure::Refused { message, trace, .. } => MediaRefusal::Refused { vendor, message, trace },
+        MediaFailure::Refused { reason, trace, .. } => MediaRefusal::Refused { vendor, reason, trace },
         MediaFailure::Shape { takes, trace, .. } => MediaRefusal::Shape { vendor, takes, trace },
+        MediaFailure::Unanswered { code: Some(ErrorCode::RateLimit), trace, .. } => MediaRefusal::Limited { vendor, trace },
         MediaFailure::Unanswered { cause, trace, .. } => MediaRefusal::Unanswered { vendor, cause, trace },
         MediaFailure::UsageLimit { retry_at, trace } => MediaRefusal::UsedUp { vendor, resets_at: retry_at, trace },
-        MediaFailure::SourceGone { trace } => {
-            MediaRefusal::Refused { vendor, message: "it no longer keeps the job of the video to change".to_owned(), trace }
-        }
+        MediaFailure::SourceGone { trace } => MediaRefusal::Refused {
+            vendor,
+            reason: Some("it no longer keeps the job of the video to change".to_owned()),
+            trace,
+        },
     }
 }
 

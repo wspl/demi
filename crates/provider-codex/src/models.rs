@@ -14,7 +14,7 @@
 use std::num::NonZeroU32;
 
 use demi_provider_common::{
-    CatalogError,
+    CatalogError, refusal_words,
     wire::{NonEmpty, decode_untagged},
 };
 use demi_shared_types::{Clock, ProviderModel, ProviderModelList, ServiceTier};
@@ -72,8 +72,8 @@ pub(crate) async fn list(shared: &Shared) -> Result<ProviderModelList, CatalogEr
         if !status.is_success() {
             ended("http_status", Some(status.as_u16()));
             return Err(CatalogError::Unavailable(format!(
-                "Codex models request failed with HTTP {}",
-                status.as_u16()
+                "Codex models request failed with {}",
+                refusal_words(response, "Codex").await
             )));
         }
         let text = response.text().await.map_err(|error| {

@@ -348,8 +348,11 @@ fn read_openai_state(body: &[u8], content: Url) -> Result<JobState, MediaFailure
         "in_progress" => Ok(JobState::Running { progress }),
         "completed" => Ok(JobState::Done(Done { video: DoneVideo::At(content), cost: None, usage: None })),
         "failed" => Ok(match state.error {
-            Some(error) => JobState::Failed { message: error.message, trace: VendorTrace { code: error.code, id: None } },
-            None => JobState::Failed { message: "the job failed".to_owned(), trace: VendorTrace::default() },
+            Some(error) => JobState::Failed {
+                reason: None,
+                trace: VendorTrace { words: None, code: error.code, id: None }.with_words(Some(error.message)),
+            },
+            None => JobState::Failed { reason: None, trace: VendorTrace::default() },
         }),
         other => Err(unreadable(format!("its job's state \"{other}\" is not one it documents"))),
     }
@@ -455,16 +458,17 @@ fn read_openrouter_state(body: &[u8]) -> Result<JobState, MediaFailure> {
             Ok(JobState::Done(Done { video: DoneVideo::At(url), cost, usage: None }))
         }
         "failed" => {
-            let message = match state.error {
-                Some(serde_json::Value::String(text)) => text,
-                Some(serde_json::Value::Object(error)) => error
-                    .get("message")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("the job failed")
-                    .to_owned(),
-                _ => "the job failed".to_owned(),
+            let field = |error: &serde_json::Map<String, serde_json::Value>, name: &str| {
+                error.get(name).and_then(serde_json::Value::as_str).map(str::to_owned)
             };
-            Ok(JobState::Failed { message, trace: Default::default() })
+            let trace = match state.error {
+                Some(serde_json::Value::String(text)) => VendorTrace::said(text),
+                Some(serde_json::Value::Object(error)) => {
+                    VendorTrace { words: None, code: field(&error, "code"), id: None }.with_words(field(&error, "message"))
+                }
+                _ => VendorTrace::default(),
+            };
+            Ok(JobState::Failed { reason: None, trace })
         }
         other => Err(unreadable(format!("its job's state \"{other}\" is not one it documents"))),
     }

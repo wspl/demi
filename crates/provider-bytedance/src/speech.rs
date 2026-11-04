@@ -45,7 +45,7 @@ use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
 use demi_provider_common::{
-    ErrorCode, Secret,
+    Secret,
     audio::{AudioFormatAsk, AudioMaker, AudioOption, AudioRequest, MadeAudio, Voice, searched, unsent_of},
     endpoint_url, json_body,
     media::{Answered, Holding, MediaAnswer, MediaCall, MediaCredential, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, catalog_models, unreadable, within_limit},
@@ -266,16 +266,17 @@ const REQUEST_ERROR: i64 = 45_000_000;
 /// failure is one, unless it is a speaker the resource does not hold, which is
 /// refused as any other code is.
 fn speech_failure(code: i64, message: Option<String>, trace_id: Option<String>) -> MediaFailure {
-    let message = message.filter(|message| !message.is_empty()).unwrap_or_else(|| "the speech failed".to_owned());
-    let trace = VendorTrace { code: Some(code.to_string()), id: trace_id };
-    let busy = code == REQUEST_ERROR && message.contains("quota exceeded");
-    let server = code == SERVER_ERROR && !message.contains("mismatched with speaker");
+    let trace = VendorTrace { words: None, code: Some(code.to_string()), id: trace_id }.with_words(message);
+    let said = trace.words.as_deref().unwrap_or_default();
+    let busy = code == REQUEST_ERROR && said.contains("quota exceeded");
+    let server = code == SERVER_ERROR && !said.contains("mismatched with speaker");
     if busy {
-        MediaFailure::Unanswered { cause: message, code: Some(ErrorCode::RateLimit), trace }
+        MediaFailure::limited(trace)
     } else if server {
-        MediaFailure::Unanswered { cause: message, code: Some(ErrorCode::Overloaded), trace }
+        MediaFailure::service_failed(trace)
     } else {
-        MediaFailure::Refused { message, code: None, trace }
+        let reason = trace.words.is_none().then(|| "the speech failed".to_owned());
+        MediaFailure::Refused { reason, code: None, trace }
     }
 }
 

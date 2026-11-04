@@ -690,16 +690,18 @@ pub enum MediaRefusal {
         #[serde(default, skip_serializing_if = "VendorTrace::is_empty")]
         trace: VendorTrace,
     },
-    /// The vendor refused the prompt or an image, in its own words.
-    #[error("{vendor} refused the request: {message}")]
+    /// The vendor refused the prompt or an image; `reason` is Demi's, for a
+    /// refusal it read out of an answer.
+    #[error("{vendor} refused the request{}", reasoned(reason))]
     Refused {
         vendor: String,
-        message: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
         #[serde(default, skip_serializing_if = "VendorTrace::is_empty")]
         trace: VendorTrace,
     },
     /// The vendor refused the shape asked for, naming the shapes it takes.
-    #[error("{vendor} takes none of the shape asked for")]
+    #[error("{vendor} takes only {}", takes.join(", "))]
     Shape {
         vendor: String,
         takes: Vec<String>,
@@ -714,6 +716,13 @@ pub enum MediaRefusal {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account: Option<String>,
     },
+    /// The vendor is limiting how often the entry may ask, for a while.
+    #[error("{vendor} is limiting requests")]
+    Limited {
+        vendor: String,
+        #[serde(default, skip_serializing_if = "VendorTrace::is_empty")]
+        trace: VendorTrace,
+    },
     /// The vendor failed, or did not answer in time.
     #[error("{vendor} did not answer: {cause}")]
     Unanswered {
@@ -722,11 +731,13 @@ pub enum MediaRefusal {
         #[serde(default, skip_serializing_if = "VendorTrace::is_empty")]
         trace: VendorTrace,
     },
-    /// The vendor failed the video's job, in its own words.
-    #[error("{vendor} failed the video: {message}")]
+    /// The vendor failed the video's job; `reason` is Demi's, for a failure
+    /// it read out of an answer.
+    #[error("{vendor} failed the video{}", reasoned(reason))]
     JobFailed {
         vendor: String,
-        message: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
         #[serde(default, skip_serializing_if = "VendorTrace::is_empty")]
         trace: VendorTrace,
     },
@@ -759,4 +770,27 @@ pub enum MediaRefusal {
     /// The backend could not make the call, such as a store that failed.
     #[error("{message}")]
     Failed { message: String },
+}
+
+impl MediaRefusal {
+    /// What the vendor said of a failure it sent, which its words end
+    /// with; none for a refusal of Demi's own.
+    pub fn trace(&self) -> Option<&VendorTrace> {
+        match self {
+            Self::UsedUp { trace, .. }
+            | Self::KeyRefused { trace, .. }
+            | Self::Refused { trace, .. }
+            | Self::Shape { trace, .. }
+            | Self::Limited { trace, .. }
+            | Self::Unanswered { trace, .. }
+            | Self::JobFailed { trace, .. } => Some(trace),
+            _ => None,
+        }
+    }
+}
+
+/// Demi's `reason` as a sentence ends with it, after a colon; nothing
+/// without one.
+fn reasoned(reason: &Option<String>) -> String {
+    reason.as_ref().map(|reason| format!(": {reason}")).unwrap_or_default()
 }

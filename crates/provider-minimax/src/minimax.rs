@@ -102,15 +102,16 @@ pub(crate) fn base_resp(body: &[u8], trace_id: Option<String>) -> Result<(), Med
         return Ok(());
     }
     let trace = VendorTrace {
+        words: None,
         code: Some(status_code.to_string()),
         id: status.trace_id.or(status.id).filter(|id| !id.is_empty()).or(trace_id),
-    };
-    let message = status_msg;
+    }
+    .with_words(Some(status_msg));
     Err(match status_code {
-        1004 | 2049 => MediaFailure::KeyRefused { message, code: ErrorCode::AuthExpired, trace },
+        1004 | 2049 => MediaFailure::KeyRefused { code: ErrorCode::AuthExpired, trace },
         1008 => MediaFailure::UsageLimit { retry_at: None, trace },
-        1002 | 1039 => MediaFailure::Unanswered { cause: message, code: Some(ErrorCode::RateLimit), trace },
-        1000 | 1001 | 1013 => MediaFailure::Unanswered { cause: message, code: Some(ErrorCode::Overloaded), trace },
-        _ => MediaFailure::Refused { message, code: None, trace },
+        1002 | 1039 => MediaFailure::limited(trace),
+        1000 | 1001 | 1013 => MediaFailure::service_failed(trace),
+        _ => MediaFailure::Refused { reason: None, code: None, trace },
     })
 }

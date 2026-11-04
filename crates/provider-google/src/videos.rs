@@ -37,7 +37,7 @@
 
 use bytes::Bytes;
 use demi_provider_common::{
-    endpoint_url, json_body,
+    ErrorCode, endpoint_url, json_body,
     media::{MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable, within_limit},
     media_catalog::{Catalog, Modality, PriceUnit},
     videos::{
@@ -50,7 +50,7 @@ use futures_util::stream::{self, BoxStream, StreamExt as _};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
-use crate::images::{GeminiKey, LABEL};
+use crate::images::{GeminiKey, LABEL, QuotaDetails};
 
 /// The catalog's vendor of Google's models.
 const VENDOR: &str = "google";
@@ -356,6 +356,15 @@ struct Said {
     message: Option<String>,
     #[serde(default)]
     code: Option<String>,
+    #[serde(flatten)]
+    quotas: QuotaDetails,
+}
+
+impl Said {
+    /// What Google said, as the failure keeps it.
+    fn trace(&self) -> VendorTrace {
+        VendorTrace { words: None, code: self.code.clone(), id: None }.with_words(self.message.clone())
+    }
 }
 
 #[derive(Deserialize, Default)]
@@ -452,16 +461,22 @@ impl Read {
                 }
                 Ok(None)
             }
-            // A key's daily limit comes as the stream's error, after the
-            // job was named; a refusal of its input, as a line of JSON
-            // outside an event.
-            "error" | "" if event.error.is_some() => match event.error {
-                Some(said) if said.code.as_deref() == Some("rate_limit_exceeded") => Err(MediaFailure::UsageLimit {
-                    retry_at: None,
-                    trace: VendorTrace { code: said.code, id: None },
-                }),
-                said => Ok(Some(failed(said.into_iter().collect()))),
-            },
+            // A key's limit comes as the stream's error, after the job was
+            // named; a refusal of its input, as a line of JSON outside an
+            // event. A limit is read as an HTTP refusal's is: used up only
+            // by the quota its details name.
+            "error" | "" if event.error.is_some() => {
+                let Some(said) = event.error else { return Ok(None) };
+                let trace = said.trace();
+                if said.quotas.spent() {
+                    return Err(MediaFailure::UsageLimit { retry_at: None, trace });
+                }
+                match ErrorCode::classify(said.code.as_deref(), said.message.as_deref().unwrap_or_default()) {
+                    Some(ErrorCode::RateLimit) => Err(MediaFailure::limited(trace)),
+                    Some(ErrorCode::Overloaded) => Err(MediaFailure::service_failed(trace)),
+                    _ => Ok(Some(failed(vec![said]))),
+                }
+            }
             _ => {
                 let Some(interaction) = event.interaction else {
                     return Ok(None);
@@ -496,9 +511,10 @@ fn video_of(delta: Delta) -> Result<DoneVideo, MediaFailure> {
     Ok(DoneVideo::At(url))
 }
 
-/// The job's failure in Google's words.
+/// The job's failure, with what Google said of each of its errors.
 fn failed(errors: Vec<Said>) -> JobStep {
-    let said: Vec<String> = errors.into_iter().filter_map(|said| said.message).collect();
-    let message = if said.is_empty() { "the job failed without a reason".to_owned() } else { said.join("; ") };
-    JobStep::State(JobState::Failed { message, trace: Default::default() })
+    let words: Vec<String> = errors.iter().filter_map(|said| said.message.clone()).collect();
+    let code = errors.iter().find_map(|said| said.code.clone());
+    let trace = VendorTrace { words: None, code, id: None }.with_words(Some(words.join("; ")));
+    JobStep::State(JobState::Failed { reason: None, trace })
 }

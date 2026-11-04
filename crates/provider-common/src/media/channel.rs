@@ -449,7 +449,7 @@ impl<C: Channel> VideoMaker for Remote<C> {
             .map(move |reply| {
                 Self::answered(match reply {
                     Ok(Reply::Video(Ok(JobStep::State(JobState::Failed { trace, .. })))) => {
-                        Ok(JobStep::State(JobState::Failed { message: NO_REASON.to_owned(), trace }))
+                        Ok(JobStep::State(JobState::Failed { reason: Some(NO_REASON.to_owned()), trace }))
                     }
                     Ok(Reply::Video(step)) => step.map_err(|failure| self.worded(failure)),
                     Ok(_) => Err(unreadable("it answered another call".to_owned())),

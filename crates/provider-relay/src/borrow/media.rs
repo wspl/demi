@@ -133,7 +133,7 @@ impl Channel for Relay {
             MediaFailure::SignIn(_) | MediaFailure::KeyRefused { .. } => {
                 MediaFailure::Unanswered { cause: format!("its account on {lender} could not be used"), code: None, trace }
             }
-            MediaFailure::Refused { code, .. } => MediaFailure::Refused { message: NO_REASON.to_owned(), code, trace },
+            MediaFailure::Refused { code, .. } => MediaFailure::Refused { reason: Some(NO_REASON.to_owned()), code, trace },
             MediaFailure::Shape { takes, code, .. } => MediaFailure::Shape { takes, code, trace },
             MediaFailure::Unanswered { code, .. } => {
                 let cause = match code {

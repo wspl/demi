@@ -48,19 +48,22 @@ pub fn refusal_words(kind: MediaKind, refusal: &MediaRefusal, aspect: Option<Ima
             format!("\"{model}\" is {provider}'s, whose {generation} is off in Settings › Providers")
         }
         MediaRefusal::UsedUp { vendor, resets_at: Some(moment), trace } => {
-            format!("{vendor}'s usage limit is reached, resetting at {}{}", clock_time(*moment, &zone()), trace.words())
+            format!("{vendor}'s usage limit is reached, resetting at {}{}", clock_time(*moment, &zone()), trace.told(vendor))
         }
-        MediaRefusal::UsedUp { vendor, resets_at: None, trace } => format!("{vendor}'s usage limit is reached{}", trace.words()),
+        MediaRefusal::UsedUp { vendor, resets_at: None, trace } => format!("{vendor}'s usage limit is reached{}", trace.told(vendor)),
         MediaRefusal::KeyRefused { vendor, manages: true, trace } => {
-            format!("{vendor} refused the API key; check it in Settings › Providers{}", trace.words())
+            format!("{vendor} refused the API key; check it in Settings › Providers{}", trace.told(vendor))
         }
         MediaRefusal::KeyRefused { vendor, manages: false, trace } => {
-            format!("{vendor} refused the API key; ask your administrator to check it{}", trace.words())
+            format!("{vendor} refused the API key; ask your administrator to check it{}", trace.told(vendor))
         }
-        MediaRefusal::Refused { vendor, message, trace } => format!("{vendor} refused the request: {message}{}", trace.words()),
+        MediaRefusal::Refused { vendor, trace, .. }
+        | MediaRefusal::Limited { vendor, trace }
+        | MediaRefusal::Unanswered { vendor, trace, .. }
+        | MediaRefusal::JobFailed { vendor, trace, .. } => format!("{refusal}{}", trace.told(vendor)),
         MediaRefusal::Shape { vendor, takes, trace } => {
             let asked = aspect.map_or_else(|| "shape asked for".to_owned(), |aspect| format!("{}:{}", aspect.width, aspect.height));
-            format!("{vendor} takes no {asked} (it takes {}){}", takes.join(", "), trace.words())
+            format!("{vendor} takes no {asked} (it takes {}){}", takes.join(", "), trace.told(vendor))
         }
         MediaRefusal::Expired { vendor, account: Some(account) } => {
             format!("the {vendor} sign-in for {account} has expired; sign in again in Settings › Providers")
@@ -68,7 +71,6 @@ pub fn refusal_words(kind: MediaKind, refusal: &MediaRefusal, aspect: Option<Ima
         MediaRefusal::Expired { vendor, account: None } => {
             format!("the {vendor} sign-in has expired; ask your administrator to sign in again")
         }
-        MediaRefusal::Unanswered { vendor, cause, trace } => format!("{vendor} did not answer: {cause}{}", trace.words()),
         MediaRefusal::NeedsVoice { vendor, model } => {
             format!("{vendor} needs --voice; demi audio voices --model {model} lists them")
         }
@@ -76,7 +78,6 @@ pub fn refusal_words(kind: MediaKind, refusal: &MediaRefusal, aspect: Option<Ima
             let made: Vec<String> = makes.iter().map(|kind| kind.words().to_owned()).collect();
             format!("\"{model}\" makes no {}; it makes {}", asked.words(), listed(&made))
         }
-        MediaRefusal::JobFailed { vendor, message, trace } => format!("{vendor} failed the video: {message}{}", trace.words()),
         MediaRefusal::JobExpired { vendor } => format!("the job expired at {vendor} before it ran"),
         MediaRefusal::NoChange { model, change } => {
             let verb = match change {
