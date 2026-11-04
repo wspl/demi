@@ -139,13 +139,11 @@ export const demoModel: ModelSelection = {
 
 /**
  * The decisions on permission requests, as the agent that asked received
- * them: the user's allow and deny, and the allow of a conversation another
- * one reached.
+ * them: the user's allow and deny.
  */
 export const permissionReceiptMessages: AgentMessage[] = [
   { outcome: 'allowed' as const, action: 'manage skills', categories: [], text: 'The user allowed this conversation to manage skills; the command `demi skills add vercel-labs/agent-skills --skill web-design-guidelines` can now run.' },
   { outcome: 'denied' as const, action: 'manage skills', categories: [], text: 'The user denied this conversation permission to manage skills; the command `demi skills remove acme/tools` was not run.' },
-  { outcome: 'reached' as const, action: 'use your other conversations', categories: ['conversation.use'], text: 'Another conversation’s agent reached this conversation, which allows it to use your other conversations.' },
 ].map(({ outcome, action, categories, text }, index) => ({
   id: `permission:pr-${index}`,
   recipientId: 'gallery-parent',

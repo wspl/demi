@@ -670,6 +670,8 @@ CREATE TABLE permission_requests (
   agent_number      INTEGER,
   agent_description TEXT,
   created_at        INTEGER NOT NULL,
+  -- 'reached', another conversation's message granting the category, only releases up to
+  -- 0.1.5960 decided, and the migration from it removed their requests.
   decision          TEXT CHECK (decision IN ('allowed', 'denied', 'reached')),
   decided_at        INTEGER,
   read              INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1)),

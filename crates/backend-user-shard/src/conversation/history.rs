@@ -15,10 +15,9 @@
 //!   Thinking, scripts and command output are most of a transcript's text and
 //!   would drown what was said.
 //!
-//! The commands reach no Host, but for the one write of a saved attachment.
-//! They need no permission, but to read another conversation, `--conversation`,
-//! which needs the grant of the user's other conversations
-//! (`organize::CONVERSATIONS`).
+//! The commands reach no Host, but for the one write of a saved attachment,
+//! and need no permission, not even to read another conversation of the
+//! user's (`--conversation`).
 //!
 //! A block is named by its index in the agent's transcript, written bare: a word
 //! that starts with `#` is a comment to a shell, so that every line the commands
@@ -47,7 +46,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use super::organize::{CONVERSATIONS, failed, refused, verb};
+use super::organize::{failed, refused, verb};
 use super::cost_report::{CostRows, Labels, call_costs, render_calls, render_turns, turn_costs};
 use super::turn_timing::{Turn, TurnTiming, Turns, turn_of};
 use crate::shard::Shard;
@@ -62,7 +61,7 @@ const BUDGET: usize = 8_000;
 /// How many blocks a read takes from the database at a time.
 const BATCH: usize = 64;
 
-const GROUP_SUMMARY: &str = "A transcript, which keeps every block, also what a compaction summarized: search it, read a range of it, open a command, a thinking block, a subagent's report or an attachment it names. Yours by default; --agent <n> takes another agent of this conversation, --conversation <id> an agent of another conversation of the user, its main agent unless --agent names one, and asks the user once per conversation. \"You\" below is the agent read. A block is named by its index, such as 4213.";
+const GROUP_SUMMARY: &str = "A transcript, which keeps every block, also what a compaction summarized: search it, read a range of it, open a command, a thinking block, a subagent's report or an attachment it names. Yours by default; --agent <n> takes another agent of this conversation, --conversation <id> an agent of another conversation of the user, its main agent unless --agent names one. \"You\" below is the agent read. A block is named by its index, such as 4213.";
 
 const SEARCH_SUMMARY: &str = "Find your messages, your user's or parent's messages and steers, your texts and the titles of the commands you ran that hold every word, or any with --any; a word matches anywhere in a text, in any language, case aside. The newest come first, five to a page, each a row with its index, who wrote it, when and its text cut around the words, which are marked **like this**, between rows of the message before and after it; stderr names the page and the search of the next. Thinking, scripts and command output are not searched. Filters narrow the search, so a common word does not bury what was asked: --from user keeps your user's or parent's messages and steers, --from agent your texts and commands; --after and --before keep what lies after or before a block, 4213, or a day, 2026-10-14, in the user's time zone, and both may be given; --oldest lists the oldest first. For example, search --from user --before 2026-10-15 README finds what the user asked of the README in the days before.";
 
@@ -195,7 +194,6 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["words"])
                 .success_output("a table of the page's hits, each with the message before and after it; on stderr, the page and the search of the next page")
                 .json_output::<Vec<SearchRow>>()
-                .permission_when(CONVERSATIONS, "conversation")
                 .bind(TypedRpc::new(verb(shard.clone(), search))),
         )
         .leaf(
@@ -203,7 +201,6 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<ReadArgs>()
                 .positionals(["range"])
                 .success_output("the blocks of the range as plain text; when it stopped early, a last line \"Stopped at <index> · next: <the read that goes on>\"")
-                .permission_when(CONVERSATIONS, "conversation")
                 .bind(TypedRpc::new(verb(shard.clone(), read))),
         )
         .leaf(
@@ -212,7 +209,6 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["range"])
                 .success_output("a table of the turns that start in the range, one row per turn; on stderr, the next page when more turns follow")
                 .json_output::<Vec<TurnTiming>>()
-                .permission_when(CONVERSATIONS, "conversation")
                 .bind(TypedRpc::new(verb(shard.clone(), timing))),
         )
         .leaf(
@@ -221,7 +217,6 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["range"])
                 .success_output("a table of the turns that start in the range, one row per turn, or per call with --calls; on stderr, the next page when more turns follow")
                 .json_output::<CostRows>()
-                .permission_when(CONVERSATIONS, "conversation")
                 .bind(TypedRpc::new(verb(shard.clone(), cost))),
         )
         .leaf(
@@ -229,7 +224,6 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<OpenArgs>()
                 .positionals(["item"])
                 .success_output("what the item holds, or the path an attachment was saved to; when more pages follow, a last line naming the next")
-                .permission_when(CONVERSATIONS, "conversation")
                 .bind(TypedRpc::new(verb(shard, open))),
         )
 }

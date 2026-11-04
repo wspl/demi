@@ -196,8 +196,9 @@ pub enum PermissionOutcome {
     Allowed,
     /// The user denied it.
     Denied,
-    /// Another conversation's agent reached the conversation, which grants
-    /// the category it asked for without the user.
+    /// Another conversation's agent reached the conversation, which granted
+    /// the category it asked for without the user. Only releases up to
+    /// 0.1.5960 decided so; their receipts in transcripts still say it.
     Reached,
 }
 

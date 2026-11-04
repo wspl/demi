@@ -36,10 +36,6 @@
       "action": "manage providers",
       "description": "Add, change and remove your provider entries and their models, which every conversation of yours can use."
     },
-    "conversation_use": {
-      "action": "use your other conversations",
-      "description": "Use Your Other Conversations lets the agents of this conversation list your conversations, read what any of them holds, send messages to them and start new ones. A conversation they send to or start can do the same. What they read goes to this conversation’s model provider."
-    },
     "agent_profiles": {
       "action": "change subagent profiles",
       "description": "Create, edit and delete the subagent profiles every conversation of yours can use."
