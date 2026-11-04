@@ -24,7 +24,7 @@ use std::time::Duration;
 use base64::Engine as _;
 use demi_host_interface::Host as _;
 use demi_backend_database::integrations::IntegrationRecord;
-use demi_host_interface::{Ending, OutputRecord, ShellEnvironment, WholeOutput};
+use demi_host_interface::{Ending, ShellEnvironment, WholeOutput};
 use demi_shared_types::CommandId;
 use demi_integration_api_protocol as api;
 use demi_runner_client::RemoteShellEnvironment;
@@ -288,7 +288,8 @@ impl Shard {
             },
         };
         let ended = matches!(&*command.run.borrow(), Run::Ended { .. });
-        let (output, next) = output_from(output.as_ref(), after.unwrap_or(0));
+        let after = after.unwrap_or(0);
+        let (output, next) = output.map_or_else(|| (String::new(), after), |output| output.text_after(after));
         Ok(api::CloudCommand {
             id: id.to_owned(),
             cloud: cloud.clone(),
@@ -348,31 +349,4 @@ fn state_of(exit_code: Option<i32>) -> api::CloudCommandState {
         Some(_) => api::CloudCommandState::Exited,
         None => api::CloudCommandState::Failed,
     }
-}
-
-/// The text of `output` from the byte `after`, counting the bytes its Host
-/// left out, and the byte after its end.
-fn output_from(output: Option<&WholeOutput>, after: u64) -> (String, u64) {
-    let mut at = 0u64;
-    let mut text = Vec::new();
-    for record in output.into_iter().flat_map(WholeOutput::records) {
-        match record {
-            OutputRecord::Output(_, bytes) => {
-                let length = bytes.len() as u64;
-                if at + length > after {
-                    let start = usize::try_from(after.saturating_sub(at)).unwrap_or(usize::MAX);
-                    text.extend_from_slice(&bytes[start.min(bytes.len())..]);
-                }
-                at += length;
-            }
-            OutputRecord::LeftOut(left) => {
-                let left = *left as u64;
-                if at + left > after {
-                    text.extend_from_slice(format!("\n[... {left} bytes left out ...]\n").as_bytes());
-                }
-                at += left;
-            }
-        }
-    }
-    (String::from_utf8_lossy(&text).into_owned(), at.max(after))
 }

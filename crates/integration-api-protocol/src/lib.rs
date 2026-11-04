@@ -21,7 +21,7 @@ use demi_command_declarations::{NativeOperation, Node};
 use demi_conversation_lane_protocol::{JobModel, JobPhase, TranscriptPatch, Version};
 use demi_host_interface::{PortRequest, PortResponse};
 use demi_shared_types::{
-    Block, BlockId, CloudSizing, FileExtension, IntegrationCapabilities, NodeId, ProviderErrorDiagnostics, SessionPhase, Timestamp, TurnCause, TurnId,
+    Block, BlockId, CloudSizing, CommandEnd, FileExtension, IntegrationCapabilities, NodeId, ProviderErrorDiagnostics, SessionPhase, Timestamp, TurnCause, TurnId,
 };
 use demi_web_api_protocol::cloud::CloudState;
 use demi_web_api_protocol::conversations::{ConversationStatus, TurnOutcome};
@@ -540,14 +540,33 @@ pub struct StartCloudCommand {
     pub stdin: Option<String>,
 }
 
-/// `GET /clouds/:cloud/commands/:id?after=`: its output from the byte
-/// `after`, the `next` an earlier read answered; from its start when none.
+/// `?after=` of a command's output, on a Cloud or of an agent: from the
+/// byte `after`, the `next` an earlier read answered; from its start when
+/// none.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[garde(allow_unvalidated)]
-pub struct CloudCommandQuery {
+pub struct OutputQuery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub after: Option<u64>,
+}
+
+/// `GET /conversations/:conversation/commands/:command/output`: what an
+/// agent's command printed, as `demi shell output` reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandOutput {
+    /// The id its block's view names, which `demi shell` takes.
+    pub id: String,
+    /// How it ended; null while it runs.
+    pub end: Option<CommandEnd>,
+    /// Its standard output and error as they came, from the query's
+    /// `after`, as text; a binary standard output reads as one line that
+    /// gives its size, and a stretch its Host did not keep, or that was
+    /// lost with its Host's connection, as a line that says how many bytes.
+    pub output: String,
+    /// The byte the next read starts `after`.
+    pub next: u64,
 }
 
 /// A command the integration runs on a Cloud.
@@ -562,8 +581,7 @@ pub struct CloudCommand {
     pub exit_code: Option<i32>,
     pub failure: Option<String>,
     /// Its standard output and error as they came, from the query's
-    /// `after`, as text; a stretch the Cloud did not keep reads as a line
-    /// that says how many bytes it left out.
+    /// `after`, as text, as an agent's command's output reads.
     pub output: String,
     /// The byte the next read starts `after`.
     pub next: u64,

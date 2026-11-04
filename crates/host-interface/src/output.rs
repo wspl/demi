@@ -118,6 +118,61 @@ impl WholeOutput {
         })
     }
 
+    /// Its text from the byte `after`, as a reader that asks again from
+    /// where it got to reads it, and the byte after its end. The bytes
+    /// count as they were printed, both streams in order, so a byte keeps
+    /// its offset as a running command prints on. A binary stdout shows as
+    /// its line where stdout first shows; a stretch left out, and output
+    /// the backend does not have at the end, as a line that counts their
+    /// bytes from `after`.
+    pub fn text_after(&self, after: u64) -> (String, u64) {
+        let binary = self.binary_stdout_length();
+        let mut binary_shown = false;
+        let mut at = 0u64;
+        let mut text = Vec::new();
+        let gap = |text: &mut Vec<u8>, at: u64, bytes: u64, line: &dyn Fn(u64) -> String| {
+            if at + bytes > after {
+                let left = bytes - after.saturating_sub(at);
+                text.extend_from_slice(format!("\n{}\n", line(left)).as_bytes());
+            }
+        };
+        for record in &self.records {
+            match record {
+                OutputRecord::Output(stream, bytes) => {
+                    let length = bytes.len() as u64;
+                    if *stream == StreamKind::Stdout
+                        && let Some(binary) = binary
+                    {
+                        if !binary_shown && at + length > after {
+                            text.extend_from_slice(format!("{}\n", binary_line(binary)).as_bytes());
+                        }
+                        binary_shown = true;
+                    } else if at + length > after {
+                        let start = usize::try_from(after.saturating_sub(at)).unwrap_or(usize::MAX);
+                        text.extend_from_slice(&bytes[start.min(bytes.len())..]);
+                    }
+                    at += length;
+                }
+                OutputRecord::LeftOut(left) => {
+                    gap(&mut text, at, *left, &|left| format!("[... {left} bytes left out ...]"));
+                    at += left;
+                }
+            }
+        }
+        if let Some(missing) = &self.missing {
+            let line = |bytes| {
+                Missing {
+                    bytes,
+                    reason: missing.reason.clone(),
+                }
+                .line()
+            };
+            gap(&mut text, at, missing.bytes, &line);
+            at += missing.bytes;
+        }
+        (String::from_utf8_lossy(&text).into_owned(), at.max(after))
+    }
+
     /// The output of `streams` as lines of text. A binary stdout of
     /// `binary_stdout` bytes shows as its line where stdout first shows;
     /// otherwise the bytes are as kept. `seen` says how much of each stream

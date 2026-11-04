@@ -367,6 +367,17 @@ the page's `start`, and the block at `start` as `edge`; `atStart` says when
 there's nothing before. A `409` means the transcript changed since: read the
 latest page again.
 
+A command's block holds only the part of its output the agent saw. Read the
+whole output with `GET …/commands/{command}/output?after=`, where `command`
+is the `commandId` of the block's view, the number `demi shell` takes:
+
+- `output` is the standard output and error from byte `after`, as text.
+  Pass the `next` of the previous read to read on.
+- `end` is null while the command runs, and says how it ended after.
+- A Host keeps at most a command's first and last 8 MiB; a line in `output`
+  says how many bytes it left out between them. A binary standard output
+  reads as one line that gives its size.
+
 ### Files
 
 The conversation's files are on its Cloud. With the paths these take, you

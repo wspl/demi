@@ -42,6 +42,7 @@ use tokio_util::task::TaskTracker;
 
 pub use connection::{Connection, Follows, FrameRx, Outgoing};
 pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles, resolve_content};
+pub use shell_output::CommandMissed;
 pub use tree::{AskError, KeptAgents, SideCard, Tree, side_instruction};
 
 use tree::OpenError;

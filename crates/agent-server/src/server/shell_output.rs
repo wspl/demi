@@ -30,7 +30,7 @@
 use std::{rc::{Rc, Weak}, sync::Arc};
 
 use bytes::Bytes;
-use demi_agent_store::{AgentTreeStore, StoredCommand, StoredOutput};
+use demi_agent_store::{AgentTreeStore, StoreError, StoredCommand, StoredOutput};
 use demi_agent_tools::{
     HostResolver, Look, PAGE_CHARS, Stopper, look_text, whole_look_text,
 };
@@ -537,9 +537,12 @@ async fn output<H: HostResolver>(
     if raw && !matches!(reading, Reading::Page) {
         return refuse("--raw prints all of the output; take part of it with sed or tail");
     }
-    let found = match find(Some(&call.tree), call.tree.store(), id).await {
+    let Ok(command) = CommandId::try_from(id) else {
+        return fail(&CommandMissed::Unknown(id.to_owned()).to_string());
+    };
+    let found = match find(Some(&call.tree), call.tree.store(), &command).await {
         Ok(found) => found,
-        Err(reason) => return fail(&reason),
+        Err(missed) => return fail(&missed.to_string()),
     };
     if raw {
         let text = found.output.text(streams, None, Seen::default());
@@ -576,7 +579,37 @@ async fn output<H: HostResolver>(
     Ok(0)
 }
 
+/// Why a command's output could not be read.
+#[derive(Debug, thiserror::Error)]
+pub enum CommandMissed {
+    #[error("no command {0} in this conversation")]
+    Unknown(String),
+    /// Its Host did not answer while it runs.
+    #[error("the output of {0} could not be read: {1}")]
+    Unreadable(String, String),
+    #[error("the output of {0} was not stored: {1}")]
+    NotStored(String, String),
+    /// The conversation's store failed to read what it holds.
+    #[error("the output of {0} could not be read: {1}")]
+    Store(String, StoreError),
+}
+
 impl<H: HostResolver> AgentServer<H> {
+    /// What `demi shell output` reads of the command `id` of the
+    /// conversation `root`: its whole output, as its Host keeps it, and how
+    /// it ended, none while it runs. The conversation need not be open: an
+    /// ended command is read from its store.
+    pub async fn command_output(
+        &self,
+        root: &NodeId,
+        id: &CommandId,
+    ) -> Result<(WholeOutput, Option<CommandEnd>), CommandMissed> {
+        let tree = self.tree(root);
+        let store = tree.as_ref().map_or_else(|| (self.deps.stores)(root), |tree| tree.store().clone());
+        let found = find(tree.as_deref(), &store, id).await?;
+        Ok((found.output, found.end))
+    }
+
     /// Page `page`, from 1, of what `demi conversation history open` shows of
     /// the command `id` of the conversation `root`; also how many pages there
     /// are. The conversation need not be open: an ended command is read from
@@ -597,17 +630,18 @@ impl<H: HostResolver> AgentServer<H> {
         page: u64,
         reserve: usize,
     ) -> Result<(String, u64), String> {
-        let tree = self.tree(root);
-        let store = tree.as_ref().map_or_else(|| (self.deps.stores)(root), |tree| tree.store().clone());
-        let found = find(tree.as_deref(), &store, id.as_str()).await?;
-        let binary = found.output.binary_stdout_length();
-        let text = found.output.text(Streams::Both, binary, Seen::default());
+        let (output, end) = self
+            .command_output(root, id)
+            .await
+            .map_err(|missed| missed.to_string())?;
+        let binary = output.binary_stdout_length();
+        let text = output.text(Streams::Both, binary, Seen::default());
         let shown = Page {
             text: &text,
             id: id.as_str(),
             streams: Streams::Both,
-            end: found.end,
-            };
+            end,
+        };
         let last = text.last_line();
         // Every page holds the head and room for the output's header.
         let header = shown.header(Some((last, last))).chars().count() + 1;
@@ -723,26 +757,25 @@ fn range(lines: &str) -> Option<(u64, u64)> {
     (1 <= from && from <= to).then_some((from, to))
 }
 
-/// The command `id` of a conversation: from its live `tree`, when it has
-/// one, while the command runs, else from its `store`.
+/// The command `command` of a conversation: from its live `tree`, when it
+/// has one, while the command runs, else from its `store`.
 async fn find<H: HostResolver>(
     tree: Option<&Tree<H>>,
     store: &Rc<dyn AgentTreeStore>,
-    id: &str,
-) -> Result<Found, String> {
-    let unknown = || format!("no command {id} in this conversation");
-    let command = CommandId::try_from(id).map_err(|_| unknown())?;
-    if let Some(environment) = tree.and_then(|tree| tree.environment_of(&command)) {
-        match environment.read_output(&command).await {
+    command: &CommandId,
+) -> Result<Found, CommandMissed> {
+    let id = command.as_str();
+    if let Some(environment) = tree.and_then(|tree| tree.environment_of(command)) {
+        match environment.read_output(command).await {
             Ok(output) => {
                 return Ok(Found { output, end: None });
             }
             // It ended, and its output is stored.
             Err(ShellError::NotRunning(_)) => {}
-            Err(error) => return Err(format!("the output of {id} could not be read: {error}")),
+            Err(error) => return Err(CommandMissed::Unreadable(id.to_owned(), error.to_string())),
         }
     }
-    match store.command_output(&command).await {
+    match store.command_output(command).await {
         Ok(Some(StoredCommand {
             end,
             output: StoredOutput::Stored { output, .. },
@@ -754,11 +787,9 @@ async fn find<H: HostResolver>(
         Ok(Some(StoredCommand {
             output: StoredOutput::NotStored(reason),
             ..
-        })) => {
-            Err(format!("the output of {id} was not stored: {reason}"))
-        }
-        Ok(None) => Err(unknown()),
-        Err(error) => Err(format!("the output of {id} could not be read: {error}")),
+        })) => Err(CommandMissed::NotStored(id.to_owned(), reason)),
+        Ok(None) => Err(CommandMissed::Unknown(id.to_owned())),
+        Err(error) => Err(CommandMissed::Store(id.to_owned(), error)),
     }
 }
 

@@ -117,7 +117,7 @@ fn routes() -> Vec<Route> {
         json("post", "/clouds/{cloud}/reset", "Reset a Cloud's system; /home stays", None, (200, Some(of::<Cloud>))).refuses(409, "The Cloud's machine refused the reset, as the message says (`integration_refused`)."),
         json("post", "/clouds/{cloud}/commands", "Run a script on a Cloud as `demi`, outside any conversation, once its init script ends; it answers at once", Some(of::<StartCloudCommand>), (201, Some(of::<CloudCommand>))),
         json("get", "/clouds/{cloud}/commands/{command}", "A command on a Cloud, with its output from `after`; an hour after it ends, or once the server restarts, it is gone", None, (200, Some(of::<CloudCommand>)))
-            .query(of::<CloudCommandQuery>),
+            .query(of::<OutputQuery>),
         json("post", "/clouds/{cloud}/commands/{command}/stop", "Stop a command on a Cloud; one that ended stays as it is", None, (204, None)),
         cloud_files(json("get", "/clouds/{cloud}/fs", "A directory's entries on a Cloud, its home without `path`", None, (200, Some(of::<files::Directory>)))
             .query(of::<files::DirectoryQuery>)),
@@ -169,6 +169,9 @@ fn routes() -> Vec<Route> {
             .refuses(400, "The query names more than one of `before`, `after` and `around`, `before` or `after` without `edge`, or an index outside the transcript (`invalid_query`).")
             .refuses(409, "The page moved since: `edge` is no longer the block at `before` or `after` (`transcript_changed`)."),
         json("get", "/conversations/{conversation}/agents/{agent}/blocks/{block}", "A block whole, where the transcript's is light", None, (200, Some(of::<demi_web_api_protocol::conversations::WholeBlock>))),
+        json("get", "/conversations/{conversation}/commands/{command}/output", "What an agent's command printed, from `after`, as `demi shell output` reads it: while it runs and after it ended", None, (200, Some(of::<CommandOutput>)))
+            .query(of::<OutputQuery>)
+            .refuses(409, "The command's Host did not answer while it runs, or its output was not stored when it ended, as the message says (`integration_refused`)."),
         json("post", "/conversations/{conversation}/browser/tabs/{tab}/views", "A link to one tab of the conversation's browser, live, which any page may frame; only this answer carries its `url`", Some(of::<CreateBrowserView>), (201, Some(of::<BrowserView>)))
             .refuses(400, "`tab` is no tab's id, such as `t3`, or `expiresIn` is beyond the times Demi keeps (`integration_refused`).")
             .refuses(409, "The integration's browser capability is off (`integration_refused`)."),

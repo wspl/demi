@@ -86,6 +86,7 @@ pub(super) fn routes() -> Router<AppState> {
             .route("/conversations/{conversation}/agents/{agent}/messages", post(message_agent))
             .route("/conversations/{conversation}/agents/{agent}/transcript", get(transcript))
             .route("/conversations/{conversation}/agents/{agent}/blocks/{block}", get(block))
+            .route("/conversations/{conversation}/commands/{command}/output", get(command_output))
             .route(
                 "/conversations/{conversation}/fs",
                 get(list_files).post(make_directory).delete(remove_file),
@@ -145,6 +146,7 @@ pub(crate) fn refused(refusal: IntegrationRefusal) -> ApiError {
         }
         IntegrationRefusal::Cloud(error) => error.into(),
         IntegrationRefusal::Storage(error) => error.into(),
+        IntegrationRefusal::ConversationStore(error) => ApiError::internal(&error),
     }
 }
 
@@ -341,7 +343,7 @@ async fn cloud_command(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((cloud, command)): Path<(String, String)>,
-    CheckedQuery(query): CheckedQuery<api::CloudCommandQuery>,
+    CheckedQuery(query): CheckedQuery<api::OutputQuery>,
 ) -> Result<Json<api::CloudCommand>, ApiError> {
     let record = authenticated(&state, &headers).await?;
     let device = device_id(cloud)?;
@@ -631,6 +633,27 @@ async fn stop(
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// `GET /v1/conversations/:conversation/commands/:command/output`: what an
+/// agent's command printed, from `after`.
+async fn command_output(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((conversation, command)): Path<(String, String)>,
+    CheckedQuery(query): CheckedQuery<api::OutputQuery>,
+) -> Result<Json<api::CommandOutput>, ApiError> {
+    let record = authenticated(&state, &headers).await?;
+    let id = conversation_id(conversation)?;
+    let answer = state
+        .shards
+        .of(&record.user.clone())
+        .call(move |shard, _| async move {
+            shard.integration_command_output(&record, &id, &command, query.after).await
+        })
+        .await?
+        .map_err(refused)?;
+    Ok(Json(answer))
 }
 
 /// Hands the conversation the web app's frame `frame` makes of its id, as

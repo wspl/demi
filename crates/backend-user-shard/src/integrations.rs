@@ -11,12 +11,12 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use demi_agent_server::{Observer, TreeObservers};
+use demi_agent_server::{CommandMissed, Observer, TreeObservers};
 use demi_agent_tools::parse_workflow;
 use demi_backend_host_access::{conversation_of, root_of};
 use demi_conversation_lane_protocol::ServerFrame;
 use demi_host_interface::PortResponse;
-use demi_shared_types::{B64Bytes, NodeId};
+use demi_shared_types::{B64Bytes, CommandId, NodeId};
 use demi_web_api_protocol::devices::DeviceKind;
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::{Notify, mpsc};
@@ -194,6 +194,9 @@ pub enum IntegrationRefusal {
     Cloud(#[from] demi_backend_cloud::machine::CloudError),
     #[error(transparent)]
     Storage(#[from] StorageError),
+    /// A conversation's store failed to read what it holds.
+    #[error(transparent)]
+    ConversationStore(demi_agent_server::CommandMissed),
 }
 
 impl From<ChangeRefusal> for IntegrationRefusal {
@@ -804,6 +807,38 @@ impl Shard {
         let deleted = control.delete_integration(integration.id).await?;
         self.mark_integrations();
         Ok(deleted)
+    }
+
+    /// What the agent's command `command` of the integration's conversation
+    /// `id` printed, from the byte `after`, and how it ended: as
+    /// `demi shell output` reads it, from its Host while it runs and from
+    /// the conversation's record after.
+    pub async fn integration_command_output(
+        &self,
+        integration: &IntegrationRecord,
+        id: &ConversationId,
+        command: &str,
+        after: Option<u64>,
+    ) -> Result<api::CommandOutput, IntegrationRefusal> {
+        let id = &self.integration_conversation_of(integration, id).await?.id;
+        let unknown = || IntegrationRefusal::NotFound("command");
+        let found = CommandId::try_from(command).map_err(|_| unknown())?;
+        let (output, end) = self
+            .agent()
+            .command_output(&root_of(id), &found)
+            .await
+            .map_err(|missed| match missed {
+                CommandMissed::Unknown(_) => unknown(),
+                missed @ CommandMissed::Store(..) => IntegrationRefusal::ConversationStore(missed),
+                missed => IntegrationRefusal::Refused(missed.to_string()),
+            })?;
+        let (output, next) = output.text_after(after.unwrap_or(0));
+        Ok(api::CommandOutput {
+            id: command.to_owned(),
+            end,
+            output,
+            next,
+        })
     }
 
     /// Stops the agents of the integration's conversation `id` that `scope`
