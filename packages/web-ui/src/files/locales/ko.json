@@ -219,10 +219,15 @@
       "caution": "주의"
     }
   },
-  "audioPlayer": {
+  "player": {
     "play": "{name} 재생",
     "pause": "{name} 일시 정지",
-    "seek": "{name} 재생 위치"
+    "seek": "{name} 재생 위치",
+    "mute": "음소거",
+    "unmute": "음소거 해제",
+    "speed": "재생 속도",
+    "enterFullScreen": "전체 화면 시작",
+    "exitFullScreen": "전체 화면 종료"
   },
   "media": {
     "previous": "이전",

@@ -6,15 +6,15 @@ import { swipeAxis, type StepReach, type SwipeAxis } from './swipe-step'
 import { useSwipeLayer } from './swipe-layer'
 
 /**
- * A video the media viewer shows, in the web browser's own player, which a
+ * A video the media viewer shows, in Demi's player (`VideoPlayer`), which a
  * finger swipes as a picture is swiped (`swipe-layer.ts`):
  *
  * - Sideways across the video, with `steps`, it steps to the neighbour.
  * - Down across the video, where it is `dismissible`, it pulls down, fading,
  *   and closes once let go far enough down.
- * - A tap on the video is the player's, as is anything on its controls along
- *   the bottom, such as dragging the playhead: only a finger that moves on the
- *   video's picture becomes a swipe.
+ * - A tap on the video is the player's, as is anything on its controls, such
+ *   as dragging the playhead: only a finger that moves on the video's picture
+ *   becomes a swipe.
  * - Where it is `dismissible`, a tap beside the video asks to close it.
  *
  * A mouse never swipes it.
@@ -39,12 +39,6 @@ const emit = defineEmits<{
   step: [direction: -1 | 1, slid: boolean]
   dismiss: []
 }>()
-
-/**
- * How far up from the video's bottom edge the player's controls reach on a
- * phone, the playhead's track among them: a press there stays the player's.
- */
-const CONTROLS_PX = 56
 
 const frame = ref<HTMLElement | null>(null)
 const slider = ref<HTMLElement | null>(null)
@@ -73,10 +67,10 @@ function within(event: PointerEvent, box: DOMRect): boolean {
 function onPress(event: PointerEvent): void {
   if (event.button !== 0)
     return
+  if (event.target instanceof Element && event.target.closest('[data-video-controls]'))
+    return
   const box = frame.value?.querySelector('video')?.getBoundingClientRect()
   const onVideo = box !== undefined && within(event, box)
-  if (onVideo && event.clientY > box.bottom - CONTROLS_PX)
-    return
   if (!onVideo)
     event.preventDefault()
   // A second finger makes the press under way no tap, as a pinch is none.
