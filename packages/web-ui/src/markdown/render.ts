@@ -11,7 +11,7 @@ import { linkedAgent } from '../agent/agent-links'
 import type { CopiedStoredFile } from '../agent/message-input/copied-message'
 import { KEEPS_WINDOWS } from '../ui/window-stack'
 import { SYSTEM_PICTURE_MENUS } from '../ui/system-picture-menu'
-import { escapeHtml } from './html'
+import { escapeHtml, isLineBreak } from './html'
 import { imagePlaceholderHtml } from './image-placeholder'
 import { pictureKey } from './picture-key'
 import { formatBytes } from '../files/format'
@@ -417,15 +417,16 @@ function pictureLink(target: string, reason: PictureFailure | null): string {
 }
 
 /**
- * An agent's message: read-only task boxes, HTML shown as text, highlighted
- * code, and links and images that reach the web or the conversation's Host.
+ * An agent's message: read-only task boxes, HTML shown as text but for a
+ * line break, highlighted code, and links and images that reach the web or
+ * the conversation's Host.
  */
 const messageRenderer: RendererObject = {
   checkbox({ checked }) {
     return `<input type="checkbox" disabled${checked ? ' checked' : ''}> `
   },
   html({ text }) {
-    return escapeHtml(text)
+    return isLineBreak(text) ? '<br>' : escapeHtml(text)
   },
   code({ text, lang }) {
     return codeBlockHtml(text, lang ?? '')

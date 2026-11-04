@@ -10,3 +10,12 @@ export function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
 }
+
+/**
+ * Whether `html` is a line break, `<br>`, `<br/>` or `<br />`: the one tag a
+ * reply's Markdown keeps, since a table's cell has no other way to break its
+ * line, and GitHub's rendering, which models write for, breaks it there.
+ */
+export function isLineBreak(html: string): boolean {
+  return /^<br\s*\/?>$/i.test(html.trim())
+}

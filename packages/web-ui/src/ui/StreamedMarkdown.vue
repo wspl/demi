@@ -278,7 +278,6 @@ function onMediumLoad(event: Event): void {
     ref="root"
     v-link-menus="linkMenus"
     class="markdown-body select-text"
-    :class="streaming ? 'is-streaming' : ''"
     :aria-busy="streaming || undefined"
     @click="openMessageLink($event, files(), viewer, agents(), transcript?.pictures)"
     @auxclick="openConversationAside($event, files())"
