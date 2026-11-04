@@ -70,13 +70,14 @@ async function countAgents(): Promise<number> {
 
 <template>
   <SettingsUpdates
-    v-if="product.snapshot?.serverUpgrade"
-    :state="product.snapshot.serverUpgrade"
+    :state="product.snapshot?.serverUpgrade ?? null"
+    :load="product.partLoad('serverUpgrade')"
     :overlay-store="appOverlayStore"
     :on-set-channel="setChannel"
     :on-set-prepare-ahead="setPrepareAhead"
     :on-check="check"
     :on-count-agents="countAgents"
     :on-update="update"
+    @retry="product.reconnect"
   />
 </template>
