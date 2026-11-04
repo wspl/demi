@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use demi_command_protocol::{COMMAND_LOCALE_LANGUAGES, ColorScheme, CommandLocale};
-use demi_shared_types::{IDLE_COMPACTION_CONTEXT_FLOOR, MAX_SAFE_INTEGER, Nullable, WorkflowChoice, is_context_limit};
+use demi_shared_types::{IDLE_COMPACTION_CONTEXT_FLOOR, MAX_SAFE_INTEGER, Nullable, WorkflowChoice};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -994,16 +994,12 @@ pub struct HiddenModel {
 /// The context limits of a user, by provider entry id and then model id.
 pub type ContextLimits = BTreeMap<ProviderId, BTreeMap<String, u32>>;
 
-/// Every stored limit is one a window offers.
+/// Every stored limit is a size of at least one token.
 fn stored_limits(limits: &ContextLimits, (): &()) -> garde::Result {
-    let offered = limits
-        .values()
-        .flat_map(BTreeMap::values)
-        .all(|tokens| is_context_limit(*tokens));
-    if offered {
+    if limits.values().flat_map(BTreeMap::values).all(|tokens| *tokens >= 1) {
         Ok(())
     } else {
-        Err(garde::Error::new("a context limit no window offers"))
+        Err(garde::Error::new("a context limit of 0 tokens"))
     }
 }
 
@@ -1015,22 +1011,12 @@ pub struct ContextLimitChange {
     pub provider_id: ProviderId,
     #[garde(length(chars, min = 1))]
     pub model_id: String,
-    /// 500000, 300000 or 200000 tokens; null removes the limit, so the model
-    /// uses its full window.
+    /// Any size in tokens, which applies while it is below the model's
+    /// window; null removes the limit, so the model uses its full window.
     #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<u32>")]
-    #[garde(custom(offered_limit))]
+    #[schemars(with = "Nullable<u32>", range(min = 1))]
+    #[garde(inner(range(min = 1)))]
     pub tokens: Option<u32>,
-}
-
-/// A limit to store is one a window offers.
-fn offered_limit(tokens: &Option<u32>, (): &()) -> garde::Result {
-    match tokens {
-        Some(tokens) if !is_context_limit(*tokens) => Err(garde::Error::new(format!(
-            "{tokens} is not a context limit: 500000, 300000 or 200000"
-        ))),
-        _ => Ok(()),
-    }
 }
 
 /// `PATCH /settings/preferences`: the overrides to change; everything absent

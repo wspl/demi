@@ -1,8 +1,7 @@
 import type { Component } from 'vue'
 import type { ModelInfo, ModelServiceTier, ProviderInfo } from '../transport/protocol'
 import type { TitleText } from '../ui/ui-text'
-import { formatTokens } from '../ui/token-count'
-import { contextLimitOptions, contextWindowInUse } from './context-limit'
+import { contextLimitOptions, contextOptionLabels, type ContextLimitOption } from './context-limit'
 import { fastServiceTier, isFastMode } from './fast-mode'
 import {
   composerModel,
@@ -59,6 +58,20 @@ export interface ModelMenuRows {
 }
 
 /**
+ * The Context row: each option labelled, the applied `limit`'s checked, and
+ * the row's value as its checked option reads.
+ */
+function contextRow(options: ContextLimitOption[], limit: number | null) {
+  const labels = contextOptionLabels(options)
+  const marked = options.map((option, index) => ({
+    ...option,
+    label: labels[index],
+    selected: limit === option.tokens,
+  }))
+  return { value: marked.find((option) => option.selected)?.label ?? '', options: marked }
+}
+
+/**
  * The rows of the model menu: one derivation for the composer, the profile
  * editor and the small model's menu, so the stand-in at the top, Parent's Model
  * or Automatic, is the only row another menu adds. /
@@ -79,8 +92,8 @@ export function modelMenuRows(
   const tier = fastServiceTier(model)
   const reasoning = buildReasoningState(model)
   const reasoningIndex = reasoning ? reasoningOptionIndex(reasoning, effort) : -1
-  const contextOptions = model ? contextLimitOptions(model) : []
   const limit = model?.contextLimit ?? null
+  const contextOptions = model ? contextLimitOptions(model, limit) : []
 
   return {
     selected,
@@ -93,14 +106,7 @@ export function modelMenuRows(
         }
       : null,
     context: contextOptions.length
-      ? {
-          value: formatTokens(contextWindowInUse(model)),
-          options: contextOptions.map((option) => ({
-            ...option,
-            label: formatTokens(option.window),
-            selected: limit === option.tokens,
-          })),
-        }
+      ? contextRow(contextOptions, limit)
       : null,
     model: {
       // A choice the menu cannot send with still names itself, as the

@@ -1,5 +1,6 @@
 import { contextLimits } from '@demicodes/protocol'
 import type { ModelInfo } from '../transport/protocol'
+import { formatDecimal } from '../ui/numbers'
 import { formatTokens } from '../ui/token-count'
 import { t } from './locales/text'
 
@@ -33,19 +34,40 @@ export function contextWindowInUse(model: ModelInfo | null | undefined): number 
 
 /**
  * The Context row's options for `model`: its full window first, then the
- * limits its window offers. None for a window under 500K, which shows no
- * row.
+ * limits the menu offers on its window, with `kept`, a size stored outside
+ * them, in its place by size, so the row shows what applies. None for a
+ * window under 500K that keeps no such size, which shows no row.
  */
-export function contextLimitOptions(model: ModelInfo): ContextLimitOption[] {
+export function contextLimitOptions(model: ModelInfo, kept: number | null): ContextLimitOption[] {
   const full = model.contextWindow
+  if (full === null) {
+    return []
+  }
   const limits = contextLimits(full)
-  if (full === null || limits.length === 0) {
+  const sizes = kept !== null && kept < full && !limits.includes(kept)
+    ? [...limits, kept].sort((larger, smaller) => smaller - larger)
+    : limits
+  if (sizes.length === 0) {
     return []
   }
   return [
     { window: full, tokens: null },
-    ...limits.map((tokens) => ({ window: tokens, tokens })),
+    ...sizes.map((tokens) => ({ window: tokens, tokens })),
   ]
+}
+
+/**
+ * Each option's label: its window as the UI rounds token counts, or the whole
+ * count where rounding would read as another option's, as a limit of 1,000,000
+ * beside a window of 1,048,576 would.
+ */
+export function contextOptionLabels(options: readonly ContextLimitOption[]): string[] {
+  const rounded = options.map((option) => formatTokens(option.window))
+  return options.map((option, index) =>
+    rounded.indexOf(rounded[index]) === rounded.lastIndexOf(rounded[index])
+      ? rounded[index]
+      : formatDecimal(option.window, 0),
+  )
 }
 
 /**
@@ -59,21 +81,23 @@ export interface ProfileContextOption {
 
 /**
  * A subagent profile's Context options on `model`
- * (`crates/agent-server/src/server/tree/profiles.rs`):
+ * (`crates/agent-server/src/server/tree/profiles.rs`), with `kept`, the
+ * profile's own, shown where the row does not offer it:
  *
  * - Default, the user's limit on the model, with the window it gives now
  * - the Context row's options, the full window stored as its own size
  *
  * None for a model without a Context row.
  */
-export function profileContextOptions(model: ModelInfo): ProfileContextOption[] {
-  const options = contextLimitOptions(model)
+export function profileContextOptions(model: ModelInfo, kept: number | null): ProfileContextOption[] {
+  const options = contextLimitOptions(model, kept)
   if (options.length === 0) {
     return []
   }
+  const labels = contextOptionLabels(options)
   return [
     { label: t('models.default', { window: formatTokens(contextWindowInUse(model)) }), tokens: null },
-    ...options.map((option) => ({ label: formatTokens(option.window), tokens: option.window })),
+    ...options.map((option, index) => ({ label: labels[index], tokens: option.window })),
   ]
 }
 
@@ -82,6 +106,6 @@ export function profileContextOptions(model: ModelInfo): ProfileContextOption[] 
  * choice the window no longer offers is the full window, as for a session.
  */
 export function profileContextChoice(model: ModelInfo, tokens: number | null): number | null {
-  const offered = profileContextOptions(model).some((option) => option.tokens === tokens)
+  const offered = profileContextOptions(model, tokens).some((option) => option.tokens === tokens)
   return tokens === null || offered ? tokens : model.contextWindow
 }

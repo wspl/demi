@@ -62,8 +62,8 @@ pub struct SubagentProfile {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<ModelSettings>")]
     pub model: Option<ModelSettings>,
-    /// The tokens of the profile's own Context, its model's full window or
-    /// a limit the window offers, which its children use in place of the
+    /// The tokens of the profile's own Context, a size up to its model's
+    /// window, the window itself being the full window, which its children use in place of the
     /// user's limit (`crates/agent-server/src/server/tree/profiles.rs`); null for the user's limit,
     /// and always null without a model of its own.
     #[serde(deserialize_with = "Option::deserialize")]
@@ -125,11 +125,12 @@ pub struct NewProfile {
     #[schemars(with = "Nullable<ModelSettings>")]
     #[garde(dive)]
     pub model: Option<ModelSettings>,
-    /// Null for the user's limit; otherwise the model's full window or a
-    /// limit it offers, in tokens, which needs a model of the profile's own.
+    /// Null for the user's limit; otherwise a size up to the model's window,
+    /// the window itself being the full window, in tokens, which needs a
+    /// model of the profile's own.
     #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<u32>")]
-    #[garde(skip)]
+    #[schemars(with = "Nullable<u32>", range(min = 1))]
+    #[garde(inner(range(min = 1)))]
     pub context_limit: Option<u32>,
     /// Null for no instructions added to the product's.
     #[serde(deserialize_with = "Option::deserialize")]
@@ -177,8 +178,8 @@ pub struct ProfilePatch {
         skip_serializing_if = "Option::is_none",
         with = "double_option"
     )]
-    #[schemars(with = "Option<u32>")]
-    #[garde(skip)]
+    #[schemars(with = "Option<u32>", range(min = 1))]
+    #[garde(inner(inner(range(min = 1))))]
     pub context_limit: Option<Option<u32>>,
     #[serde(
         default,

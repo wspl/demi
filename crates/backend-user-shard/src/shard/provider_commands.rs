@@ -29,12 +29,12 @@ use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc};
 use demi_agent_tools::EFFORT_OFF;
 use demi_shared_types::{
-    AccountInfo, FileExtension, ModelSelection, ThinkingForm, WireApi, model_reads_images,
+    AccountInfo, ContextChoice, FileExtension, ModelSelection, ThinkingForm, WireApi, applied_context_limit, context_word, model_reads_images,
     output::{Cell, Fields, Table, note, warning},
 };
 use demi_web_api_protocol::ids::CredentialId;
 use demi_web_api_protocol::auth::UserDto;
-use demi_web_api_protocol::settings::HiddenModel;
+use demi_web_api_protocol::settings::{ContextLimitChange, HiddenModel, PreferencesPatch};
 use demi_web_api_protocol::error::problems;
 use demi_web_api_protocol::providers::{
     Availability, ConfiguredModel, ConfiguredModels, CreateProvider,
@@ -70,6 +70,8 @@ const SHOW_SUMMARY: &str = "Show every setting of one entry, as Settings > Provi
 const ADD_SUMMARY: &str = "Add a provider entry: --vendor, a models.dev vendor; --family alone, the family's own vendor; or --family with --wire and --base-url, a compatible API. Without --label it is named after its vendor or family, or Compatible API, with (2), (3) when that name is taken. A vendor's entry without a key joins the list incomplete until the user adds the key in Settings > Providers; a compatible API's key is optional. `edit` sets the rest. Needs the user's permission.";
 
 const EDIT_SUMMARY: &str = "Change any setting of an entry that Settings > Providers changes, by a JSON merge patch on stdin of the entry `demi providers show --json` prints: a field given takes its value, a field left out stays, a list is replaced whole, and null removes a setting `show` can print as null, such as cacheTtl or throughDevice, or the key with apiKey. A field that holds the value shown changes nothing, and what `show` prints beside the entry (status, hidden, accounts, modelsFrom, catalog) is left as it is, so the printed entry, edited, may go back whole. --api-key-stdin reads the key alone instead. Needs the user's permission.";
+
+const CONTEXT_SUMMARY: &str = "Set the context window Demi uses for one of an entry's models, in every conversation, as the model menu's Context row does: a size up to the model's window, such as 350K, 1M or 272000, which Demi compacts the conversation to fit, or full for the model's whole window, as its own size is. Needs the user's permission.";
 
 const HIDE_SUMMARY: &str = "Turn an entry, or with --model one of its models, off in the user's model menu, as Settings > Providers' Show in Model Menu does. Needs the user's permission.";
 
@@ -183,6 +185,29 @@ struct HideArgs {
     entry: String,
     /// One of the entry's models, by id; the whole entry without it.
     model: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ContextArgs {
+    entry: String,
+    /// One of the entry's models, by id.
+    model: String,
+    /// `full`, or a size up to the model's window, such as `350K`, `1M` or
+    /// `272000`; the window's own size is `full`.
+    size: String,
+}
+
+/// `context --json`: the window Demi uses for the model now.
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct ModelContext {
+    entry: String,
+    model: String,
+    /// The model's own window, in tokens.
+    window: u32,
+    /// The user's limit on it, in tokens; null for the whole window.
+    limit: Option<u32>,
 }
 
 /// An account as `accounts list` lists it.
@@ -442,6 +467,15 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .json_output::<ShownEntry>()
                 .permission(MANAGE)
                 .bind(TypedRpc::new(verb(shard.clone(), edit))),
+        )
+        .leaf(
+            LeafBuilder::rpc("context", CONTEXT_SUMMARY)
+                .input::<ContextArgs>()
+                .describe("entry", ENTRY_ARG)
+                .positionals(["entry", "model", "size"])
+                .json_output::<ModelContext>()
+                .permission(MANAGE)
+                .bind(TypedRpc::new(verb(shard.clone(), set_context))),
         )
         .leaf(
             LeafBuilder::rpc("hide", HIDE_SUMMARY)
@@ -793,6 +827,77 @@ fn changed_fields(
             }
         })
         .collect()
+}
+
+/// Stores the user's limit on a model, or removes it, as the model menu's
+/// Context row does: the same patch of the preferences, read and written
+/// in one transaction.
+async fn set_context(shard: Rc<Shard>, call: Call<ContextArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let args = call.args;
+    let user = user(&shard).await?;
+    let scope = shard.scope().await.map_err(failed)?;
+    let entry = named(&scope.entries, &args.entry).map_err(failed)?;
+    let Some(model) = scope
+        .catalog_of(entry)
+        .and_then(|catalog| catalog.models.iter().find(|offered| offered.model.id == args.model))
+    else {
+        return Err(failed(format!(
+            "{} offers no model {}; `demi providers show {}` lists its models",
+            entry.label,
+            args.model,
+            entry.id.as_str()
+        )));
+    };
+    let Some(window) = model.model.context_window else {
+        return Err(failed(format!(
+            "{}'s window is unknown, so no limit applies to it; `demi providers models edit --context` gives it one",
+            args.model
+        )));
+    };
+    let limit = match args.size.parse::<ContextChoice>().map_err(failed)? {
+        ContextChoice::Full => None,
+        ContextChoice::Default => return Err(failed("default names the user's limit, which this sets: give a size, or full")),
+        ContextChoice::Limit(tokens) if tokens > window => {
+            return Err(failed(format!(
+                "{} has a window of {}; give a size up to it, or full",
+                args.model,
+                context_word(window)
+            )));
+        }
+        ContextChoice::Limit(tokens) => applied_context_limit(window, Some(tokens)),
+    };
+    let patch = PreferencesPatch {
+        context_limit: Some(ContextLimitChange {
+            provider_id: entry.id.clone(),
+            model_id: args.model.clone(),
+            tokens: limit,
+        }),
+        ..PreferencesPatch::default()
+    };
+    let checked = demi_backend_accounts::settings::check(patch).map_err(failed)?;
+    let services = shard.services();
+    services
+        .control
+        .patch_preferences(user.id.clone(), move |saved| demi_backend_accounts::settings::merge(saved, checked))
+        .await
+        .map_err(failed)?;
+    services.sync.mark(&user.id, Part::Preferences);
+    let shown = ModelContext {
+        entry: entry.label.clone(),
+        model: args.model,
+        window,
+        limit,
+    };
+    if call.invocation.json {
+        return json(&port, &shown).await;
+    }
+    let mut fields = Fields::new();
+    fields
+        .field("Entry", shown.entry.as_str())
+        .field("Model", shown.model.as_str())
+        .field("Window", context_word(window))
+        .field("Context", limit.map_or_else(|| "full".to_owned(), context_word));
+    out(&port, fields.render()).await
 }
 
 async fn hide(shard: Rc<Shard>, call: Call<HideArgs>, port: RpcPort) -> Result<u8, RpcError> {

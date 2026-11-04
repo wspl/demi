@@ -2295,6 +2295,16 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="context · limited to 300K, with its usage">
             <GalleryContextLimit provider-id="google" model-id="gemini-pro" :used-tokens="150000" />
           </GallerySpecimen>
+          <GalleryOverlayWell size="wide">
+            <GallerySpecimen variant="context · 1M model limited to 350K by a command: one more item, checked">
+              <GalleryContextLimit provider-id="openai" model-id="gpt-wide" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell size="wide">
+            <GallerySpecimen variant="context · 1,048,576 model limited to 1,000,000: both read whole, as 1M would name both">
+              <GalleryContextLimit provider-id="google" model-id="gemini-flash" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
         </div>
       </GallerySection>
 

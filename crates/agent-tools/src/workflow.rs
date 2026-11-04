@@ -54,7 +54,7 @@ Fields:
     provider      The provider entry that serves the model, by its name as demi providers list shows it, or its id when several share the name. Optional: without it, the first of the user's entries that offers the model serves it; needs model.
     effort        An effort the model lists, or off for no thinking. Optional, the model's first effort by default; needs model.
     tier          A service tier the model offers, such as fast. Optional, the vendor's default tier by default; needs model.
-    context       The context window its children use: full, 500K, 300K or 200K, as the model offers them, or default for the user's context limit on the model. Optional, default by default; any but default needs model.
+    context       The context window its children use: full, a size up to the model's window such as 350K, 1M or 272000, or default for the user's context limit on the model. Optional, default by default; any but default needs model.
 
 A workflow sets no limits: how many subagents run at once and how deep they go stay the user's Settings > Subagents. Check a file you wrote or changed with demi agent workflows check <file> before you report it.
 

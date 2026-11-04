@@ -129,7 +129,7 @@ pub use failure::{
 pub use idle_compaction::{IDLE_COMPACTION_CONTEXT, IDLE_COMPACTION_CONTEXT_FLOOR};
 pub use context_limit::{
     CONTEXT_LIMIT_STEPS, ContextChoice, ContextLimitStep, ContextWordError, applied_context_limit,
-    context_limits, context_word, effective_context_window, is_context_limit, offered_contexts,
+    context_limits, context_word, effective_context_window,
     offers_context, session_context_window,
 };
 pub use file_types::{

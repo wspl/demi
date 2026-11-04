@@ -8,9 +8,15 @@ import { demoModels } from './catalog'
  * The gallery's stand-in for the user's context limits, which the product
  * keeps in the user's preferences: one store for every specimen, so a limit
  * set in one shows in each specimen with that model, as it reaches each of
- * the user's conversations with it. Gemini starts limited to 300K.
+ * the user's conversations with it. Gemini Pro starts limited to 300K; GPT
+ * Wide to 350K and Gemini Flash to 1,000,000, sizes the menu doesn't offer
+ * that a command stored.
  */
-const limits = reactive(new Map<string, number>([['google/gemini-pro', 300_000]]))
+const limits = reactive(new Map<string, number>([
+  ['google/gemini-pro', 300_000],
+  ['openai/gpt-wide', 350_000],
+  ['google/gemini-flash', 1_000_000],
+]))
 
 function key(providerId: string, modelId: string): string {
   return `${providerId}/${modelId}`
@@ -70,6 +76,6 @@ export const contextLimitModels: Record<string, ModelInfo[]> = {
     model('claude-haiku', 'Claude Haiku', 200_000),
     model('claude-opus', 'Claude Opus', 1_000_000),
   ],
-  openai: [model('gpt-long', 'GPT Long', 500_000)],
-  google: [model('gemini-pro', 'Gemini Pro', 1_048_576)],
+  openai: [model('gpt-long', 'GPT Long', 500_000), model('gpt-wide', 'GPT Wide', 1_000_000)],
+  google: [model('gemini-pro', 'Gemini Pro', 1_048_576), model('gemini-flash', 'Gemini Flash', 1_048_576)],
 }
