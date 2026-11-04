@@ -1135,7 +1135,10 @@ CREATE TABLE integration_conversations (
   identity        TEXT,
   -- The roots of the integration's declaration its agents have, a JSON
   -- array of names; none for every one.
-  commands        TEXT
+  commands        TEXT,
+  -- The browser profile its browser runs on, a directory's name; none for
+  -- the conversation's own.
+  browser_profile TEXT
 ) STRICT;
 CREATE UNIQUE INDEX integration_conversations_by_key
   ON integration_conversations (integration_id, external_key) WHERE external_key IS NOT NULL;

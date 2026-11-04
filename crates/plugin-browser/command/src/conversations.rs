@@ -11,13 +11,21 @@
 //!   conversations ............. finds each invocation's conversation browser
 //!    `-- conversation browser . one per conversation: absent | starting |
 //!          |                    ready | closing; admits commands, runs release
-//!          `-- Chrome environment: process tree, profile, CDP event pump
-//!                |-- tab registry ..... tabs, handles, openers; snapshot
-//!                |-- capture channel .. the capture extension's connection
-//!                |-- live hub ......... viewers, captures, screen, viewports
+//!          `-- environment ......... on its profile's Chrome: process tree,
+//!                |                   profile, CDP event pump, capture channel,
+//!                |                   screen; shared by the profile's
+//!                |                   conversations
+//!                |-- tab registry ..... its tabs, handles, openers; snapshot
+//!                |-- live hub ......... viewers, captures, viewports
 //!                `-- each tab ......... operation lock and its session; debug
 //!                                       connections; console; open dialog
 //! ```
+//!
+//! A conversation's browser runs on the profile its commands name, which
+//! other conversations on the Host may name too, or on one of its own. When
+//! a command names another profile than the browser runs on, the owner
+//! retires that browser, its tabs closing, before it answers, and the next
+//! starts on the profile named.
 //!
 //! Each piece of state has one owner task; others send requests or read its
 //! snapshot. Every task started for an environment belongs to it, and
@@ -35,8 +43,9 @@
 //!   release cancels the commands that run (`cancelled`) before it retires. A
 //!   command still running when another closes the last tab fails with
 //!   `browser_lost`. No tab is restored: the next `tab.new` starts a browser
-//!   with none. The conversation's profile stays, so its sign-ins, cookies and
-//!   site storage carry over to the next browser.
+//!   with none. The profile stays, so its sign-ins, cookies and site storage
+//!   carry over to the next browser. Its Chrome stops with the last
+//!   conversation's browser on it.
 //! - A failed cleanup keeps another environment from starting over the
 //!   unresolved owner. After a completed one the next `tab.new` may start a
 //!   fresh browser.
@@ -65,7 +74,7 @@ use demi_command_package_browser_chrome::driver::{
 };
 use demi_command_package_browser_chrome::page::actions::TabResult;
 use demi_command_package_browser_chrome::tabs::{
-    environment::{BrowserEnvironment, LaunchOptions, with_browser},
+    environment::{BrowserEnvironment, LaunchOptions, ProfileBrowsers, with_browser},
     registry::Closed,
 };
 use demi_command_package_browser_chrome::tabs::registry::Snapshot;
@@ -134,6 +143,11 @@ enum Lifecycle {
 
 /// One conversation's browser, as its invocations reach it.
 struct ConversationBrowser {
+    /// The profile its next Chrome runs on: the conversation's own, or the
+    /// one its commands name, which every conversation naming it on the
+    /// Host shares. Its owner retires a browser on another profile before it
+    /// answers a command.
+    profile: Arc<std::sync::Mutex<std::path::PathBuf>>,
     requests: mpsc::Sender<Request>,
     lifecycle: watch::Receiver<Lifecycle>,
     /// Cancelled when the conversation's release arrives.
@@ -188,6 +202,7 @@ impl ConversationBrowser {
     fn start(
         tasks: &TaskTracker,
         chrome: Chrome,
+        browsers: ProfileBrowsers,
         conversation: String,
         profile: std::path::PathBuf,
         numbers: TabNumbers,
@@ -197,10 +212,12 @@ impl ConversationBrowser {
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let (published, lifecycle) = watch::channel(Lifecycle::Absent);
         let cancellation = CancellationToken::new();
+        let profile = Arc::new(std::sync::Mutex::new(profile));
         let owner = Owner {
             state: State::Absent,
             chrome,
-            profile,
+            browsers,
+            profile: profile.clone(),
             numbers: numbers.clone(),
             published,
             released: cancellation.clone(),
@@ -218,6 +235,7 @@ impl ConversationBrowser {
             .instrument(span),
         );
         let browser = Arc::new(Self {
+            profile,
             requests,
             lifecycle,
             cancellation,
@@ -355,8 +373,11 @@ impl ConversationBrowser {
 struct Owner {
     state: State,
     chrome: Chrome,
-    /// The conversation's profile, which every browser it starts runs on.
-    profile: std::path::PathBuf,
+    /// The resident's Chromes, one per profile.
+    browsers: ProfileBrowsers,
+    /// The profile the next browser runs on, which the conversation's
+    /// commands set.
+    profile: Arc<std::sync::Mutex<std::path::PathBuf>>,
     /// The conversation's tab numbers, which outlast each browser.
     numbers: TabNumbers,
     published: watch::Sender<Lifecycle>,
@@ -376,6 +397,8 @@ enum State {
 }
 
 struct Running {
+    /// The profile it runs on.
+    profile: std::path::PathBuf,
     ready: watch::Receiver<Readiness>,
     stop: CancellationToken,
     task: JoinHandle<Result<()>>,
@@ -527,8 +550,13 @@ impl Owner {
         &mut self,
         start: Option<Starting>,
     ) -> Result<Option<watch::Receiver<Readiness>>> {
+        let profile = self.profile.lock().expect("the profile is intact").clone();
         if let State::Running(running) = &self.state
-            && (running.task.is_finished() || (start.is_some() && running.leaving()))
+            && (running.task.is_finished()
+                || (start.is_some() && running.leaving())
+                // The conversation names another profile now: its tabs on
+                // the one before close, as a release closes them.
+                || running.profile != profile)
         {
             // A browser that ended, or one on its way out when an open
             // starts the next, is joined first: a failed cleanup must not
@@ -571,7 +599,9 @@ impl Owner {
         let stop = CancellationToken::new();
         let (publish, ready) = watch::channel(None);
         let chrome = self.chrome.clone();
-        let profile = self.profile.clone();
+        let browsers = self.browsers.clone();
+        let profile = self.profile.lock().expect("the profile is intact").clone();
+        let running_profile = profile.clone();
         let numbers = self.numbers.clone();
         let owner_stop = stop.clone();
         let task = self.tasks.spawn_traced(async move {
@@ -581,6 +611,7 @@ impl Owner {
                 let installation = chrome.installation().await?;
                 demi_command_package_browser_chrome::tabs::environment::swept(&chrome).await;
                 with_browser(
+                    &browsers,
                     LaunchOptions::pinned(installation, profile, starting.locale, starting.color_scheme)?,
                     numbers,
                     owner_stop.clone(),
@@ -624,6 +655,7 @@ impl Owner {
             result
         });
         self.state = State::Running(Running {
+            profile: running_profile,
             ready: ready.clone(),
             stop,
             task,
@@ -777,9 +809,13 @@ impl demi_command_package_browser_chrome::live::viewer::ViewedBrowser for Conver
 
 /// Requests to the conversations' owner.
 enum Find {
-    /// The conversation's browser, made on first use.
+    /// The conversation's browser, made on first use. A command names the
+    /// profile the conversation names now, if any: a browser on another
+    /// profile is released, its tabs closing, and a new one made. A stream
+    /// names none and takes the browser the conversation has.
     Admit {
         conversation: String,
+        profile: Option<Option<String>>,
         reply: oneshot::Sender<Arc<ConversationBrowser>>,
     },
     /// The conversation's browser, if it has one.
@@ -905,6 +941,8 @@ struct Kept {
     /// installation.
     scratch_root: Option<std::path::PathBuf>,
     codec: Arc<dyn Codec>,
+    /// The home of the Host's user, where named browser profiles are.
+    user_home: Option<std::path::PathBuf>,
 }
 
 impl Kept {
@@ -915,8 +953,17 @@ impl Kept {
         ))
     }
 
-    fn profile(&self, conversation: &str) -> std::path::PathBuf {
-        demi_command_protocol::browser_profile_directory(self.scratch_root.as_deref(), conversation)
+    /// The profile `named`, in the user's home, or the conversation's own
+    /// without a name or a home.
+    fn profile(&self, conversation: &str, named: Option<&str>) -> std::path::PathBuf {
+        match (named, &self.user_home) {
+            (Some(name), Some(home)) => demi_command_protocol::named_browser_profile(home, name),
+            (Some(name), None) => {
+                tracing::warn!(event = "browser_profile.no_home", profile = name, "the conversation's browser runs on its own profile: the Host's user has no home for the profile it names");
+                demi_command_protocol::browser_profile_directory(self.scratch_root.as_deref(), conversation)
+            }
+            (None, _) => demi_command_protocol::browser_profile_directory(self.scratch_root.as_deref(), conversation),
+        }
     }
 }
 
@@ -932,23 +979,31 @@ async fn serve(
     kept: Kept,
 ) {
     let mut browsers: HashMap<String, Arc<ConversationBrowser>> = HashMap::new();
+    let profiles = ProfileBrowsers::default();
     // A requester that left needs no answer.
     while let Some(request) = requests.recv().await {
         match request {
             Find::Admit {
                 conversation,
+                profile,
                 reply,
             } => {
+                let profile = profile.map(|named| kept.profile(&conversation, named.as_deref()));
                 let browser = browsers
                     .entry(conversation.clone())
                     .or_insert_with(|| {
                         let tabs =
                             TabNumbers::from_source(numbers.borrow().clone(), conversation.clone());
                         let library = kept.library(&conversation);
-                        let profile = kept.profile(&conversation);
-                        ConversationBrowser::start(&tasks, chrome.clone(), conversation, profile, tabs, messages.clone(), library)
+                        let profile = profile.clone().unwrap_or_else(|| kept.profile(&conversation, None));
+                        ConversationBrowser::start(&tasks, chrome.clone(), profiles.clone(), conversation, profile, tabs, messages.clone(), library)
                     })
                     .clone();
+                // A command names the profile the conversation names now;
+                // the browser's owner moves to it before it answers.
+                if let Some(profile) = profile {
+                    *browser.profile.lock().expect("the profile is intact") = profile;
+                }
                 let _gone = reply.send(browser);
             }
             Find::Lookup {
@@ -993,7 +1048,11 @@ impl Conversations {
         let tasks = TaskTracker::new();
         let (numbers, source) = watch::channel(None);
         let (messages, sender) = watch::channel(None);
-        let kept = Kept { scratch_root, codec };
+        let kept = Kept {
+            scratch_root,
+            codec,
+            user_home: std::env::home_dir(),
+        };
         tasks.spawn_traced(serve(receiver, tasks.clone(), chrome.clone(), source, sender, kept));
         Self {
             requests,
@@ -1029,7 +1088,8 @@ impl Conversations {
         context: InvocationContext,
         operation: std::result::Result<BrowserOperation, OperationError>,
     ) -> std::result::Result<Completion, ResidentError> {
-        let (browser, _command) = self.admit(&context).await?;
+        let profile = Some(context.request.context.browser_profile.clone());
+        let (browser, _command) = self.admit(&context, profile).await?;
         let cancellation = context.cancellation.clone();
         let work = self.invoke_admitted(&browser, context, operation);
         tokio::pin!(work);
@@ -1052,7 +1112,10 @@ impl Conversations {
         context: InvocationContext,
         scope: LiveInput,
     ) -> std::result::Result<Completion, ResidentError> {
-        let (browser, _command) = self.admit(&context).await?;
+        // A view that reaches the runner directly carries no profile: it
+        // takes the browser the conversation's commands started.
+        let profile = context.request.context.browser_profile.clone().map(Some);
+        let (browser, _command) = self.admit(&context, profile).await?;
         demi_command_package_browser_chrome::live::viewer::serve(browser, context, scope).await
     }
 
@@ -1062,11 +1125,13 @@ impl Conversations {
     async fn admit(
         &self,
         context: &InvocationContext,
+        profile: Option<Option<String>>,
     ) -> std::result::Result<(Arc<ConversationBrowser>, TaskTrackerToken), ResidentError> {
         let conversation = context.request.context.conversation.clone();
         let browser = self
             .ask(|reply| Find::Admit {
                 conversation,
+                profile,
                 reply,
             })
             .await

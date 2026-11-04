@@ -342,6 +342,9 @@ impl Operations for HostOperations {
                     caller: CommandCaller::User {},
                     locale: request.introduction.locale.clone(),
                     color_scheme: request.introduction.color_scheme,
+                    // A stream reaches what the conversation's commands
+                    // started, and starts no browser.
+                    browser_profile: None,
                 },
                 package: request.binding.package,
                 operation: request.binding.operation,

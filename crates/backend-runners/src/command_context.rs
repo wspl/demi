@@ -28,7 +28,9 @@ pub async fn command_context(
     conversation: &ConversationId,
     caller: CommandCaller,
 ) -> Result<CommandContext, StorageError> {
-    context(control, user, conversation.to_string(), caller).await
+    let mut context = context(control, user, conversation.to_string(), caller).await?;
+    context.browser_profile = control.browser_profile(conversation.clone()).await?;
+    Ok(context)
 }
 
 /// The context of `user`'s work for the provider entry `provider` that
@@ -73,6 +75,7 @@ async fn context(
         caller,
         locale,
         color_scheme,
+        browser_profile: None,
     })
 }
 

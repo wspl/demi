@@ -316,6 +316,21 @@ pub struct CreateConversation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(skip)]
     pub commands: Option<Vec<String>>,
+    /// The browser profile its browser runs on, such as `"alex"`: the
+    /// directory `~/.demi/browser-profiles/alex` on its Host, which every
+    /// conversation naming it there shares, sign-ins included. None gives it
+    /// a profile of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(custom(profile_name)))]
+    pub browser_profile: Option<String>,
+}
+
+/// A browser profile's name is one directory's.
+fn profile_name(name: &str, _: &()) -> garde::Result {
+    if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0']) {
+        return Err(garde::Error::new("a browser profile is named by one directory name"));
+    }
+    Ok(())
 }
 
 /// `PATCH /conversations/:id`: moves it to another Cloud or directory while
@@ -359,6 +374,13 @@ pub struct ConversationPatch {
     #[schemars(with = "Option<Vec<String>>")]
     #[garde(skip)]
     pub commands: Option<Option<Vec<String>>>,
+    /// Its browser profile, as `CreateConversation` names it; null for its
+    /// own. Its next browser command closes the tabs it has on the profile
+    /// before and works on this one.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[schemars(with = "Option<String>")]
+    #[garde(inner(inner(custom(profile_name))))]
+    pub browser_profile: Option<Option<String>>,
 }
 
 /// `GET /conversations?key=&limit=&after=`: a page of the integration's

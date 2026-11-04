@@ -75,6 +75,9 @@ pub struct IntegrationConversation {
     /// The roots of the integration's declaration its agents have; none for
     /// every one.
     pub commands: Option<Vec<String>>,
+    /// The browser profile its browser runs on; none for the conversation's
+    /// own.
+    pub browser_profile: Option<String>,
 }
 
 /// One of an integration's Clouds.
@@ -301,15 +304,16 @@ impl ControlService {
         self.call(move |connection, _| {
             let inserted = connection.execute(
                 "INSERT INTO integration_conversations
-                   (conversation_id, integration_id, external_key, workflow, identity, commands)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT DO NOTHING",
+                   (conversation_id, integration_id, external_key, workflow, identity, commands, browser_profile)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT DO NOTHING",
                 params![
                     record.conversation.as_str(),
                     record.integration.as_str(),
                     record.key,
                     record.workflow,
                     record.identity,
-                    commands_text(record.commands.as_deref())
+                    commands_text(record.commands.as_deref()),
+                    record.browser_profile
                 ],
             )?;
             if inserted == 1 {
@@ -327,7 +331,7 @@ impl ControlService {
     ) -> Result<Vec<IntegrationConversation>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(
-                "SELECT i.conversation_id, i.integration_id, i.external_key, i.workflow, i.identity, i.commands
+                "SELECT i.conversation_id, i.integration_id, i.external_key, i.workflow, i.identity, i.commands, i.browser_profile
                  FROM integration_conversations i JOIN conversations c ON c.id = i.conversation_id
                  WHERE i.integration_id = ?1 ORDER BY c.created_at DESC, c.id",
             )?;
@@ -352,7 +356,7 @@ impl ControlService {
     ) -> Result<Vec<(IntegrationConversation, Timestamp)>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(
-                "SELECT i.conversation_id, i.integration_id, i.external_key, i.workflow, i.identity, i.commands, c.created_at
+                "SELECT i.conversation_id, i.integration_id, i.external_key, i.workflow, i.identity, i.commands, i.browser_profile, c.created_at
                  FROM integration_conversations i JOIN conversations c ON c.id = i.conversation_id
                  WHERE i.integration_id = ?1
                    AND (?2 IS NULL OR c.created_at < ?2 OR (c.created_at = ?2 AND c.id > ?3))
@@ -365,7 +369,7 @@ impl ControlService {
             let mut rows = statement.query(params![integration.as_str(), at, id, limit])?;
             let mut page = Vec::new();
             while let Some(row) = rows.next()? {
-                let created = decode("conversations", "created_at", Timestamp::from_millisecond(row.get(6)?))?;
+                let created = decode("conversations", "created_at", Timestamp::from_millisecond(row.get(7)?))?;
                 page.push((integration_conversation_row(row)?, created));
             }
             Ok(page)
@@ -393,6 +397,34 @@ impl ControlService {
                 "UPDATE integration_conversations SET identity = ?2 WHERE conversation_id = ?1",
                 params![id.as_str(), identity],
             )? == 1)
+        })
+        .await
+    }
+
+    /// Replaces the browser profile of the integration's conversation `id`,
+    /// or none for the conversation's own; false when it is no integration's.
+    pub async fn set_integration_browser_profile(&self, id: ConversationId, profile: Option<String>) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            Ok(connection.execute(
+                "UPDATE integration_conversations SET browser_profile = ?2 WHERE conversation_id = ?1",
+                params![id.as_str(), profile],
+            )? == 1)
+        })
+        .await
+    }
+
+    /// The browser profile the conversation `id` names; none for a
+    /// conversation with its own, an integration's or the user's.
+    pub async fn browser_profile(&self, id: ConversationId) -> Result<Option<String>, StorageError> {
+        self.call(move |connection, _| {
+            Ok(connection
+                .query_row(
+                    "SELECT browser_profile FROM integration_conversations WHERE conversation_id = ?1",
+                    [id.as_str()],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten())
         })
         .await
     }
@@ -454,7 +486,7 @@ impl ControlService {
         self.call(move |connection, _| {
             Ok(connection
                 .query_row(
-                    "SELECT conversation_id, integration_id, external_key, workflow, identity, commands
+                    "SELECT conversation_id, integration_id, external_key, workflow, identity, commands, browser_profile
                      FROM integration_conversations WHERE conversation_id = ?1",
                     [id.as_str()],
                     |row| Ok(integration_conversation_row(row)),
@@ -762,6 +794,7 @@ fn integration_conversation_row(row: &Row<'_>) -> Result<IntegrationConversation
             .get::<_, Option<String>>(5)?
             .map(|text| decode(TABLE, "commands", serde_json::from_str(&text)))
             .transpose()?,
+        browser_profile: row.get(6)?,
     })
 }
 

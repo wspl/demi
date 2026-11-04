@@ -240,5 +240,6 @@ fn context() -> CommandContext {
             time_zone: "UTC".into(),
             languages: vec!["en-US".into()],
         },
+        browser_profile: None,
     }
 }

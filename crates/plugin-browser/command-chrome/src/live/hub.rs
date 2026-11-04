@@ -133,6 +133,7 @@ impl Hub {
         let tasks = environment.tasks().clone();
         let operations = Arc::new(Operations::default());
         let owner = Owner {
+            environment: environment.clone(),
             operations: operations.clone(),
             captures: environment.captures().clone(),
             opening: environment.opening.clone(),
@@ -304,6 +305,8 @@ struct Viewer {
 type Departure = Pin<Box<dyn Future<Output = u64> + Send>>;
 
 struct Owner {
+    /// Whose Chrome's screen the hub asks for.
+    environment: BrowserEnvironment,
     operations: Arc<Operations>,
     captures: CaptureChannel,
     /// Where the hub says what size a tab the user opens takes.
@@ -314,7 +317,8 @@ struct Owner {
     /// The viewer that operated most recently, whose screen the browser's is.
     driver: Option<u64>,
     streams: HashMap<TabId, StreamHandle>,
-    /// The screen last set.
+    /// The screen last asked for; the Chrome's is the largest any of its
+    /// environments asks for.
     screen: Option<Screen>,
     /// A layout is due once the requests at hand are handled.
     due: bool,
@@ -584,7 +588,7 @@ impl Owner {
             && self.screen != Some(desired)
             && let Some((tab, _)) = tabs.first()
         {
-            match tab.update_screen(desired).await {
+            match self.environment.set_screen(tab, desired).await {
                 Ok(()) => self.screen = Some(desired),
                 Err(error) => {
                     tracing::warn!(event = "live_view.step_failed", step = "screen", %error, "a step of the live view failed");

@@ -1,11 +1,17 @@
-//! One conversation browser's environment: the Chrome process tree, its event
-//! task, its directories and the tab registry, from launch to retirement.
+//! A profile's Chrome and the environments of the conversations that use it.
+//!
+//! One Chrome runs on a profile, with its process tree, its event task and
+//! its directories, from the start of its first environment to the end of
+//! its last. Each conversation whose browser runs on the profile has an
+//! environment on it: its tab registry, its recordings and its live view,
+//! which see only its own tabs.
 //!
 //! ```text
 //! /tmp/demi-browser-a1B2c3/                 the runtime directory
-//!   demi-profile.lock                       the environment's lock
+//!   demi-profile.lock                       the Chrome's lock
 //!   org.chromium.Chromium.d4E5f6/SingletonSocket
-//! <scratch>/<conversation>/.browser/        the conversation's profile
+//! <scratch>/<conversation>/.browser/        a conversation's own profile
+//! ~/.demi/browser-profiles/alex/            a profile conversations name
 //!   profile.lock                            held while a Chrome runs on it
 //!   downloads/  uploads/                    emptied when that Chrome stops
 //! ```
@@ -15,12 +21,14 @@
 //! - The runtime directory is Chrome's temporary directory. Its singleton
 //!   socket's path has a limit (108 bytes on Linux), so it lives in the short
 //!   `/tmp`, not in the resident's `TMPDIR`, which can be any length.
-//! - The profile is the conversation's, in its scratch directory
-//!   (`demi_command_protocol::browser_profile_directory`): every Chrome the
-//!   conversation starts on this Host runs on it, so its sign-ins outlast a
-//!   crash, the last tab closing and a release. The runner removes it when the
-//!   conversation is archived or deleted (`crates/runner-jobs/src/scratch.rs`).
-//!   Retirement keeps it.
+//! - A profile is a conversation's own, in its scratch directory
+//!   (`demi_command_protocol::browser_profile_directory`), or one that
+//!   conversations name, in the user's home
+//!   (`demi_command_protocol::named_browser_profile`). Every Chrome started on
+//!   it runs on it, so its sign-ins outlast a crash, the last tab closing and a
+//!   release. The runner removes a conversation's own when the conversation is
+//!   archived or deleted (`crates/runner-jobs/src/scratch.rs`); a named one
+//!   stays. Retirement keeps both.
 //! - A drawing's Chrome runs on a temporary profile instead, on disk (`TMPDIR`
 //!   when absolute, else `/var/tmp`), never a memory-backed `/tmp`: the
 //!   Cloud's is 256 MiB of its memory. Its runtime directory links to it, and
@@ -56,11 +64,15 @@
 //!   resident finds either no lock or a held one.
 
 use std::{
+    collections::HashMap,
     future::Future,
     io,
     ops::Deref,
     path::{Path, PathBuf},
-    sync::{Arc, Weak},
+    sync::{
+        Arc, Weak,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
@@ -86,6 +98,7 @@ use crate::tabs::{
     protocol::{BrowserCreatedBy, BrowserViewport, TabId},
     registry::{self, Hold, Snapshot, Tabs},
     tab::BrowserTab,
+    viewport::Screen,
 };
 
 /// Chrome answers a browser call within this, or chromiumoxide fails the
@@ -513,8 +526,13 @@ impl LaunchOptions {
     }
 }
 
+/// One conversation's environment on its profile's Chrome: its tabs, its
+/// recordings and what its live view shows, from its start to its end.
 #[derive(Clone)]
 pub struct BrowserEnvironment {
+    /// Tells it from the other environments of its Chrome, and from the
+    /// conversation's environments before it.
+    number: u64,
     pub(crate) browser: BrowserHandle,
     pub(crate) ended: CancellationToken,
     tabs: Tabs,
@@ -540,14 +558,49 @@ pub struct BrowserEnvironment {
     /// Cancelled once another resident asked for the profile: its owner
     /// retires the browser.
     handoff: CancellationToken,
+    /// The virtual screen its Chrome's windows share.
+    screens: Arc<tokio::sync::Mutex<Screens>>,
 }
 
-/// Own Chrome, its event task and its directories until the conversation work ends;
-/// the tabs take their public IDs from `numbers`.
-/// Completion, failure and owner cancellation share the same joined cleanup path.
-/// Cancel through `stop` and await this owner. On abrupt future disposal the child
-/// has kill-on-drop protection; weak session handles cannot keep Chrome alive.
+/// The Chromes this resident runs, one per profile directory: every
+/// conversation whose browser runs on a profile shares that profile's Chrome,
+/// each through an environment of its own.
+#[derive(Clone, Default)]
+pub struct ProfileBrowsers {
+    slots: Arc<std::sync::Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<Slot>>>>>,
+    /// Numbers each environment, so two of one Chrome are told apart.
+    environments: Arc<AtomicU64>,
+}
+
+/// A profile's Chrome while one runs, and how many environments it serves.
+#[derive(Default)]
+struct Slot {
+    running: Option<(Arc<SharedChrome>, usize)>,
+}
+
+impl ProfileBrowsers {
+    fn slot(&self, profile: &Path) -> Arc<tokio::sync::Mutex<Slot>> {
+        self.slots
+            .lock()
+            .expect("the profiles' slots are intact")
+            .entry(profile.to_owned())
+            .or_default()
+            .clone()
+    }
+}
+
+/// Runs `work` on an environment of the Chrome of `options`' profile, which
+/// starts when no environment holds it and retires when the last one ends;
+/// the environment's tabs take their public IDs from `numbers`.
+///
+/// Completion, failure and cancellation through `stop` share one joined
+/// cleanup path: the environment's tabs close, unless its Chrome ends with
+/// it, and its tasks and calls end. A Chrome that is ending, lost or asked
+/// for its profile by another resident, takes no new environment: the next
+/// starts once it retired. On abrupt future disposal the child has
+/// kill-on-drop protection; weak session handles cannot keep Chrome alive.
 pub async fn with_browser<T, F, W>(
+    browsers: &ProfileBrowsers,
     options: LaunchOptions,
     numbers: TabNumbers,
     stop: CancellationToken,
@@ -557,6 +610,310 @@ where
     F: FnOnce(BrowserEnvironment) -> W,
     W: Future<Output = Result<T>>,
 {
+    let slot = browsers.slot(&options.profile);
+    let chrome = loop {
+        let mut held = tokio::select! {
+            _ = stop.cancelled() => return Err(BrowserError::Cancelled),
+            held = slot.lock() => held,
+        };
+        match &mut held.running {
+            Some((chrome, environments)) if !chrome.leaving() => {
+                *environments += 1;
+                break chrome.clone();
+            }
+            Some((chrome, _)) => {
+                let retired = chrome.retired.clone();
+                drop(held);
+                tokio::select! {
+                    _ = stop.cancelled() => return Err(BrowserError::Cancelled),
+                    _ = retired.cancelled() => {}
+                }
+            }
+            None => {
+                let chrome = Arc::new(launch(options, &stop).await?);
+                held.running = Some((chrome.clone(), 1));
+                break chrome;
+            }
+        }
+    };
+    let number = browsers.environments.fetch_add(1, Ordering::Relaxed);
+    // Leaves the Chrome however this future ends, a panic of `work` included.
+    let mut leaving = Leaving {
+        slot: Some(slot),
+        chrome: chrome.clone(),
+    };
+    let outcome = chrome.serve(number, numbers, &stop, work).await;
+    let cleanup = leaving.leave().await;
+    after_cleanup(outcome, cleanup)
+}
+
+/// An environment's hold on its Chrome, which it gives up as it ends.
+struct Leaving {
+    /// None once given up.
+    slot: Option<Arc<tokio::sync::Mutex<Slot>>>,
+    chrome: Arc<SharedChrome>,
+}
+
+impl Leaving {
+    /// Gives up the hold; the last one retires the Chrome while it holds the
+    /// slot, so the next environment's Chrome starts on the profile only
+    /// once this one let it go.
+    async fn leave(&mut self) -> Result<()> {
+        let Some(slot) = self.slot.take() else { return Ok(()) };
+        leave(&slot, &self.chrome).await
+    }
+}
+
+impl Drop for Leaving {
+    fn drop(&mut self) {
+        if let Some(slot) = self.slot.take() {
+            let chrome = self.chrome.clone();
+            tokio::spawn(async move {
+                if let Err(error) = leave(&slot, &chrome).await {
+                    tracing::warn!(event = "browser_cleanup.failed", %error, "a profile's Chrome did not finish its cleanup");
+                }
+            });
+        }
+    }
+}
+
+async fn leave(slot: &tokio::sync::Mutex<Slot>, chrome: &Arc<SharedChrome>) -> Result<()> {
+    let mut held = slot.lock().await;
+    let last = match &mut held.running {
+        Some((current, environments)) if Arc::ptr_eq(current, chrome) => {
+            *environments -= 1;
+            *environments == 0
+        }
+        _ => false,
+    };
+    if !last {
+        return Ok(());
+    }
+    held.running = None;
+    chrome.retire().await
+}
+
+/// A Chrome on a profile, which the environments of the conversations that
+/// use the profile share: its process, its connection and event pump, its
+/// capture extension, its downloads and uploads, and the virtual screen its
+/// windows share.
+struct SharedChrome {
+    /// A handle for the Chrome's own calls, such as the capture extension's
+    /// reload.
+    handle: BrowserHandle,
+    ended: CancellationToken,
+    failure: watch::Sender<Option<String>>,
+    /// The Chrome's own tasks: the capture server and the handoff watch.
+    observers: TaskTracker,
+    captures: CaptureChannel,
+    handoff: CancellationToken,
+    download_directory: PathBuf,
+    upload_directory: PathBuf,
+    screens: Arc<tokio::sync::Mutex<Screens>>,
+    /// What retirement takes back: none once it did.
+    retirement: std::sync::Mutex<Option<Retirement>>,
+    /// Cancelled once the Chrome is gone and its profile let go.
+    retired: CancellationToken,
+    _end_on_drop: tokio_util::sync::DropGuard,
+}
+
+/// What a Chrome's retirement ends.
+struct Retirement {
+    browser: Arc<Browser>,
+    pump: AbortOnDropHandle<chromiumoxide::Result<()>>,
+    process: ChromeProcess,
+    directories: EnvironmentDirectories,
+}
+
+/// The virtual screen of a Chrome's windows: one for all of them
+/// (`Emulation.updateScreen`), which each environment's live view asks for.
+#[derive(Default)]
+pub(crate) struct Screens {
+    applied: Option<Screen>,
+    /// Each environment's latest ask.
+    wanted: HashMap<u64, Screen>,
+}
+
+impl Screens {
+    /// The largest size any environment asks for, at the highest ratio any
+    /// asked for or the screen had: the ratio only rises, since Chrome keeps
+    /// painting a cross-site frame at the old scale when it falls.
+    fn merged(&self) -> Option<Screen> {
+        let mut merged: Option<Screen> = None;
+        for screen in self.wanted.values() {
+            merged = Some(match merged {
+                None => *screen,
+                Some(other) => Screen {
+                    width: other.width.max(screen.width),
+                    height: other.height.max(screen.height),
+                    ratio: other.ratio.max(screen.ratio),
+                },
+            });
+        }
+        merged.map(|mut screen| {
+            if let Some(applied) = self.applied {
+                screen.ratio = screen.ratio.max(applied.ratio);
+            }
+            screen
+        })
+    }
+}
+
+impl SharedChrome {
+    /// Whether it takes no new environment: lost, ending, or asked for its
+    /// profile.
+    fn leaving(&self) -> bool {
+        self.ended.is_cancelled() || self.handoff.is_cancelled()
+    }
+
+    /// Runs `work` on an environment of this Chrome numbered `number`, then
+    /// closes the environment's tabs while the Chrome runs on and ends its
+    /// tasks and calls.
+    async fn serve<T, F, W>(&self, number: u64, numbers: TabNumbers, stop: &CancellationToken, work: F) -> Result<T>
+    where
+        F: FnOnce(BrowserEnvironment) -> W,
+        W: Future<Output = Result<T>>,
+    {
+        let ended = self.ended.child_token();
+        let calls = TaskTracker::new();
+        let handle = BrowserHandle {
+            browser: self.handle.browser.clone(),
+            calls: calls.clone(),
+            ended: ended.clone(),
+        };
+        let tasks = TaskTracker::new();
+        let recordings = Recordings::default();
+        let changes = numbers.browser_changes();
+        let mut registry = None;
+        let outcome = tokio::select! {
+            biased;
+            _ = stop.cancelled() => Err(BrowserError::Cancelled),
+            _ = self.ended.cancelled() => Err(self.failure.borrow().clone().map(BrowserError::Connection).unwrap_or(BrowserError::Closed)),
+            result = async {
+                // Subscribed before any caller can create a target: Chrome may
+                // leave a popup's opener out of later target information once
+                // the opener closed.
+                let (opening, opened) = watch::channel(None);
+                let tabs = registry::start(
+                    handle.clone(),
+                    numbers,
+                    ended.clone(),
+                    &tasks,
+                    self.failure.clone(),
+                    changes.clone(),
+                    opened,
+                )
+                .await?;
+                registry = Some(tabs.clone());
+                let environment = BrowserEnvironment {
+                    number,
+                    browser: handle.clone(),
+                    ended: ended.clone(),
+                    tabs,
+                    report_failure: self.failure.clone(),
+                    tasks: tasks.clone(),
+                    recordings: recordings.clone(),
+                    download_directory: self.download_directory.clone(),
+                    upload_directory: self.upload_directory.clone(),
+                    captures: self.captures.clone(),
+                    changes,
+                    opening,
+                    handoff: self.handoff.clone(),
+                    screens: self.screens.clone(),
+                };
+                work(environment).await
+            } => result,
+        };
+        // The recordings end first, while the browser still answers: each
+        // takes what the capture extension holds, and its files are complete
+        // before the environment goes, whatever ends it.
+        recordings.finish().await;
+        // Its pages close with it; a Chrome that ends closes them itself.
+        if let Some(tabs) = registry
+            && !self.ended.is_cancelled()
+        {
+            self.close_pages(&tabs).await;
+        }
+        // Every task of the environment ends with it: the tabs' debugging
+        // owners close their connections as they end.
+        ended.cancel();
+        tasks.close();
+        tasks.wait().await;
+        // No call starts once the environment ended, and each ends within
+        // the request timeout while the pump still runs.
+        calls.close();
+        let _outlived = tokio::time::timeout(REQUEST_TIMEOUT, calls.wait()).await;
+        self.screens.lock().await.wanted.remove(&number);
+        outcome
+    }
+
+    /// Closes the pages of the environment whose registry is `tabs`, on this
+    /// Chrome that runs on: its tabs, the popups not yet registered, and the
+    /// pages of the creations in flight, which the sealed registry closes as
+    /// they arrive.
+    async fn close_pages(&self, tabs: &Tabs) {
+        let deadline = tokio::time::Instant::now() + CONTROL_TIMEOUT;
+        let held = loop {
+            match tabs.seal().await {
+                Ok((held, 0)) => break held,
+                Ok((held, _)) if tokio::time::Instant::now() >= deadline => break held,
+                Ok(_) => tokio::time::sleep(Duration::from_millis(20)).await,
+                Err(_) => return,
+            }
+        };
+        let closing = held.into_iter().map(|(target, tab)| {
+            let browser = self.handle.clone();
+            async move {
+                let closed = match tab {
+                    Some(tab) => registry::close_target(&browser, &tab, deadline).await,
+                    None => tokio::time::timeout_at(deadline, async {
+                        browser
+                            .call()?
+                            .execute(chromiumoxide::cdp::browser_protocol::target::CloseTargetParams::new(target))
+                            .await?;
+                        Ok::<_, BrowserError>(())
+                    })
+                    .await
+                    .map_err(|_| BrowserError::Timeout)
+                    .and_then(std::convert::identity),
+                };
+                if let Err(error) = closed {
+                    tracing::warn!(event = "browser_tab.close_failed", %error, "a page of an environment that ended did not close");
+                }
+            }
+        });
+        futures_util::future::join_all(closing).await;
+    }
+
+    /// Ends the Chrome, which no environment holds any more, and lets its
+    /// profile go. A call that outlived its environment leaves the browser
+    /// with it, and `retire_browser` ends Chrome's process tree without it.
+    async fn retire(&self) -> Result<()> {
+        self.ended.cancel();
+        self.observers.close();
+        self.observers.wait().await;
+        let taken = self.retirement.lock().expect("the retirement is intact").take();
+        let Some(Retirement {
+            browser,
+            pump,
+            mut process,
+            directories,
+        }) = taken
+        else {
+            return Ok(());
+        };
+        self.handle.calls.close();
+        let _outlived = tokio::time::timeout(REQUEST_TIMEOUT, self.handle.calls.wait()).await;
+        let retired = retire_browser(Arc::into_inner(browser), pump, &mut process).await;
+        let cleanup = directories.remove(retired).await;
+        self.retired.cancel();
+        cleanup
+    }
+}
+
+/// Starts Chrome on `options`' profile; a start that fails or is stopped
+/// through `stop` leaves nothing running.
+async fn launch(options: LaunchOptions, stop: &CancellationToken) -> Result<SharedChrome> {
     let Installation {
         executable,
         runtime,
@@ -566,7 +923,7 @@ where
             "Chrome executable must be absolute".into(),
         ));
     }
-    let mut directories = EnvironmentDirectories::with_profile(&DirectoryBases::host(), &options.profile, &stop).await?;
+    let mut directories = EnvironmentDirectories::with_profile(&DirectoryBases::host(), &options.profile, stop).await?;
     let mut process = ChromeProcess::new(directories.runtime(), &executable);
     // Emptied as the browser starts too: a resident that ended without
     // retiring it left them.
@@ -638,14 +995,13 @@ where
     let (failure, _) = watch::channel(None);
     let ended = CancellationToken::new();
     let observers = TaskTracker::new();
-    let recordings = Recordings::default();
     let calls = TaskTracker::new();
     let handle = BrowserHandle {
         browser: Arc::downgrade(&browser),
         calls: calls.clone(),
         ended: ended.clone(),
     };
-    let _end_on_drop = ended.clone().drop_guard();
+    let end_on_drop = ended.clone().drop_guard();
     let extension = crate::driver::launch::capture_extension(&profile)
         .to_string_lossy()
         .into_owned();
@@ -686,7 +1042,6 @@ where
             }
         });
     }
-    let changes = numbers.browser_changes();
     let pump_ended = ended.clone();
     let pump_failure = failure.clone();
     let pump = AbortOnDropHandle::new(tokio::spawn(async move {
@@ -728,7 +1083,26 @@ where
         pump_ended.cancel();
         result
     }));
-    let outcome = tokio::select! {
+    let chrome = SharedChrome {
+        handle: handle.clone(),
+        ended: ended.clone(),
+        failure: failure.clone(),
+        observers,
+        captures,
+        handoff,
+        download_directory: download_directory.clone(),
+        upload_directory,
+        screens: Arc::default(),
+        retirement: std::sync::Mutex::new(Some(Retirement {
+            browser,
+            pump,
+            process,
+            directories,
+        })),
+        retired: CancellationToken::new(),
+        _end_on_drop: end_on_drop,
+    };
+    let downloads = tokio::select! {
         biased;
         _ = stop.cancelled() => Err(BrowserError::Cancelled),
         _ = ended.cancelled() => Err(failure.borrow().clone().map(BrowserError::Connection).unwrap_or(BrowserError::Closed)),
@@ -739,55 +1113,14 @@ where
                 .download_path(download_directory.to_string_lossy().into_owned())
                 .events_enabled(true)
                 .build().map_err(BrowserError::Configuration)?).await?;
-            // Subscribed before any caller can create a target: Chrome may
-            // leave a popup's opener out of later target information once
-            // the opener closed.
-            let (opening, opened) = watch::channel(None);
-            let tabs = registry::start(
-                handle.clone(),
-                numbers,
-                ended.clone(),
-                &observers,
-                failure.clone(),
-                changes.clone(),
-                opened,
-            )
-            .await?;
-            let environment = BrowserEnvironment {
-                browser: handle.clone(),
-                ended: ended.clone(),
-                tabs,
-                report_failure: failure.clone(),
-                tasks: observers.clone(),
-                recordings: recordings.clone(),
-                download_directory,
-                upload_directory,
-                captures,
-                changes,
-                opening,
-                handoff: handoff.clone(),
-            };
-            work(environment).await
+            Ok(())
         } => result,
     };
-    // The recordings end first, while the browser still answers: each takes
-    // what the capture extension holds, and its files are complete before the
-    // browser goes, whatever ends it.
-    recordings.finish().await;
-    // Every task of the environment ends with it: the tabs' debugging
-    // owners close their connections as they end.
-    ended.cancel();
-    observers.close();
-    observers.wait().await;
-    // No call starts once the environment ended, and each ends within the
-    // request timeout while the pump still runs; then only this owner holds
-    // the browser. A call that outlived the wait leaves the browser with it,
-    // and `retire_browser` ends Chrome's process tree without it.
-    calls.close();
-    let _outlived = tokio::time::timeout(REQUEST_TIMEOUT, calls.wait()).await;
-    let retired = retire_browser(Arc::into_inner(browser), pump, &mut process).await;
-    let cleanup = directories.remove(retired).await;
-    after_cleanup(outcome, cleanup)
+    if let Err(error) = downloads {
+        let cleanup = chrome.retire().await;
+        return after_cleanup(Err(error), cleanup);
+    }
+    Ok(chrome)
 }
 
 /// Removes what browsers left behind when their resident ended without
@@ -1169,9 +1502,27 @@ impl BrowserEnvironment {
         self.report_failure.borrow().clone()
     }
 
-    /// Whether both are the same browser generation.
+    /// Whether both are the same environment.
     pub fn same(&self, other: &Self) -> bool {
-        self.browser.same(&other.browser)
+        self.number == other.number
+    }
+
+    /// Asks for `screen` as the virtual screen of the Chrome's windows, on
+    /// behalf of this environment's live view, through `tab`: the Chrome's
+    /// screen is the largest any of its environments asks for.
+    ///
+    /// The screens are held while Chrome applies one, so two environments'
+    /// asks apply in turn and the last applied is the largest.
+    pub(crate) async fn set_screen(&self, tab: &BrowserTab, screen: Screen) -> Result<()> {
+        let mut screens = self.screens.lock().await;
+        screens.wanted.insert(self.number, screen);
+        let merged = screens.merged();
+        let Some(merged) = merged.filter(|merged| Some(*merged) != screens.applied) else {
+            return Ok(());
+        };
+        tab.update_screen(merged).await?;
+        screens.applied = Some(merged);
+        Ok(())
     }
 }
 

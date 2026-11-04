@@ -79,7 +79,7 @@ pub use edits::{
 pub use invocation::{
     COMMAND_LOCALE_LANGUAGES, DEVICE_SCOPE_PREFIX, PROVIDER_SCOPE_PREFIX, is_conversation_scope, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,
     ColorScheme, CommandLocale, Completion, Invocation, LocalInvocation, Viewable, conversation_name,
-    SCRATCH_ROOT_ENV, browser_profile_directory, recordings_directory, scratch_directory, scratch_name, scratch_root, without_nul,
+    SCRATCH_ROOT_ENV, browser_profile_directory, named_browser_profile, recordings_directory, scratch_directory, scratch_name, scratch_root, without_nul,
 };
 pub use line_counts::line_counts;
 pub use media::{MAX_MEDIUM_BYTES, MediumFacts, is_binary, sniff_media_type};

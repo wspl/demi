@@ -114,6 +114,14 @@ pub fn browser_profile_directory(scratch_root: Option<&std::path::Path>, convers
     scratch_directory(scratch_root, conversation).join(".browser")
 }
 
+/// Where the browser profile named `name` is on a Host whose user's home is
+/// `home`: a directory of the home, so it outlives every conversation and a
+/// Cloud's stop and reset. Demi keeps no record of it; the directory is the
+/// profile.
+pub fn named_browser_profile(home: &std::path::Path, name: &str) -> std::path::PathBuf {
+    home.join(".demi").join("browser-profiles").join(name)
+}
+
 /// How many characters of a conversation's id name its scratch directory.
 const SCRATCH_NAME_CHARS: usize = 12;
 
@@ -185,6 +193,12 @@ pub struct CommandContext {
     /// The color scheme of the user's page, as it last reported it.
     #[garde(skip)]
     pub color_scheme: ColorScheme,
+    /// The browser profile the conversation names, which its browser runs
+    /// on with every conversation naming it on the Host
+    /// ([`named_browser_profile`]); none for the conversation's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub browser_profile: Option<String>,
 }
 
 /// The metadata that opens a native command invocation.

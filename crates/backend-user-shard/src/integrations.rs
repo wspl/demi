@@ -543,6 +543,7 @@ impl Shard {
             workflow: request.workflow.clone(),
             identity: request.identity.clone(),
             commands: request.commands.clone(),
+            browser_profile: request.browser_profile.clone(),
         };
         // Two requests with one key made two conversations: the first kept
         // is the key's, and this one goes.
@@ -620,6 +621,9 @@ impl Shard {
         if let Some(identity) = patch.identity {
             self.services().control.set_integration_identity(id.clone(), identity).await?;
             self.agent().adopt_identity(&root_of(id)).await;
+        }
+        if let Some(profile) = patch.browser_profile {
+            self.services().control.set_integration_browser_profile(id.clone(), profile).await?;
         }
         if let Some(commands) = patch.commands {
             self.services().control.set_integration_commands(id.clone(), commands).await?;
@@ -1030,6 +1034,7 @@ impl Shard {
             workflow: source.workflow,
             identity: source.identity,
             commands: source.commands,
+            browser_profile: source.browser_profile,
         };
         if let Some(first) = control.record_integration_conversation(kept).await? {
             let _ = self.delete_conversation(&forked.record.id).await;

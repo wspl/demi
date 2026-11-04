@@ -430,6 +430,31 @@ addEventListener('message', (event) => {
 })
 ```
 
+### Share sign-ins between conversations
+
+Each conversation's browser has a profile of its own, so a person who signed
+in to a site in one conversation is signed out in the next. To keep one
+person's sign-ins across conversations, name a browser profile when you
+create each of them, or `PATCH` it later:
+
+```json
+{"cloud": "<Cloud id>", "model": {…}, "browserProfile": "alex"}
+```
+
+Every conversation that names `alex` on the same Cloud shares one browser:
+what one signs in to, the others are signed in to. Each still sees and
+drives only its own tabs, and a popup belongs to the conversation whose tab
+opened it. `null` returns a conversation to a profile of its own. A
+conversation that changes its profile closes its tabs on the old one at its
+next browser command.
+
+A profile is the directory `~/.demi/browser-profiles/alex` on the Cloud. It
+outlives every conversation, the Cloud's sleep and its reset, and Demi
+keeps no record of it: list, copy or remove profiles with the Files routes.
+One removed while its browser runs stays signed in until that browser stops.
+A conversation that moves to another Cloud uses that Cloud's profile of the
+name.
+
 ## Hear what happens
 
 Open a WebSocket to `/v1/socket` with the same bearer token. Each message is a
