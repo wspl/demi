@@ -3732,6 +3732,11 @@ onBeforeUnmount(() => {
           <GalleryComments seed="sent" />
         </div>
       </GallerySection>
+      <GallerySection title="Sent Comments in an Edit" note="The same message while an edit of it is open in the composer: each of its comments' boxes shows Delete where Sent stood, so the box keeps its size, and Delete takes the comment out of the edit and its box away.">
+        <div class="h-[40rem] overflow-hidden rounded-xl border border-line">
+          <GalleryComments seed="sent-editing" />
+        </div>
+      </GallerySection>
       <GallerySection title="Selection Field" note="The one field a remark on a part of a reply is written in: a capsule of one line under the selection, centered on it, and above it only where there is no room under it. It holds the composer's editor, which takes words and pasted or dropped files as the composer does, then a gray round Ask and a blue round Comment, and the right-click menu's Comment and Ask and a picture's Comment and Ask open the same field. Select words in any reply of this page to try it live: the field has the focus as it opens, so the first key typed goes into it, an input method's composition included. The words are typed in a frame of their own, so the selection stays the browser's: every press, click and right-click on the page does what it does with no field, and while the field is empty, Shift with an arrow extends the selection, ⌘A, ⌘C, the scrolling keys and Tab act on the page. The transcript draws the selection, a strip on each line from its first selected letter to its last and an outline around a picture, gray while the window is not the active one. Return presses the blue button, Comment unless the menu's Ask chose it, which swaps the two. While ⌘ is held (Control elsewhere), the blue button turns into Send, an up arrow, and ⌘Return sends the quote and the words to the main agent now; its tooltip says so. Shift-Return starts a new line, and words past the line move the buttons under them. With no words Return and the buttons shake the field once. Escape closes it and leaves the selection; a selection that is gone or a new one closes it and drops what was typed. A phone opens no field. Each pinned state says what the product would do.">
         <GallerySelectionFieldBoxes />
       </GallerySection>

@@ -16,7 +16,7 @@ import type { DraftMessage, MessageFiles } from './comments'
  * Markdown highlighted and a capsule for each file, with ghost Delete and Edit
  * at the row's right end; Edit turns the row into the editor. A sent comment
  * stays as it was sent and says so; while an edit of its message is open,
- * it takes Delete alone.
+ * it takes Delete alone, where Sent stood.
  *
  * It stands in the reply, under the line of its words: a box with a thin
  * border, as a side question's card, led by the comment's yellow mark; a sent
@@ -71,23 +71,27 @@ function save(message: DraftMessage): void {
       >
         <SentMessage :markdown="markdown" :attachments="attachments" />
       </div>
-      <span v-if="props.sent" class="inline-flex h-7 shrink-0 items-center gap-1 pr-1 text-detail text-fg-subtle">
-        <Check :size="ICON_PX.in24" aria-hidden="true" />
-        {{ t('comments.sent') }}
+      <!-- Sent and Delete share one place, which is as wide as the wider, so
+           Delete coming and going moves nothing and leaves no gap. -->
+      <span v-if="props.sent" class="grid shrink-0 items-center justify-items-end">
+        <span
+          class="col-start-1 row-start-1 inline-flex h-7 items-center gap-1 pr-1 text-detail text-fg-subtle"
+          :class="deletable ? 'invisible' : ''"
+        >
+          <Check :size="ICON_PX.in24" aria-hidden="true" />
+          {{ t('comments.sent') }}
+        </span>
+        <Tooltip :content="shared('common.delete')" :disabled="!deletable" class="col-start-1 row-start-1 inline-flex">
+          <IconButton
+            :icon="Trash2"
+            size="sm"
+            variant="ghost"
+            :class="deletable ? '' : 'invisible'"
+            :aria-label="shared('common.delete')"
+            @click="emit('delete')"
+          />
+        </Tooltip>
       </span>
-      <!-- Its room stays while no edit is open, so Delete coming and going moves nothing. -->
-      <Tooltip v-if="props.sent" :content="shared('common.delete')" :disabled="!deletable">
-        <IconButton
-          :icon="Trash2"
-          size="sm"
-          variant="ghost"
-          :class="deletable ? '' : 'invisible'"
-          :aria-label="shared('common.delete')"
-          :aria-hidden="!deletable || undefined"
-          :tabindex="deletable ? undefined : -1"
-          @click="emit('delete')"
-        />
-      </Tooltip>
       <div v-if="!sent" class="flex shrink-0 items-center">
         <Tooltip :content="shared('common.delete')">
           <IconButton :icon="Trash2" size="sm" variant="ghost" :aria-label="shared('common.delete')" @click="emit('delete')" />

@@ -6,7 +6,7 @@ import { galleryMessageFiles } from '../fixtures/written-files'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import WaitingComments from '@demicodes/web-ui/agent/comments/WaitingComments.vue'
 import { anchorOfText, pictureAnchor, picturesOf } from '@demicodes/web-ui/agent/comments/anchors'
-import { inReadingOrder, type ReplyCommenting, type WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
+import { inReadingOrder, sentComments as commentsOf, type EditedComments, type ReplyCommenting, type WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
 import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { COMMENTED_REPLY_ID, REPLY_PICTURE, REPLY_PICTURE_SOURCE, TWO_COMMENTS, commentedConversation } from '../fixtures/comments'
 import { PROJECT_ROOT } from '../fixtures/project'
@@ -28,18 +28,32 @@ import GalleryComposer from './GalleryComposer.vue'
  *   opens the same field; the picture is then outlined yellow with the box
  *   under it, and the bubble shows a small copy of it as the quote.
  *
- * `seed` pins a state: two waiting comments, two sent with a message, or a
- * comment on the picture, waiting or sent. Comments stay in the specimen,
- * where the product keeps them in the conversation's draft.
+ * `seed` pins a state: two waiting comments, two sent with a message, the
+ * two sent while an edit of their message is open, or a comment on the
+ * picture, waiting or sent. Comments stay in the specimen, where the product
+ * keeps them in the conversation's draft.
  */
 const props = defineProps<{
-  seed: 'waiting' | 'sent' | 'picture-waiting' | 'picture-sent'
+  seed: 'waiting' | 'sent' | 'sent-editing' | 'picture-waiting' | 'picture-sent'
 }>()
 
 const flow = useTurnFlow({ id: `comments-${props.seed}`, title: 'Slow uploads', cwd: PROJECT_ROOT, blocks: commentedConversation() })
 const session = flow.state
 const messageFiles = useMessageFiles()
 const waiting = ref<WaitingComment[]>([])
+/**
+ * The comments an open edit of the sent message holds, which the product's
+ * composer opens with its Edit: each box takes Delete where Sent stood, and
+ * Delete takes its comment out of the edit, and its box goes.
+ */
+const editing = ref<Pick<EditedComments, 'comments' | 'remove'> | null>(null)
+const edited = computed<EditedComments | null>(() => {
+  const open = editing.value
+  // The message's block once the transcript holds it, as the product's edit
+  // names the message it opened.
+  const message = open && session.blocks.findLast((block) => commentsOf(block).length > 0)
+  return open && message ? { blockId: message.id, ...open } : null
+})
 /** The comments' files, as the conversation's are in the product. */
 const page = galleryMessageFiles()
 
@@ -56,6 +70,9 @@ async function sentComments(comments: readonly WaitingComment[]): Promise<Messag
 const commenting: ReplyCommenting = {
   get waiting() {
     return waiting.value
+  },
+  get edited() {
+    return edited.value
   },
   files: page.files,
   add: (comment) => (waiting.value = [...waiting.value, comment]),
@@ -130,6 +147,15 @@ onMounted(async () => {
   }
   const comments = anchors.map(({ text, ...anchor }): MessageComment => ({ ...anchor, content: [{ type: 'text', text }] }))
   flow.turn([{ type: 'text', text: 'Otherwise go ahead.' }], { text: 'Otherwise go ahead.', attachments: [] }, inReadingOrder(comments, [COMMENTED_REPLY_ID]))
+  if (props.seed === 'sent-editing') {
+    editing.value = {
+      comments,
+      remove: (id) => {
+        if (editing.value)
+          editing.value = { ...editing.value, comments: editing.value.comments.filter((comment) => comment.id !== id) }
+      },
+    }
+  }
 })
 </script>
 
