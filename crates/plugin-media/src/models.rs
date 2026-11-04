@@ -143,10 +143,13 @@ fn unconfirmed(notes: &mut String, command: &str, models: &[ListedModel]) {
     }
 }
 
+/// A list the catalog states, `none` when it states it empty; `-` when it
+/// states none, which is unknown.
 fn joined(values: Option<&[String]>) -> String {
     match values {
-        Some(values) if !values.is_empty() => values.join(", "),
-        _ => "-".to_owned(),
+        Some([]) => "none".to_owned(),
+        Some(values) => values.join(", "),
+        None => "-".to_owned(),
     }
 }
 
@@ -243,7 +246,7 @@ fn image_facts(fields: &mut Fields, model: &MediaModel) {
 }
 
 /// What a video model takes: its durations, shapes, resolutions, frames,
-/// references and sound.
+/// references, sound and seed.
 fn video_facts(fields: &mut Fields, model: &MediaModel) {
     let video = model.video.clone().unwrap_or_default();
     let durations = durations(video.durations.as_deref(), video.min_duration, video.max_duration);
@@ -255,6 +258,9 @@ fn video_facts(fields: &mut Fields, model: &MediaModel) {
         .field("Last frame", video.last_frame)
         .field("Max reference images", video.max_reference_images)
         .field("Sound", video.audio)
+        .field("Silent on request", video.audio_off)
+        .field("Seed", video.seed)
+        .field("Aspect ratio with first frame", video.aspect_with_first_frame)
         .field("Edits", video.edits)
         .field("Extends", video.extends)
         .field("Max source seconds", video.max_source_seconds);

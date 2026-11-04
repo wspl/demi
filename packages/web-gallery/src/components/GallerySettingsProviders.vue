@@ -119,6 +119,10 @@ function changeProvider(
   }
   const kept = entry.cacheTtl?.value ?? null
   Object.assign(entry, patch)
+  // As the backend does, a vendor entry's endpoint cleared returns to its vendor's.
+  if (patch.baseUrl === '' && !entry.compatible && entry.vendorId) {
+    entry.baseUrl = mockVendors.find((vendor) => vendor.id === entry.vendorId)?.baseUrl ?? ''
+  }
   // A new protocol offers its own lifetimes, as the backend's families do.
   if (patch.wireApi !== undefined && patch.cacheTtl === undefined) {
     entry.cacheTtl = galleryCacheTtl(entry as MockProvider, kept)

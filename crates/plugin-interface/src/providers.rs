@@ -127,6 +127,15 @@ pub struct VideoFacts {
     /// Whether it makes sound.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<bool>,
+    /// Whether a call can ask it for a video without sound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_off: Option<bool>,
+    /// Whether it takes a seed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<bool>,
+    /// Whether it takes an aspect ratio beside a first frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aspect_with_first_frame: Option<bool>,
     /// Whether it edits a video, and extends one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edits: Option<bool>,
@@ -427,23 +436,7 @@ pub enum SentSource {
     FileInstead { job: String },
 }
 
-/// An option of `demi video generate`, `edit` or `extend`, as a shape that
-/// has no field for it is said not to take it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum VideoOption {
-    Image,
-    LastFrame,
-    Reference,
-    Duration,
-    Aspect,
-    Resolution,
-    Audio,
-    Seed,
-}
-
-/// The job the vendor took: who makes it, its id at the vendor, and the
-/// options the entry's shape has no field for, which were not sent.
+/// The job the vendor took: who makes it and its id at the vendor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AskedVideo {
@@ -455,11 +448,6 @@ pub struct AskedVideo {
     /// The account, as [`MadeImage::account`] names it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
-    /// The shape's name, such as `Gemini Interactions`, which a warning of
-    /// an option it has no field for names.
-    pub shape: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub unsent: Vec<VideoOption>,
     /// How the video an edit or an extension changes was sent; none for a
     /// new video.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -747,6 +735,11 @@ pub enum MediaRefusal {
     /// The model's entry has no field for the change asked of a video.
     #[error("{model} cannot make the change asked of a video")]
     NoChange { model: String, change: VideoChange },
+    /// The model's catalog entry says it does not take an option the call
+    /// gave, which failed before anything was sent; `takes` says so in a
+    /// call's words, such as `takes --duration 3 to 10`.
+    #[error("{model} {takes}")]
+    Untaken { model: String, takes: String },
     /// A speech call named no voice and the vendor has no default one.
     #[error("{vendor} needs a voice")]
     NeedsVoice { vendor: String, model: String },

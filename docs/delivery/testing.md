@@ -56,8 +56,9 @@ cargo test --workspace
 ```
 
 Add `--test agent-session` to run the compaction tests alone,
-`--test live-view` the live view's rate control's, or
-`--test backend-database` the databases' migrations'; never `-p <crate>`.
+`--test live-view` the live view's rate control's,
+`--test backend-database` the databases' migrations', or `--test backend`
+the video makers'; never `-p <crate>`.
 
 ## Resources
 

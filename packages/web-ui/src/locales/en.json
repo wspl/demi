@@ -161,7 +161,7 @@
     "unknown_provider_type": "This kind of provider isn’t supported.",
     "unknown_vendor": "This vendor isn’t supported.",
     "subscription_only": "A subscription provider is added by signing in.",
-    "endpoint_kind": "This provider’s endpoint can’t be changed.",
+    "vendor_protocol": "This provider’s protocol can’t be changed.",
     "duplicate_model": "A model with this ID is already listed.",
     "accounts_unsupported": "This provider doesn’t have accounts.",
     "rotation_needs_accounts": "Rotation needs at least 2 accounts.",

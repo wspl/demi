@@ -402,8 +402,6 @@ export function vendorMedia(vendorId: string): Partial<MockProvider['media']> {
 
 /** The shapes a compatible API may choose, as the backend's catalog lists them. */
 export const mockCompatibleShapes: SettingsCompatibleShapes = {
-  image: ['openai-images'],
-  video: ['xai-videos', 'openai-videos', 'ark-tasks', 'openrouter-videos'],
   audio: ['openai-speech'],
 }
 
@@ -967,9 +965,8 @@ export function mockProviders(): MockProvider[] {
       id: 'ollama', name: 'Ollama on the lab workstation', kind: 'api_key', family: 'openai', vendorId: null, compatible: true,
       baseUrl: 'http://localhost:11434/v1', wireApi: 'openai-chat', apiKey: '',
       modelSource: 'manual', state: 'unreachable', detail: 'connect ECONNREFUSED 127.0.0.1:11434',
-      // Ollama serves OpenAI's image requests too, so the user chose that shape and added an
-      // image model; it serves no videos or speech, so its video and audio shapes stay None.
-      media: { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
+      // Ollama serves no speech, so its audio shape stays None.
+      media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
       models: [
         model({
           id: 'qwen3:32b',
@@ -977,7 +974,6 @@ export function mockProviders(): MockProvider[] {
           tools: true,
           extensions: []
         }),
-        model({ kind: 'image', id: 'x/z-image-turbo', name: 'Z-Image Turbo', extensions: null }),
       ],
     }),
     provider({

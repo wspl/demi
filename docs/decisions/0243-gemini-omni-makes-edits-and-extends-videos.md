@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0259
 ---
 
 # Gemini Omni makes, edits and extends videos

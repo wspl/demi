@@ -42,6 +42,19 @@ pub struct Aspect {
 }
 
 impl Aspect {
+    /// The shape `text` writes as `W:H`, such as the catalog's `16:9`; none
+    /// for any other text, such as `adaptive`.
+    pub fn parse(text: &str) -> Option<Self> {
+        let (width, height) = text.split_once(':')?;
+        let (width, height) = (width.trim().parse().ok()?, height.trim().parse().ok()?);
+        (width > 0 && height > 0).then_some(Self { width, height })
+    }
+
+    /// Whether `other` is the same shape, as `32:18` is `16:9`.
+    pub fn same_shape(self, other: Self) -> bool {
+        u64::from(self.width) * u64::from(other.height) == u64::from(other.width) * u64::from(self.height)
+    }
+
     /// A size of this shape whose longer side is `long` pixels, each side a
     /// multiple of 16.
     pub fn size(&self, long: u32) -> (u32, u32) {

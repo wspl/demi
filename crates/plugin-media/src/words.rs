@@ -86,6 +86,9 @@ pub fn refusal_words(kind: MediaKind, refusal: &MediaRefusal, aspect: Option<Ima
             };
             format!("{model} {verb} no video; demi video models shows the models that do")
         }
+        MediaRefusal::Untaken { model, takes } => {
+            format!("{model} {takes}; nothing was sent, and demi video models {model} shows what it takes")
+        }
         MediaRefusal::StillRunning { vendor, job, seconds } => {
             let minutes = seconds.div_ceil(60);
             format!("the job {job} is still running at {vendor} after {minutes} minutes; it runs to its end there")

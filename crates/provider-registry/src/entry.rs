@@ -2,7 +2,7 @@
 //! from, and how it authenticates.
 
 use demi_provider_common::{Searches, Secret};
-use demi_shared_types::{AudioShape, CacheTtl, ImageShape, MediaKind, MediaShapes, Timestamp, VideoShape, WireApi};
+use demi_shared_types::{AudioShape, CacheTtl, MediaKind, MediaShapes, Timestamp, WireApi};
 use demi_web_api_protocol::ids::{CredentialId, DeviceId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{
     AudioMedia, ConfiguredModels, CredentialKind, EntryMedia, EntrySearch, ImageMedia, ProviderDto, ProviderHeader, Rotation,
@@ -108,27 +108,9 @@ pub struct ApiKeyConfig {
     )]
     #[garde(dive)]
     pub models: Option<ConfiguredModels>,
-    /// A compatible entry's image shape, which its user chose; none until
+    /// A compatible entry's audio shape, which its user chose; none until
     /// then, and always none for a vendor entry, whose shape is its
-    /// vendor's.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[garde(skip)]
-    pub image_shape: Option<ImageShape>,
-    /// A compatible entry's video shape, which its user chose, as its image
-    /// shape is.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[garde(skip)]
-    pub video_shape: Option<VideoShape>,
-    /// A compatible entry's audio shape, which its user chose, as its image
-    /// shape is.
+    /// vendor's. A compatible entry makes no images and no videos.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

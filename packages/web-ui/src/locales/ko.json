@@ -161,7 +161,7 @@
     "unknown_provider_type": "이 종류의 제공업체는 지원되지 않습니다.",
     "unknown_vendor": "이 서비스는 지원되지 않습니다.",
     "subscription_only": "구독형 제공업체는 로그인하여 추가합니다.",
-    "endpoint_kind": "이 제공업체의 엔드포인트는 변경할 수 없습니다.",
+    "vendor_protocol": "이 제공업체의 프로토콜은 변경할 수 없습니다.",
     "duplicate_model": "이 ID의 모델이 이미 목록에 있습니다.",
     "accounts_unsupported": "이 제공업체에는 계정이 없습니다.",
     "rotation_needs_accounts": "순환하려면 계정이 2개 이상 필요합니다.",

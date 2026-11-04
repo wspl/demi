@@ -7,14 +7,15 @@
 //! 3. It says each change of the job's state.
 //! 4. It checks that what came back is an MP4 and writes it to stdout.
 //! 5. It says what came back, with a warning for each option the result did not
-//!    honour or the entry's API has no field for.
+//!    honour. Every option is sent: one the model does not take fails the call
+//!    before anything is paid.
 //!
 //! A failure is told in the design's words.
 
 use demi_host_interface::RpcInvocation;
 use demi_plugin_interface::{
-    AskedVideo, ImageAspect, MadeVideo, PluginError, PluginPort, SentSource, VideoAsk, VideoChange, VideoOption,
-    VideoResolution, VideoSourceAsk, VideoStep,
+    AskedVideo, ImageAspect, MadeVideo, PluginError, PluginPort, SentSource, VideoAsk, VideoChange, VideoResolution,
+    VideoSourceAsk, VideoStep,
 };
 use demi_plugin_media::{
     decode_args, fits, models, parse_aspect, prompt, read_images, read_video, refused, required_model,
@@ -94,7 +95,6 @@ async fn ask(port: &PluginPort, args: GenerateArgs) -> Result<VideoAsk, PluginEr
 async fn change_ask(port: &PluginPort, args: ChangeArgs, change: VideoChange) -> Result<VideoAsk, PluginError> {
     let model = required_model(args.model, MediaKind::Video)?;
     let prompt = prompt(port, args.prompt).await?;
-    let aspect = args.aspect.as_deref().map(parse_aspect).transpose()?;
     let references = read_images(port, &args.reference.unwrap_or_default()).await?;
     let bytes = read_video(port, &args.video).await?;
     Ok(VideoAsk {
@@ -103,7 +103,7 @@ async fn change_ask(port: &PluginPort, args: ChangeArgs, change: VideoChange) ->
         last_frame: None,
         references,
         duration: None,
-        aspect,
+        aspect: None,
         resolution: args.resolution,
         audio: None,
         seed: None,
@@ -189,8 +189,7 @@ fn seconds(value: f64) -> String {
 }
 
 /// The line that says what came back, and a warning for each option the
-/// result did not honour or the shape had no field for, in the order of
-/// the options.
+/// result did not honour, in the order of the options.
 fn summary(command: &str, asked: &AskedVideo, video: &MadeVideo, facts: &mp4::Mp4Facts, wanted: &Wanted) -> String {
     let sound = if facts.sound { "with sound" } else { "without sound" };
     let mut said = format!(
@@ -217,53 +216,24 @@ fn summary(command: &str, asked: &AskedVideo, video: &MadeVideo, facts: &mp4::Mp
         warn(format!("{} no longer keeps job {job}; {path} was sent instead", asked.vendor));
     }
     let got = format!("{}×{}", facts.width, facts.height);
-    for option in &asked.unsent {
-        let flag = match option {
-            VideoOption::Image => "--image",
-            VideoOption::LastFrame => "--last-frame",
-            VideoOption::Reference => "--reference",
-            VideoOption::Duration => "--duration",
-            VideoOption::Aspect => "--aspect",
-            VideoOption::Resolution => "--resolution",
-            VideoOption::Audio if wanted.audio == Some(false) => "--no-audio",
-            VideoOption::Audio => "--audio",
-            VideoOption::Seed => "--seed",
-        };
-        // What the result shows of an option that was not sent is said on
-        // its line.
-        match option {
-            VideoOption::Audio => {
-                let has = if facts.sound { "the video has sound" } else { "the video has no sound" };
-                warn(format!("{} takes no {flag}; {has}", asked.shape));
-            }
-            _ => warn(format!("{} takes no {flag}", asked.shape)),
-        }
-    }
-    // An option that was not sent is warned of once, above, whatever the
-    // result is.
-    let sent = |option| !asked.unsent.contains(&option);
     if let Some(duration) = wanted.duration
-        && sent(VideoOption::Duration)
         && (facts.seconds - f64::from(duration)).abs() > DURATION_SLACK
     {
         warn(format!("asked for {}, got {}", seconds(f64::from(duration)), seconds(facts.seconds)));
     }
     if let Some(aspect) = wanted.aspect
-        && sent(VideoOption::Aspect)
         && !fits(aspect, facts.width, facts.height)
     {
         warn(format!("asked for {}:{}, got {got}", aspect.width, aspect.height));
     }
     if let Some(resolution) = wanted.resolution
-        && sent(VideoOption::Resolution)
         && !resolution.fits(facts.width, facts.height)
     {
         warn(format!("asked for {}, got {got}", resolution.lowercase()));
     }
-    let audio_sent = !asked.unsent.contains(&VideoOption::Audio);
     match wanted.audio {
-        Some(true) if audio_sent && !facts.sound => warn("asked for sound, got a video without sound".to_owned()),
-        Some(false) if audio_sent && facts.sound => warn("asked for no sound, got a video with sound".to_owned()),
+        Some(true) if !facts.sound => warn("asked for sound, got a video without sound".to_owned()),
+        Some(false) if facts.sound => warn("asked for no sound, got a video with sound".to_owned()),
         _ => {}
     }
     said

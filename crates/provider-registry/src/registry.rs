@@ -26,7 +26,7 @@ use demi_provider_common::media::{MediaMaker, MediaModelInfo};
 use demi_provider_common::audio::AudioMaker;
 use demi_provider_common::videos::VideoMaker;
 use demi_provider_common::{DeviceRoute, ModelWires, Provider, ProviderHttp};
-use demi_shared_types::{AudioShape, CacheTtl, Clock, ImageShape, MediaKind, MediaShapes, Model, Rotation};
+use demi_shared_types::{AudioShape, CacheTtl, Clock, MediaKind, MediaShapes, Model, Rotation};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use demi_provider_common::models_dev::ModelsDevError;
 use demi_web_api_protocol::providers::{ModelKind, ProviderDto, SETUP_MESSAGE, SetupPart, Vendor};
@@ -35,7 +35,7 @@ use demi_web_api_protocol::text::EndpointUrl;
 use crate::catalog_cache::ModelCatalogCache;
 use crate::rotation::{AccountRotation, Candidate, Choice};
 use crate::families::{
-    AccountBinding, ApiKeyArgs, CompatibleAudioArgs, CompatibleImagesArgs, CompatibleVideosArgs, FamilyArgs, FamilyCredential, FamilyError,
+    AccountBinding, ApiKeyArgs, CompatibleAudioArgs, FamilyArgs, FamilyCredential, FamilyError,
     FamilyRegistry, ProviderFamily, SubscriptionArgs,
 };
 use crate::vendors::{VendorCatalog, sort_by_name};
@@ -250,7 +250,7 @@ impl ProviderRegistry {
     /// A media vendor whose shapes are not built yet, such as Stability AI's,
     /// is not offered.
     pub async fn offered_vendors(&self) -> Result<Vec<Vendor>, ModelsDevError> {
-        let mut vendors = self.vendors.vendors().await?;
+        let mut vendors: Vec<Vendor> = self.vendors.vendors().await?.into_iter().map(|vendor| self.with_endpoint(vendor)).collect();
         for vendor in self.media_vendors() {
             if !vendors.iter().any(|known| known.id == vendor.id) {
                 vendors.push(vendor);
@@ -265,7 +265,15 @@ impl ProviderRegistry {
         if let Some(vendor) = self.media_vendors().into_iter().find(|vendor| vendor.id == vendor_id) {
             return Ok(Some(vendor));
         }
-        self.vendors.vendor(vendor_id).await
+        Ok(self.vendors.vendor(vendor_id).await?.map(|vendor| self.with_endpoint(vendor)))
+    }
+
+    /// `vendor` with the endpoint its entry starts with: the one models.dev
+    /// names, else its family's default, as a family's own vendor's is.
+    fn with_endpoint(&self, vendor: Vendor) -> Vendor {
+        let default = || self.families.get(&vendor.provider_type).and_then(|family| family.default_endpoint()).map(str::to_owned);
+        let base_url = vendor.base_url.clone().or_else(default);
+        Vendor { base_url, ..vendor }
     }
 
     /// The media catalog's vendors that the `media` family makes something
@@ -596,16 +604,17 @@ impl ProviderRegistry {
         self.families.get(&entry.family).map(|family| family.searches()).unwrap_or_default()
     }
 
-    /// The shapes in which `entry` makes media: a compatible entry's, its
-    /// user's choice; a vendor entry's, its family's for its vendor; none
-    /// for a borrowed one, whose lender's are its own ([`Self::makes`]).
+    /// The shapes in which `entry` makes media: a compatible entry's, the
+    /// audio shape its user chose; a vendor entry's, its family's for its
+    /// vendor; none for a borrowed one, whose lender's are its own
+    /// ([`Self::makes`]).
     pub fn media_shapes(&self, entry: &ProviderEntry) -> MediaShapes {
         if self.reads_directory(entry) {
             return MediaShapes::default();
         }
         let vendor = match &entry.credential {
             EntryCredential::ApiKey(config) if config.is_compatible() => {
-                return MediaShapes { image: config.image_shape, video: config.video_shape, audio: config.audio_shape };
+                return MediaShapes { image: None, video: None, audio: config.audio_shape };
             }
             EntryCredential::ApiKey(config) => config.vendor_id.as_deref(),
             EntryCredential::Subscription { .. } => None,
@@ -628,9 +637,11 @@ impl ProviderRegistry {
     /// What makes `entry`'s media of `kind` with `provider`, its provider for
     /// the account a call takes.
     ///
-    /// - For a compatible entry, it is its shape's role: the one implementation
-    ///   every endpoint of that shape shares, offering the models of the kind
-    ///   its user added.
+    /// - For a compatible entry, it is its audio shape's role: the one
+    ///   implementation every endpoint of that shape shares, offering the
+    ///   audio models its user added. A compatible entry makes no images and
+    ///   no videos: a gateway that serves a vendor's is that vendor's entry
+    ///   with the gateway's endpoint.
     /// - For a vendor entry, and an entry whose provider's directory lists
     ///   its models, as a borrowed one's lists its lender's, it is its
     ///   provider's own.
@@ -657,31 +668,7 @@ impl ProviderRegistry {
                 .collect()
         };
         match kind {
-            MediaKind::Image => {
-                if config.image_shape != Some(ImageShape::OpenaiImages) {
-                    return None;
-                }
-                let make = self.families.compatible_images()?;
-                Some(MakerOf::Images(make(CompatibleImagesArgs {
-                    name: entry.label.clone(),
-                    key: config.api_key.clone(),
-                    base,
-                    models: added(ModelKind::Image),
-                    clock: self.clock.clone(),
-                })))
-            }
-            MediaKind::Video => {
-                let shape = config.video_shape?;
-                let make = self.families.compatible_videos()?;
-                Some(MakerOf::Videos(make(CompatibleVideosArgs {
-                    name: entry.label.clone(),
-                    shape,
-                    key: config.api_key.clone(),
-                    base,
-                    models: added(ModelKind::Video),
-                    clock: self.clock.clone(),
-                })))
-            }
+            MediaKind::Image | MediaKind::Video => None,
             MediaKind::Audio => {
                 if config.audio_shape != Some(AudioShape::OpenaiSpeech) {
                     return None;

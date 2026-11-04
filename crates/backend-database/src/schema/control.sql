@@ -782,7 +782,7 @@ CREATE TABLE managed_operations (
 -- active account, a sealed secret per subscription account, and one
 -- subscription entry per owner and family. The active account is not a
 -- foreign key: removing an account clears it in the same transaction.
--- providers.config: provider configuration format 2, sealed.
+-- providers.config: provider configuration format 3, sealed.
 CREATE TABLE providers (
   id                   TEXT PRIMARY KEY,
   owner_user_id        TEXT NOT NULL REFERENCES users (id),

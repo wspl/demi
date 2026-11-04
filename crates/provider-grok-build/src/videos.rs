@@ -9,7 +9,7 @@ use demi_provider_common::{
     endpoint_url,
     media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, subscription_models},
     media_catalog::{Catalog, MediaKind, Subscription},
-    videos::{self, JobState, VideoMaker, VideoOption, VideoRequest, unsent_of, xai},
+    videos::{self, JobState, VideoMaker, VideoRequest, xai},
 };
 use futures_util::future::BoxFuture;
 use reqwest::header::HeaderMap;
@@ -40,15 +40,6 @@ impl MediaMaker for GrokVideos {
 }
 
 impl VideoMaker for GrokVideos {
-    /// Grok's request takes no seed.
-    fn unsent(&self, _: &Catalog, request: &VideoRequest) -> Vec<VideoOption> {
-        unsent_of(&[VideoOption::Seed], request)
-    }
-
-    fn shape_name(&self) -> String {
-        "Grok".to_owned()
-    }
-
     fn run<'a>(
         &'a self,
         http: &'a demi_provider_common::ProviderHttp,

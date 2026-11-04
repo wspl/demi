@@ -30,6 +30,9 @@
 //!   the next.
 //! - A refusal of the request is never handed on, and neither is a video's job
 //!   once the vendor took it, since it is paid for.
+//! - A video asked of an option the model's catalog entry says it does not
+//!   take fails at the first entry that offers the model, before anything is
+//!   sent, as every entry of the model sends the same options.
 //!
 //! # The call
 //!
@@ -64,9 +67,11 @@ use demi_provider_common::credentials::AuthReason;
 use demi_provider_common::audio::{self, AudioFormatAsk, AudioRequest};
 use demi_provider_common::images::{Aspect, ImageRequest, InputImage};
 use demi_provider_common::media::{MediaAnswer, MediaFailure, MediaModelInfo, MediaVendor, unreadable};
-use demi_provider_common::media_catalog::{self, AudioOutput, Catalog, Currency, Modality, PriceUnit, Voices};
+use demi_provider_common::media_catalog::{
+    self, AudioOutput, Catalog, Currency, Modality, PriceUnit, VideoCapabilities, Voices,
+};
 use demi_provider_common::videos::{
-    Change, Done, DoneVideo, JobRef, JobState, JobStep, SourceVideo, VideoOption, VideoRequest, VideoSource,
+    self, Change, Done, DoneVideo, JobRef, JobState, JobStep, SourceVideo, VideoMaker, VideoRequest, VideoSource,
 };
 use demi_shared_types::{AudioKind, MediaKind, Model, QuotaWindow, Rotation, Timestamp, TurnId, VendorTrace, mp4};
 use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId};
@@ -535,6 +540,9 @@ fn described(
         last_frame: video.last_frame,
         max_reference_images: video.max_reference_images,
         audio: video.audio,
+        audio_off: video.audio_off,
+        seed: video.seed,
+        aspect_with_first_frame: video.aspect_with_first_frame,
         edits: video.edits,
         extends: video.extends,
         max_source_seconds: video.max_source_seconds,
@@ -1242,15 +1250,19 @@ struct SourceFile {
 impl Asking for VideoCall {
     type Made = (AskedVideo, VideoJob);
 
-    /// A change the entry's request has no field for fails before
-    /// anything is sent.
+    /// A change the entry's request has no field for, and an option the
+    /// model's catalog entry says it does not take, fail before anything is
+    /// sent.
     fn check(&self, making: &Making<'_>, maker: &MakerOf) -> Result<(), MediaRefusal> {
         let videos = maker.videos().expect("a video call's maker makes videos");
-        match &self.source {
-            Some(source) if !videos.changes().contains(&source.change) => {
-                Err(MediaRefusal::NoChange { model: making.name.clone(), change: source.asked })
-            }
-            _ => Ok(()),
+        if let Some(source) = &self.source
+            && !videos.changes().contains(&source.change)
+        {
+            return Err(MediaRefusal::NoChange { model: making.name.clone(), change: source.asked });
+        }
+        match video_takes(making, videos).and_then(|takes| videos::untaken(takes, &self.request)) {
+            Some(takes) => Err(MediaRefusal::Untaken { model: making.name.clone(), takes }),
+            None => Ok(()),
         }
     }
 
@@ -1269,6 +1281,12 @@ impl Asking for VideoCall {
         let videos = maker.videos().expect("a video call's maker makes videos");
         let (mut row, span) = making.open_row("video", account);
         let mut request = VideoRequest { model: making.name.clone(), ..self.request.clone() };
+        // A new video asked no length is the shortest the model takes, as
+        // a vendor's own default is often its longest; an edit keeps its
+        // source's length.
+        if self.source.is_none() && request.duration.is_none() {
+            request.duration = video_takes(making, videos).and_then(VideoCapabilities::shortest);
+        }
         // A video the entry's own job made, as the model it is asked of,
         // continues that job where the vendor keeps it; any other is sent.
         let kept = self.source.as_ref().and_then(|source| source.made.as_ref()).filter(|made| {
@@ -1326,8 +1344,6 @@ impl Asking for VideoCall {
             provider: making.route.entry.label.clone(),
             vendor: videos.name().to_owned(),
             account: label.clone(),
-            shape: videos.shape_name(),
-            unsent: videos.unsent(making.catalog, &request).into_iter().map(plugin_option).collect(),
             source: sent,
         };
         let tuning = making.shard.services().media_tuning;
@@ -1355,18 +1371,12 @@ impl Asking for VideoCall {
     }
 }
 
-fn plugin_option(option: VideoOption) -> demi_plugin_interface::VideoOption {
-    use demi_plugin_interface::VideoOption as Plugin;
-    match option {
-        VideoOption::Image => Plugin::Image,
-        VideoOption::LastFrame => Plugin::LastFrame,
-        VideoOption::Reference => Plugin::Reference,
-        VideoOption::Duration => Plugin::Duration,
-        VideoOption::Aspect => Plugin::Aspect,
-        VideoOption::Resolution => Plugin::Resolution,
-        VideoOption::Audio => Plugin::Audio,
-        VideoOption::Seed => Plugin::Seed,
-    }
+/// What the model a video call makes takes, as the call's catalog states it
+/// of the maker's vendor; none for a model it does not know.
+fn video_takes<'a>(making: &'a Making<'_>, videos: &dyn VideoMaker) -> Option<&'a VideoCapabilities> {
+    let vendor = videos.vendor()?;
+    let known = making.catalog.model(vendor.id(), &making.name)?;
+    making.catalog.video(known)
 }
 
 /// The job a run's first step names. A vendor that fails the request before

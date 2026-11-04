@@ -8,7 +8,7 @@ use std::sync::{Arc, OnceLock};
 
 use demi_provider_registry::registry::MEDIA_FAMILY;
 use demi_provider_registry::families::{
-    AccountBinding, CompatibleAudioArgs, CompatibleImagesArgs, CompatibleVideosArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry,
+    AccountBinding, CompatibleAudioArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry,
     ProviderFamily,
 };
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
@@ -35,13 +35,6 @@ use demi_web_api_protocol::providers::CredentialKind;
 /// machine from `machine`.
 pub fn builtin(machine: MachineSlot) -> FamilyRegistry {
     FamilyRegistry::default()
-        .with_compatible_images(Arc::new(|args: CompatibleImagesArgs| {
-            demi_provider_openai_api::compatible_images(args.name, args.key, &args.base, args.models, args.clock)
-        }))
-        .with_compatible_videos(Arc::new(|args: CompatibleVideosArgs| match args.shape {
-            VideoShape::ArkTasks => demi_provider_bytedance::compatible_videos(args.name, args.key, &args.base, args.models, args.clock),
-            shape => demi_provider_openai_api::compatible_videos(args.name, shape, args.key, &args.base, args.models, args.clock),
-        }))
         .with_compatible_audio(Arc::new(|args: CompatibleAudioArgs| {
             demi_provider_openai_api::compatible_audio(args.name, args.key, &args.base, args.models, args.clock)
         }))

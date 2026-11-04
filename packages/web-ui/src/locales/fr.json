@@ -161,7 +161,7 @@
     "unknown_provider_type": "Ce type de fournisseur n’est pas pris en charge.",
     "unknown_vendor": "Cet éditeur n’est pas pris en charge.",
     "subscription_only": "Un fournisseur par abonnement s’ajoute en se connectant.",
-    "endpoint_kind": "Le point de terminaison de ce fournisseur ne peut pas être modifié.",
+    "vendor_protocol": "Le protocole de ce fournisseur ne peut pas être modifié.",
     "duplicate_model": "Un modèle avec cet ID figure déjà dans la liste.",
     "accounts_unsupported": "Ce fournisseur n’a pas de comptes.",
     "rotation_needs_accounts": "La rotation nécessite au moins 2 comptes.",

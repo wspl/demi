@@ -161,7 +161,7 @@
     "unknown_provider_type": "この種類のプロバイダーはサポートされていません。",
     "unknown_vendor": "このベンダーはサポートされていません。",
     "subscription_only": "サブスクリプションのプロバイダーはサインインして追加します。",
-    "endpoint_kind": "このプロバイダーのエンドポイントは変更できません。",
+    "vendor_protocol": "このプロバイダーのプロトコルは変更できません。",
     "duplicate_model": "この ID のモデルはすでに一覧にあります。",
     "accounts_unsupported": "このプロバイダーにはアカウントがありません。",
     "rotation_needs_accounts": "ローテーションには 2 つ以上のアカウントが必要です。",

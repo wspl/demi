@@ -1852,6 +1852,7 @@ dependencies = [
 name = "demi-backend"
 version = "0.1.65"
 dependencies = [
+ "bytes",
  "clap",
  "demi-backend-accounts",
  "demi-backend-blobs",
@@ -1901,6 +1902,7 @@ dependencies = [
  "hex",
  "hkdf 0.12.4",
  "rand 0.9.5",
+ "reqwest",
  "rustix",
  "sd-notify",
  "serde_json",

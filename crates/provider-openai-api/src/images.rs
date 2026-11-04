@@ -1,16 +1,12 @@
-//! The image role of an OpenAI or xAI key and of a compatible entry whose image
-//! shape is OpenAI Images.
+//! The image role of an OpenAI or xAI key.
 //!
 //! The role covers:
 //!
 //! - each vendor's image API under the entry's base URL, with the key as a
 //!   bearer token;
-//! - the models the vendor lists for the key, read when asked, or the models a
-//!   compatible entry's user added;
+//! - the models the vendor lists for the key, read when asked;
 //! - the vendor's failures, read as its text failures are: a usage or billing
 //!   limit used up and a refused key named.
-//!
-//! A compatible endpoint is sent OpenAI's requests and read as OpenAI's API is.
 
 use std::sync::Arc;
 
@@ -37,16 +33,12 @@ use serde::{Deserialize, Serialize};
 enum Flavor {
     OpenAi,
     Xai,
-    /// A compatible endpoint, which the user knows by the entry's name and
-    /// whose models are the ones the user added.
-    Compatible { name: String, models: Vec<MediaModelInfo> },
 }
 
-/// The image role of a key or a compatible endpoint.
+/// The image role of a key.
 pub(crate) struct KeyImages {
     flavor: Flavor,
-    /// None for a compatible endpoint that takes none.
-    key: Option<Secret>,
+    key: Secret,
     generations: Url,
     edits: Url,
     models: Url,
@@ -61,13 +53,9 @@ impl KeyImages {
             // Only OpenAI's and xAI's keys make images through this crate.
             _ => Flavor::OpenAi,
         };
-        Self::of(flavor, Some(key), base, clock)
-    }
-
-    fn of(flavor: Flavor, key: Option<Secret>, base: &Url, clock: Arc<dyn Clock>) -> Self {
         let models = match flavor {
             Flavor::Xai => "/image-generation-models",
-            Flavor::OpenAi | Flavor::Compatible { .. } => "/models",
+            Flavor::OpenAi => "/models",
         };
         Self {
             flavor,
@@ -80,10 +68,9 @@ impl KeyImages {
     }
 
     fn label(&self) -> &str {
-        match &self.flavor {
+        match self.flavor {
             Flavor::OpenAi => MediaVendor::OpenAi.name(),
             Flavor::Xai => MediaVendor::Xai.name(),
-            Flavor::Compatible { name, .. } => name,
         }
     }
 
@@ -93,19 +80,14 @@ impl KeyImages {
 
     fn headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        if let Some(key) = &self.key {
-            headers.insert(AUTHORIZATION, key.bearer());
-        }
+        headers.insert(AUTHORIZATION, self.key.bearer());
         headers
     }
 
     async fn list(&self, http: &demi_provider_common::ProviderHttp) -> Result<Vec<MediaModelInfo>, MediaFailure> {
-        if let Flavor::Compatible { models, .. } = &self.flavor {
-            return Ok(models.clone());
-        }
         match self.flavor {
             Flavor::Xai => xai_listing(&self.call().get(http, &self.models, self.headers()).await?),
-            Flavor::OpenAi | Flavor::Compatible { .. } => {
+            Flavor::OpenAi => {
                 let listed = openai_models(&self.call(), http, &self.models, self.headers()).await?;
                 Ok(listed
                     .into_iter()
@@ -134,7 +116,7 @@ impl KeyImages {
                     images,
                 })
             }
-            Flavor::OpenAi | Flavor::Compatible { .. } => {
+            Flavor::OpenAi => {
                 let size = openai::size(catalog, &request.model, request.aspect);
                 json_body(&OpenAiBody {
                     prompt: &request.prompt,
@@ -164,7 +146,6 @@ impl MediaMaker for KeyImages {
         match self.flavor {
             Flavor::OpenAi => Some(MediaVendor::OpenAi),
             Flavor::Xai => Some(MediaVendor::Xai),
-            Flavor::Compatible { .. } => None,
         }
     }
 
@@ -178,8 +159,7 @@ impl MediaMaker for KeyImages {
 }
 
 /// Both APIs refuse a model they do not have rather than answer with
-/// another, so the model is confirmed, as [`MediaMaker`] holds by default;
-/// a compatible endpoint is taken to answer as OpenAI's does.
+/// another, so the model is confirmed, as [`MediaMaker`] holds by default.
 impl ImageMaker for KeyImages {
     fn make<'a>(
         &'a self,
@@ -200,25 +180,10 @@ impl ImageMaker for KeyImages {
             match self.flavor {
                 // A refused shape is told with the shapes xAI named.
                 Flavor::Xai => xai::with_shapes(answer),
-                Flavor::OpenAi | Flavor::Compatible { .. } => answer,
+                Flavor::OpenAi => answer,
             }
         })
     }
-}
-
-/// The image role of a compatible entry whose image shape is OpenAI Images:
-/// OpenAI's image requests under its `base`, with its `key` when it has one.
-///
-/// It offers the `models` its user added; `name` is the entry's, which its
-/// failures name.
-pub fn compatible_images(
-    name: String,
-    key: Option<Secret>,
-    base: &Url,
-    models: Vec<MediaModelInfo>,
-    clock: Arc<dyn Clock>,
-) -> Arc<dyn ImageMaker> {
-    Arc::new(KeyImages::of(Flavor::Compatible { name, models }, key, base, clock))
 }
 
 /// `GET /v1/models`: `data[].id` and `created`, in seconds.

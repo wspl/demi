@@ -7,10 +7,14 @@
 //! `updated` field. A download that fails, does not decode or is not newer is
 //! logged and changes nothing.
 //!
-//! The catalog describes and does not limit. A capability the vendor does not
-//! state is left out and means unknown, and a command warns when the agent asks
-//! for what the catalog does not list but sends the request anyway, since a
-//! vendor may take more than it wrote down.
+//! A capability the vendor does not state is left out and means unknown. What
+//! a video model takes is the one statement of a video call's options: a call
+//! that asks for what the entry states the model does not take fails before
+//! anything is sent, and an option the entry does not exclude is sent
+//! (`crate::videos::untaken`). Of images and audio the catalog describes and
+//! does not limit: a command warns when the agent asks for what the catalog
+//! does not list but sends the request anyway, since a vendor may take more
+//! than it wrote down.
 //!
 //! The types below are the file's shape, the one decoder every reader and the
 //! repository's own check use:
@@ -27,7 +31,7 @@
 use std::sync::{Arc, LazyLock, Mutex, PoisonError, Weak};
 use std::time::Duration;
 
-use demi_shared_types::Timestamp;
+use demi_shared_types::{Cost, Timestamp};
 use reqwest::Url;
 use serde::Deserialize;
 use tokio::runtime::Handle;
@@ -234,11 +238,32 @@ pub struct VideoCapabilities {
     pub max_reference_images: Option<u32>,
     /// Whether it makes sound.
     pub audio: Option<bool>,
+    /// Whether a call can ask it for a video without sound; false where
+    /// its request has no field for it.
+    pub audio_off: Option<bool>,
+    /// Whether it takes a seed.
+    pub seed: Option<bool>,
+    /// Whether it takes an aspect ratio beside a first frame; false where
+    /// the image sets the shape.
+    pub aspect_with_first_frame: Option<bool>,
     /// Whether it edits a video, and extends one.
     pub edits: Option<bool>,
     pub extends: Option<bool>,
     /// The longest video it edits or extends, in seconds.
     pub max_source_seconds: Option<f64>,
+}
+
+impl VideoCapabilities {
+    /// The shortest whole length it takes, in seconds, which a call that
+    /// asks none is sent: a vendor's own default is often its longest, and
+    /// dearest.
+    pub fn shortest(&self) -> Option<u32> {
+        match (&self.durations, self.duration_range) {
+            (Some(durations), _) => durations.iter().copied().min(),
+            (None, Some(range)) => range.min.map(|min| min.ceil() as u32),
+            (None, None) => None,
+        }
+    }
 }
 
 /// The range of durations a model takes, in seconds, ends included; an
@@ -316,6 +341,47 @@ pub struct Price {
     pub rates: Vec<Rate>,
     /// The vendor's pricing page.
     pub page: Option<String>,
+}
+
+/// A count of a job's tokens, by the unit and the kind its rate names.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Tokens {
+    pub unit: PriceUnit,
+    pub modality: Option<Modality>,
+    pub count: u64,
+}
+
+impl Price {
+    /// What `tokens` cost at these rates, for an output of `resolution`
+    /// where a rate is that of one, such as Seedance's `720p`.
+    ///
+    /// Each count is priced at the rate of its unit and kind; a rate that
+    /// names no kind prices every kind. The result is none when a count
+    /// other than zero has no rate, or the rates are in a currency this
+    /// backend does not know or in more than one.
+    pub fn of_tokens(&self, resolution: Option<&str>, tokens: &[Tokens]) -> Option<Cost> {
+        let of_resolution = |rate: &&Rate| {
+            rate.resolution.as_deref().is_none_or(|of| resolution.is_some_and(|asked| of.eq_ignore_ascii_case(asked)))
+        };
+        let mut amount = 0.0;
+        let mut currency = None;
+        for count in tokens.iter().filter(|count| count.count > 0) {
+            let rates = || self.rates.iter().filter(|rate| rate.unit == count.unit).filter(of_resolution);
+            let rate = rates()
+                .find(|rate| count.modality.is_some() && rate.modality == count.modality)
+                .or_else(|| rates().find(|rate| rate.modality.is_none()))?;
+            let rate_currency = match rate.currency {
+                Currency::Usd => demi_shared_types::Currency::Usd,
+                Currency::Cny => demi_shared_types::Currency::Cny,
+                Currency::Other => return None,
+            };
+            if currency.replace(rate_currency).is_some_and(|before| before != rate_currency) {
+                return None;
+            }
+            amount += count.count as f64 * rate.amount / 1e6;
+        }
+        Some(Cost { amount, currency: currency.unwrap_or(demi_shared_types::Currency::Usd) })
+    }
 }
 
 /// What one unit of a model's input or output costs, in the currency the

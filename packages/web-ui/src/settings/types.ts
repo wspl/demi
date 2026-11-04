@@ -32,13 +32,13 @@ export type SettingsMediaKind = 'image' | 'video' | 'audio'
 
 export const SETTINGS_MEDIA_KINDS: readonly SettingsMediaKind[] = ['image', 'video', 'audio']
 
-/** How an entry's API makes images: a vendor entry's is its vendor's, a compatible API's the one its user chose. */
+/** How an entry's API makes images: its vendor's. */
 export type SettingsImageShape = 'chatgpt' | 'grok' | 'openai-images' | 'gemini' | 'seedream' | 'minimax'
 
-/** How an entry's API makes videos, as `SettingsImageShape` says of images. */
-export type SettingsVideoShape = 'grok' | 'xai-videos' | 'gemini-interactions' | 'openai-videos' | 'ark-tasks' | 'openrouter-videos' | 'hailuo'
+/** How an entry's API makes videos: its vendor's. */
+export type SettingsVideoShape = 'grok' | 'xai-videos' | 'gemini-interactions' | 'ark-tasks' | 'hailuo'
 
-/** How an entry's API makes audio, as `SettingsImageShape` says of images. */
+/** How an entry's API makes audio: a vendor entry's is its vendor's, a compatible API's the one its user chose. */
 export type SettingsAudioShape = 'openai-speech' | 'gemini' | 'elevenlabs' | 'seed' | 'minimax'
 
 /** What an audio model makes. */
@@ -62,9 +62,7 @@ export const MEDIA_SHAPE_LABELS: Record<SettingsMediaShape, string> = {
   gemini: 'Gemini',
   'xai-videos': 'xAI Videos',
   'gemini-interactions': 'Gemini Interactions',
-  'openai-videos': 'OpenAI Videos',
   'ark-tasks': 'Ark Tasks',
-  'openrouter-videos': 'OpenRouter Videos',
   'openai-speech': 'OpenAI Speech',
   elevenlabs: 'ElevenLabs',
   seedream: 'Seedream',
@@ -73,8 +71,13 @@ export const MEDIA_SHAPE_LABELS: Record<SettingsMediaShape, string> = {
   hailuo: 'Hailuo',
 }
 
-/** The shapes a compatible API may choose for each kind, besides none, in the menu's order, as the backend lists them. */
-export type SettingsCompatibleShapes = { readonly [K in SettingsMediaKind]: readonly SettingsMediaShapes[K][] }
+/**
+ * The shapes a compatible API may choose, besides none, in the menu's order,
+ * as the backend lists them. Audio is the only kind a compatible API makes.
+ */
+export interface SettingsCompatibleShapes {
+  readonly audio: readonly SettingsAudioShape[]
+}
 
 /** A vendor's media model as an entry's section lists it, never edited. */
 export interface SettingsMediaModel {
@@ -215,8 +218,8 @@ export interface SettingsKeyBinding {
 
 /** A model as the settings edit it: what an entry's own list needs to use it. */
 export interface SettingsModelDraft {
-  /** What it makes: text, the model menu's, unless added as an image model of a compatible API; absent is text. An image model has only its ID and name. */
-  kind?: 'text' | SettingsMediaKind
+  /** What it makes: text, the model menu's, unless added as an audio model of a compatible API; absent is text. An audio model has only its ID and name. */
+  kind?: 'text' | 'audio'
   id: string
   name: string
   contextWindow: number | null
@@ -300,7 +303,7 @@ export interface SettingsVendor {
   name: string
   /** The protocol its entries speak; null for a vendor of media alone, such as ElevenLabs, which speaks its own. */
   wireApi: SettingsWireApi | null
-  /** Null when the runtime knows the vendor's endpoint itself. */
+  /** The endpoint an entry starts with, and returns to when its own is cleared; null for a vendor without one. */
   baseUrl: string | null
   /** The vendor mark (`vendorLogo`); null falls back to an initial. */
   logo: string | null

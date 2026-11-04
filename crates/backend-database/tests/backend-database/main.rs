@@ -4,7 +4,9 @@
 //! server that upgraded and one installed afresh hold the same tables.
 
 use demi_backend_database::DatabaseKind;
-use demi_backend_database::testing::{current, history, migrate, version_of};
+use demi_backend_database::providers::ResealSealed;
+use demi_backend_database::testing::{current, history, migrate, migrate_control, version_of};
+use demi_web_api_protocol::ids::ProviderId;
 use rusqlite::Connection;
 
 #[test]
@@ -110,6 +112,64 @@ fn a_widget_keeps_its_title_in_place_of_its_file_name() {
             value("widget", "w3", r#"{"number":3,"frame":{},"title":"widget-w2 sales"}"#, 2),
             value("widget", "w4", r#"{"number":4,"frame":{},"title":null}"#, 2),
         ]
+    );
+}
+
+#[test]
+fn each_configuration_of_format_2_is_sealed_again_in_format_3() {
+    /// A vault whose sealed values are their format's name: it seals one of
+    /// format 2 again as format 3, leaves one of format 3, and cannot read
+    /// any other.
+    struct Formats;
+
+    impl ResealSealed for Formats {
+        fn provider_config(&self, id: &ProviderId, _: &str, _: &[u8]) -> Result<Vec<u8>, String> {
+            Err(format!("entry {id} is no configuration of format 1"))
+        }
+
+        fn schedule_secret(&self, id: &str, _: &[u8]) -> Result<Vec<u8>, String> {
+            Err(format!("schedule {id} has no secret here"))
+        }
+
+        fn provider_endpoint_on_device(
+            &self,
+            id: &ProviderId,
+            _: &[u8],
+            _: &dyn Fn(&str) -> bool,
+        ) -> Result<Option<(String, Vec<u8>)>, String> {
+            Err(format!("entry {id} is read by no earlier step here"))
+        }
+
+        fn provider_config_format_3(&self, id: &ProviderId, sealed: &[u8]) -> Result<Option<Vec<u8>>, String> {
+            match sealed {
+                b"format 2" => Ok(Some(b"format 3".to_vec())),
+                b"format 3" => Ok(None),
+                _ => Err(format!("entry {id} does not open")),
+            }
+        }
+    }
+
+    let shipped = include_str!("../../src/schema/control/from_0_1_5979_reply_block_shares.sql");
+    let mut connection = Connection::open_in_memory().unwrap();
+    connection.execute_batch(shipped).unwrap();
+    connection.pragma_update(None, "user_version", version_of(shipped)).unwrap();
+    connection
+        .execute_batch(
+            "INSERT INTO users (id, email, nickname, password_hash, role, created_at) VALUES ('alex', 'alex@example.com', 'Alex', 'x', 'master', 1);
+             INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, config, created_at) VALUES
+               ('compatible', 'alex', 'openai', 'api_key', 'Compatible API', CAST('format 2' AS BLOB), 1),
+               ('resealed', 'alex', 'openai', 'api_key', 'xAI', CAST('format 3' AS BLOB), 1),
+               ('subscription', 'alex', 'codex', 'subscription', 'Codex', NULL, 1);",
+        )
+        .unwrap();
+    migrate_control(&mut connection, &Formats).unwrap();
+    let configs = query(&connection, "SELECT id, CAST(config AS TEXT) FROM providers ORDER BY id", |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+    });
+    let formats = |id: &str, config: Option<&str>| (id.to_owned(), config.map(str::to_owned));
+    assert_eq!(
+        configs,
+        vec![formats("compatible", Some("format 3")), formats("resealed", Some("format 3")), formats("subscription", None)]
     );
 }
 

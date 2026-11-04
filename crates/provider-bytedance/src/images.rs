@@ -46,7 +46,7 @@ impl ArkImages {
     }
 
     async fn send(&self, http: &demi_provider_common::ProviderHttp, body: Vec<u8>) -> MediaAnswer<Answered> {
-        let headers = ark::headers(Some(&self.key));
+        let headers = ark::headers(&self.key);
         ark::call(&*self.clock)
             .send(http, Ask::post_json(&self.generations, Bytes::from(body)), Holding::Json, |_| std::future::ready(Ok((headers.clone(), None))))
             .await

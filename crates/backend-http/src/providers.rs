@@ -13,7 +13,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_provider_registry::families::family_name;
 use demi_provider_registry::registry::RegistryError;
-use demi_shared_types::{AudioShape, ImageShape, VideoShape};
+use demi_shared_types::AudioShape;
 use demi_provider_registry::entry::ProviderEntry;
 use demi_backend_providers::vault::entries::Vault;
 use demi_backend_providers::vault::operations::OperationGuard;
@@ -97,10 +97,7 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
         ProviderRefusal::LoginFamily(_)
         | ProviderRefusal::SubscriptionOnly
         | ProviderRefusal::OwnModels(_) => (StatusCode::BAD_REQUEST, ErrorCode::SubscriptionOnly),
-        ProviderRefusal::VendorEndpoint(_)
-        | ProviderRefusal::VendorProtocol(_) => {
-            (StatusCode::BAD_REQUEST, ErrorCode::EndpointKind)
-        }
+        ProviderRefusal::VendorProtocol(_) => (StatusCode::BAD_REQUEST, ErrorCode::VendorProtocol),
         ProviderRefusal::DuplicateModel(_) => (StatusCode::BAD_REQUEST, ErrorCode::DuplicateModel),
         ProviderRefusal::RotationNeedsAccounts => {
             (StatusCode::BAD_REQUEST, ErrorCode::RotationNeedsAccounts)
@@ -158,11 +155,7 @@ pub(super) async fn catalog(
     Ok(Json(VendorCatalog {
         subscriptions,
         vendors,
-        compatible_shapes: CompatibleShapes {
-            image: ImageShape::CHOSEN.to_vec(),
-            video: VideoShape::CHOSEN.to_vec(),
-            audio: AudioShape::CHOSEN.to_vec(),
-        },
+        compatible_shapes: CompatibleShapes { audio: AudioShape::CHOSEN.to_vec() },
     }))
 }
 

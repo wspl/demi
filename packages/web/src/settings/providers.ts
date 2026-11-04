@@ -404,8 +404,9 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     function save(changes: Partial<SettingsProviderEntry>): Promise<void> {
       return patch(provider, {
         ...(changes.name !== undefined ? { label: changes.name } : {}),
-        // Only a compatible API's protocol and endpoint are edited; an
-        // emptied endpoint or key is removed, as the API's null does.
+        // Only a compatible API's protocol is edited; an emptied endpoint or
+        // key is removed, as the API's null does, and a vendor entry's
+        // endpoint then returns to its vendor's.
         ...(changes.wireApi !== undefined ? protocol(changes.wireApi) : {}),
         ...(changes.baseUrl !== undefined ? { baseUrl: changes.baseUrl || null } : {}),
         ...(changes.throughDevice !== undefined ? { throughDevice: changes.throughDevice } : {}),

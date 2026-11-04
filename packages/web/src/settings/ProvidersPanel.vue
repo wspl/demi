@@ -14,7 +14,7 @@ import { deviceMarkOf, hostKindOf, hostLabel } from '../state/hosts'
 import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
 
 /** The shapes before the catalog is read, while the page keeps their menus disabled: none besides None. */
-const NO_SHAPES: SettingsCompatibleShapes = { image: [], video: [], audio: [] }
+const NO_SHAPES: SettingsCompatibleShapes = { audio: [] }
 
 const resources = useResources()
 const preferences = usePreferences()

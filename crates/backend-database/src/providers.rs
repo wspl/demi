@@ -48,6 +48,14 @@ pub trait ResealSealed: Send + Sync {
         sealed: &[u8],
         owned: &dyn Fn(&str) -> bool,
     ) -> Result<Option<(String, Vec<u8>)>, String>;
+
+    /// Entry `id`'s configuration `sealed`, opened: one of format 2 sealed
+    /// again in format 3, without its image and video shapes and a
+    /// compatible entry's image and video models
+    /// (`schema/control/from_0_1_5979_reply_block_shares.rs`); none for one of format 3. An
+    /// error, which never quotes the configuration, says why it cannot be
+    /// read.
+    fn provider_config_format_3(&self, id: &ProviderId, sealed: &[u8]) -> Result<Option<Vec<u8>>, String>;
 }
 
 /// A database that holds no sealed configuration a migration re-encodes,
@@ -69,6 +77,10 @@ impl ResealSealed for NoSealed {
         _: &[u8],
         _: &dyn Fn(&str) -> bool,
     ) -> Result<Option<(String, Vec<u8>)>, String> {
+        Err(format!("no key opens the configuration of entry {id} here"))
+    }
+
+    fn provider_config_format_3(&self, id: &ProviderId, _: &[u8]) -> Result<Option<Vec<u8>>, String> {
         Err(format!("no key opens the configuration of entry {id} here"))
     }
 }

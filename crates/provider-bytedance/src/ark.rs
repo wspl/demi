@@ -38,13 +38,10 @@ pub(crate) fn call(clock: &dyn Clock) -> MediaCall<'_> {
     }
 }
 
-/// The headers of a request with `key`, none for a compatible endpoint
-/// that takes none.
-pub(crate) fn headers(key: Option<&Secret>) -> HeaderMap {
+/// The headers of a request with `key`.
+pub(crate) fn headers(key: &Secret) -> HeaderMap {
     let mut headers = HeaderMap::new();
-    if let Some(key) = key {
-        headers.insert(AUTHORIZATION, key.bearer());
-    }
+    headers.insert(AUTHORIZATION, key.bearer());
     headers
 }
 

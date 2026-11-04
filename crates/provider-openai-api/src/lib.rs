@@ -18,8 +18,6 @@ mod run;
 mod videos;
 
 pub use audio::compatible_audio;
-pub use images::compatible_images;
-pub use videos::compatible_videos;
 
 use std::sync::Arc;
 

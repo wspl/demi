@@ -6,7 +6,7 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# No doc examples.
+# The video makers' tests are the crate's test binary; no doc examples.
 test = false
 doctest = false
 bench = false
@@ -76,7 +76,13 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 url = { version = "2", features = ["serde"] }
 
+[[test]]
+name = "backend"
+path = "tests/backend/main.rs"
+
 [dev-dependencies]
+bytes.workspace = true
+reqwest.workspace = true
 # The scripted machine manager (`examples/scripted_machines`), which `xtask dev`
 # runs the backend against.
 # `testing` for `built_program`, which finds the runner the workspace built.

@@ -108,7 +108,7 @@ const API_KEY_STDIN: &str = "Read the entry's key from stdin, one line; pipe it 
 const API_KEY: &str = "The key, read from stdin with --api-key-stdin.";
 const PATCH: &str = "The changes, a JSON object such as {\"cacheTtl\": \"1h\", \"throughDevice\": null}; with --api-key-stdin, the key.";
 const ENTRIES: &str = "The entries, by name or id, in the order to put them.";
-const KIND: &str = "What the model makes: text, the model menu's; image, video or audio, for a compatible API whose shape for that kind is chosen, an audio model making what its shape makes, speech for openai-speech. Text without it.";
+const KIND: &str = "What the model makes: text, the model menu's; audio, for a compatible API whose audio shape is chosen, making what its shape makes, speech for openai-speech. Text without it.";
 const MODEL_ID: &str = "The model's id as the entry's vendor names it.";
 const MODEL_NAME: &str = "The model's name in the model menu; its id without one.";
 const CONTEXT: &str = "The context window in tokens.";
@@ -1750,22 +1750,14 @@ impl ShownEntry {
                 },
             )
             .table("Models", &models);
-        let lists = [
-            ("Image models", ModelKind::Image),
-            ("Video models", ModelKind::Video),
-            ("Audio models", ModelKind::Audio),
-        ];
-        for (title, kind) in lists {
-            let own: Vec<&ConfiguredModel> =
-                entry.models.iter().flat_map(|models| &models.0).filter(|model| model.kind == kind).collect();
-            if own.is_empty() {
-                continue;
-            }
+        let audio: Vec<&ConfiguredModel> =
+            entry.models.iter().flat_map(|models| &models.0).filter(|model| model.kind == ModelKind::Audio).collect();
+        if !audio.is_empty() {
             let mut table = Table::new(["id", "name"]);
-            for model in own {
+            for model in audio {
                 table.row([model.id.as_str(), model.display_name.as_str()]);
             }
-            fields.table(title, &table);
+            fields.table("Audio models", &table);
         }
         fields.render()
     }

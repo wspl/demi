@@ -109,10 +109,12 @@ import type { TitleText } from '../ui/ui-text'
  *
  * - Every supported subscription is always listed and manages its accounts. An
  *   API key is added from the rail.
- * - A vendor entry shows its vendor's endpoint as plain text and lists the
- *   vendor's catalog.
+ * - A vendor entry lists the vendor's catalog. Its endpoint starts as the
+ *   vendor's and may be a gateway's that serves the vendor's API; cleared, it
+ *   returns to the vendor's.
  * - A compatible API sets its protocol, its endpoint and, when its server takes
- *   one, its key, and lists only the models the user adds.
+ *   one, its key, and lists only the models the user adds. Of media, it makes
+ *   only audio.
  *
  * Adding and editing:
  *
@@ -511,37 +513,33 @@ function madeKinds(provider: SettingsProviderEntry): SettingsMediaKind[] {
 }
 
 /**
- * The kinds whose sections the entry's page shows below Models:
- * each a vendor entry makes, and
- * every kind for a compatible API, which chooses its shape there.
+ * The kinds whose sections the entry's page shows below Models: each a
+ * vendor entry makes, and audio for a compatible API, which chooses its
+ * shape there.
  */
 function mediaSections(provider: SettingsProviderEntry): SettingsMediaKind[] {
-  return provider.compatible ? [...SETTINGS_MEDIA_KINDS] : madeKinds(provider)
+  return provider.compatible ? ['audio'] : madeKinds(provider)
 }
 
 /** Each kind's section title, its switch and its Add, as the page names them. */
 const MEDIA_WORDS: Record<SettingsMediaKind, {
   title: () => string
   generation: () => string
-  add: () => string
   none: () => string
 }> = {
   image: {
     title: () => t('providers.media.images'),
     generation: () => t('providers.media.imageGeneration'),
-    add: () => t('providers.media.addImage'),
     none: () => t('providers.media.noImages'),
   },
   video: {
     title: () => t('providers.media.videos'),
     generation: () => t('providers.media.videoGeneration'),
-    add: () => t('providers.media.addVideo'),
     none: () => t('providers.media.noVideos'),
   },
   audio: {
     title: () => t('providers.media.audio'),
     generation: () => t('providers.media.audioGeneration'),
-    add: () => t('providers.media.addAudio'),
     none: () => t('providers.media.noAudio'),
   },
 }
@@ -732,7 +730,7 @@ const compatibleApi = computed(() => {
 const modelSearch = ref<{
   providerId: string
   /** What the model added makes: text, or a kind the entry has a shape for. */
-  kind: 'text' | SettingsMediaKind
+  kind: NonNullable<SettingsModelDraft['kind']>
   open: boolean
   /** Whether the model chosen is being added. */
   adding: boolean
@@ -744,7 +742,7 @@ const searchModelsOf = computed<SettingsModelSearch | undefined>(() => {
   return search && shown ? (query, signal) => search(shown.providerId, query, signal) : undefined
 })
 
-function openAddModel(kind: 'text' | SettingsMediaKind = 'text'): void {
+function openAddModel(kind: NonNullable<SettingsModelDraft['kind']> = 'text'): void {
   if (selected.value) {
     modelSearch.value = { providerId: selected.value.id, kind, open: true, adding: false, error: null }
   }
@@ -762,7 +760,7 @@ async function addModel(draft: SettingsModelDraft): Promise<void> {
     return
   }
   const id = provider.modelSource === 'manual' ? freeModelId(provider.models.map((m) => m.id), draft.id) : draft.id
-  // A model that is not text keeps only its ID and name.
+  // An audio model keeps only its ID and name.
   const model: SettingsModelDraft = search.kind === 'text'
     ? { ...draft, id }
     : {
@@ -889,9 +887,9 @@ function accountPending(providerId: string, accountId: string, action: 'remove' 
 }
 
 /**
- * A compatible API's endpoint, which it cannot work without: one typed in is
- * an http or https address. An empty field is no fault: left empty, it
- * removes a saved endpoint, and the entry waits for one.
+ * An entry's endpoint: one typed in is an http or https address. An empty
+ * field is no fault: a compatible API's then waits for one, and a vendor
+ * entry's returns to its vendor's.
  */
 const endpointFault = ref<string | null>(null)
 watch(selectedId, () => {
@@ -952,6 +950,27 @@ function withHeader(entry: SettingsProviderEntry, name: string, value: string): 
 
 function endpointCheck(value: string) {
   return value.trim() === '' ? null : endpointProblem(value)
+}
+
+/** The endpoint a vendor entry returns to when its own is cleared; null for a compatible API and a vendor without one. */
+function vendorEndpoint(provider: SettingsProviderEntry): string | null {
+  if (provider.compatible || !provider.vendorId) {
+    return null
+  }
+  return props.vendors.find((vendor) => vendor.id === provider.vendorId)?.baseUrl ?? null
+}
+
+/**
+ * The endpoint row's description: the vendor's endpoint as the default. A
+ * vendor entry keeps the line's room while the vendors are read, so the
+ * rows below do not move when it comes.
+ */
+function endpointDescription(provider: SettingsProviderEntry): string | undefined {
+  const endpoint = vendorEndpoint(provider)
+  if (endpoint) {
+    return t('providers.connection.endpointDefault', { endpoint })
+  }
+  return !provider.compatible && provider.vendorId && !shapesRead.value ? ' ' : undefined
 }
 </script>
 
@@ -1314,15 +1333,11 @@ function endpointCheck(value: string) {
               </SettingsRow>
               <!-- Connection (API key) -->
               <template v-else>
-                <!-- A vendor's endpoint is its vendor's: shown, never edited. A compatible API's
-                     protocol and endpoint are the user's, changed any time; what it still lacks is
-                     an empty field, never red. -->
-                <SettingsRow v-if="!selected.compatible" :label="t('providers.connection.endpoint')">
-                  <span class="min-w-0 select-text break-all text-[13px] text-fg-muted">{{
-                    selected.baseUrl
-                  }}</span>
-                </SettingsRow>
-                <template v-else>
+                <!-- A compatible API's protocol and endpoint are the user's, changed any time;
+                     what it still lacks is an empty field, never red. A vendor's protocol is its
+                     vendor's; its endpoint may be a gateway's, and cleared returns to the vendor's,
+                     which the row names. -->
+                <template v-if="selected.compatible">
                   <SettingsRow :label="t('providers.connection.protocol')">
                     <Dropdown
                       size="sm"
@@ -1349,24 +1364,27 @@ function endpointCheck(value: string) {
                       </template>
                     </Dropdown>
                   </SettingsRow>
-                  <SettingsRow :label="t('providers.connection.endpoint')">
-                    <template v-if="endpointFault" #detail>
-                      <InlineError :message="endpointFault" />
-                    </template>
-                    <CommitTextInput
-                      :disabled="fieldsLocked(selected)"
-                      :model-value="selected.baseUrl"
-                      :aria-label="t('providers.connection.endpoint')"
-                      placeholder="https://api.example.com/v1"
-                      literal
-                      trim
-                      :validate="endpointCheck"
-                      class="w-72 max-w-full"
-                      @problem="endpointFault = $event"
-                      @commit="emit('change', selected, { baseUrl: $event })"
-                    />
-                  </SettingsRow>
                 </template>
+                <SettingsRow
+                  :label="t('providers.connection.endpoint')"
+                  :description="endpointDescription(selected)"
+                >
+                  <template v-if="endpointFault" #detail>
+                    <InlineError :message="endpointFault" />
+                  </template>
+                  <CommitTextInput
+                    :disabled="fieldsLocked(selected)"
+                    :model-value="selected.baseUrl"
+                    :aria-label="t('providers.connection.endpoint')"
+                    :placeholder="vendorEndpoint(selected) ?? 'https://api.example.com/v1'"
+                    literal
+                    trim
+                    :validate="endpointCheck"
+                    class="w-72 max-w-full"
+                    @problem="endpointFault = $event"
+                    @commit="emit('change', selected, { baseUrl: $event })"
+                  />
+                </SettingsRow>
                 <!-- Where the requests go out from: the server, or one of the user's Hosts,
                      which then reaches the endpoint on its own network. -->
                 <SettingsRow :label="t('providers.connection.through')">
@@ -1870,7 +1888,7 @@ a vendor entry's switch and its vendor's
                         @select="close(); chooseShape(selected, kind, null)"
                       />
                       <MenuItem
-                        v-for="shape in compatibleShapes[kind]"
+                        v-for="shape in compatibleShapes.audio"
                         :key="shape"
                         :label="MEDIA_SHAPE_LABELS[shape]"
                         choice
@@ -1891,13 +1909,13 @@ a vendor entry's switch and its vendor's
                   :empty="mediaEmpty(selected, kind)"
                 >
                   <template v-if="selected.compatible" #actions>
-                    <Tooltip :content="MEDIA_WORDS[kind].add()"
+                    <Tooltip :content="t('providers.media.addAudio')"
                       ><IconButton
                         size="sm"
                         :icon="Plus"
-                        :aria-label="MEDIA_WORDS[kind].add()"
+                        :aria-label="t('providers.media.addAudio')"
                         :disabled="fieldsLocked(selected)"
-                        @click="openAddModel(kind)"
+                        @click="openAddModel('audio')"
                     /></Tooltip>
                   </template>
                   <template v-if="selected.compatible">
@@ -2046,7 +2064,7 @@ a vendor entry's switch and its vendor's
       :search="searchModelsOf"
       :adding="modelSearch.adding"
       :error="modelSearch.error"
-      :title="modelSearch.kind === 'text' ? undefined : MEDIA_WORDS[modelSearch.kind].add()"
+      :title="modelSearch.kind === 'text' ? undefined : t('providers.media.addAudio')"
       @close="modelSearch.open = false"
       @add="addModel"
     />

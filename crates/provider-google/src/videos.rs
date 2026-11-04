@@ -28,6 +28,8 @@
 //! - An image's role is declared at the head of the prompt, in the form
 //!   Google's guide gives, such as `[# Sources <FIRST_FRAME>@Image1]`: the
 //!   API has no other field for it, and Omni otherwise guesses each role.
+//! - A length is `response_format.duration`, such as `"4s"`, as Google's own
+//!   Omni client sends it; the API reference does not list the field.
 //! - An edit or an extension of a video Google keeps continues its job by
 //!   `previous_interaction_id`; of a file, names it with the change as
 //!   `video_config.task`, which Google refuses beside a kept job. A kept
@@ -39,12 +41,10 @@ use bytes::Bytes;
 use demi_provider_common::{
     ErrorCode, endpoint_url, json_body,
     media::{MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable, within_limit},
-    media_catalog::{Catalog, Modality, PriceUnit},
-    videos::{
-        self, Change, Done, DoneVideo, JobState, JobStep, SourceVideo, VideoMaker, VideoOption, VideoRequest, unsent_of,
-    },
+    media_catalog::{Catalog, Modality, Price, PriceUnit, Tokens},
+    videos::{self, Change, Done, DoneVideo, JobState, JobStep, SourceVideo, VideoMaker, VideoRequest},
 };
-use demi_shared_types::{Cost, Currency, TokenUsage, VendorTrace, VideoResolution};
+use demi_shared_types::{TokenUsage, VendorTrace, VideoResolution};
 use futures_util::future::BoxFuture;
 use futures_util::stream::{self, BoxStream, StreamExt as _};
 use reqwest::Url;
@@ -89,20 +89,6 @@ impl MediaMaker for KeyVideos {
 }
 
 impl VideoMaker for KeyVideos {
-    /// Omni has no field for a length, sound or a seed, and keeps the
-    /// shape of a video it changes.
-    fn unsent(&self, _: &Catalog, request: &VideoRequest) -> Vec<VideoOption> {
-        let mut lacks = vec![VideoOption::Duration, VideoOption::Audio, VideoOption::Seed];
-        if request.source.is_some() {
-            lacks.push(VideoOption::Aspect);
-        }
-        unsent_of(&lacks, request)
-    }
-
-    fn shape_name(&self) -> String {
-        "Gemini Interactions".to_owned()
-    }
-
     fn changes(&self) -> Vec<Change> {
         vec![Change::Edit, Change::Extend]
     }
@@ -121,7 +107,7 @@ impl VideoMaker for KeyVideos {
         let key = &self.0;
         let mut url = endpoint_url(key.base(), "/interactions");
         url.query_pairs_mut().append_pair("alt", "sse");
-        let rates = Rates::of(catalog, &request.model);
+        let price = catalog.model(VENDOR, &request.model).and_then(|known| catalog.price(known)).cloned();
         let kept = matches!(&request.source, Some(source) if matches!(source.video, SourceVideo::Job(_)));
         let opened = async move {
             let body = Bytes::from(json_body(&encode(key, http, &request).await?));
@@ -129,7 +115,7 @@ impl VideoMaker for KeyVideos {
         };
         stream::once(opened)
             .flat_map(move |opened| match opened {
-                Ok(events) => read_events(events, rates).boxed(),
+                Ok(events) => read_events(events, price.clone()).boxed(),
                 Err(failure) => stream::once(std::future::ready(answer(Err(gone(failure, kept))))).boxed(),
             })
             .boxed()
@@ -190,6 +176,9 @@ struct Format {
     aspect_ratio: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     resolution: Option<String>,
+    /// Seconds, as `4s`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    duration: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -237,8 +226,9 @@ async fn encode<'a>(
         input,
         response_format: Format {
             kind: "video",
-            aspect_ratio: request.aspect.filter(|_| request.source.is_none()).map(|aspect| aspect.to_string()),
+            aspect_ratio: request.aspect.map(|aspect| aspect.to_string()),
             resolution: request.resolution.map(VideoResolution::lowercase),
+            duration: request.duration.map(|seconds| format!("{seconds}s")),
         },
         previous_interaction_id: previous,
         generation_config: task.map(|task| GenerationConfig { video_config: VideoConfig { task } }),
@@ -272,45 +262,6 @@ fn prompt(request: &VideoRequest) -> String {
     }
     heads.push(request.prompt.clone());
     heads.join(" ")
-}
-
-/// The catalog's prices of a model's tokens, per million: its input, its
-/// video and its thinking, which Google prices as text.
-#[derive(Clone, Copy)]
-struct Rates {
-    input: Option<f64>,
-    video: Option<f64>,
-    text: Option<f64>,
-}
-
-impl Rates {
-    fn of(catalog: &Catalog, model: &str) -> Self {
-        let rates = catalog
-            .model(VENDOR, model)
-            .and_then(|known| catalog.price(known))
-            .map(|price| price.rates.as_slice())
-            .unwrap_or_default();
-        let usd = |unit: PriceUnit, modality: Option<Modality>| {
-            rates
-                .iter()
-                .find(|rate| rate.unit == unit && rate.modality == modality && rate.currency == demi_provider_common::media_catalog::Currency::Usd)
-                .map(|rate| rate.amount)
-        };
-        Self {
-            input: usd(PriceUnit::MillionInputTokens, None),
-            video: usd(PriceUnit::MillionOutputTokens, Some(Modality::Video)),
-            text: usd(PriceUnit::MillionOutputTokens, Some(Modality::Text)),
-        }
-    }
-
-    /// What `usage` costs; none when a kind it has has no rate.
-    fn cost(self, usage: &Usage) -> Option<Cost> {
-        let video = usage.video_tokens();
-        let text = usage.total_output_tokens.saturating_sub(video) + usage.total_thought_tokens;
-        let part = |tokens: u64, rate: Option<f64>| if tokens == 0 { Some(0.0) } else { rate.map(|rate| tokens as f64 * rate / 1e6) };
-        let amount = part(usage.total_input_tokens, self.input)? + part(video, self.video)? + part(text, self.text)?;
-        Some(Cost { amount, currency: Currency::Usd })
-    }
 }
 
 /// An event of the stream; a failure Google sends outside an event has no
@@ -390,6 +341,19 @@ impl Usage {
         self.output_tokens_by_modality.iter().filter(|count| count.modality == "video").map(|count| count.tokens).sum()
     }
 
+    /// The counts as the catalog's rates price them: its input, its video
+    /// and the rest of its output with its thinking, which Google prices
+    /// as text.
+    fn priced(&self) -> [Tokens; 3] {
+        let video = self.video_tokens();
+        let text = self.total_output_tokens.saturating_sub(video) + self.total_thought_tokens;
+        [
+            Tokens { unit: PriceUnit::MillionInputTokens, modality: None, count: self.total_input_tokens },
+            Tokens { unit: PriceUnit::MillionOutputTokens, modality: Some(Modality::Video), count: video },
+            Tokens { unit: PriceUnit::MillionOutputTokens, modality: Some(Modality::Text), count: text },
+        ]
+    }
+
     /// The counts, thinking among the output, as the ledger keeps them.
     fn counts(&self) -> TokenUsage {
         TokenUsage {
@@ -404,15 +368,16 @@ impl Usage {
 /// What the stream has said so far.
 struct Read {
     events: BoxStream<'static, Result<String, MediaFailure>>,
-    rates: Rates,
+    /// The model's prices in the catalog.
+    price: Option<Price>,
     /// The video, once its step sent it.
     video: Option<DoneVideo>,
 }
 
 /// The job's steps, as its events tell them: its id, that it runs, then its
 /// video or its failure; a stream that ends before either is unreadable.
-fn read_events(events: BoxStream<'static, Result<String, MediaFailure>>, rates: Rates) -> BoxStream<'static, MediaAnswer<JobStep>> {
-    stream::unfold(Some(Read { events, rates, video: None }), |read| async move {
+fn read_events(events: BoxStream<'static, Result<String, MediaFailure>>, price: Option<Price>) -> BoxStream<'static, MediaAnswer<JobStep>> {
+    stream::unfold(Some(Read { events, price, video: None }), |read| async move {
         let mut read = read?;
         loop {
             let Some(event) = read.events.next().await else {
@@ -485,7 +450,7 @@ impl Read {
                     Some("completed") => {
                         let video = self.video.take().ok_or_else(|| unreadable("its finished job sent no video".to_owned()))?;
                         let usage = interaction.usage.unwrap_or_default();
-                        let cost = self.rates.cost(&usage);
+                        let cost = self.price.as_ref().and_then(|price| price.of_tokens(None, &usage.priced()));
                         Ok(Some(JobStep::State(JobState::Done(Done { video, cost, usage: Some(usage.counts()) }))))
                     }
                     Some("failed" | "cancelled" | "incomplete") => Ok(Some(failed(interaction.errors))),
