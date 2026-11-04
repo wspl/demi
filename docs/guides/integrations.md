@@ -222,9 +222,9 @@ limit, and it keeps the Cloud awake while it runs.
 - `POST /v1/clouds/{cloud}/commands/{id}/stop` stops it.
 - The socket sends a `command` event when it ends.
 
-Demi keeps an ended command for an hour, and forgets every command when the
-server restarts: a command you can no longer read is gone, and a running one
-ended with the server.
+Demi keeps every command, with its output, until you delete its Cloud. A
+command outlives a restart of the server: it runs on, and once the Cloud's
+runner connects again Demi follows it to its end, with its whole output.
 
 The Cloud's files have the same routes as a conversation's
 ([Files](#files)), under `/v1/clouds/{cloud}/fs`. A relative path starts at

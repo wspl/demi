@@ -37,12 +37,17 @@ while it runs.
 * It starts once the Cloud's init script ends, as an agent's command does.
 * A reset or a deletion of the Cloud stops its commands first, as each
   needs the Cloud with no work on it.
-* Demi keeps a command's record and output in memory, for an hour after it
-  ends: a program that reconnects within that hour reads its end. Each keeps at
-  most what the Cloud's runner keeps of a command's output, its first and
-  last 8 MiB. A server
-  that restarts forgets every command, and the Cloud's runner stops each one
-  still running, as it stops every job its backend has no record of.
+* Demi keeps a command's record in the database, as it keeps an agent's
+  command's: a row when it starts, and its end with its whole output, a
+  blob, when it ends, which stays until its Cloud goes. The output is what
+  the Cloud's runner keeps of a command's, at most its first and last
+  8 MiB.
+* A command outlives a restart of the server, as an agent's command does.
+  Its row names its job before the job is sent, the Cloud's runner keeps
+  the job for a backend that names it, and when the runner connects to the
+  server that started again, the server takes the command up and follows
+  it to its end. Until then it reads as running. A command whose start was
+  never sent when the server stopped reads as failed.
 
 ### Files
 
@@ -83,9 +88,9 @@ conversation's file routes (0220); no `read_file` joins the plugin's port.
 
 * **A `read_file` port message for a command's call**, as the asker
   proposed: a second way to read the files the conversation's routes read.
-* **Command records in the database**, so they outlive a restart: the
-  record of a command could then be taken up again as an agent's command
-  is, at the cost of a table and a migration for what a program reruns.
+* **Command records in memory only**, for an hour after each ends: a
+  program that reconnects later, or after the server restarts, could not
+  read a command's end, which an agent's command never loses.
 * **A process API with its own user, `root` or `demi`, and environment**:
   `sudo` in the script does what `root` would, and a variable is a line of
   the script.

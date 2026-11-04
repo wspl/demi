@@ -1156,3 +1156,23 @@ CREATE TABLE integration_clouds (
 ) STRICT;
 CREATE UNIQUE INDEX integration_clouds_by_key
   ON integration_clouds (integration_id, external_key) WHERE external_key IS NOT NULL;
+-- A command an integration runs on its Cloud outside any conversation; it
+-- goes with its Cloud. A row without ended_at runs.
+CREATE TABLE cloud_commands (
+  id             TEXT PRIMARY KEY,
+  device_id      TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+  started_at     INTEGER NOT NULL,
+  -- Its job on the Cloud, written before the job is sent: a backend that
+  -- starts again takes it up.
+  job_id         TEXT,
+  ended_at       INTEGER,
+  -- Its exit code, or why it did not run to its end.
+  exit_code      INTEGER,
+  failure        TEXT,
+  -- Its whole output's blob, and the bytes at its end the backend lacks.
+  blob           TEXT,
+  missing_bytes  INTEGER,
+  missing_reason TEXT,
+  CHECK ((missing_bytes IS NULL) = (missing_reason IS NULL))
+) STRICT;
+CREATE INDEX cloud_commands_device ON cloud_commands (device_id);

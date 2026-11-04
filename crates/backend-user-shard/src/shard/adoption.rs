@@ -77,6 +77,15 @@ impl Shard {
                 Vec::new()
             }
         };
+        // An integration's commands on the device, when it is the integration's
+        // Cloud (`crates/backend-user-shard/src/integration_commands.rs`).
+        let cloud_commands = match self.services().control.running_cloud_commands(device.id.clone()).await {
+            Ok(running) => running,
+            Err(error) => {
+                tracing::warn!(event = "runner_adoption.read_failed", host_id = %device.id, what = "running_cloud_commands", error = &error as &dyn std::error::Error, "the Cloud's running commands could not be read");
+                Vec::new()
+            }
+        };
         // The user's conversations, archived ones included, whose scratch
         // directories the runner keeps, and which of them are archived, whose
         // recordings it removes (`crates/runner-jobs/src/scratch.rs`).
@@ -222,6 +231,7 @@ impl Shard {
                 .iter()
                 .filter(|recorded| recorded.sent)
                 .map(|recorded| recorded.job.clone())
+                .chain(cloud_commands.iter().filter_map(|command| command.job.clone()))
                 .collect(),
         };
         // A closing shard takes no runner; dropping the socket closes it.
@@ -229,6 +239,9 @@ impl Shard {
             return;
         };
         self.take_up(recorded.into_iter().map(|recorded| recorded.conversation));
+        if !cloud_commands.is_empty() {
+            self.take_up_cloud_commands(&device.id);
+        }
         if started_anew {
             let shard = self.clone();
             let device = device.id.clone();

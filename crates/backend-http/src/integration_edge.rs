@@ -147,6 +147,7 @@ pub(crate) fn refused(refusal: IntegrationRefusal) -> ApiError {
         IntegrationRefusal::Cloud(error) => error.into(),
         IntegrationRefusal::Storage(error) => error.into(),
         IntegrationRefusal::ConversationStore(error) => ApiError::internal(&error),
+        IntegrationRefusal::Internal(message) => ApiError::internal_message(message),
     }
 }
 
@@ -367,7 +368,7 @@ async fn stop_cloud_command(
     state
         .shards
         .of(&record.user.clone())
-        .call(move |shard, _| async move { shard.stop_cloud_command(&record, &device, &command) })
+        .call(move |shard, _| async move { shard.stop_cloud_command(&record, &device, &command).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)

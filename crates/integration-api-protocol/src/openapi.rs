@@ -116,7 +116,7 @@ fn routes() -> Vec<Route> {
         json("delete", "/clouds/{cloud}", "Delete a Cloud, with its files; a conversation that worked on it has no Cloud until it moves to one", None, (204, None)).refuses(409, "The Cloud is being deleted, or its machine refused (`integration_refused`)."),
         json("post", "/clouds/{cloud}/reset", "Reset a Cloud's system; /home stays", None, (200, Some(of::<Cloud>))).refuses(409, "The Cloud's machine refused the reset, as the message says (`integration_refused`)."),
         json("post", "/clouds/{cloud}/commands", "Run a script on a Cloud as `demi`, outside any conversation, once its init script ends; it answers at once", Some(of::<StartCloudCommand>), (201, Some(of::<CloudCommand>))),
-        json("get", "/clouds/{cloud}/commands/{command}", "A command on a Cloud, with its output from `after`; an hour after it ends, or once the server restarts, it is gone", None, (200, Some(of::<CloudCommand>)))
+        json("get", "/clouds/{cloud}/commands/{command}", "A command on a Cloud, with its output from `after`; it stays until its Cloud goes", None, (200, Some(of::<CloudCommand>)))
             .query(of::<OutputQuery>),
         json("post", "/clouds/{cloud}/commands/{command}/stop", "Stop a command on a Cloud; one that ended stays as it is", None, (204, None)),
         cloud_files(json("get", "/clouds/{cloud}/fs", "A directory's entries on a Cloud, its home without `path`", None, (200, Some(of::<files::Directory>)))

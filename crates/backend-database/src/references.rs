@@ -6,7 +6,8 @@
 //! - the drafts of the user's conversations and the messages they keep saved for
 //!   later;
 //! - the plugins' values and Host directories;
-//! - the files of the media jobs no call collected yet.
+//! - the files of the media jobs no call collected yet;
+//! - the outputs of the commands integrations ran on the user's Clouds.
 //!
 //! In each of the user's conversation databases:
 //!
@@ -64,6 +65,18 @@ impl ControlService {
             references.blobs.extend(plugin_blobs(&transaction, &owner)?);
             references.blobs.extend(media_job_blobs(&transaction, &owner)?);
             {
+                let mut outputs = transaction.prepare(
+                    "SELECT c.blob FROM cloud_commands c JOIN devices d ON d.id = c.device_id
+                     WHERE d.user_id = ?1 AND c.blob IS NOT NULL",
+                )?;
+                let mut rows = outputs.query([owner.as_str()])?;
+                while let Some(row) = rows.next()? {
+                    references.blobs.insert(decode(
+                        "cloud_commands",
+                        "blob",
+                        BlobRef::try_from(row.get::<_, String>(0)?),
+                    )?);
+                }
                 let mut uploads = transaction.prepare(
                     "SELECT sha256 FROM attachments WHERE user_id = ?1 AND created_at > ?2",
                 )?;

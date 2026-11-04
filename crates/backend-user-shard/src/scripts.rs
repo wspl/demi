@@ -11,7 +11,7 @@ use demi_command_protocol::{CommandContext, Viewable};
 use demi_host_interface::{
     CommandRecord, Ending, ExecRequest, HostError, JobCaller, Numbers, PageFeed, ShellEnvironment, WholeOutput,
 };
-use demi_runner_client::{ContextSource, EnvironmentOptions, RemoteHost, RemoteShellEnvironment};
+use demi_runner_client::{CommandKeeper, ContextSource, EnvironmentOptions, RemoteHost, RemoteShellEnvironment};
 use demi_shared_types::{NodeId, Sequence};
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
@@ -52,18 +52,25 @@ impl Numbers for Count {
 }
 
 /// A shell environment on `host` for the backend's own scripts, in
-/// `context`, which no page follows.
-pub(crate) fn script_environment(host: RemoteHost, context: CommandContext) -> RemoteShellEnvironment {
+/// `context`, which no page follows; `keeper` records its commands where a
+/// backend that starts again takes them up.
+pub(crate) fn script_environment(
+    host: RemoteHost,
+    context: CommandContext,
+    keeper: Option<Rc<dyn CommandKeeper>>,
+) -> RemoteShellEnvironment {
     let source: ContextSource = Rc::new(move || {
         let context = context.clone();
         Box::pin(async move { Ok(context) })
     });
-    RemoteShellEnvironment::new(EnvironmentOptions::new(
+    let mut options = EnvironmentOptions::new(
         host,
         source,
         Rc::new(NoPage(watch::Sender::new(false))),
         Rc::new(Count::default()),
-    ))
+    );
+    options.keeper = keeper;
+    RemoteShellEnvironment::new(options)
 }
 
 /// The start of `script` in `cwd`, titled `title`, as the backend's own: a
@@ -72,17 +79,22 @@ pub(crate) fn script_request(script: String, cwd: Option<String>, title: &str) -
     ExecRequest {
         script,
         cwd,
-        caller: JobCaller {
-            node: NodeId::try_from("backend").expect("a name is not empty"),
-            tool_use_id: title.to_owned(),
-            turn: None,
-        },
+        caller: script_caller(title),
         title: title.to_owned(),
         service: true,
         viewable: Viewable {
             model: "none".into(),
             media_types: Some(Vec::new()),
         },
+    }
+}
+
+/// Who starts a script titled `title`: the backend.
+pub(crate) fn script_caller(title: &str) -> JobCaller {
+    JobCaller {
+        node: NodeId::try_from("backend").expect("a name is not empty"),
+        tool_use_id: title.to_owned(),
+        turn: None,
     }
 }
 
@@ -99,7 +111,7 @@ pub(crate) async fn run_script<T>(
     stop: &CancellationToken,
     read: impl FnOnce(i32, Option<&WholeOutput>) -> T,
 ) -> ScriptEnd<T> {
-    let environment = script_environment(host, context);
+    let environment = script_environment(host, context, None);
     let request = script_request(script, cwd, title);
     let cancel = CancellationToken::new();
     let command = match environment.start(request, cancel.clone()).await {

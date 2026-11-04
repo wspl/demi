@@ -219,6 +219,9 @@ pub enum IntegrationRefusal {
     /// A conversation's store failed to read what it holds.
     #[error(transparent)]
     ConversationStore(demi_agent_server::CommandMissed),
+    /// What Demi keeps could not be read, as the message says.
+    #[error("{0}")]
+    Internal(String),
 }
 
 impl From<ChangeRefusal> for IntegrationRefusal {

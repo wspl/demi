@@ -103,6 +103,7 @@ pub mod accounts;
 pub mod attachments;
 pub mod browser_views;
 pub mod schedules;
+pub mod cloud_commands;
 pub mod columns;
 pub mod command_outputs;
 mod contents;
