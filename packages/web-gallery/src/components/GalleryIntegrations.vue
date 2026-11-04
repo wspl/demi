@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsIntegrations from '@demicodes/web-ui/settings/SettingsIntegrations.vue'
-import type { IntegrationChange, SettingsIntegration } from '@demicodes/web-ui/settings/integrations'
+import type { IntegrationChange, ServerSizes, SettingsIntegration } from '@demicodes/web-ui/settings/integrations'
 import { slow } from '../fixtures/slow'
 
 /**
@@ -40,7 +40,7 @@ const integrations = ref<SettingsIntegration[]>([
     createdAt: '2026-10-02T09:12:00Z',
     initScript: 'sudo apt-get install -y ripgrep jq\nnpm install -g @example/chat-cli\n',
     sharedPath: '~/team',
-    cloudSizing: { cpus: 4, memoryMib: 8192, systemGb: null, homeGb: 64 },
+    cloudSizing: { cpus: 4, memoryMib: 'unlimited', systemGb: null, homeGb: 64, sharedGb: 500 },
     cloudIdleMinutes: 15,
     clouds: 14,
     conversations: 238,
@@ -52,7 +52,7 @@ const integrations = ref<SettingsIntegration[]>([
     createdAt: '2026-10-20T16:40:00Z',
     initScript: null,
     sharedPath: '~/shared',
-    cloudSizing: { cpus: null, memoryMib: null, systemGb: 32, homeGb: null },
+    cloudSizing: { cpus: null, memoryMib: null, systemGb: 32, homeGb: null, sharedGb: null },
     cloudIdleMinutes: null,
     clouds: 1,
     conversations: 12,
@@ -86,7 +86,7 @@ async function add(): Promise<void> {
       createdAt: new Date().toISOString(),
       initScript: null,
       sharedPath: '~/shared',
-      cloudSizing: { cpus: null, memoryMib: null, systemGb: null, homeGb: null },
+      cloudSizing: { cpus: null, memoryMib: null, systemGb: null, homeGb: null, sharedGb: null },
       cloudIdleMinutes: null,
       clouds: 0,
       conversations: 0,
@@ -98,6 +98,18 @@ async function add(): Promise<void> {
 
 /** The directories every Cloud's system has, which a shared folder never covers. */
 const SYSTEM = ['bin', 'boot', 'dev', 'etc', 'home', 'lib', 'media', 'mnt', 'opt', 'proc', 'root', 'run', 'sbin', 'srv', 'sys', 'tmp', 'usr', 'var']
+
+/** A server of 8 CPUs and 16 GiB, whose Cloud manager gives each Cloud 2 CPUs and 2 GiB. */
+const serverSizes: ServerSizes = {
+  cpus: 2,
+  memoryMib: 2048,
+  systemGb: 16,
+  homeGb: 16,
+  sharedGb: 16,
+  idleMinutes: 60,
+  serverCpus: 8,
+  serverMemoryMib: 16384,
+}
 
 async function change(id: string, change: IntegrationChange): Promise<void> {
   await slow()
@@ -125,6 +137,7 @@ async function replaceToken(id: string): Promise<void> {
   <SettingsIntegrations
     :integrations="integrations"
     :tokens="tokens"
+    :server-sizes="serverSizes"
     :shown="shown"
     load="ready"
     :overlay-store="appOverlayStore"

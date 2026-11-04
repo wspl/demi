@@ -9,7 +9,7 @@ import SettingsGroup from './SettingsGroup.vue'
 import SettingsIntegrationPage from './SettingsIntegrationPage.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
-import { integrationSummary, type IntegrationChange, type SettingsIntegration } from './integrations'
+import { integrationSummary, type IntegrationChange, type ServerSizes, type SettingsIntegration } from './integrations'
 
 /**
  * Settings › Integrations (`crates/backend-user-shard/src/integrations.rs`): the
@@ -29,6 +29,8 @@ const props = defineProps<{
    * replacement answered, which no later read gives again.
    */
   tokens?: Readonly<Record<string, string>>
+  /** What a Cloud gets for each size an integration leaves to the server; null until read. */
+  serverSizes?: ServerSizes | null
   overlayStore: OverlayStore
   /** Add Integration: creates one with the defaults; its page opens once it exists. */
   onAdd?: Action
@@ -61,6 +63,7 @@ async function changeShown(change: IntegrationChange): Promise<void> {
     :key="page.id"
     :integration="page"
     :token="tokens?.[page.id] ?? null"
+    :server-sizes="serverSizes ?? null"
     :overlay-store="overlayStore"
     :on-change="changeShown"
     :on-replace-token="() => onReplaceToken?.(page!.id)"

@@ -39,7 +39,9 @@ use demi_web_api_protocol::conversations::{ConversationStatus, ConversationTarge
 use demi_web_api_protocol::error::ErrorCode;
 
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, IntegrationId, OperationId, ProviderId};
-use demi_web_api_protocol::integrations::{IntegrationDto, IntegrationPatch, IntegrationWithToken};
+use demi_backend_cloud::machine::SHARED_FOLDER_GB;
+use demi_web_api_protocol::users::CloudStorage;
+use demi_web_api_protocol::integrations::{IntegrationDto, IntegrationPatch, IntegrationWithToken, ServerSizes};
 use tokio_util::sync::CancellationToken;
 
 use crate::conversation::ForkRefusal;
@@ -47,6 +49,26 @@ use crate::conversation::outcome_of;
 use crate::shard::Shard;
 
 impl Shard {
+    /// The sizes an integration's Cloud gets from the server.
+    pub fn server_sizes(&self) -> ServerSizes {
+        let services = self.services();
+        let resources = services.cloud.machines.resources();
+        let host = resources.map(|resources| resources.host);
+        // A manager that limits no Cloud gives each the whole host.
+        let cloud = resources.map(|resources| resources.cloud.unwrap_or(resources.host));
+        let mebibytes = |memory_mib: u64| u32::try_from(memory_mib).unwrap_or(u32::MAX);
+        ServerSizes {
+            cpus: cloud.map(|cloud| cloud.cpus),
+            memory_mib: cloud.map(|cloud| mebibytes(cloud.memory_mib)),
+            system_gb: CloudStorage::DEFAULT.system_gb,
+            home_gb: CloudStorage::DEFAULT.home_gb,
+            shared_gb: SHARED_FOLDER_GB,
+            idle_minutes: u32::try_from(services.lifecycle.idle_window.as_secs() / 60).unwrap_or(u32::MAX),
+            server_cpus: host.map(|host| host.cpus),
+            server_memory_mib: host.map(|host| mebibytes(host.memory_mib)),
+        }
+    }
+
     /// The user's integrations, oldest first.
     pub async fn integrations(&self) -> Result<Vec<IntegrationDto>, StorageError> {
         let control = &self.services().control;

@@ -58,7 +58,7 @@ use oci_spec::{
 };
 
 use super::files::{RuntimeDirectory, USER_ID};
-use crate::config::Limits;
+use crate::config::CgroupLimits;
 
 /// The capabilities setuid programs such as sudo may gain; the process
 /// itself starts with none.
@@ -112,7 +112,7 @@ pub struct Boot<'a> {
 /// limits.
 pub struct Cgroup<'a> {
     pub name: &'a str,
-    pub limits: Limits,
+    pub limits: CgroupLimits,
 }
 
 pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
@@ -197,36 +197,37 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
         );
     let linux = match &boot.cgroup {
         Some(cgroup) => {
+            let mut resources = LinuxResourcesBuilder::default().pids(
+                LinuxPidsBuilder::default()
+                    .limit(PROCESS_LIMIT as i64)
+                    .build()?,
+            );
             // gVisor shows the sandbox no fewer than two CPUs, because some
             // programs skip their locks on one; the quota still caps the CPU
-            // time it takes at `cpus`.
-            let quota = i64::from(cgroup.limits.cpus.get()) * CPU_PERIOD as i64;
-            let memory = i64::try_from(cgroup.limits.memory_bytes().get())
-                .expect("a memory limit fits in i64");
+            // time it takes at `cpus`. No budget is no quota.
+            if let Some(cpus) = cgroup.limits.cpus {
+                let quota = i64::from(cpus.get()) * CPU_PERIOD as i64;
+                resources = resources.cpu(
+                    LinuxCpuBuilder::default()
+                        .period(CPU_PERIOD)
+                        .quota(quota)
+                        .build()?,
+                );
+            }
+            // The same limit for memory and memory with swap: no swap. No
+            // limit leaves both to the host.
+            if let Some(memory) = cgroup.limits.memory_bytes() {
+                let memory = i64::try_from(memory.get()).expect("a memory limit fits in i64");
+                resources = resources.memory(
+                    LinuxMemoryBuilder::default()
+                        .limit(memory)
+                        .swap(memory)
+                        .build()?,
+                );
+            }
             linux
                 .cgroups_path(format!("/demi-cloud/{}", cgroup.name))
-                .resources(
-                    LinuxResourcesBuilder::default()
-                        .cpu(
-                            LinuxCpuBuilder::default()
-                                .period(CPU_PERIOD)
-                                .quota(quota)
-                                .build()?,
-                        )
-                        // The same limit for memory and memory with swap: no swap.
-                        .memory(
-                            LinuxMemoryBuilder::default()
-                                .limit(memory)
-                                .swap(memory)
-                                .build()?,
-                        )
-                        .pids(
-                            LinuxPidsBuilder::default()
-                                .limit(PROCESS_LIMIT as i64)
-                                .build()?,
-                        )
-                        .build()?,
-                )
+                .resources(resources.build()?)
         }
         None => linux,
     };

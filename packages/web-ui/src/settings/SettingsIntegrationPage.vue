@@ -5,6 +5,9 @@ import Button from '../ui/Button.vue'
 import CommitTextInput from '../ui/CommitTextInput.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import CopyCode from '../ui/CopyCode.vue'
+import Dropdown from '../ui/Dropdown.vue'
+import Menu from '../ui/Menu.vue'
+import MenuItem from '../ui/MenuItem.vue'
 import InlineError from '../ui/InlineError.vue'
 import Switch from '../ui/Switch.vue'
 import TextArea from '../ui/TextArea.vue'
@@ -17,11 +20,18 @@ import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import {
   CAPABILITIES,
-  CLOUD_SIZES,
+  CLOUD_DISKS,
+  CLOUD_LIMITS,
+  LIMIT_CHOICES,
   SIZE_UNITS,
   integrationSummary,
+  limitAmount,
+  limitChoice,
   parseSize,
+  type CloudLimit,
   type CloudSizing,
+  type LimitChoice,
+  type ServerSizes,
   type IntegrationCapability,
   type IntegrationChange,
   type SettingsIntegration,
@@ -47,6 +57,8 @@ const props = defineProps<{
   integration: SettingsIntegration
   /** Its token as the request that made it answered; null once that answer is gone. */
   token: string | null
+  /** What a Cloud gets for each size the integration leaves to the server; null until read. */
+  serverSizes: ServerSizes | null
   overlayStore: OverlayStore
   /** Saves a change; a refusal the user can fix is thrown, and its field shows it. */
   onChange: (change: IntegrationChange) => Promise<void>
@@ -123,8 +135,8 @@ function sizeProblem(value: string): SentenceText | null {
   return Number.isNaN(parseSize(value)) ? t('integrations.page.sizeProblem') : null
 }
 
-function sizeText(size: number | null): string {
-  return size === null ? '' : String(size)
+function sizeText(size: CloudLimit | null): string {
+  return typeof size === 'number' ? String(size) : ''
 }
 
 async function saveIdle(value: string): Promise<void> {
@@ -136,13 +148,51 @@ async function saveIdle(value: string): Promise<void> {
   }
 }
 
-async function saveSize(size: keyof CloudSizing, value: string): Promise<void> {
+async function saveSize(size: keyof CloudSizing, value: CloudLimit | null): Promise<void> {
   try {
-    await props.onChange({ cloudSizing: { ...props.integration.cloudSizing, [size]: parseSize(value) } })
+    await props.onChange({ cloudSizing: { ...props.integration.cloudSizing, [size]: value } })
     sizeProblems.value = { ...sizeProblems.value, [size]: undefined }
   } catch (error) {
     sizeProblems.value = { ...sizeProblems.value, [size]: shownError(error).message }
   }
+}
+
+type LimitSize = (typeof CLOUD_LIMITS)[number]
+
+/** The limits set to Custom before the server said what they are, whose amount waits to be entered. */
+const customLimits = ref<Partial<Record<LimitSize, boolean>>>({})
+
+function shownChoice(size: LimitSize): LimitChoice {
+  return customLimits.value[size] ? 'custom' : limitChoice(props.integration.cloudSizing[size])
+}
+
+/** What a limit's field shows: the amount a Cloud gets, which only Custom lets the user change. */
+function limitText(size: LimitSize): string {
+  const amount = customLimits.value[size] ? null : limitAmount(size, props.integration.cloudSizing[size], props.serverSizes)
+  return amount === null ? '' : String(amount)
+}
+
+/** An empty size's placeholder: what the server gives. */
+function serverText(size: 'systemGb' | 'homeGb' | 'sharedGb' | 'idleMinutes'): string {
+  return props.serverSizes ? String(props.serverSizes[size]) : t('integrations.page.serverDefault')
+}
+
+function choiceLabel(choice: LimitChoice): string {
+  return choice === 'default' ? t('integrations.page.serverDefault') : t(`integrations.page.limits.${choice}`)
+}
+
+async function chooseLimit(size: LimitSize, choice: LimitChoice): Promise<void> {
+  // Custom starts at the amount the Cloud gets now, which the field then changes.
+  const amount = choice === 'custom' ? limitAmount(size, props.integration.cloudSizing[size], props.serverSizes) : null
+  customLimits.value = { ...customLimits.value, [size]: choice === 'custom' && amount === null }
+  if (choice !== 'custom' || amount !== null)
+    await saveSize(size, choice === 'unlimited' ? 'unlimited' : amount)
+}
+
+/** A custom amount; an empty field goes back to the server's. */
+async function saveLimit(size: LimitSize, value: string): Promise<void> {
+  customLimits.value = { ...customLimits.value, [size]: false }
+  await saveSize(size, parseSize(value))
 }
 
 const deleteOpen = ref(false)
@@ -272,6 +322,26 @@ async function replace(): Promise<void> {
           @commit="save('sharedPath', { sharedPath: $event.trim() })"
         />
       </SettingsRow>
+      <SettingsRow :label="t('integrations.page.sharedGb')" :description="t('integrations.page.sharedGbDescription')">
+        <template v-if="sizeProblems.sharedGb" #detail>
+          <InlineError :message="sizeProblems.sharedGb" />
+        </template>
+        <span class="inline-flex items-center gap-1.5 text-[13px] text-fg-muted">
+          <CommitTextInput
+            :model-value="sizeText(integration.cloudSizing.sharedGb)"
+            :aria-label="t('integrations.page.sharedGb')"
+            :placeholder="serverText('sharedGb')"
+            :validate="sizeProblem"
+            inputmode="numeric"
+            literal
+            trim
+            class="w-32"
+            @problem="sizeProblems.sharedGb = $event ?? undefined"
+            @commit="saveSize('sharedGb', parseSize($event))"
+          />
+          <span class="w-14">{{ t('integrations.page.gbUnit') }}</span>
+        </span>
+      </SettingsRow>
     </SettingsGroup>
 
     <SettingsGroup
@@ -286,7 +356,7 @@ async function replace(): Promise<void> {
           <CommitTextInput
             :model-value="sizeText(integration.cloudIdleMinutes)"
             :aria-label="t('integrations.page.idle')"
-            :placeholder="t('integrations.page.serverDefault')"
+            :placeholder="serverText('idleMinutes')"
             :validate="sizeProblem"
             inputmode="numeric"
             literal
@@ -299,7 +369,55 @@ async function replace(): Promise<void> {
         </span>
       </SettingsRow>
       <SettingsRow
-        v-for="size in CLOUD_SIZES"
+        v-for="size in CLOUD_LIMITS"
+        :key="size"
+        :label="t(`integrations.page.${size}`)"
+      >
+        <template v-if="sizeProblems[size]" #detail>
+          <InlineError :message="sizeProblems[size]" />
+        </template>
+        <span class="inline-flex items-center gap-1.5 text-[13px] text-fg-muted">
+          <!-- One width for every choice, so the field doesn't move. -->
+          <span class="inline-flex w-28">
+            <Dropdown
+              size="sm"
+              :overlay-store="overlayStore"
+              variant="default"
+              width="fill"
+              :trigger-label="t(`integrations.page.${size}`)"
+            >
+              <template #trigger>{{ choiceLabel(shownChoice(size)) }}</template>
+              <template #content="{ close }">
+                <Menu>
+                  <MenuItem
+                    v-for="choice in LIMIT_CHOICES"
+                    :key="choice"
+                    :label="choiceLabel(choice)"
+                    choice
+                    :is-selected="shownChoice(size) === choice"
+                    @select="close(); choice === shownChoice(size) || chooseLimit(size, choice)"
+                  />
+                </Menu>
+              </template>
+            </Dropdown>
+          </span>
+          <CommitTextInput
+            :model-value="limitText(size)"
+            :aria-label="t(`integrations.page.${size}`)"
+            :disabled="shownChoice(size) !== 'custom'"
+            :validate="sizeProblem"
+            inputmode="numeric"
+            literal
+            trim
+            class="w-24"
+            @problem="sizeProblems[size] = $event ?? undefined"
+            @commit="saveLimit(size, $event)"
+          />
+          <span class="w-14">{{ SIZE_UNITS[size] ? t(`integrations.page.${SIZE_UNITS[size]}`) : '' }}</span>
+        </span>
+      </SettingsRow>
+      <SettingsRow
+        v-for="size in CLOUD_DISKS"
         :key="size"
         :label="t(`integrations.page.${size}`)"
       >
@@ -310,14 +428,14 @@ async function replace(): Promise<void> {
           <CommitTextInput
             :model-value="sizeText(integration.cloudSizing[size])"
             :aria-label="t(`integrations.page.${size}`)"
-            :placeholder="t('integrations.page.serverDefault')"
+            :placeholder="serverText(size)"
             :validate="sizeProblem"
             inputmode="numeric"
             literal
             trim
             class="w-32"
             @problem="sizeProblems[size] = $event ?? undefined"
-            @commit="saveSize(size, $event)"
+            @commit="saveSize(size, parseSize($event))"
           />
           <span class="w-14">{{ SIZE_UNITS[size] ? t(`integrations.page.${SIZE_UNITS[size]}`) : '' }}</span>
         </span>

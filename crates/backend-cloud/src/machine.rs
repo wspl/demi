@@ -28,7 +28,7 @@
 use std::cell::{Cell, RefCell, RefMut};
 use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
-use std::num::{NonZeroU32, NonZeroU64};
+use std::num::NonZeroU64;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::time::Duration;
@@ -72,6 +72,9 @@ pub(crate) fn sandbox_machine(device: &DeviceRecord) -> SandboxMachine {
         ManagedMachine::ClaudeCode => SandboxMachine::ClaudeCode,
     }
 }
+
+/// The size of an integration's shared folder when it names none, in GB.
+pub const SHARED_FOLDER_GB: u16 = CloudStorage::DEFAULT.home_gb;
 
 /// The capacities the backend names for the disks of `device`, a managed
 /// machine: for a Cloud of an integration, each disk its `integration`
@@ -131,10 +134,11 @@ impl IntegrationCloudSettings {
             .map(|minutes| Duration::from_secs(u64::from(minutes) * 60))
     }
 
-    /// The shared folder the Cloud `device` mounts, at its home's
-    /// capacity, where the integration's settings say. A path the settings
-    /// no longer allow, which no change lets through, mounts none.
-    fn shared_folder(&self, device: &DeviceId, capacity: Capacity) -> Option<SharedFolder> {
+    /// The shared folder the Cloud `device` mounts, at the size and where
+    /// the integration's settings say: a Cloud disk's default size without
+    /// one. A path the settings no longer allow, which no change lets
+    /// through, mounts none.
+    fn shared_folder(&self, device: &DeviceId) -> Option<SharedFolder> {
         let integration = self.integration.as_ref()?;
         let path = match mount_path(&integration.shared_path) {
             Ok(path) => path,
@@ -143,9 +147,10 @@ impl IntegrationCloudSettings {
                 return None;
             }
         };
+        let gb = integration.cloud_sizing.shared_gb.unwrap_or(SHARED_FOLDER_GB);
         Some(SharedFolder {
             id: integration.id.to_string(),
-            capacity_bytes: capacity.home_bytes,
+            capacity_bytes: NonZeroU64::new(u64::from(gb) << 30).expect("a shared folder has at least 1 GB"),
             path,
         })
     }
@@ -723,10 +728,10 @@ impl dyn CloudShard {
                 abstract_socket: None,
             },
             machine: sandbox_machine(&machine.device),
-            shared: settings.and_then(|settings| settings.shared_folder(device, capacity)),
+            shared: settings.and_then(|settings| settings.shared_folder(device)),
             limits: SandboxLimits {
-                cpus: sizing.cpus.and_then(NonZeroU32::new),
-                memory_mib: sizing.memory_mib.and_then(NonZeroU32::new),
+                cpus: sizing.cpus,
+                memory_mib: sizing.memory_mib,
             },
         };
         let cloud = self.cloud_services();

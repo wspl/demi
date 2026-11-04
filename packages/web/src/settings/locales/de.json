@@ -19,7 +19,8 @@
     "addFailed": "Integration konnte nicht hinzugefügt werden",
     "saveFailed": "Integration konnte nicht geändert werden",
     "replaceFailed": "Token konnte nicht ersetzt werden",
-    "deleteFailed": "Integration konnte nicht gelöscht werden"
+    "deleteFailed": "Integration konnte nicht gelöscht werden",
+    "sizesFailed": "Größen des Servers konnten nicht gelesen werden"
   },
   "plugins": {
     "turnOnFailed": "Plug-in konnte nicht aktiviert werden",

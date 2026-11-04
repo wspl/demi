@@ -26,7 +26,7 @@ mod linux {
 
     use demi_machine_manager_protocol::{
         BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeleteParams, DeleteSharedParams, DeviceId, Download, DrainRecord, HibernateParams, ImageStateParams, Isolation, LeftRecord, MachineCall, ManagerEvent, NetworkRules, Offer, Operation,
-        ReconcileParams, Reconciled, ResetParams, RuntimeOffer, RuntimeState, RuntimeStateParams, SandboxMachine, SetIsolationParams, SetNetworkRulesParams, Unavailable, WakeParams,
+        ReconcileParams, Reconciled, ResetParams, Resources, RuntimeOffer, RuntimeState, RuntimeStateParams, SandboxMachine, SetIsolationParams, SetNetworkRulesParams, Unavailable, WakeParams,
     };
     use tokio::{
         sync::{mpsc, oneshot, watch},
@@ -638,6 +638,21 @@ mod linux {
                 }
             };
             let mut events = Vec::new();
+            match blocking::run(|_| crate::config::host_resources()).await {
+                Ok((cpus, memory_mib)) => events.push(ManagerEvent::ServerResources {
+                    host: Resources { cpus, memory_mib },
+                    cloud: self.core.config.limits.map(|limits| {
+                        let limits = limits.of(SandboxMachine::Cloud);
+                        Resources {
+                            cpus: limits.cpus.get(),
+                            memory_mib: u64::from(limits.memory_mib.get()),
+                        }
+                    }),
+                }),
+                Err(error) => {
+                    tracing::warn!(event = "manager_status.resources_failed", %error, "the host's CPUs and memory could not be read");
+                }
+            }
             for device in devices {
                 events.extend(self.status(&device).await);
             }

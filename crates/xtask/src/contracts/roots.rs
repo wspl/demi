@@ -176,6 +176,7 @@ pub fn web() -> Vec<Root> {
         sends::<credentials::NewCredential>(),
         sends::<credentials::CredentialPatch>(),
         receives::<integrations::IntegrationList>(),
+        receives::<integrations::ServerSizes>(),
         receives::<integrations::IntegrationWithToken>(),
         receives::<integrations::IntegrationAnswer>(),
         sends::<integrations::IntegrationPatch>(),

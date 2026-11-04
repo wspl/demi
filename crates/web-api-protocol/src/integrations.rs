@@ -39,6 +39,23 @@ pub struct IntegrationDto {
     pub conversations: u32,
 }
 
+/// `GET /integrations/server-sizes`: each size an integration's Cloud gets
+/// when its integration leaves the size to the server, and the server's CPUs
+/// and memory, which a Cloud without a limit may use. CPUs and memory are
+/// null until the Cloud manager has said them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerSizes {
+    pub cpus: Option<u32>,
+    pub memory_mib: Option<u32>,
+    pub system_gb: u16,
+    pub home_gb: u16,
+    pub shared_gb: u16,
+    pub idle_minutes: u32,
+    pub server_cpus: Option<u32>,
+    pub server_memory_mib: Option<u32>,
+}
+
 /// The user's integrations, oldest first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

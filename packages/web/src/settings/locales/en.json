@@ -19,7 +19,8 @@
     "addFailed": "Could Not Add the Integration",
     "saveFailed": "Could Not Change the Integration",
     "replaceFailed": "Could Not Replace the Token",
-    "deleteFailed": "Could Not Delete the Integration"
+    "deleteFailed": "Could Not Delete the Integration",
+    "sizesFailed": "Could Not Read the Server’s Sizes"
   },
   "plugins": {
     "turnOnFailed": "Could Not Turn the Plugin On",

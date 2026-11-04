@@ -17,7 +17,7 @@ use super::{
 };
 use crate::{
     blocking::{self, OffLoop},
-    config::Limits,
+    config::CgroupLimits,
     linux::{freeze, loopdev, mount, trim},
     manager::Core,
     network::{
@@ -186,7 +186,7 @@ impl Sandbox {
         runner_release: &str,
         boot: &ManagedBoot,
         machine: SandboxMachine,
-        limits: Option<Limits>,
+        limits: Option<CgroupLimits>,
         shared: Option<(&Path, &str)>,
     ) -> Result<(), SandboxError> {
         self.programs = Some(programs_base.clone());

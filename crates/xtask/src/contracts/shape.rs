@@ -66,6 +66,9 @@ pub enum Shape {
         variants: Vec<Variant>,
         joined: Vec<String>,
     },
+    /// An untagged enum: a value of any of these shapes, such as a number
+    /// or the string `"unlimited"`.
+    Untagged(Vec<Shape>),
     /// A value or `null`.
     Nullable(Box<Shape>),
     /// Any JSON value.
@@ -213,7 +216,7 @@ fn read_map(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupported>
     }
     if let Some(options) = schema.get("anyOf") {
         only(schema, at, &["anyOf"])?;
-        return read_nullable_any_of(options, at);
+        return read_any_of(options, at);
     }
     if let Some(options) = schema.get("oneOf") {
         only(schema, at, &["oneOf"])?;
@@ -227,21 +230,30 @@ fn read_map(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupported>
     }
 }
 
-/// `anyOf` of a schema and `null`, as schemars writes a nullable reference.
-fn read_nullable_any_of(options: &Value, at: &str) -> Result<Shape, Unsupported> {
+/// `anyOf`, as schemars writes a nullable reference (a schema and `null`)
+/// and an untagged enum (one schema for each variant).
+fn read_any_of(options: &Value, at: &str) -> Result<Shape, Unsupported> {
     let null = serde_json::json!({ "type": "null" });
     let options = options
         .as_array()
         .ok_or_else(|| unsupported(at, "`anyOf` that is not a list"))?;
-    match options.as_slice() {
-        [value, other] | [other, value] if *other == null && *value != null => Ok(Shape::Nullable(
-            Box::new(read(value, &format!("{at}.anyOf"))?),
-        )),
-        _ => Err(unsupported(
-            at,
-            "`anyOf` other than a value or null (an untagged enum)",
-        )),
+    let nullable = options.contains(&null);
+    let mut shapes = Vec::new();
+    for (index, option) in options.iter().enumerate() {
+        if *option != null {
+            shapes.push(read(option, &format!("{at}.anyOf[{index}]"))?);
+        }
     }
+    let shape = match shapes.len() {
+        0 => return Err(unsupported(at, "`anyOf` of null alone")),
+        1 => shapes.remove(0),
+        _ => Shape::Untagged(shapes),
+    };
+    Ok(if nullable {
+        Shape::Nullable(Box::new(shape))
+    } else {
+        shape
+    })
 }
 
 /// `"type": [T, "null"]`, as schemars writes a nullable value of a simple

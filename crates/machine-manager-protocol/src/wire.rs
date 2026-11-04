@@ -1,10 +1,10 @@
 //! The socket's messages: one JSON document per line, a request from the
 //! backend, the manager's reply to it, and the manager's unsolicited events. Fields are declared in the order a message is written.
 
-use std::num::{NonZeroU32, NonZeroU64};
+use std::num::NonZeroU64;
 
 use demi_runner_protocol::boot::ManagedBoot;
-use demi_shared_types::LogLine;
+use demi_shared_types::{CloudLimit, LogLine};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{BaseVersion, Isolation, MachineImageState, MoveStatus, NetworkRules, RuntimeOffer, RuntimeState, Volume};
@@ -17,7 +17,7 @@ pub const MAX_LINE_BYTES: usize = 1 << 20;
 /// The wire's version, which the manager's `hello` names. The backend and
 /// the manager of a deployment run one release, so a change to any message
 /// changes it.
-pub const VERSION: u32 = 10;
+pub const VERSION: u32 = 11;
 
 /// A request: an id the client chooses, which its reply names, and the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -166,23 +166,23 @@ pub struct WakeParams {
     #[garde(dive)]
     pub shared: Option<SharedFolder>,
     /// The sandbox's CPU budget and memory limit with the resource limits
-    /// on, which an integration sizes; the manager's own settings for a
-    /// field that is none. A limit beyond the host's CPUs or memory refuses
-    /// the wake.
+    /// on, which an integration sizes: a number, or none at all; the
+    /// manager's own settings for a field that is none. A limit beyond the
+    /// host's CPUs or memory refuses the wake.
     #[serde(default, skip_serializing_if = "SandboxLimits::is_empty")]
     #[garde(skip)]
     pub limits: SandboxLimits,
 }
 
-/// A sandbox's CPU budget, in CPUs, and memory limit, in MiB; none for the
-/// manager's setting.
+/// A sandbox's CPU budget, in CPUs, and memory limit, in MiB, or none at
+/// all; a field that is none for the manager's setting.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SandboxLimits {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cpus: Option<NonZeroU32>,
+    pub cpus: Option<CloudLimit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub memory_mib: Option<NonZeroU32>,
+    pub memory_mib: Option<CloudLimit>,
 }
 
 impl SandboxLimits {
@@ -351,6 +351,21 @@ pub enum ManagerEvent {
     /// What the manager can do with each isolation changed since its hello,
     /// as a download of a runtime's release changes it.
     Runtimes { runtimes: Vec<RuntimeOffer> },
+    /// The host's CPUs and memory, which a sandbox without a limit may use,
+    /// and the limits of a Cloud whose wake names none; none with the
+    /// limits off. Sent once when a connection opens.
+    ServerResources {
+        host: Resources,
+        cloud: Option<Resources>,
+    },
+}
+
+/// CPUs and memory, of a host or of one sandbox.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Resources {
+    pub cpus: u32,
+    pub memory_mib: u64,
 }
 
 /// A call's parameters, and the result its `ok` reply carries.

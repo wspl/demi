@@ -34,8 +34,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use crate::runner::{RunnerProcess, RunnerProcessOptions, runner_binary};
 use demi_host_interface::SpawnEnv;
 use demi_machine_manager_protocol::{
-    BaseVersion, Enforces, GenerationId, Isolation, MachineCall, MachineImageState, MachineResponse, Offer, RuntimeOffer,
-    RuntimeState, WIRE_VERSION, decode_request, encode_line,
+    BaseVersion, Enforces, GenerationId, Isolation, MachineCall, MachineImageState, MachineResponse, ManagerEvent, Offer,
+    Resources, RuntimeOffer, RuntimeState, WIRE_VERSION, decode_request, encode_line,
 };
 use futures_util::FutureExt as _;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
@@ -151,6 +151,14 @@ async fn connection(stream: UnixStream, shared: Arc<Shared>) {
         ],
     });
     lines.try_send(hello).expect("a new connection's queue has room");
+    // An invented host, with the real manager's default limits.
+    let resources = encode_line(&MachineResponse::Event {
+        event: ManagerEvent::ServerResources {
+            host: Resources { cpus: 8, memory_mib: 16_384 },
+            cloud: Some(Resources { cpus: 2, memory_mib: 2_048 }),
+        },
+    });
+    lines.try_send(resources).expect("a new connection's queue has room");
     let writer = AbortOnDropHandle::new(tokio::spawn(async move {
         while let Some(line) = outgoing.recv().await {
             if write.write_all(&line).await.is_err() {

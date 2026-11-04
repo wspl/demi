@@ -20,6 +20,7 @@ use std::{
 
 use clap::{CommandFactory, FromArgMatches, parser::ValueSource};
 use demi_machine_manager_protocol::{SandboxLimits, SandboxMachine};
+use demi_shared_types::CloudLimit;
 use demi_machine_manager_protocol::runtime::RuntimeRelease;
 use ipnet::Ipv4Net;
 
@@ -277,19 +278,29 @@ impl Limits {
         }
     }
 
-    /// The memory limit in bytes.
-    pub fn memory_bytes(&self) -> NonZeroU64 {
-        mebibytes(self.memory_mib)
-    }
-
-    /// These limits with the CPU budget and the memory limit a wake names
-    /// in place of the settings'.
-    pub fn sized(self, named: SandboxLimits) -> Self {
-        Self {
-            cpus: named.cpus.unwrap_or(self.cpus),
-            memory_mib: named.memory_mib.unwrap_or(self.memory_mib),
-            ..self
+    /// The cgroup limits of a sandbox whose wake names `named`: what it
+    /// names in place of the settings', a number or none at all.
+    pub fn sized(self, named: SandboxLimits) -> CgroupLimits {
+        let limit = |named: Option<CloudLimit>, setting| named.map_or(Some(setting), CloudLimit::value);
+        CgroupLimits {
+            cpus: limit(named.cpus, self.cpus),
+            memory_mib: limit(named.memory_mib, self.memory_mib),
         }
+    }
+}
+
+/// One sandbox's cgroup CPU budget and memory limit; none for none, which
+/// only an integration's wake names: the sandbox takes the host's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CgroupLimits {
+    pub cpus: Option<NonZeroU32>,
+    pub memory_mib: Option<NonZeroU32>,
+}
+
+impl CgroupLimits {
+    /// The memory limit in bytes.
+    pub fn memory_bytes(&self) -> Option<NonZeroU64> {
+        self.memory_mib.map(mebibytes)
     }
 
     /// Why a sandbox of these limits cannot run on a host of `cpus` CPUs and
@@ -298,11 +309,15 @@ impl Limits {
     /// one sandbox take the host from the others.
     pub fn beyond(&self, cpus: u32, memory_mib: u64) -> Option<String> {
         let mut beyond = Vec::new();
-        if self.cpus.get() > cpus {
-            beyond.push(format!("{} CPUs, where the host has {cpus}", self.cpus));
+        if let Some(budget) = self.cpus
+            && budget.get() > cpus
+        {
+            beyond.push(format!("{budget} CPUs, where the host has {cpus}"));
         }
-        if u64::from(self.memory_mib.get()) > memory_mib {
-            beyond.push(format!("{} MiB of memory, where the host has {memory_mib}", self.memory_mib));
+        if let Some(limit) = self.memory_mib
+            && u64::from(limit.get()) > memory_mib
+        {
+            beyond.push(format!("{limit} MiB of memory, where the host has {memory_mib}"));
         }
         (!beyond.is_empty()).then(|| beyond.join(" and "))
     }

@@ -137,12 +137,13 @@ the integration sleep after 15 minutes without work instead, or `null` after
 the server's hour. Each Cloud takes it at its next start.
 
 You size the integration's Clouds in Settings › Integrations: their CPUs,
-memory and disks. `GET /v1/integration` shows them as `cloudSizing`, where
-`null` is the server's size: the CPUs and memory of every Cloud, and 16 GB
-for each disk. Each Cloud takes a new size at its next start. A disk only
-grows: a smaller size leaves a larger disk as it is. A Cloud that asks for
-more CPUs or memory than the server has doesn't start: the turn or the
-command that woke it fails with the reason.
+memory and disks, and the shared folder. `GET /v1/integration` shows them as
+`cloudSizing`, where `null` is the server's size: the CPUs and memory of every
+Cloud, and 16 GB for each disk and the shared folder. `"unlimited"` CPUs or
+memory lets a Cloud use all the server has. Each Cloud takes a new size at its
+next start. A disk only grows: a smaller size leaves a larger disk as it is. A
+Cloud that asks for more CPUs or memory than the server has doesn't start: the
+turn or the command that woke it fails with the reason.
 
 A conversation runs on one Cloud at a time. To run a person's request on their
 Cloud, name it on their message:
@@ -189,7 +190,9 @@ run the new script.
 Every Cloud of the integration sees one shared folder, at `~/shared` unless
 you choose another path in the settings. A file that one Cloud writes there,
 every other Cloud reads at once, which is how a team's Clouds hand each other
-files.
+files. A larger size takes effect when a Cloud starts while no other Cloud of
+the integration runs, so while an always-on Cloud runs, the folder keeps its
+size.
 
 A program that watches the folder for changes, such as with `inotify`, sees
 only the changes made on its own Cloud, not another Cloud's. An agent that

@@ -22,6 +22,8 @@
 //!   never calls the manager. The client connects without a call: it tries
 //!   again every [`RECONNECT`] while it has no connection, so the manager's
 //!   events arrive when it can.
+//! - The server's resources the manager pushes when a connection opens
+//!   (`ManagerEvent::ServerResources`) are kept for the pages that show them.
 //! - A line of the manager's log is stored in the backend's log as it arrives.
 //!
 //! A supervisor task owns the connection, the calls in flight and the id
@@ -36,7 +38,7 @@ use std::sync::{Arc, Mutex};
 
 use demi_machine_manager_protocol::{
     Capacity, DeviceId, Enforces, Isolation, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse,
-    ManagerEvent, MoveStatus, Operation, RuntimeOffer, WIRE_VERSION, decode_response, encode_line,
+    ManagerEvent, MoveStatus, Operation, Resources, RuntimeOffer, WIRE_VERSION, decode_response, encode_line,
 };
 use demi_backend_database::server_log::ServerLog;
 use futures_util::StreamExt as _;
@@ -105,6 +107,16 @@ pub struct ImageStatus {
     pub move_status: Option<MoveStatus>,
 }
 
+/// The server's CPUs and memory as the manager last said they are.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ServerResources {
+    /// The host's, which a Cloud without a limit may use.
+    pub host: Resources,
+    /// The limits of a Cloud whose integration names none; none when the
+    /// manager limits no Cloud.
+    pub cloud: Option<Resources>,
+}
+
 /// What the manager tells the backend unasked, for the backend's routers.
 pub struct Notices {
     /// The device of each sandbox that exited without being asked to stop.
@@ -125,6 +137,7 @@ pub struct MachinesClient {
     commands: mpsc::Sender<Command>,
     statuses: Arc<Mutex<HashMap<DeviceId, ImageStatus>>>,
     runtimes: Arc<Mutex<Option<Vec<RuntimeOffer>>>>,
+    resources: Arc<Mutex<Option<ServerResources>>>,
     /// Ends the supervisor with the client.
     _supervisor: AbortOnDropHandle<()>,
 }
@@ -152,6 +165,7 @@ impl MachinesClient {
         let (offered, offers) = mpsc::channel(1);
         let kept = Arc::new(Mutex::new(HashMap::new()));
         let runtimes = Arc::new(Mutex::new(None));
+        let resources = Arc::new(Mutex::new(None));
         let supervisor = Supervisor {
             socket,
             connection: None,
@@ -163,6 +177,7 @@ impl MachinesClient {
             offered,
             statuses: kept.clone(),
             runtimes: runtimes.clone(),
+            resources: resources.clone(),
             log,
         };
         let task = tokio::spawn(supervisor.run(received));
@@ -171,6 +186,7 @@ impl MachinesClient {
                 commands,
                 statuses: kept,
                 runtimes,
+                resources,
                 _supervisor: AbortOnDropHandle::new(task),
             },
             Notices {
@@ -205,6 +221,12 @@ impl MachinesClient {
             .into_iter()
             .find(|offer| offer.isolation == isolation)
             .and_then(|offer| offer.runs())
+    }
+
+    /// What the manager last said of the server's resources; none before it
+    /// said anything. It calls no one.
+    pub fn resources(&self) -> Option<ServerResources> {
+        *self.resources.lock().expect("the resources are never held across a panic")
     }
 
     /// Runs `params` on the manager and answers its result.
@@ -257,6 +279,7 @@ struct Supervisor {
     offered: mpsc::Sender<()>,
     statuses: Arc<Mutex<HashMap<DeviceId, ImageStatus>>>,
     runtimes: Arc<Mutex<Option<Vec<RuntimeOffer>>>>,
+    resources: Arc<Mutex<Option<ServerResources>>>,
     log: ServerLog,
 }
 
@@ -430,8 +453,8 @@ impl Supervisor {
         }
     }
 
-    /// Keeps what the manager said of a device, and tells the router, or
-    /// what it can do with each isolation.
+    /// Keeps what the manager said, and tells the router of a device's
+    /// change.
     async fn event(&mut self, event: ManagerEvent) {
         let (device_id, volumes, newer_image, isolation, move_status) = match event {
             ManagerEvent::CloudStatus { device_id, volumes, newer_image, isolation, move_status } => {
@@ -439,6 +462,11 @@ impl Supervisor {
             }
             ManagerEvent::Runtimes { runtimes } => {
                 self.offered(runtimes);
+                return;
+            }
+            ManagerEvent::ServerResources { host, cloud } => {
+                *self.resources.lock().expect("the resources are never held across a panic") =
+                    Some(ServerResources { host, cloud });
                 return;
             }
         };

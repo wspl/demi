@@ -33,6 +33,8 @@
 //!   connection when the device's operation ends or its move starts or ends,
 //!   and for every device with stored images when a connection opens, so the
 //!   backend holds the latest and never asks for it.
+//! - The host's resources and a Cloud's default limits
+//!   (`ManagerEvent::ServerResources`) go to a connection when it opens.
 //!
 //! It holds no manager policy and no IO.
 
@@ -133,7 +135,7 @@ pub use network::{Allowed, Destination, Domain, DomainName, NetworkRules};
 pub use wire::{
     Capacity, CheckpointParams, CurrentBaseVersionParams, DecodeError, DeleteParams, DeleteSharedParams, HibernateParams,
     ImageStateParams, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, ManagerEvent, Message,
-    Operation, ReconcileParams, Reconciled, ResetParams, RuntimeStateParams, VERSION as WIRE_VERSION,
+    Operation, ReconcileParams, Reconciled, ResetParams, Resources, RuntimeStateParams, VERSION as WIRE_VERSION,
     SandboxLimits, SandboxMachine, SetIsolationParams, SetNetworkRulesParams, SharedFolder, WakeParams, decode_request,
     decode_response, encode_line,
 };

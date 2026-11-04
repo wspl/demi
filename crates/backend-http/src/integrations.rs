@@ -11,7 +11,9 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::IntegrationId;
-use demi_web_api_protocol::integrations::{IntegrationAnswer, IntegrationList, IntegrationPatch, IntegrationWithToken};
+use demi_web_api_protocol::integrations::{
+    IntegrationAnswer, IntegrationList, IntegrationPatch, IntegrationWithToken, ServerSizes,
+};
 
 use super::AppState;
 use super::body::JsonBody;
@@ -29,6 +31,19 @@ pub(super) async fn list(
         .call(move |shard, _| async move { shard.integrations().await })
         .await??;
     Ok(Json(IntegrationList { integrations }))
+}
+
+/// `GET /integrations/server-sizes`.
+pub(super) async fn server_sizes(
+    State(state): State<AppState>,
+    MasterUser(user): MasterUser,
+) -> Result<Json<ServerSizes>, ApiError> {
+    let sizes = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.server_sizes() })
+        .await?;
+    Ok(Json(sizes))
 }
 
 /// `POST /integrations`: answers 201 with the integration and its token.

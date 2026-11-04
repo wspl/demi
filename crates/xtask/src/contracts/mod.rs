@@ -293,7 +293,7 @@ fn collect_references(shape: &Shape, names: &mut Vec<String>) {
         Shape::Array { items: inner, .. } | Shape::Record(inner) | Shape::Nullable(inner) => {
             collect_references(inner, names)
         }
-        Shape::Tuple(places) => {
+        Shape::Tuple(places) | Shape::Untagged(places) => {
             for place in places {
                 collect_references(place, names);
             }

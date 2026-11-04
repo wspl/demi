@@ -19,7 +19,8 @@
     "addFailed": "Impossible d’ajouter l’intégration",
     "saveFailed": "Impossible de modifier l’intégration",
     "replaceFailed": "Impossible de remplacer le jeton",
-    "deleteFailed": "Impossible de supprimer l’intégration"
+    "deleteFailed": "Impossible de supprimer l’intégration",
+    "sizesFailed": "Impossible de lire les tailles du serveur"
   },
   "plugins": {
     "turnOnFailed": "Impossible d’activer le plug-in",

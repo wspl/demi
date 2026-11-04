@@ -19,7 +19,8 @@
     "addFailed": "통합을 추가할 수 없음",
     "saveFailed": "통합을 변경할 수 없음",
     "replaceFailed": "토큰을 교체할 수 없음",
-    "deleteFailed": "통합을 삭제할 수 없음"
+    "deleteFailed": "통합을 삭제할 수 없음",
+    "sizesFailed": "서버 크기를 읽을 수 없음"
   },
   "plugins": {
     "turnOnFailed": "플러그인을 켤 수 없습니다",

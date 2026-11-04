@@ -2,11 +2,12 @@ import { t } from './locales/text'
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import type { IntegrationChange, SettingsIntegration } from '@demicodes/web-ui/settings/integrations'
+import type { IntegrationChange, ServerSizes, SettingsIntegration } from '@demicodes/web-ui/settings/integrations'
 import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
 import {
   integrationAnswerSchema,
   integrationWithTokenSchema,
+  serverSizesSchema,
   type IntegrationDto,
   type IntegrationPatch,
 } from '../api/generated/web-api'
@@ -28,6 +29,7 @@ function shown(integration: IntegrationDto): SettingsIntegration {
       memoryMib: sizing.memoryMib ?? null,
       systemGb: sizing.systemGb ?? null,
       homeGb: sizing.homeGb ?? null,
+      sharedGb: sizing.sharedGb ?? null,
     },
     cloudIdleMinutes: integration.cloudIdleMinutes ?? null,
   }
@@ -141,7 +143,25 @@ const useIntegrationStore = defineStore('integration-settings', () => {
     held.value = {}
   }
 
-  return { integrations, tokens, add, change, replaceToken, remove, forgetTokens }
+  const serverSizes = ref<ServerSizes | null>(null)
+
+  /** Reads what a Cloud gets for each size an integration leaves to the server. */
+  async function readServerSizes(): Promise<void> {
+    try {
+      const sizes = await readResponse(await apiRequest('/integrations/server-sizes'), serverSizesSchema)
+      serverSizes.value = {
+        ...sizes,
+        cpus: sizes.cpus ?? null,
+        memoryMib: sizes.memoryMib ?? null,
+        serverCpus: sizes.serverCpus ?? null,
+        serverMemoryMib: sizes.serverMemoryMib ?? null,
+      }
+    } catch (error) {
+      reportError(t('integrations.sizesFailed'), error, { site: 'integrations.sizesFailed' })
+    }
+  }
+
+  return { integrations, tokens, serverSizes, add, change, replaceToken, remove, forgetTokens, readServerSizes }
 })
 
 /** The integration settings, which hold the user's integrations while a view shows them. */

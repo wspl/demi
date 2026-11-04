@@ -12,6 +12,7 @@ const settings = useIntegrationSettings()
 
 // A token is shown once: leaving the section forgets it.
 onBeforeUnmount(() => settings.forgetTokens())
+void settings.readServerSizes()
 
 /** Add Integration: the new integration's page opens once it exists. */
 async function add(): Promise<void> {
@@ -34,6 +35,7 @@ const shown = computed(() => (address.section.value === 'integrations' ? address
   <SettingsIntegrations
     :integrations="settings.integrations"
     :tokens="settings.tokens"
+    :server-sizes="settings.serverSizes"
     :shown="shown"
     :load="product.listLoad('integrations')"
     :overlay-store="appOverlayStore"

@@ -136,6 +136,19 @@ impl Writer<'_> {
                     forward,
                 }
             }
+            Shape::Untagged(options) => {
+                let mut forward = false;
+                let mut codes = Vec::new();
+                for (index, option) in options.iter().enumerate() {
+                    let option = self.shape(option, &format!("{at}|{index}"), indent)?;
+                    forward |= option.forward;
+                    codes.push(option.code);
+                }
+                Rendered {
+                    code: format!("z.union([{}])", codes.join(", ")),
+                    forward,
+                }
+            }
             Shape::Record(values) => {
                 let values = self.shape(values, &format!("{at}{{}}"), indent)?;
                 Rendered {

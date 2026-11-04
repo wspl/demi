@@ -19,7 +19,8 @@
     "addFailed": "无法添加集成",
     "saveFailed": "无法更改集成",
     "replaceFailed": "无法替换令牌",
-    "deleteFailed": "无法删除集成"
+    "deleteFailed": "无法删除集成",
+    "sizesFailed": "无法读取服务器的大小设置"
   },
   "plugins": {
     "turnOnFailed": "无法开启插件",

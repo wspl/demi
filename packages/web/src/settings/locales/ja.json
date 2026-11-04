@@ -19,7 +19,8 @@
     "addFailed": "インテグレーションを追加できませんでした",
     "saveFailed": "インテグレーションを変更できませんでした",
     "replaceFailed": "トークンを置き換えられませんでした",
-    "deleteFailed": "インテグレーションを削除できませんでした"
+    "deleteFailed": "インテグレーションを削除できませんでした",
+    "sizesFailed": "サーバのサイズを読み込めませんでした"
   },
   "plugins": {
     "turnOnFailed": "プラグインをオンにできませんでした",

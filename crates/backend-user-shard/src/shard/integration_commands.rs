@@ -494,6 +494,7 @@ fn rendered(integration: &IntegrationDto) -> String {
         .field("memory MiB", sizing.memory_mib.map_or(server.to_owned(), |memory| memory.to_string()))
         .field("system disk GB", sizing.system_gb.map_or(server.to_owned(), |gb| gb.to_string()))
         .field("home disk GB", sizing.home_gb.map_or(server.to_owned(), |gb| gb.to_string()))
+        .field("shared folder GB", sizing.shared_gb.map_or(server.to_owned(), |gb| gb.to_string()))
         .field("clouds", integration.clouds)
         .field("conversations", integration.conversations);
     match &integration.init_script {
