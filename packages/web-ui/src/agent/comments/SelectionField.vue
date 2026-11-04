@@ -221,7 +221,9 @@ const otherIcon = computed(() => other.value === 'ask' ? MessageCircleQuestionMa
     :class="[open ? 'selection-field-open gap-y-1 rounded-[20px] pt-2' : 'rounded-full', { 'selection-field-shake': shaking }]"
     @animationend="shaking = false"
   >
-    <div class="relative min-w-0 [grid-area:words]">
+    <!-- Open, the words span the field, and keep as much room on the right
+         as on the left, which the buttons' narrower inset would not. -->
+    <div class="relative min-w-0 [grid-area:words]" :class="{ 'pr-2': open }">
       <FramedField ref="framed" v-slot="{ document: frameDocument }">
         <div
           class="max-h-32 overflow-y-auto py-1 text-chrome leading-5 text-fg"
