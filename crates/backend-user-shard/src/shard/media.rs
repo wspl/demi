@@ -30,6 +30,9 @@
 //!   the next.
 //! - A refusal of the request is never handed on, and neither is a video's job
 //!   once the vendor took it, since it is paid for.
+//! - A video asked of an option the model's catalog entry says it does not
+//!   take fails at the first entry that offers the model, before anything is
+//!   sent, as every entry of the model sends the same options.
 //!
 //! # The call
 //!
@@ -41,12 +44,12 @@
 
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
 
 use bytes::Bytes;
+use demi_backend_database::media_jobs::{Follow, JobOfCall, Made, MediaJob, MediaJobStatus};
 use demi_backend_database::usage::{MadeVideoCall, UsageRow, merge_windows};
 use demi_backend_providers::vault::entries::Vault;
-use demi_plugin_host::VideoJob;
+use demi_plugin_host::{MediaCall, VideoJob};
 use demi_provider_registry::store::StoreError;
 use demi_provider_registry::registry::{RegistryError, MakerOf};
 use demi_provider_registry::rotation::{Choice, USED_UP_FOR_MS};
@@ -57,26 +60,26 @@ use demi_plugin_interface::{
     AskedVideo, AudioAsk, AudioFacts, AudioFileFormat, AudioOption, AudioVoices, MadeAudio, PcmShape, VoiceInfo,
     CustomSizeRule, EntryStatus, ImageAsk, ImageFacts, MadeImage, MadeVideo, MediaListing, MediaModel,
     MediaPrice, MediaRefusal, MediaUnlisted, ModelEntry, PortFailure, PortRefusal, PriceRate, SentSource, Unable,
-    VideoAsk, VideoChange, VideoFacts, VideoStep,
+    VideoAsk, VideoChange, VideoFacts,
 };
 use demi_provider_common::ErrorCode;
 use demi_provider_common::credentials::AuthReason;
 use demi_provider_common::audio::{self, AudioFormatAsk, AudioRequest};
 use demi_provider_common::images::{Aspect, ImageRequest, InputImage};
-use demi_provider_common::media::{MediaAnswer, MediaFailure, MediaModelInfo, MediaVendor, unreadable};
-use demi_provider_common::media_catalog::{self, AudioOutput, Catalog, Currency, Modality, PriceUnit, Voices};
-use demi_provider_common::videos::{
-    Change, Done, DoneVideo, JobRef, JobState, JobStep, SourceVideo, VideoOption, VideoRequest, VideoSource,
+use demi_provider_common::media::{MediaFailure, MediaModelInfo, MediaVendor};
+use demi_provider_common::media_catalog::{
+    self, AudioOutput, Catalog, Currency, Modality, PriceUnit, VideoCapabilities, Voices,
 };
-use demi_shared_types::{AudioKind, MediaKind, Model, QuotaWindow, Rotation, Timestamp, TurnId, VendorTrace, mp4};
+use demi_provider_common::videos::{self, Change, SourceVideo, VideoMaker, VideoRequest, VideoSource};
+use demi_shared_types::{AudioKind, MediaKind, Model, QuotaWindow, Rotation, Timestamp, TurnId, VendorTrace};
 use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId};
 use demi_web_api_protocol::providers::EntryMediaModel;
-use futures_util::StreamExt as _;
 use sha2::{Digest as _, Sha256};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
 use super::Shard;
+use super::media_jobs::Reader;
 use super::provider_commands::named;
 use crate::services::Services;
 
@@ -535,6 +538,9 @@ fn described(
         last_frame: video.last_frame,
         max_reference_images: video.max_reference_images,
         audio: video.audio,
+        audio_off: video.audio_off,
+        seed: video.seed,
+        aspect_with_first_frame: video.aspect_with_first_frame,
         edits: video.edits,
         extends: video.extends,
         max_source_seconds: video.max_source_seconds,
@@ -673,13 +679,25 @@ fn currency_name(currency: Currency) -> Option<&'static str> {
 /// Makes the image `ask` names for `conversation`, whose ledger rows name
 /// the agent and the turn of `caller`, the job that called the command; a
 /// call `cancel` stops ends with a cancelled row.
+///
+/// An image its vendor makes as a job is kept and followed as a video's job
+/// is ([`make_video`]), and waited for within the call.
 pub(crate) async fn make_image(
     shard: &Shard,
     conversation: &ConversationId,
     caller: Option<&JobCaller>,
+    media: &MediaCall,
     ask: ImageAsk,
     cancel: &CancellationToken,
 ) -> Result<MadeImage, PortFailure> {
+    let pick = |made: Made| match made {
+        Made::Image { image } => Ok(image),
+        _ => Err(refused(MediaRefusal::Failed { message: "the job made no image".to_owned() })),
+    };
+    if media.resumed {
+        resumed_job(shard, conversation, media, cancel).await?;
+        return pick(wait_kept(shard, media, cancel).await?);
+    }
     let request = ImageRequest {
         model: ask.model.clone(),
         prompt: ask.prompt,
@@ -698,9 +716,31 @@ pub(crate) async fn make_image(
         model: ask.model,
         provider: ask.provider,
     };
-    let asking = ImageCall { request };
+    let asking = ImageCall { request, calling: Calling { media: media.clone(), stop: cancel.clone() } };
+    let answered = tokio::select! {
+        made = call.make(&asking) => made?,
+        () = cancel.cancelled() => return Err(PortError::Ended("the call was stopped".into()).into()),
+    };
+    match answered {
+        Answered::Made(image) => Ok(image),
+        Answered::Kept => pick(wait_kept(shard, media, cancel).await?),
+    }
+}
+
+/// What a call's request answered: what it made, or the job a vendor
+/// took, which the shard keeps and follows.
+enum Answered<T> {
+    Made(T),
+    Kept,
+}
+
+/// What the job the shard keeps for `media` made, once it ends. A stop of
+/// the call ends the wait ([`Shard::watch_call_stop`] says what becomes of
+/// the job).
+async fn wait_kept(shard: &Shard, media: &MediaCall, cancel: &CancellationToken) -> Result<Made, PortFailure> {
+    let of = JobOfCall { call: media.id.clone(), ordinal: media.ordinal };
     tokio::select! {
-        made = call.make(&asking) => made,
+        made = shard.collected(of) => made,
         () = cancel.cancelled() => Err(PortError::Ended("the call was stopped".into()).into()),
     }
 }
@@ -713,15 +753,24 @@ pub(crate) async fn make_image(
 /// ledger, goes first to that call's entry, which continues its job where the
 /// vendor keeps it.
 ///
-/// The steps, dropped before the video, stop the waiting, cancel the job where
-/// the vendor can and write the call's cancelled row.
+/// The job, once the vendor took it, is kept and followed by the shard
+/// (`super::media_jobs`): the steps, dropped, stop only the call's waiting.
+/// A stop of the call cancels the job where the vendor can, unless the
+/// shard is closing, and a call the runner sends again after a restart
+/// follows the job its first asked for.
 pub(crate) async fn make_video(
     shard: &Shard,
     conversation: &ConversationId,
     caller: Option<&JobCaller>,
+    call: &MediaCall,
     ask: VideoAsk,
     cancel: &CancellationToken,
 ) -> Result<(AskedVideo, VideoJob), PortFailure> {
+    let of = JobOfCall { call: call.id.clone(), ordinal: call.ordinal };
+    if call.resumed {
+        let asked = resumed_video(shard, conversation, call, cancel).await?;
+        return Ok((asked, shard.collect_video(of)));
+    }
     let request = VideoRequest {
         model: ask.model.clone(),
         prompt: ask.prompt,
@@ -758,7 +807,7 @@ pub(crate) async fn make_video(
         }
         None => None,
     };
-    let call = Call {
+    let making = Call {
         shard,
         conversation,
         caller,
@@ -766,22 +815,74 @@ pub(crate) async fn make_video(
         model: ask.model,
         provider: ask.provider,
     };
-    let asking = VideoCall { request, source };
-    tokio::select! {
-        asked = call.make(&asking) => asked,
-        () = cancel.cancelled() => Err(PortError::Ended("the call was stopped".into()).into()),
+    let asking = VideoCall { request, source, calling: Calling { media: call.clone(), stop: cancel.clone() } };
+    let asked = tokio::select! {
+        asked = making.make(&asking) => asked?,
+        () = cancel.cancelled() => return Err(PortError::Ended("the call was stopped".into()).into()),
+    };
+    Ok((asked, shard.collect_video(of)))
+}
+
+/// The job of `conversation` a call sent again after a restart asked for,
+/// followed, and which the call can come back to once more. A job its call
+/// collected already is not asked again: the restart came after the file
+/// was handed over.
+async fn resumed_job(shard: &Shard, conversation: &ConversationId, media: &MediaCall, cancel: &CancellationToken) -> Result<MediaJob, PortFailure> {
+    let of = JobOfCall { call: media.id.clone(), ordinal: media.ordinal };
+    let job = match shard.services().control.media_job(of).await.map_err(failed)? {
+        Some(job) if job.usage.conversation == *conversation => job,
+        _ => {
+            return Err(refused(MediaRefusal::Failed {
+                message: "the call came back after its file was handed over, which the server keeps no longer".to_owned(),
+            }));
+        }
+    };
+    if job.status == MediaJobStatus::Running {
+        shard.follow_media_job(job.clone(), None);
     }
+    shard.watch_call_stop(media, cancel.clone());
+    media.resumable().await;
+    Ok(job)
+}
+
+/// The video's job a call sent again after a restart asked for, as its
+/// first call was told of it.
+async fn resumed_video(shard: &Shard, conversation: &ConversationId, media: &MediaCall, cancel: &CancellationToken) -> Result<AskedVideo, PortFailure> {
+    let services = shard.services();
+    let job = resumed_job(shard, conversation, media, cancel).await?;
+    let provider = match services.vault.entry(job.usage.provider.clone()).await {
+        Ok(Some(entry)) => entry.label,
+        _ => job.usage.provider.to_string(),
+    };
+    Ok(AskedVideo {
+        job: job.job,
+        model: job.usage.model,
+        provider,
+        vendor: job.follow.vendor,
+        account: job.follow.label,
+        source: None,
+        resumed: true,
+    })
 }
 
 /// Makes the audio `ask` names for `conversation`, as [`make_image`] makes
-/// an image: one request, answered within the call.
+/// an image: one request, or a job kept, answered within the call.
 pub(crate) async fn make_audio(
     shard: &Shard,
     conversation: &ConversationId,
     caller: Option<&JobCaller>,
+    media: &MediaCall,
     ask: AudioAsk,
     cancel: &CancellationToken,
 ) -> Result<MadeAudio, PortFailure> {
+    let pick = |made: Made| match made {
+        Made::Audio { audio, .. } => Ok(audio),
+        _ => Err(refused(MediaRefusal::Failed { message: "the job made no audio".to_owned() })),
+    };
+    if media.resumed {
+        resumed_job(shard, conversation, media, cancel).await?;
+        return pick(wait_kept(shard, media, cancel).await?);
+    }
     let request = AudioRequest {
         kind: ask.kind,
         model: ask.model.clone(),
@@ -808,10 +909,14 @@ pub(crate) async fn make_audio(
         model: ask.model,
         provider: ask.provider,
     };
-    let asking = AudioCall { request };
-    tokio::select! {
-        made = call.make(&asking) => made,
-        () = cancel.cancelled() => Err(PortError::Ended("the call was stopped".into()).into()),
+    let asking = AudioCall { request, calling: Calling { media: media.clone(), stop: cancel.clone() } };
+    let answered = tokio::select! {
+        made = call.make(&asking) => made?,
+        () = cancel.cancelled() => return Err(PortError::Ended("the call was stopped".into()).into()),
+    };
+    match answered {
+        Answered::Made(audio) => Ok(audio),
+        Answered::Kept => pick(wait_kept(shard, media, cancel).await?),
     }
 }
 
@@ -1051,13 +1156,14 @@ trait Asking {
     ) -> Result<Self::Made, MediaFailure>;
 }
 
-/// An image's one request.
+/// An image's request, kept as its call's job where the vendor makes one.
 struct ImageCall {
     request: ImageRequest,
+    calling: Calling,
 }
 
 impl Asking for ImageCall {
-    type Made = MadeImage;
+    type Made = Answered<MadeImage>;
 
     async fn send(
         &self,
@@ -1065,10 +1171,27 @@ impl Asking for ImageCall {
         maker: &MakerOf,
         account: Option<&CredentialId>,
         label: Option<String>,
-    ) -> Result<MadeImage, MediaFailure> {
+    ) -> Result<Answered<MadeImage>, MediaFailure> {
         let images = maker.images().expect("an image call's maker makes images");
         let (mut row, span) = making.open_row("image", account);
         let request = ImageRequest { model: making.name.clone(), ..self.request.clone() };
+        let answer = MadeImage {
+            bytes: Default::default(),
+            model: making.name.clone(),
+            provider: making.route.entry.label.clone(),
+            vendor: images.name().to_owned(),
+            account: label.clone(),
+            confirmed: images.confirms_model(),
+        };
+        if let Some(jobs) = images.jobs() {
+            let asked_at = making.shard.services().clock.now();
+            let asked = jobs.ask(&making.http(), making.catalog, request).instrument(span.clone()).await;
+            row.observe(&asked.observed);
+            let answer = Made::Image { image: answer };
+            keep_job(making, maker, &self.calling, row, span, asked.result, asked_at, label, answer).await?;
+            return Ok(Answered::Kept);
+        }
+        let answer_of = answer;
         let answer = images
             .make(&making.http(), making.catalog, request)
             .instrument(span.clone())
@@ -1088,24 +1211,19 @@ impl Asking for ImageCall {
         span.in_scope(|| tracing::info!(event = "media.ended", kind = "image", outcome, ms, "an image call ended"));
         row.write().await;
         let image = made?;
-        Ok(MadeImage {
-            bytes: image.bytes.into(),
-            model: making.name.clone(),
-            provider: making.route.entry.label.clone(),
-            vendor: images.name().to_owned(),
-            account: label,
-            confirmed: images.confirms_model(),
-        })
+        Ok(Answered::Made(MadeImage { bytes: image.bytes.into(), ..answer_of }))
     }
 }
 
-/// An audio file's one request.
+/// An audio file's request, kept as its call's job where the vendor makes
+/// one.
 struct AudioCall {
     request: AudioRequest,
+    calling: Calling,
 }
 
 impl Asking for AudioCall {
-    type Made = MadeAudio;
+    type Made = Answered<MadeAudio>;
 
     /// A model that makes another kind, and speech without a voice for a
     /// vendor that has no default one, fail before anything is sent.
@@ -1127,7 +1245,7 @@ impl Asking for AudioCall {
         maker: &MakerOf,
         account: Option<&CredentialId>,
         label: Option<String>,
-    ) -> Result<MadeAudio, MediaFailure> {
+    ) -> Result<Answered<MadeAudio>, MediaFailure> {
         let audio = maker.audio().expect("an audio call's maker makes audio");
         let (mut row, span) = making.open_row("audio", account);
         let asked_speed = self.request.speed;
@@ -1146,6 +1264,28 @@ impl Asking for AudioCall {
                 audio::AudioOption::Loop => AudioOption::Loop,
             })
             .collect();
+        let sent_speed = speed.filter(|sent| Some(*sent) != asked_speed);
+        let answer_of = MadeAudio {
+            bytes: Default::default(),
+            pcm: None,
+            model: making.name.clone(),
+            provider: making.route.entry.label.clone(),
+            vendor: audio.name().to_owned(),
+            account: label.clone(),
+            shape,
+            unsent,
+            speed: sent_speed,
+            cost: None,
+        };
+        if let Some(jobs) = audio.jobs(making.catalog, request.kind, &request.model) {
+            let asked_at = making.shard.services().clock.now();
+            let of = request.kind;
+            let asked = jobs.ask(&making.http(), making.catalog, request).instrument(span.clone()).await;
+            row.observe(&asked.observed);
+            let answer = Made::Audio { audio: answer_of, of };
+            keep_job(making, maker, &self.calling, row, span, asked.result, asked_at, label, answer).await?;
+            return Ok(Answered::Kept);
+        }
         let answer = audio.make(&making.http(), making.catalog, request).instrument(span.clone()).await;
         row.observe(&answer.observed);
         let made = answer.result;
@@ -1169,19 +1309,87 @@ impl Asking for AudioCall {
         span.in_scope(|| tracing::info!(event = "media.ended", kind = "audio", outcome, ms, "an audio call ended"));
         row.write().await;
         let made = made?;
-        Ok(MadeAudio {
+        Ok(Answered::Made(MadeAudio {
             bytes: made.bytes.into(),
             pcm: made.pcm.map(|pcm| PcmShape { sample_rate: pcm.sample_rate(), channels: pcm.channels(), bits: pcm.bits() }),
-            model: making.name.clone(),
-            provider: making.route.entry.label.clone(),
-            vendor: audio.name().to_owned(),
-            account: label,
-            shape,
-            unsent,
-            speed: speed.filter(|sent| Some(*sent) != asked_speed),
             cost: made.cost,
-        })
+            ..answer_of
+        }))
     }
+}
+
+/// The call a request belongs to, and its stop.
+#[derive(Clone)]
+struct Calling {
+    media: MediaCall,
+    stop: CancellationToken,
+}
+
+/// Keeps the job a vendor took for `calling`, the id `asked` names, and
+/// follows it: its row in the control database, written before the call is
+/// marked resumable, and its open usage `row`, which the follower writes at
+/// the job's end. An ask the vendor refused writes the row now.
+///
+/// The keeping is the shard's task, which the call's stop does not cut
+/// short: a stop that comes meanwhile leaves the job to nobody, as one that
+/// comes later does ([`Shard::watch_call_stop`]).
+async fn keep_job(
+    making: &Making<'_>,
+    maker: &MakerOf,
+    calling: &Calling,
+    mut row: OpenRow,
+    span: tracing::Span,
+    asked: Result<String, MediaFailure>,
+    asked_at: Timestamp,
+    label: Option<String>,
+    answer: Made,
+) -> Result<String, MediaFailure> {
+    let kind = answer.kind();
+    let job = match asked {
+        Ok(job) => job,
+        Err(failure) => {
+            row.row().outcome = failure.outcome();
+            let (outcome, ms) = (row.row().outcome.clone(), row.ms());
+            span.in_scope(|| tracing::info!(event = "media.ended", kind = kind.plural(), stage = "ask", outcome, ms, "a media call ended at its ask"));
+            row.write().await;
+            return Err(failure);
+        }
+    };
+    span.in_scope(|| tracing::info!(event = "media_job.asked", kind = kind.plural(), job = %job, "a media job was asked for"));
+    row.row().vendor_id = Some(job.clone());
+    let media = &calling.media;
+    let kept = MediaJob {
+        of: JobOfCall { call: media.id.clone(), ordinal: media.ordinal },
+        kind,
+        job: job.clone(),
+        asked_at,
+        usage: row.keep(),
+        follow: Follow { vendor: maker.media().name().to_owned(), label, manages: making.manages, answer },
+        status: MediaJobStatus::Running,
+    };
+    let shard = making.shard.this();
+    let reader = Reader { maker: maker.clone(), http: making.http() };
+    let calling = calling.clone();
+    let (done, kept_now) = tokio::sync::oneshot::channel();
+    making.shard.tasks().spawn_local(
+        async move {
+            // A job no row keeps is followed all the same, so its cost is
+            // recorded; its call cannot collect it.
+            match shard.services().control.insert_media_job(kept.clone()).await {
+                Ok(true) => {}
+                Ok(false) => tracing::info!(event = "media_job.unkept", cause = "conversation_gone", "a media job was not kept"),
+                Err(error) => tracing::warn!(event = "media_job.unkept", %error, "a media job was not kept"),
+            }
+            shard.follow_media_job(kept, Some(reader));
+            shard.watch_call_stop(&calling.media, calling.stop.clone());
+            calling.media.resumable().await;
+            // A call that stopped meanwhile waits for nothing.
+            let _ = done.send(());
+        }
+        .instrument(span),
+    );
+    let _ = kept_now.await;
+    Ok(job)
 }
 
 /// A listing of a speech model's voices: no request that is paid for, so
@@ -1224,10 +1432,11 @@ impl Asking for VoicesCall {
     }
 }
 
-/// A video's ask, which starts its job.
+/// A video's ask, which starts its job, kept for its call.
 struct VideoCall {
     request: VideoRequest,
     source: Option<SourceFile>,
+    calling: Calling,
 }
 
 /// The video an edit or an extension changes, and the call that made it
@@ -1240,17 +1449,21 @@ struct SourceFile {
 }
 
 impl Asking for VideoCall {
-    type Made = (AskedVideo, VideoJob);
+    type Made = AskedVideo;
 
-    /// A change the entry's request has no field for fails before
-    /// anything is sent.
+    /// A change the entry's request has no field for, and an option the
+    /// model's catalog entry says it does not take, fail before anything is
+    /// sent.
     fn check(&self, making: &Making<'_>, maker: &MakerOf) -> Result<(), MediaRefusal> {
         let videos = maker.videos().expect("a video call's maker makes videos");
-        match &self.source {
-            Some(source) if !videos.changes().contains(&source.change) => {
-                Err(MediaRefusal::NoChange { model: making.name.clone(), change: source.asked })
-            }
-            _ => Ok(()),
+        if let Some(source) = &self.source
+            && !videos.changes().contains(&source.change)
+        {
+            return Err(MediaRefusal::NoChange { model: making.name.clone(), change: source.asked });
+        }
+        match video_takes(making, videos).and_then(|takes| videos::untaken(takes, &self.request)) {
+            Some(takes) => Err(MediaRefusal::Untaken { model: making.name.clone(), takes }),
+            None => Ok(()),
         }
     }
 
@@ -1259,16 +1472,25 @@ impl Asking for VideoCall {
         self.source.as_ref()?.made.as_ref().map(|made| &made.provider)
     }
 
+    /// Asks for the video, then keeps the job the vendor took and follows
+    /// it (`super::media_jobs`), which writes the call's row at its end.
     async fn send(
         &self,
         making: &Making<'_>,
         maker: &MakerOf,
         account: Option<&CredentialId>,
         label: Option<String>,
-    ) -> Result<(AskedVideo, VideoJob), MediaFailure> {
+    ) -> Result<AskedVideo, MediaFailure> {
         let videos = maker.videos().expect("a video call's maker makes videos");
+        let services = making.shard.services();
         let (mut row, span) = making.open_row("video", account);
         let mut request = VideoRequest { model: making.name.clone(), ..self.request.clone() };
+        // A new video asked no length is the shortest the model takes, as
+        // a vendor's own default is often its longest; an edit keeps its
+        // source's length.
+        if self.source.is_none() && request.duration.is_none() {
+            request.duration = video_takes(making, videos).and_then(VideoCapabilities::shortest);
+        }
         // A video the entry's own job made, as the model it is asked of,
         // continues that job where the vendor keeps it; any other is sent.
         let kept = self.source.as_ref().and_then(|source| source.made.as_ref()).filter(|made| {
@@ -1283,309 +1505,42 @@ impl Asking for VideoCall {
             sent
         });
         let http = making.http();
-        let every = making.shard.services().media_tuning.video_reads_every;
         // The job's bound counts from its ask, the ask's own wait
         // included.
-        let asked_at = tokio::time::Instant::now();
-        let start =
-            |request: VideoRequest| Steps::start(making.shard, maker.clone(), http.clone(), making.catalog.clone(), request, every, &span);
-        let mut steps = start(request.clone());
-        let mut first = steps.receiver.recv().instrument(span.clone()).await;
+        let asked_at = services.clock.now();
+        let mut answer = videos.ask(&http, making.catalog, request.clone()).instrument(span.clone()).await;
+        row.observe(&answer.observed);
         // A job the vendor no longer keeps: the file goes instead.
         if let (Some(source), Some(SentSource::Job { job })) = (&self.source, &sent)
-            && matches!(&first, Some(answer) if matches!(answer.result, Err(MediaFailure::SourceGone { .. })))
+            && matches!(answer.result, Err(MediaFailure::SourceGone { .. }))
         {
-            if let Some(answer) = &first {
-                row.observe(&answer.observed);
-            }
             span.in_scope(|| tracing::info!(event = "media_job.source_gone", job = %job, "the vendor no longer keeps the job of a video to change"));
             sent = Some(SentSource::FileInstead { job: job.clone() });
             request.source = Some(VideoSource { change: source.change, video: SourceVideo::File(source.bytes.clone()) });
-            steps = start(request.clone());
-            first = steps.receiver.recv().instrument(span.clone()).await;
-        }
-        if let Some(answer) = &first {
+            answer = videos.ask(&http, making.catalog, request.clone()).instrument(span.clone()).await;
             row.observe(&answer.observed);
         }
-        let asked = asked_job(first);
-        let job = match asked {
-            Ok(job) => job,
-            Err(failure) => {
-                row.row().outcome = failure.outcome();
-                let (outcome, ms) = (row.row().outcome.clone(), row.ms());
-                span.in_scope(|| tracing::info!(event = "media.ended", kind = "video", stage = "ask", outcome, ms, "a video call ended at its ask"));
-                row.write().await;
-                return Err(failure);
-            }
-        };
-        span.in_scope(|| tracing::info!(event = "media_job.asked", kind = "video", job = %job, "a video's job was asked for"));
-        row.row().vendor_id = Some(job.clone());
-        let asked = AskedVideo {
-            job: job.clone(),
+        let vendor = videos.name().to_owned();
+        let made = Made::Video { video: MadeVideo { bytes: Default::default(), cost: None } };
+        let job = keep_job(making, maker, &self.calling, row, span, answer.result, asked_at, label.clone(), made).await?;
+        Ok(AskedVideo {
+            job,
             model: making.name.clone(),
             provider: making.route.entry.label.clone(),
-            vendor: videos.name().to_owned(),
-            account: label.clone(),
-            shape: videos.shape_name(),
-            unsent: videos.unsent(making.catalog, &request).into_iter().map(plugin_option).collect(),
+            vendor,
+            account: label,
             source: sent,
-        };
-        let tuning = making.shard.services().media_tuning;
-        let job = Job {
-            maker: maker.clone(),
-            http,
-            id: job,
-            model: making.name.clone(),
-            catalog: making.catalog.clone(),
-            vendor: videos.name().to_owned(),
-            label,
-            manages: making.manages,
-            row,
-            span,
-            last: None,
-            steps,
-            bound: tuning.video_bound,
-            deadline: asked_at + tuning.video_bound,
-        };
-        let steps = futures_util::stream::unfold(job, |mut job| async move {
-            let step = job.next().await?;
-            Some((step, job))
-        });
-        Ok((asked, steps.boxed_local()))
+            resumed: false,
+        })
     }
 }
 
-fn plugin_option(option: VideoOption) -> demi_plugin_interface::VideoOption {
-    use demi_plugin_interface::VideoOption as Plugin;
-    match option {
-        VideoOption::Image => Plugin::Image,
-        VideoOption::LastFrame => Plugin::LastFrame,
-        VideoOption::Reference => Plugin::Reference,
-        VideoOption::Duration => Plugin::Duration,
-        VideoOption::Aspect => Plugin::Aspect,
-        VideoOption::Resolution => Plugin::Resolution,
-        VideoOption::Audio => Plugin::Audio,
-        VideoOption::Seed => Plugin::Seed,
-    }
-}
-
-/// The job a run's first step names. A vendor that fails the request before
-/// it names a job, as Google refuses an input within its stream, is told in
-/// its words.
-fn asked_job(first: Option<MediaAnswer<JobStep>>) -> Result<String, MediaFailure> {
-    let Some(answer) = first else {
-        return Err(unreadable("it answered nothing".to_owned()));
-    };
-    match answer.result? {
-        JobStep::Asked(job) => Ok(job),
-        JobStep::State(JobState::Failed { reason, trace }) => Err(MediaFailure::Refused { reason, code: None, trace }),
-        JobStep::State(_) => Err(unreadable("its first answer named no job".to_owned())),
-    }
-}
-
-/// The steps of a vendor's job, which a task of the shard's reads from the
-/// maker's [`VideoMaker::run`] as they come; dropped, it stops the task,
-/// and so the reads or the vendor's stream.
-///
-/// [`VideoMaker::run`]: demi_provider_common::videos::VideoMaker::run
-struct Steps {
-    receiver: tokio::sync::mpsc::UnboundedReceiver<MediaAnswer<JobStep>>,
-    task: tokio::task::JoinHandle<()>,
-}
-
-impl Steps {
-    fn start(
-        shard: &Shard,
-        maker: MakerOf,
-        http: demi_provider_common::ProviderHttp,
-        catalog: Arc<Catalog>,
-        request: VideoRequest,
-        every: Duration,
-        span: &tracing::Span,
-    ) -> Self {
-        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
-        // The vendor's requests are the call's, under its span.
-        let task = shard.tasks().spawn_local(
-            async move {
-                let videos = maker.videos().expect("a video's job is a video maker's");
-                let mut steps = videos.run(&http, &catalog, request, every);
-                while let Some(step) = steps.next().await {
-                    if sender.send(step).is_err() {
-                        return;
-                    }
-                }
-            }
-            .instrument(span.clone()),
-        );
-        Self { receiver, task }
-    }
-}
-
-impl Drop for Steps {
-    fn drop(&mut self) {
-        self.task.abort();
-    }
-}
-
-/// A video's job once the vendor took it: each change of its state told, then
-/// its video downloaded, all within `bound` of the ask.
-///
-/// It ends with its row written once, after the wait its bound covers. Dropped
-/// before, it cancels the job where the vendor can and writes the cancelled row.
-struct Job {
-    maker: MakerOf,
-    http: demi_provider_common::ProviderHttp,
-    /// The vendor's id of the job.
-    id: String,
-    /// The model as it was sent, and the call's catalog, by which a vendor
-    /// whose models take different requests reads the job's state.
-    model: String,
-    catalog: Arc<Catalog>,
-    vendor: String,
-    label: Option<String>,
-    manages: bool,
-    row: OpenRow,
-    span: tracing::Span,
-    /// The state told last.
-    last: Option<VideoStep>,
-    steps: Steps,
-    bound: Duration,
-    deadline: tokio::time::Instant,
-}
-
-/// What a job's wait came to: a change of state to tell, or its end, with
-/// the outcome its row records.
-enum Waited {
-    Told(VideoStep),
-    Ended { outcome: String, result: Result<VideoStep, PortFailure> },
-}
-
-impl Job {
-    /// The job's next change of state, its video or why it ended; none
-    /// once it ended. Only the wait is bounded: an end writes the row
-    /// after it, whether or not the bound has passed meanwhile.
-    async fn next(&mut self) -> Option<Result<VideoStep, PortFailure>> {
-        if !self.row.is_open() {
-            return None;
-        }
-        let span = self.span.clone();
-        let (outcome, result) = match tokio::time::timeout_at(self.deadline, self.wait().instrument(span)).await {
-            Ok(Waited::Told(step)) => return Some(Ok(step)),
-            Ok(Waited::Ended { outcome, result }) => (outcome, result),
-            // The job goes on at the vendor, which the call's first line
-            // named; the call stops waiting for it.
-            Err(_) => (
-                "failed".to_owned(),
-                Err(refused(MediaRefusal::StillRunning {
-                    vendor: self.vendor.clone(),
-                    job: self.id.clone(),
-                    seconds: self.bound.as_secs(),
-                })),
-            ),
-        };
-        self.row.row().outcome = outcome;
-        let (outcome, ms) = (self.row.row().outcome.clone(), self.row.ms());
-        self.span.in_scope(|| tracing::info!(event = "media.ended", kind = "video", stage = "job", job = %self.id, outcome, ms, "a video's job ended"));
-        self.row.write().await;
-        Some(result)
-    }
-
-    async fn wait(&mut self) -> Waited {
-        loop {
-            let Some(answer) = self.steps.receiver.recv().await else {
-                return self.failed(unreadable("its answer ended before the video".to_owned()));
-            };
-            self.row.observe(&answer.observed);
-            let state = match answer.result {
-                Ok(JobStep::State(state)) => state,
-                Ok(JobStep::Asked(_)) => continue,
-                Err(failure) => return self.failed(failure),
-            };
-            let step = match state {
-                JobState::Queued => VideoStep::Queued,
-                JobState::Running { progress } => VideoStep::Running { progress },
-                JobState::Done(done) => return self.download(done).await,
-                JobState::Failed { reason, trace } => {
-                    let result = Err(refused(MediaRefusal::JobFailed { vendor: self.vendor.clone(), reason, trace }));
-                    return Waited::Ended { outcome: "failed".to_owned(), result };
-                }
-                JobState::Expired => {
-                    let result = Err(refused(MediaRefusal::JobExpired { vendor: self.vendor.clone() }));
-                    return Waited::Ended { outcome: "failed".to_owned(), result };
-                }
-            };
-            if self.last.as_ref() != Some(&step) {
-                self.last = Some(step.clone());
-                return Waited::Told(step);
-            }
-        }
-    }
-
-    /// The finished job's video, downloaded unless the vendor sent it. The
-    /// cost the vendor reported goes on the row at once, so a download that
-    /// then fails, a stopped call or one past its bound still records what
-    /// was paid; the seconds once the file is read.
-    async fn download(&mut self, done: Done) -> Waited {
-        let row = self.row.row();
-        row.cost = done.cost;
-        row.usage = done.usage;
-        let bytes = match done.video {
-            DoneVideo::Sent(bytes) => bytes,
-            DoneVideo::At(url) => {
-                let videos = self.maker.videos().expect("a video's job is a video maker's");
-                let answer = videos.download(&self.http, &url).await;
-                self.row.observe(&answer.observed);
-                match answer.result {
-                    Ok(bytes) => bytes,
-                    Err(failure) => return self.failed(failure),
-                }
-            }
-        };
-        // A file this does not read is the plugin's to refuse; its row
-        // keeps no seconds.
-        self.row.row().media_seconds = mp4::read(&bytes).ok().map(|facts| facts.seconds);
-        self.row.row().media_digest = Some(hex::encode(Sha256::digest(&bytes)));
-        let video = MadeVideo {
-            bytes: bytes.into(),
-            cost: done.cost,
-        };
-        Waited::Ended { outcome: "answered".to_owned(), result: Ok(VideoStep::Made { video }) }
-    }
-
-    fn failed(&self, failure: MediaFailure) -> Waited {
-        let outcome = failure.outcome();
-        let result = Err(refused(vendor_refusal(failure, self.vendor.clone(), self.label.clone(), self.manages)));
-        Waited::Ended { outcome, result }
-    }
-}
-
-impl Drop for Job {
-    fn drop(&mut self) {
-        if !self.row.is_open() {
-            return;
-        }
-        self.span.in_scope(|| tracing::info!(event = "media_job.stopped", job = %self.id, by = "drop", "a video's job was stopped"));
-        let maker = self.maker.clone();
-        let http = self.http.clone();
-        let id = self.id.clone();
-        let model = self.model.clone();
-        let catalog = self.catalog.clone();
-        // Nothing awaits a stopped call; a vendor that cannot cancel runs
-        // the job to its end, as the call's first line said.
-        tokio::spawn(
-            async move {
-                let job = JobRef { id: &id, model: &model, catalog: &catalog };
-                let Some(cancel) = maker.videos().and_then(|videos| videos.cancel(&http, job)) else {
-                    return;
-                };
-                if let Err(failure) = cancel.await.result {
-                    tracing::warn!(event = "media_job.cancel_failed", job = %id, code = failure.outcome(), "a stopped video's job was not cancelled at the vendor");
-                }
-            }
-            .instrument(self.span.clone()),
-        );
-        // The row, still open, is written as cancelled when it drops.
-    }
+/// What the model a video call makes takes, as the call's catalog states it
+/// of the maker's vendor; none for a model it does not know.
+fn video_takes<'a>(making: &'a Making<'_>, videos: &dyn VideoMaker) -> Option<&'a VideoCapabilities> {
+    let vendor = videos.vendor()?;
+    let known = making.catalog.model(vendor.id(), &making.name)?;
+    making.catalog.video(known)
 }
 
 /// One call made on an entry: the account it takes under the entry's
@@ -1830,10 +1785,6 @@ struct OpenRow {
 }
 
 impl OpenRow {
-    fn is_open(&self) -> bool {
-        self.row.is_some()
-    }
-
     fn row(&mut self) -> &mut UsageRow {
         self.row.as_mut().expect("a call's row is open until it is written")
     }
@@ -1851,6 +1802,12 @@ impl OpenRow {
             return;
         }
         merge_windows(self.row().quota.get_or_insert_with(Vec::new), observed);
+    }
+
+    /// The row, left open for whoever ends the call: a job a vendor took
+    /// writes its row at the job's end.
+    fn keep(mut self) -> UsageRow {
+        self.row.take().expect("a call's row is kept once")
     }
 
     /// Writes the row, ended now.

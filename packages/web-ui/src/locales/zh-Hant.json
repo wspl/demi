@@ -161,7 +161,7 @@
     "unknown_provider_type": "不支援此類供應商。",
     "unknown_vendor": "不支援此廠商。",
     "subscription_only": "訂閱供應商需透過登入新增。",
-    "endpoint_kind": "無法變更此供應商的端點。",
+    "vendor_protocol": "無法變更此供應商的協定。",
     "duplicate_model": "已列出具有此 ID 的模型。",
     "accounts_unsupported": "此供應商沒有帳號。",
     "rotation_needs_accounts": "輪換至少需要 2 個帳號。",

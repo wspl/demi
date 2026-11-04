@@ -161,7 +161,7 @@
     "unknown_provider_type": "不支持此类供应商。",
     "unknown_vendor": "不支持此供应商。",
     "subscription_only": "订阅供应商需通过登录添加。",
-    "endpoint_kind": "无法更改此供应商的端点。",
+    "vendor_protocol": "无法更改此供应商的协议。",
     "duplicate_model": "已列出具有此 ID 的模型。",
     "accounts_unsupported": "此供应商没有账户。",
     "rotation_needs_accounts": "轮换至少需要 2 个账户。",

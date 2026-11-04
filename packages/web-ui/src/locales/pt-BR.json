@@ -161,7 +161,7 @@
     "unknown_provider_type": "Este tipo de provedor não é compatível.",
     "unknown_vendor": "Este fornecedor não é compatível.",
     "subscription_only": "Um provedor de assinatura é adicionado ao entrar.",
-    "endpoint_kind": "O endpoint deste provedor não pode ser alterado.",
+    "vendor_protocol": "O protocolo deste provedor não pode ser alterado.",
     "duplicate_model": "Já existe um modelo com este ID na lista.",
     "accounts_unsupported": "Este provedor não tem contas.",
     "rotation_needs_accounts": "A rotação precisa de pelo menos 2 contas.",

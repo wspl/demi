@@ -1,16 +1,15 @@
-//! The image role of an OpenAI or xAI key and of a compatible entry whose image
-//! shape is OpenAI Images.
+//! The image role of an OpenAI or xAI key.
 //!
 //! The role covers:
 //!
 //! - each vendor's image API under the entry's base URL, with the key as a
 //!   bearer token;
-//! - the models the vendor lists for the key, read when asked, or the models a
-//!   compatible entry's user added;
+//! - the models the vendor lists for the key, read when asked;
 //! - the vendor's failures, read as its text failures are: a usage or billing
 //!   limit used up and a refused key named.
 //!
-//! A compatible endpoint is sent OpenAI's requests and read as OpenAI's API is.
+//! An xAI image is a job, asked `deferred` (`images::xai`), whose image is
+//! downloaded from its address; OpenAI's Image API answers in one request.
 
 use std::sync::Arc;
 
@@ -20,10 +19,11 @@ use demi_provider_common::{
     images::{ImageMaker, ImageRequest, MadeImage, openai, read_data_answer, xai},
     media::{
         MediaAnswer, MediaCall, MediaCredential, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, created_date,
-        unreadable, vendor_message,
+        unreadable, vendor_message, within_limit,
+        jobs::{self, JobRef, JobState, Jobs},
     },
     media_catalog::Catalog,
-    json_body, read_http_failure,
+    json_body, read_http_failure, videos,
 };
 use demi_shared_types::Clock;
 use futures_util::future::BoxFuture;
@@ -37,16 +37,13 @@ use serde::{Deserialize, Serialize};
 enum Flavor {
     OpenAi,
     Xai,
-    /// A compatible endpoint, which the user knows by the entry's name and
-    /// whose models are the ones the user added.
-    Compatible { name: String, models: Vec<MediaModelInfo> },
 }
 
-/// The image role of a key or a compatible endpoint.
+/// The image role of a key.
 pub(crate) struct KeyImages {
     flavor: Flavor,
-    /// None for a compatible endpoint that takes none.
-    key: Option<Secret>,
+    key: Secret,
+    base: Url,
     generations: Url,
     edits: Url,
     models: Url,
@@ -61,16 +58,13 @@ impl KeyImages {
             // Only OpenAI's and xAI's keys make images through this crate.
             _ => Flavor::OpenAi,
         };
-        Self::of(flavor, Some(key), base, clock)
-    }
-
-    fn of(flavor: Flavor, key: Option<Secret>, base: &Url, clock: Arc<dyn Clock>) -> Self {
         let models = match flavor {
             Flavor::Xai => "/image-generation-models",
-            Flavor::OpenAi | Flavor::Compatible { .. } => "/models",
+            Flavor::OpenAi => "/models",
         };
         Self {
             flavor,
+            base: base.clone(),
             generations: endpoint_url(base, "/images/generations"),
             edits: endpoint_url(base, "/images/edits"),
             models: endpoint_url(base, models),
@@ -80,10 +74,9 @@ impl KeyImages {
     }
 
     fn label(&self) -> &str {
-        match &self.flavor {
+        match self.flavor {
             Flavor::OpenAi => MediaVendor::OpenAi.name(),
             Flavor::Xai => MediaVendor::Xai.name(),
-            Flavor::Compatible { name, .. } => name,
         }
     }
 
@@ -93,19 +86,14 @@ impl KeyImages {
 
     fn headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        if let Some(key) = &self.key {
-            headers.insert(AUTHORIZATION, key.bearer());
-        }
+        headers.insert(AUTHORIZATION, self.key.bearer());
         headers
     }
 
     async fn list(&self, http: &demi_provider_common::ProviderHttp) -> Result<Vec<MediaModelInfo>, MediaFailure> {
-        if let Flavor::Compatible { models, .. } = &self.flavor {
-            return Ok(models.clone());
-        }
         match self.flavor {
             Flavor::Xai => xai_listing(&self.call().get(http, &self.models, self.headers()).await?),
-            Flavor::OpenAi | Flavor::Compatible { .. } => {
+            Flavor::OpenAi => {
                 let listed = openai_models(&self.call(), http, &self.models, self.headers()).await?;
                 Ok(listed
                     .into_iter()
@@ -129,12 +117,12 @@ impl KeyImages {
                     prompt: &request.prompt,
                     model: &request.model,
                     aspect_ratio: request.aspect.map(|aspect| aspect.to_string()),
-                    response_format: "b64_json",
+                    deferred: true,
                     image,
                     images,
                 })
             }
-            Flavor::OpenAi | Flavor::Compatible { .. } => {
+            Flavor::OpenAi => {
                 let size = openai::size(catalog, &request.model, request.aspect);
                 json_body(&OpenAiBody {
                     prompt: &request.prompt,
@@ -164,7 +152,6 @@ impl MediaMaker for KeyImages {
         match self.flavor {
             Flavor::OpenAi => Some(MediaVendor::OpenAi),
             Flavor::Xai => Some(MediaVendor::Xai),
-            Flavor::Compatible { .. } => None,
         }
     }
 
@@ -178,8 +165,7 @@ impl MediaMaker for KeyImages {
 }
 
 /// Both APIs refuse a model they do not have rather than answer with
-/// another, so the model is confirmed, as [`MediaMaker`] holds by default;
-/// a compatible endpoint is taken to answer as OpenAI's does.
+/// another, so the model is confirmed, as [`MediaMaker`] holds by default.
 impl ImageMaker for KeyImages {
     fn make<'a>(
         &'a self,
@@ -188,37 +174,64 @@ impl ImageMaker for KeyImages {
         request: ImageRequest,
     ) -> BoxFuture<'a, MediaAnswer<MadeImage>> {
         Box::pin(async move {
+            if let Some(jobs) = self.jobs() {
+                let model = request.model.clone();
+                return jobs::made(jobs, http, catalog, request, &model).await;
+            }
             let url = if request.images.is_empty() { &self.generations } else { &self.edits };
             let headers = self.headers();
-            let answer = self
-                .call()
-                .post_json(http, url, self.encode(catalog, &request), |_| {
-                    std::future::ready(Ok((headers.clone(), None)))
-                })
+            self.call()
+                .post_json(http, url, self.encode(catalog, &request), |_| std::future::ready(Ok((headers.clone(), None))))
                 .await
-                .and_then(|body| read_data_answer(&body));
-            match self.flavor {
-                // A refused shape is told with the shapes xAI named.
-                Flavor::Xai => xai::with_shapes(answer),
-                Flavor::OpenAi | Flavor::Compatible { .. } => answer,
-            }
+                .and_then(|body| read_data_answer(&body))
         })
+    }
+
+    fn jobs(&self) -> Option<&dyn Jobs<ImageRequest, MadeImage>> {
+        matches!(self.flavor, Flavor::Xai).then_some(self)
     }
 }
 
-/// The image role of a compatible entry whose image shape is OpenAI Images:
-/// OpenAI's image requests under its `base`, with its `key` when it has one.
-///
-/// It offers the `models` its user added; `name` is the entry's, which its
-/// failures name.
-pub fn compatible_images(
-    name: String,
-    key: Option<Secret>,
-    base: &Url,
-    models: Vec<MediaModelInfo>,
-    clock: Arc<dyn Clock>,
-) -> Arc<dyn ImageMaker> {
-    Arc::new(KeyImages::of(Flavor::Compatible { name, models }, key, base, clock))
+/// An xAI key's deferred images.
+impl Jobs<ImageRequest, MadeImage> for KeyImages {
+    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, catalog: &'a Catalog, request: ImageRequest) -> BoxFuture<'a, MediaAnswer<String>> {
+        Box::pin(async move {
+            let url = if request.images.is_empty() { &self.generations } else { &self.edits };
+            let headers = self.headers();
+            let asked = self
+                .call()
+                .post_json(http, url, self.encode(catalog, &request), |_| std::future::ready(Ok((headers.clone(), None))))
+                .await
+                .and_then(|body| videos::xai::read_asked(&body));
+            // A refused shape is told with the shapes xAI named.
+            xai::with_shapes(asked)
+        })
+    }
+
+    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState<MadeImage>>> {
+        Box::pin(async move {
+            let url = endpoint_url(&self.base, &format!("/images/{}", job.id));
+            let read = self.call().get(http, &url, self.headers()).await.and_then(|body| xai::read_state(&body));
+            let mut observed = Vec::new();
+            let result = match read {
+                Ok(JobState::Done(image)) => {
+                    let label = MediaVendor::Xai.name();
+                    let downloaded = videos::download(label, &*self.clock, http, &image.url, &self.base, self.headers()).await;
+                    observed.extend(downloaded.observed);
+                    downloaded.result.and_then(|bytes| within_limit(bytes, "image")).map(|bytes| {
+                        JobState::Done(MadeImage { bytes, usage: None, vendor_id: Some(job.id.to_owned()), cost: image.cost })
+                    })
+                }
+                Ok(JobState::Queued) => Ok(JobState::Queued),
+                Ok(JobState::Running { progress }) => Ok(JobState::Running { progress }),
+                Ok(JobState::Failed { reason, trace }) => Ok(JobState::Failed { reason, trace }),
+                Ok(JobState::Expired) => Ok(JobState::Expired),
+                Ok(JobState::Lost) => Ok(JobState::Lost),
+                Err(failure) => Err(failure),
+            };
+            MediaAnswer { result, observed }
+        })
+    }
 }
 
 /// `GET /v1/models`: `data[].id` and `created`, in seconds.
@@ -295,13 +308,14 @@ struct OpenAiImage {
     image_url: String,
 }
 
+/// A deferred request: xAI then answers the image only at an address.
 #[derive(Serialize)]
 struct XaiBody<'a> {
     prompt: &'a str,
     model: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     aspect_ratio: Option<String>,
-    response_format: &'static str,
+    deferred: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     image: Option<XaiImage>,
     #[serde(skip_serializing_if = "Vec::is_empty")]

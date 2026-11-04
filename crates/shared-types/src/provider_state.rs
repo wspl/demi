@@ -90,7 +90,7 @@ pub enum WireApi {
 serde_plain::derive_display_from_serialize!(WireApi);
 
 /// How an entry's API makes images, its *image shape*: a vendor entry's
-/// is its vendor's, a compatible entry's the one its user chose, or none.
+/// is its vendor's; a compatible entry makes none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub enum ImageShape {
     /// The ChatGPT subscription's image endpoints.
@@ -114,16 +114,11 @@ pub enum ImageShape {
     Minimax,
 }
 
-impl ImageShape {
-    /// The shapes a compatible entry may choose.
-    pub const CHOSEN: [Self; 1] = [Self::OpenaiImages];
-}
-
 serde_plain::derive_display_from_serialize!(ImageShape);
 serde_plain::derive_fromstr_from_deserialize!(ImageShape);
 
 /// How an entry's API makes videos, its *video shape*: a vendor entry's
-/// is its vendor's, a compatible entry's the one its user chose, or none.
+/// is its vendor's; a compatible entry makes none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub enum VideoShape {
     /// The Grok subscription's video endpoints.
@@ -136,13 +131,6 @@ pub enum VideoShape {
     /// Gemini's `…/interactions`, streamed, as Gemini Omni answers it.
     #[serde(rename = "gemini-interactions")]
     GeminiInteractions,
-    /// `…/videos`, `…/videos/<id>` and `…/videos/<id>/content`, as OpenAI's
-    /// Videos API served them and vLLM-Omni serves them.
-    #[serde(rename = "openai-videos")]
-    OpenaiVideos,
-    /// OpenRouter's `…/videos` jobs.
-    #[serde(rename = "openrouter-videos")]
-    OpenrouterVideos,
     /// Ark's `…/contents/generations/tasks`, as BytePlus and Volcengine
     /// serve Seedance.
     #[serde(rename = "ark-tasks")]
@@ -151,11 +139,6 @@ pub enum VideoShape {
     /// ones.
     #[serde(rename = "hailuo")]
     Hailuo,
-}
-
-impl VideoShape {
-    /// The shapes a compatible entry may choose.
-    pub const CHOSEN: [Self; 4] = [Self::XaiVideos, Self::OpenaiVideos, Self::ArkTasks, Self::OpenrouterVideos];
 }
 
 serde_plain::derive_display_from_serialize!(VideoShape);
@@ -198,12 +181,14 @@ impl VideoResolution {
         }
     }
 
-    /// Whether a picture of `width`×`height` is of it: its shorter side the
-    /// height asked; for `<n>k`, its longer side from 960 n to 1280 n
-    /// pixels, as vendors call 1920 to 2560 across 2K and 3840 to 4096 4K.
+    /// Whether a picture of `width`×`height` is of it: its shorter side
+    /// within 5% of the height asked, as a vendor rounds a side to a
+    /// multiple of its blocks, such as Seedance's 480p at 864×496; for
+    /// `<n>k`, its longer side from 960 n to 1280 n pixels, as vendors call
+    /// 1920 to 2560 across 2K and 3840 to 4096 4K.
     pub fn fits(self, width: u32, height: u32) -> bool {
         match self {
-            Self::Height(asked) => width.min(height) == asked,
+            Self::Height(asked) => width.min(height).abs_diff(asked) * 20 <= asked,
             Self::K(thousands) => {
                 (thousands.saturating_mul(960)..=thousands.saturating_mul(1280)).contains(&width.max(height))
             }

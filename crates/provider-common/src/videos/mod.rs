@@ -1,33 +1,33 @@
 //! The video role of a provider.
 //!
-//! A provider that makes videos lists its video models and runs one job for its
-//! account or key as one stream of its steps: the job's id, then each change of
-//! its state until its end, whose video the role downloads. A whole job is one
-//! call, so it crosses a channel as one (`crate::media::channel`). Most vendors
-//! answer a job's ask with its id and are read until it ends ([`PolledVideos`],
-//! [`polled`]); one that streams the job's states, as Gemini Omni does, answers
-//! them as they come. The backend chooses the entry and the account, paces the
-//! reads and bounds the job.
+//! A provider that makes videos lists its video models and makes one job for
+//! its account or key in two steps that each stand alone: the ask, which the
+//! vendor answers with the job's id, and a read of the job by that id, which
+//! says its state, at its end the video and its cost. Nothing but the id joins
+//! them, so whoever keeps the id reads the job again after a restart of the
+//! server that asked. The backend chooses the entry and the account, keeps the
+//! job, paces the reads and downloads the video.
+//!
+//! A maker sends every option a request gives, each in its field. What a model
+//! takes is its catalog entry's to say: the call checks a request against it
+//! before any maker sees it ([`untaken`]).
 //!
 //! What every vendor's request has in common is in [`crate::media`]. The xAI
-//! Videos shape, which a Grok subscription, an xAI key and a compatible API
-//! share, is in [`xai`].
+//! Videos shape, which a Grok subscription and an xAI key share, is in
+//! [`xai`].
 
 pub mod xai;
 
-use std::time::Duration;
-
 use bytes::Bytes;
-use demi_shared_types::{Clock, Cost, TokenUsage, VendorTrace, VideoResolution};
+use demi_shared_types::{Clock, Cost, TokenUsage, VideoResolution};
 use futures_util::future::BoxFuture;
-use futures_util::stream::{self, BoxStream, StreamExt as _};
 use http::HeaderMap;
 use reqwest::Url;
 use serde::Serialize;
 
 use crate::images::{Aspect, InputImage};
 use crate::media::{ANSWER_LIMIT, Ask, MediaAnswer, MediaCall, MediaCredential, MediaMaker, follow};
-use crate::media_catalog::Catalog;
+use crate::media_catalog::{Catalog, VideoCapabilities};
 use crate::read_http_failure;
 
 /// An item of a video ask's `content`, as Ark's tasks and MiniMax's v2
@@ -57,17 +57,12 @@ pub fn content(request: &VideoRequest) -> Vec<Content> {
 
 /// A provider's video role.
 pub trait VideoMaker: MediaMaker {
-    /// The job `request` describes, as the vendor tells it: its id first,
-    /// then each state it reads or sends, the last of them its end;
-    /// `catalog` says what the model takes, and a vendor that is read is
-    /// read every `every`.
-    fn run<'a>(
-        &'a self,
-        http: &'a crate::ProviderHttp,
-        catalog: &'a Catalog,
-        request: VideoRequest,
-        every: Duration,
-    ) -> BoxStream<'a, MediaAnswer<JobStep>>;
+    /// Asks for the video `request` describes and answers the job's id;
+    /// `catalog` says what the model takes.
+    fn ask<'a>(&'a self, http: &'a crate::ProviderHttp, catalog: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>>;
+
+    /// Reads the state of the job `job` once.
+    fn state<'a>(&'a self, http: &'a crate::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>;
 
     /// The changes of a video its request has a field for; none for a
     /// vendor that only makes new ones.
@@ -90,74 +85,6 @@ pub trait VideoMaker: MediaMaker {
     fn cancel<'a>(&'a self, _http: &'a crate::ProviderHttp, _job: JobRef<'a>) -> Option<BoxFuture<'a, MediaAnswer<()>>> {
         None
     }
-
-    /// The options `request` gives that its request has no field for,
-    /// which are not sent, as [`unsent_of`] picks them from the ones the
-    /// request lacks.
-    fn unsent(&self, catalog: &Catalog, request: &VideoRequest) -> Vec<VideoOption>;
-
-    /// How a call's message names the request it takes, such as `Gemini
-    /// Interactions takes no --seed`.
-    fn shape_name(&self) -> String;
-}
-
-/// The role of a vendor whose job is asked once and then read until it
-/// ends, which [`polled`] makes its [`VideoMaker::run`] of.
-pub trait PolledVideos: VideoMaker {
-    /// Asks for the video `request` describes and answers the job's id;
-    /// `catalog` says what the model takes.
-    fn ask<'a>(&'a self, http: &'a crate::ProviderHttp, catalog: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>>;
-
-    /// Reads the state of the job `job` once.
-    fn state<'a>(&'a self, http: &'a crate::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>;
-}
-
-/// One step of a job as [`VideoMaker::run`] tells it.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-pub enum JobStep {
-    /// The vendor took the job, under its id.
-    Asked(String),
-    /// A state of the job; it ends with [`JobState::Done`],
-    /// [`JobState::Failed`] or [`JobState::Expired`].
-    State(JobState),
-}
-
-/// `maker`'s job as its ask and its reads every `every` tell it, the reads
-/// ending at the job's end or the first failure.
-pub fn polled<'a, M: PolledVideos + ?Sized>(
-    maker: &'a M,
-    http: &'a crate::ProviderHttp,
-    catalog: &'a Catalog,
-    request: VideoRequest,
-    every: Duration,
-) -> BoxStream<'a, MediaAnswer<JobStep>> {
-    let model = request.model.clone();
-    let asked = stream::once(maker.ask(http, catalog, request));
-    asked
-        .flat_map(move |answer| {
-            let id = answer.result.as_ref().ok().cloned();
-            let first = stream::once(std::future::ready(answer.and_then(|id| Ok(JobStep::Asked(id)))));
-            let reads = match id {
-                Some(id) => {
-                    let model = model.clone();
-                    stream::unfold(Some(id), move |id| {
-                        let model = model.clone();
-                        async move {
-                            let id = id?;
-                            tokio::time::sleep(every).await;
-                            let answer = maker.state(http, JobRef { id: &id, model: &model, catalog }).await;
-                            let ended = !matches!(answer.result, Ok(JobState::Queued | JobState::Running { .. }));
-                            let next = (!ended).then_some(id);
-                            Some((answer.and_then(|state| Ok(JobStep::State(state))), next))
-                        }
-                    })
-                    .boxed()
-                }
-                None => stream::empty().boxed(),
-            };
-            first.chain(reads)
-        })
-        .boxed()
 }
 
 /// What `demi video edit` and `demi video extend` ask of a video.
@@ -191,15 +118,7 @@ pub enum SourceVideo {
     Job(String),
 }
 
-/// A job a vendor took: its id at the vendor, and the model it makes as
-/// `catalog` states it, by which a vendor whose models take different
-/// requests, as MiniMax's do, reads its state.
-#[derive(Debug, Clone, Copy)]
-pub struct JobRef<'a> {
-    pub id: &'a str,
-    pub model: &'a str,
-    pub catalog: &'a Catalog,
-}
+pub use crate::media::jobs::JobRef;
 
 /// One video to make; an option left out is the vendor's default.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
@@ -223,60 +142,101 @@ pub struct VideoRequest {
     pub source: Option<VideoSource>,
 }
 
-/// An option of `demi video generate`, `edit` or `extend`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-pub enum VideoOption {
-    Image,
-    LastFrame,
-    Reference,
-    Duration,
-    Aspect,
-    Resolution,
-    Audio,
-    Seed,
+/// What `request` asks that the model's catalog entry `takes` says it does
+/// not take, in a call's words, such as `takes --duration 3 to 10`, the first
+/// in the order of the options; none when the entry excludes nothing it asks.
+/// A fact the entry does not state excludes nothing.
+pub fn untaken(takes: &VideoCapabilities, request: &VideoRequest) -> Option<String> {
+    let given_image = request.image.is_some();
+    if given_image && takes.first_frame == Some(false) {
+        return Some("takes no --image".to_owned());
+    }
+    if request.last_frame.is_some() && takes.last_frame == Some(false) {
+        return Some("takes no --last-frame".to_owned());
+    }
+    match takes.max_reference_images {
+        Some(0) if !request.references.is_empty() => return Some("takes no --reference".to_owned()),
+        Some(most) if request.references.len() > most as usize => {
+            return Some(format!("takes at most {most} --reference"));
+        }
+        _ => {}
+    }
+    if let Some(asked) = request.duration
+        && let Some(lengths) = lengths(takes, asked)
+    {
+        return Some(format!("takes --duration {lengths}"));
+    }
+    if let Some(aspect) = request.aspect {
+        if given_image && takes.aspect_with_first_frame == Some(false) {
+            return Some("takes no --aspect with --image: the image sets the shape".to_owned());
+        }
+        if let Some(ratios) = &takes.aspect_ratios
+            && !ratios.iter().filter_map(|ratio| Aspect::parse(ratio)).any(|ratio| ratio.same_shape(aspect))
+        {
+            return Some(match ratios.is_empty() {
+                true => "takes no --aspect".to_owned(),
+                false => format!("takes --aspect {}", either(ratios)),
+            });
+        }
+    }
+    if let Some(asked) = request.resolution
+        && let Some(resolutions) = &takes.resolutions
+        && !resolutions.iter().any(|named| VideoResolution::try_from(named.clone()).is_ok_and(|named| named == asked))
+    {
+        return Some(match resolutions.is_empty() {
+            true => "takes no --resolution".to_owned(),
+            false => format!("takes --resolution {}", either(resolutions)),
+        });
+    }
+    match request.audio {
+        Some(true) if takes.audio == Some(false) => return Some("makes no sound: it takes no --audio".to_owned()),
+        // A silent model honors --no-audio without a field for it.
+        Some(false) if takes.audio_off == Some(false) && takes.audio != Some(false) => {
+            return Some("always makes sound: it takes no --no-audio".to_owned());
+        }
+        _ => {}
+    }
+    if request.seed.is_some() && takes.seed == Some(false) {
+        return Some("takes no --seed".to_owned());
+    }
+    None
 }
 
-/// The options `request` gives among those a request `lacks`, in the order
-/// of the table.
-pub fn unsent_of(lacks: &[VideoOption], request: &VideoRequest) -> Vec<VideoOption> {
-    let given = [
-        (VideoOption::Image, request.image.is_some()),
-        (VideoOption::LastFrame, request.last_frame.is_some()),
-        (VideoOption::Reference, !request.references.is_empty()),
-        (VideoOption::Duration, request.duration.is_some()),
-        (VideoOption::Aspect, request.aspect.is_some()),
-        (VideoOption::Resolution, request.resolution.is_some()),
-        (VideoOption::Audio, request.audio.is_some()),
-        (VideoOption::Seed, request.seed.is_some()),
-    ];
-    given
-        .into_iter()
-        .filter(|(option, given)| *given && lacks.contains(option))
-        .map(|(option, _)| option)
-        .collect()
+/// The lengths `takes` states, as a call's words say them, when `asked` is
+/// none of them: `6 or 10`, `3 to 10`, `at least 3`.
+fn lengths(takes: &VideoCapabilities, asked: u32) -> Option<String> {
+    let seconds = |value: f64| {
+        let text = format!("{value:.1}");
+        text.strip_suffix(".0").unwrap_or(&text).to_owned()
+    };
+    if let Some(durations) = &takes.durations {
+        if durations.contains(&asked) {
+            return None;
+        }
+        let named: Vec<String> = durations.iter().map(u32::to_string).collect();
+        return Some(either(&named));
+    }
+    let range = takes.duration_range?;
+    let asked = f64::from(asked);
+    match (range.min, range.max) {
+        (Some(min), Some(max)) => (asked < min || asked > max).then(|| format!("{} to {}", seconds(min), seconds(max))),
+        (Some(min), None) => (asked < min).then(|| format!("at least {}", seconds(min))),
+        (None, Some(max)) => (asked > max).then(|| format!("at most {}", seconds(max))),
+        (None, None) => None,
+    }
 }
 
-/// A job's state as one read of it says.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-pub enum JobState {
-    /// Waiting for the vendor to start it.
-    Queued,
-    /// Being made, with how far along when the vendor says.
-    Running { progress: Option<u8> },
-    /// Made, and where the video is.
-    Done(Done),
-    /// The vendor failed the video; `reason` is Demi's, for a failure it
-    /// read out of an answer, such as a video withheld, and `trace` what
-    /// the vendor said. Neither crosses a relay.
-    Failed {
-        #[serde(skip)]
-        reason: Option<String>,
-        #[serde(skip)]
-        trace: VendorTrace,
-    },
-    /// The job expired at the vendor before it ran.
-    Expired,
+/// `a`, `a or b`, `a, b or c`.
+fn either(values: &[String]) -> String {
+    match values {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
+    }
 }
+
+/// A video's job's state as one read of it says.
+pub type JobState = crate::media::jobs::JobState<Done>;
 
 /// A finished job: its video and what the vendor said it cost.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]

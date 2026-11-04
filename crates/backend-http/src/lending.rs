@@ -138,8 +138,8 @@ pub(super) async fn provider(
 }
 
 /// `POST /api/relay/media/{kind}`: one call of the lent entry's maker of the
-/// kind, its body one frame, answered with its replies' frames as they come
-/// and an empty one every [`KEEP_ALIVE`] meanwhile
+/// kind, its body one frame, answered with its reply's frame, and an empty
+/// one every [`KEEP_ALIVE`] until then
 /// (`crates/provider-relay/src/wire/media.rs`). The borrower's going drops
 /// the call.
 pub(super) async fn media(
@@ -179,8 +179,8 @@ pub(super) async fn media(
         .of(&user)
         .call(move |shard, _| async move { shard.lent_media(borrowing, kind, call).await })
         .await;
-    let mut replies = match taken {
-        Ok(Ok(replies)) => replies,
+    let mut reply = match taken {
+        Ok(Ok(reply)) => reply,
         Ok(Err(Unlent::MakesNone)) => return StatusCode::from_u16(MAKES_NONE).expect("410 is a status").into_response(),
         // As for a key refused before the call.
         Ok(Err(Unlent::Revoked)) => return StatusCode::UNAUTHORIZED.into_response(),
@@ -191,15 +191,14 @@ pub(super) async fn media(
         quiet.tick().await;
         loop {
             tokio::select! {
-                reply = replies.recv() => match reply.as_ref().and_then(frame) {
-                    Some(frame) => {
+                reply = &mut reply => {
+                    // A call that ended without its reply, or sent what does
+                    // not cross, ends the answer.
+                    if let Some(frame) = reply.ok().as_ref().and_then(frame) {
                         yield Ok::<_, std::convert::Infallible>(frame);
-                        quiet.reset();
                     }
-                    // The call ended, or sent what does not cross, which
-                    // ends it too.
-                    None => return,
-                },
+                    return;
+                }
                 _ = quiet.tick() => yield Ok(keep_alive()),
             }
         }

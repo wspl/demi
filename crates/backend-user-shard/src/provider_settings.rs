@@ -34,12 +34,12 @@ use demi_backend_providers::vault::operations::OperationGuard;
 use demi_provider_common::{ProviderHttp, Secret, SecretError};
 use demi_provider_relay::borrow::{Borrowed, FAMILY as BORROWED, server_name};
 use demi_provider_relay::key::{NotAKey, ShareKey};
-use demi_shared_types::{AudioShape, CacheTtl, ImageShape, MediaKind, MediaShapes, VideoShape, WireApi};
+use demi_shared_types::{AudioShape, CacheTtl, MediaKind, MediaShapes, WireApi};
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::ids::{DeviceId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{
     ConfiguredModel, ConfiguredModels, CreateProvider, CredentialKind, ModelKind, ModelMatch, ProviderHeader, ProviderPatch,
-    Rotation,
+    Rotation, Vendor,
 };
 use demi_web_api_protocol::text::{EndpointUrl, Trimmed};
 use std::sync::Arc;
@@ -94,10 +94,6 @@ pub enum ProviderRefusal {
     /// provider; it names the entry.
     #[error("{0} lists its own models; its list cannot be edited.")]
     OwnModels(String),
-    /// An endpoint for a vendor entry, which uses its vendor's; it names the
-    /// entry.
-    #[error("{0} uses its vendor’s endpoint; it can’t be changed.")]
-    VendorEndpoint(String),
     /// A protocol for a vendor entry, which speaks its vendor's; it names
     /// the entry.
     #[error("{0} speaks its vendor’s protocol; it can’t be changed.")]
@@ -148,22 +144,19 @@ pub enum ProviderRefusal {
     Store(#[from] demi_provider_registry::store::StoreError),
 }
 
-/// The article before a kind of model: an image model, a video model, an
-/// audio model.
+/// The article before a kind of model: a text model, an audio model.
 fn article(kind: ModelKind) -> &'static str {
     match kind {
-        ModelKind::Image | ModelKind::Audio => "an",
-        ModelKind::Text | ModelKind::Video => "a",
+        ModelKind::Audio => "an",
+        ModelKind::Text => "a",
     }
 }
 
-/// What an entry makes of a kind of model, as a sentence names it: images,
-/// videos, audio.
+/// What an entry makes of a kind of model, as a sentence names it: text,
+/// audio.
 fn plural(kind: ModelKind) -> &'static str {
     match kind {
         ModelKind::Text => "text",
-        ModelKind::Image => "images",
-        ModelKind::Video => "videos",
         ModelKind::Audio => "audio",
     }
 }
@@ -241,16 +234,7 @@ impl Services {
                     .map_err(|error| ProviderRefusal::CatalogUnavailable(error.to_string()))?
                     .ok_or(ProviderRefusal::UnknownVendor(vendor_id))?;
                 self.api_key_family(&vendor.provider_type, vendor.wire_api)?;
-                let base_url = vendor
-                    .base_url
-                    .map(EndpointUrl::try_from)
-                    .transpose()
-                    .map_err(|_| {
-                        ProviderRefusal::CatalogUnavailable(format!(
-                            "models.dev names no usable endpoint for {}",
-                            vendor.id
-                        ))
-                    })?;
+                let base_url = vendor_endpoint(&vendor)?;
                 let label = label.ok_or(vendor.name);
                 let config = ApiKeyConfig {
                     api_key: api_key.map(key).transpose()?,
@@ -258,8 +242,6 @@ impl Services {
                     wire_api: vendor.wire_api,
                     vendor_id: Some(vendor.id),
                     models,
-                    image_shape: None,
-                    video_shape: None,
                     audio_shape: None,
                     headers: Vec::new(),
                 };
@@ -281,8 +263,6 @@ impl Services {
                     wire_api,
                     vendor_id: Some(provider_type.clone()),
                     models,
-                    image_shape: None,
-                    video_shape: None,
                     audio_shape: None,
                     headers: Vec::new(),
                 };
@@ -305,8 +285,6 @@ impl Services {
                     wire_api,
                     vendor_id: None,
                     models,
-                    image_shape: None,
-                    video_shape: None,
                     audio_shape: None,
                     headers: Vec::new(),
                 };
@@ -320,8 +298,6 @@ impl Services {
                     wire_api: None,
                     vendor_id: None,
                     models: None,
-                    image_shape: None,
-                    video_shape: None,
                     audio_shape: None,
                     headers: Vec::new(),
                 };
@@ -348,10 +324,11 @@ impl Services {
             .await?)
     }
 
-    /// Edits the entry `id`: the label of any; the key and model list of an
-    /// API-key entry; and a compatible entry's endpoint and protocol, whose
-    /// change of family keeps its key, endpoint and models. A configuration
-    /// edit starts the entry's provider and catalog afresh.
+    /// Edits the entry `id`: the label of any; the key, model list and
+    /// endpoint of an API-key entry, a vendor entry's returning to its
+    /// vendor's when removed; and a compatible entry's protocol, whose change
+    /// of family keeps its key, endpoint and models. A configuration edit
+    /// starts the entry's provider and catalog afresh.
     pub async fn update_provider(
         &self,
         user: &UserDto,
@@ -367,10 +344,8 @@ impl Services {
             return Err(ProviderRefusal::NotBorrowed(entry.label.clone()));
         }
         let protocol = patch.provider_type.is_some() || patch.wire_api.is_some();
-        let image_shape = patch.media.as_ref().and_then(|media| media.image.as_ref()).and_then(|image| image.shape);
-        let video_shape = patch.media.as_ref().and_then(|media| media.video.as_ref()).and_then(|video| video.shape);
         let audio_shape = patch.media.as_ref().and_then(|media| media.audio.as_ref()).and_then(|audio| audio.shape);
-        let shaped = image_shape.is_some() || video_shape.is_some() || audio_shape.is_some();
+        let shaped = audio_shape.is_some();
         let lists = patch.models.is_some();
         let reconfigures = patch.api_key.is_some()
             || patch.base_url.is_some()
@@ -394,13 +369,23 @@ impl Services {
             if let Some(text) = patch.api_key {
                 config.api_key = text.map(key).transpose()?;
             }
-            // An entry stays the kind it was added as: a vendor's endpoint
-            // and protocol are its vendor's.
+            // An entry stays the kind it was added as. A vendor entry's
+            // endpoint may be a gateway's that serves its vendor's API, and
+            // returns to its vendor's when removed.
             if let Some(base_url) = patch.base_url {
-                if !config.is_compatible() {
-                    return Err(ProviderRefusal::VendorEndpoint(entry.label.clone()));
-                }
-                config.base_url = base_url;
+                config.base_url = match (base_url, &config.vendor_id) {
+                    (None, Some(vendor_id)) => {
+                        let vendor = self
+                            .provider_registry
+                            .offered_vendor(vendor_id)
+                            .await
+                            .map_err(|error| ProviderRefusal::CatalogUnavailable(error.to_string()))?;
+                        // A vendor no longer offered leaves the entry its
+                        // family's default.
+                        vendor.as_ref().map(vendor_endpoint).transpose()?.flatten()
+                    }
+                    (base_url, _) => base_url,
+                };
             }
             // A vendor's API takes the headers its vendor documents: its
             // provider sends its own, and its user sets those its family
@@ -445,24 +430,6 @@ impl Services {
                 config.models = models;
             }
             // A vendor entry makes media as its vendor does.
-            if let Some(shape) = image_shape {
-                if !config.is_compatible() {
-                    return Err(ProviderRefusal::ShapeFixed(entry.label.clone()));
-                }
-                if shape.is_some_and(|shape| !ImageShape::CHOSEN.contains(&shape)) {
-                    return Err(ProviderRefusal::ShapeFixed(entry.label.clone()));
-                }
-                config.image_shape = shape;
-            }
-            if let Some(shape) = video_shape {
-                if !config.is_compatible() {
-                    return Err(ProviderRefusal::ShapeFixed(entry.label.clone()));
-                }
-                if shape.is_some_and(|shape| !VideoShape::CHOSEN.contains(&shape)) {
-                    return Err(ProviderRefusal::ShapeFixed(entry.label.clone()));
-                }
-                config.video_shape = shape;
-            }
             if let Some(shape) = audio_shape {
                 if !config.is_compatible() {
                     return Err(ProviderRefusal::ShapeFixed(entry.label.clone()));
@@ -479,8 +446,8 @@ impl Services {
             // hidden, and comes back with the shape, so a list that still carries
             // it, as an edit of a text model sends, is taken.
             let shapes = MediaShapes {
-                image: config.image_shape.filter(|_| config.is_compatible()),
-                video: config.video_shape.filter(|_| config.is_compatible()),
+                image: None,
+                video: None,
                 audio: config.audio_shape.filter(|_| config.is_compatible()),
             };
             let kept = |model: &ConfiguredModel| {
@@ -541,11 +508,7 @@ impl Services {
             return Err(ProviderRefusal::SearchesNo(entry.label.clone(), "videos"));
         }
         let shapes = match &config {
-            Some(config) if config.is_compatible() => MediaShapes {
-                image: config.image_shape,
-                video: config.video_shape,
-                audio: config.audio_shape,
-            },
+            Some(config) if config.is_compatible() => MediaShapes { image: None, video: None, audio: config.audio_shape },
             _ => self.provider_registry.media_shapes(&entry),
         };
         if let Some(kind) = MediaKind::ALL.into_iter().find(|kind| switch(*kind).is_some() && !shapes.makes(*kind)) {
@@ -864,6 +827,14 @@ impl Services {
         }
         Ok(family)
     }
+}
+
+/// The endpoint an entry of `vendor` starts with and returns to; none for a
+/// vendor that names none, whose entry goes to its family's default.
+fn vendor_endpoint(vendor: &Vendor) -> Result<Option<EndpointUrl>, ProviderRefusal> {
+    vendor.base_url.clone().map(EndpointUrl::try_from).transpose().map_err(|_| {
+        ProviderRefusal::CatalogUnavailable(format!("models.dev names no usable endpoint for {}", vendor.id))
+    })
 }
 
 /// A key as the vault keeps it: one line of text.

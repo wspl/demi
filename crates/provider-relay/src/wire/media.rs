@@ -2,10 +2,10 @@
 //!
 //! `POST {MEDIA_ROUTE}/{kind}` takes one frame, a
 //! [`Call`](demi_provider_common::media::channel::Call) of the lent entry's
-//! maker of the kind, and answers its
-//! [`Reply`](demi_provider_common::media::channel::Reply) frames as they
-//! come, with an empty frame every [`KEEP_ALIVE`] while the call runs. A
-//! frame is its message's length, 4 bytes big-endian, then its MessagePack.
+//! maker of the kind, and answers its one
+//! [`Reply`](demi_provider_common::media::channel::Reply) frame, after an
+//! empty frame every [`KEEP_ALIVE`] while the call runs. A frame is its
+//! message's length, 4 bytes big-endian, then its MessagePack.
 
 use std::time::Duration;
 

@@ -16,6 +16,16 @@
 //! PCM and handed on to be wrapped, as the services repeat a WAV's header in
 //! every piece.
 //!
+//! Doubao Speech makes Seed speech as a long-text job too, which outlives a
+//! restart of the server, and Demi asks it so: `POST /api/v3/tts/submit`
+//! takes the same request and headers, with an `X-Api-Request-Id` of the
+//! request's own, and answers `data.task_id`; `POST /api/v3/tts/query` with
+//! the `task_id` reads `data.task_status`, 1 while it runs, 2 done with the
+//! file at `data.audio_url`, an address that lasts an hour and that a read
+//! gives again, or 3 failed; the service keeps the file for 7 days
+//! ([异步长文本](https://www.volcengine.com/docs/6561/1829010)). The job's
+//! WAV is a whole file. BytePlus Speech documents no such job.
+//!
 //! # Seed Audio
 //!
 //! Seed Audio's model, which the catalog says makes sound effects, makes them
@@ -48,9 +58,13 @@ use demi_provider_common::{
     Secret,
     audio::{AudioFormatAsk, AudioMaker, AudioOption, AudioRequest, MadeAudio, Voice, searched, unsent_of},
     endpoint_url, json_body,
-    media::{Answered, Holding, MediaAnswer, MediaCall, MediaCredential, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, catalog_models, unreadable, within_limit},
+    media::{
+        Answered, Holding, MediaAnswer, MediaCall, MediaCredential, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor,
+        catalog_models, unreadable, within_limit,
+        jobs::{self, JobRef, JobState, Jobs},
+    },
     media_catalog::{AudioOutput, Catalog, MediaKind, Voices},
-    read_http_failure,
+    read_http_failure, videos,
 };
 use demi_shared_types::audio::Pcm;
 use demi_shared_types::{AudioKind, B64Bytes, Clock, VendorTrace};
@@ -179,7 +193,41 @@ impl SeedAudio {
     /// Whether `request` is Seed Audio's: an effect, or speech of a model
     /// the catalog says makes sound effects, rather than Seed speech's.
     fn seed_audio(&self, catalog: &Catalog, request: &AudioRequest) -> bool {
-        request.kind != AudioKind::Speech || self.makes(catalog, &request.model).contains(&AudioOutput::Effect)
+        self.seed_audio_of(catalog, request.kind, &request.model)
+    }
+
+    /// [`SeedAudio::seed_audio`] of a request of `kind` from `model`.
+    fn seed_audio_of(&self, catalog: &Catalog, kind: AudioKind, model: &str) -> bool {
+        kind != AudioKind::Speech || self.makes(catalog, model).contains(&AudioOutput::Effect)
+    }
+
+    /// Doubao's long-text job of Seed speech `request`, its request id one
+    /// of its own.
+    async fn submit(&self, http: &demi_provider_common::ProviderHttp, request: AudioRequest) -> MediaAnswer<String> {
+        let format = match request.format {
+            AudioFormatAsk::Mp3 | AudioFormatAsk::Flac => "mp3",
+            AudioFormatAsk::Opus => "ogg_opus",
+            AudioFormatAsk::Wav => "wav",
+        };
+        let body = json_body(&SpeechBody {
+            req_params: SpeechParams {
+                text: &request.text,
+                speaker: request.voice.as_deref().unwrap_or_default(),
+                audio_params: AudioParams { format, sample_rate: SAMPLE_RATE, speech_rate: request.speed.map(speech_rate) },
+            },
+        });
+        let headers = self.job_headers(&request.model);
+        self.post(http, "/api/v3/tts/submit", body, headers)
+            .await
+            .and_then(|answered| read_task(&answered.body, answered.trace_id).map(|task| task.task_id))
+    }
+
+    /// The headers of a job's request: the speech's, and an id of its own.
+    fn job_headers(&self, model: &str) -> HeaderMap {
+        let mut headers = self.headers(Some(model));
+        let id = uuid::Uuid::new_v4().to_string();
+        headers.insert(HeaderName::from_static("x-api-request-id"), HeaderValue::from_str(&id).expect("a UUID is a header's text"));
+        headers
     }
 
     async fn speak(&self, http: &demi_provider_common::ProviderHttp, request: AudioRequest) -> MediaAnswer<MadeAudio> {
@@ -300,6 +348,35 @@ fn join_pieces(body: &[u8], trace_id: Option<String>) -> Result<Bytes, MediaFail
     Err(unreadable("its answer ended before the speech did".to_owned()))
 }
 
+/// A long-text job's `data`, as its submission and each read answer it.
+#[derive(Deserialize)]
+struct Task {
+    task_id: String,
+    task_status: i64,
+    #[serde(default)]
+    audio_url: Option<String>,
+}
+
+/// The job's `data` in `body`, or the failure its `code` and `message`
+/// say, traced by `trace_id`.
+fn read_task(body: &[u8], trace_id: Option<String>) -> Result<Task, MediaFailure> {
+    #[derive(Deserialize)]
+    struct Answer {
+        code: i64,
+        #[serde(default)]
+        message: Option<String>,
+        #[serde(default)]
+        data: Option<Task>,
+    }
+    let answer: Answer =
+        serde_json::from_slice(body).map_err(|error| unreadable(format!("its answer could not be read: {error}")))?;
+    match (answer.code, answer.data) {
+        (FINISHED, Some(task)) => Ok(task),
+        (FINISHED, None) => Err(unreadable("its answer named no task".to_owned())),
+        (code, _) => Err(speech_failure(code, answer.message, trace_id)),
+    }
+}
+
 /// The file of Seed Audio's answer: its base64 `audio`, or the failure its
 /// `code` and `message` say, traced by `trace_id`.
 fn read_created(body: &[u8], trace_id: Option<String>) -> Result<Bytes, MediaFailure> {
@@ -368,12 +445,21 @@ impl AudioMaker for SeedAudio {
         request: AudioRequest,
     ) -> BoxFuture<'a, MediaAnswer<MadeAudio>> {
         Box::pin(async move {
+            if let Some(jobs) = self.jobs(catalog, request.kind, &request.model) {
+                let model = request.model.clone();
+                return jobs::made(jobs, http, catalog, request, &model).await;
+            }
             if self.seed_audio(catalog, &request) {
                 self.create(http, request).await
             } else {
                 self.speak(http, request).await
             }
         })
+    }
+
+    /// Doubao's Seed speech; Seed Audio and BytePlus answer in one request.
+    fn jobs(&self, catalog: &Catalog, kind: AudioKind, model: &str) -> Option<&dyn Jobs<AudioRequest, MadeAudio>> {
+        (self.speech == Speech::Doubao && !self.seed_audio_of(catalog, kind, model)).then_some(self)
     }
 
     /// Seed speech takes no instructions and no seed, and Seed Audio's speech
@@ -418,6 +504,51 @@ impl AudioMaker for SeedAudio {
         };
         Box::pin(std::future::ready(Ok(Some(searched(speakers, search)))))
     }
+}
+
+impl Jobs<AudioRequest, MadeAudio> for SeedAudio {
+    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a Catalog, request: AudioRequest) -> BoxFuture<'a, MediaAnswer<String>> {
+        Box::pin(self.submit(http, request))
+    }
+
+    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState<MadeAudio>>> {
+        Box::pin(async move {
+            let body = json_body(&Query { task_id: job.id });
+            let read = self.post(http, "/api/v3/tts/query", body, self.job_headers(job.model)).await;
+            let mut observed = read.observed;
+            let task = match read.result.and_then(|answered| read_task(&answered.body, answered.trace_id)) {
+                Ok(task) => task,
+                Err(failure) => return MediaAnswer { result: Err(failure), observed },
+            };
+            let url = match task.task_status {
+                1 => return MediaAnswer { result: Ok(JobState::Running { progress: None }), observed },
+                2 => task.audio_url.filter(|url| !url.is_empty()),
+                3 => {
+                    let trace = VendorTrace { words: None, code: Some("3".to_owned()), id: None };
+                    return MediaAnswer { result: Ok(JobState::Failed { reason: None, trace }), observed };
+                }
+                other => {
+                    let failure = unreadable(format!("its task's status {other} is not one it documents"));
+                    return MediaAnswer { result: Err(failure), observed };
+                }
+            };
+            let url = match url.map(|url| Url::parse(&url)) {
+                Some(Ok(url)) => url,
+                _ => return MediaAnswer { result: Err(unreadable("its finished task named no audio".to_owned())), observed },
+            };
+            let downloaded = videos::download(LABEL, &*self.clock, http, &url, &self.base, HeaderMap::new()).await;
+            observed.extend(downloaded.observed);
+            let result = downloaded.result.and_then(|bytes| within_limit(bytes, "audio")).map(|bytes| {
+                JobState::Done(MadeAudio { bytes, pcm: None, cost: None, usage: None, vendor_id: Some(job.id.to_owned()) })
+            });
+            MediaAnswer { result, observed }
+        })
+    }
+}
+
+#[derive(Serialize)]
+struct Query<'a> {
+    task_id: &'a str,
 }
 
 #[derive(Serialize)]

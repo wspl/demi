@@ -14,10 +14,12 @@
 //!
 //! The kinds of entry:
 //!
-//! - An API-key entry is a vendor entry, whose endpoint and catalog are its
-//!   vendor's, or a compatible entry, whose endpoint the user gives and whose
-//!   catalog is only the models the user configures. A compatible entry's
-//!   protocol, and with it its family, can change as its endpoint can.
+//! - An API-key entry is a vendor entry, whose catalog is its vendor's and
+//!   whose endpoint is its vendor's until its user gives another, such as a
+//!   gateway's that serves the vendor's API, or a compatible entry, whose
+//!   endpoint the user gives and whose catalog is only the models the user
+//!   configures. A compatible entry's protocol, and with it its family, can
+//!   change as its endpoint can.
 //! - A subscription entry holds accounts. Each owner has at most one per
 //!   family, and one account is explicitly the active one.
 //!
@@ -30,10 +32,8 @@ use std::sync::Arc;
 use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
 use demi_provider_common::{ModelWires, Searches};
 use demi_provider_common::models_dev::ModelsDevClient;
-use demi_provider_common::images::ImageMaker;
 use demi_provider_common::media::MediaModelInfo;
 use demi_provider_common::audio::AudioMaker;
-use demi_provider_common::videos::VideoMaker;
 use demi_provider_common::quota::QuotaSnapshotStore;
 use demi_provider_common::{Provider, Secret};
 use demi_shared_types::{AudioShape, CacheTtl, Clock, ImageShape, VideoShape, WireApi};
@@ -109,7 +109,7 @@ pub trait ProviderFamily: Send + Sync + 'static {
 
     /// How a vendor entry of the family makes images, by the models.dev id
     /// of its vendor, none for a subscription; none when it makes none. A
-    /// compatible entry's is the one its user chose, whatever its family.
+    /// compatible entry makes none, whatever its family.
     fn image_shape(&self, _vendor_id: Option<&str>) -> Option<ImageShape> {
         None
     }
@@ -121,7 +121,8 @@ pub trait ProviderFamily: Send + Sync + 'static {
     }
 
     /// How a vendor entry of the family makes audio, as
-    /// [`ProviderFamily::image_shape`] says it of images.
+    /// [`ProviderFamily::image_shape`] says it of images; a compatible
+    /// entry's is the one its user chose, whatever its family.
     fn audio_shape(&self, _vendor_id: Option<&str>) -> Option<AudioShape> {
         None
     }
@@ -181,50 +182,15 @@ pub struct ApiKeyArgs {
     /// The models.dev id of that vendor; none for a compatible entry.
     pub vendor_id: Option<String>,
     /// How the vendor entry makes images, as its family says; none for a
-    /// compatible entry, whose images are the registry's
-    /// [`CompatibleImages`].
+    /// compatible entry, which makes none.
     pub image_shape: Option<ImageShape>,
     /// How the vendor entry makes videos, as its family says; none for a
-    /// compatible entry, whose videos are the registry's
-    /// [`CompatibleVideos`].
+    /// compatible entry, which makes none.
     pub video_shape: Option<VideoShape>,
     /// How the vendor entry makes audio, as its family says; none for a
     /// compatible entry, whose audio is the registry's [`CompatibleAudio`].
     pub audio_shape: Option<AudioShape>,
 }
-
-/// What a compatible entry whose image shape is OpenAI Images makes its
-/// images with.
-pub struct CompatibleImagesArgs {
-    /// The entry's name, which its failures name.
-    pub name: String,
-    pub key: Option<Secret>,
-    pub base: Url,
-    /// The image models its user added.
-    pub models: Vec<MediaModelInfo>,
-    pub clock: Arc<dyn Clock>,
-}
-
-/// Builds a compatible entry's OpenAI Images role: the OpenAI key's, one
-/// implementation for every endpoint that speaks it.
-pub type CompatibleImages = Arc<dyn Fn(CompatibleImagesArgs) -> Arc<dyn ImageMaker> + Send + Sync>;
-
-/// What a compatible entry with a video shape makes its videos with.
-pub struct CompatibleVideosArgs {
-    /// The entry's name, which its failures name.
-    pub name: String,
-    /// The shape its user chose.
-    pub shape: VideoShape,
-    pub key: Option<Secret>,
-    pub base: Url,
-    /// The video models its user added.
-    pub models: Vec<MediaModelInfo>,
-    pub clock: Arc<dyn Clock>,
-}
-
-/// Builds a compatible entry's video role in its shape, one implementation
-/// of each shape for every endpoint that speaks it.
-pub type CompatibleVideos = Arc<dyn Fn(CompatibleVideosArgs) -> Arc<dyn VideoMaker> + Send + Sync>;
 
 /// What a compatible entry whose audio shape is OpenAI Speech makes its
 /// speech with.
@@ -299,8 +265,6 @@ pub fn api_vendor(family: &str) -> Option<&'static str> {
 #[derive(Clone, Default)]
 pub struct FamilyRegistry {
     families: BTreeMap<String, Arc<dyn ProviderFamily>>,
-    compatible_images: Option<CompatibleImages>,
-    compatible_videos: Option<CompatibleVideos>,
     compatible_audio: Option<CompatibleAudio>,
 }
 
@@ -314,31 +278,6 @@ impl FamilyRegistry {
 
     pub fn get(&self, name: &str) -> Option<&Arc<dyn ProviderFamily>> {
         self.families.get(name)
-    }
-
-    /// The registry with `images` making a compatible entry's OpenAI
-    /// Images.
-    pub fn with_compatible_images(mut self, images: CompatibleImages) -> Self {
-        self.compatible_images = Some(images);
-        self
-    }
-
-    /// What makes a compatible entry's OpenAI Images; none in a registry
-    /// that has no family speaking them.
-    pub fn compatible_images(&self) -> Option<&CompatibleImages> {
-        self.compatible_images.as_ref()
-    }
-
-    /// The registry with `videos` making a compatible entry's videos.
-    pub fn with_compatible_videos(mut self, videos: CompatibleVideos) -> Self {
-        self.compatible_videos = Some(videos);
-        self
-    }
-
-    /// What makes a compatible entry's videos; none in a registry that has
-    /// no family speaking their shapes.
-    pub fn compatible_videos(&self) -> Option<&CompatibleVideos> {
-        self.compatible_videos.as_ref()
     }
 
     /// The registry with `audio` making a compatible entry's speech.

@@ -125,8 +125,8 @@ pub enum ErrorCode {
     /// only a new label.
     SubscriptionOnly,
     /// The change does not fit the kind of API-key entry: a vendor entry's
-    /// endpoint and protocol are its vendor's and are never set.
-    EndpointKind,
+    /// protocol is its vendor's and is never set.
+    VendorProtocol,
     /// A model list names one model id twice: an entry's model ids are
     /// unique.
     DuplicateModel,

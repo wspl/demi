@@ -414,6 +414,8 @@ pub struct Relay {
 struct Call {
     events: mpsc::UnboundedSender<CallEvent>,
     ended: CancellationToken,
+    /// The backend marked it resumable (`Inbound::RpcResumable`).
+    resumable: bool,
 }
 
 impl Relay {
@@ -430,7 +432,7 @@ impl Relay {
             watched.cancelled().await;
             Ended::Call(key)
         });
-        self.calls.insert(id, Call { events, ended });
+        self.calls.insert(id, Call { events, ended, resumable: false });
     }
 
     /// Registers a question and returns the frame that asks it.
@@ -481,12 +483,19 @@ impl Relay {
     }
 
     /// Ends every call that waits for the backend, with `reason`: the link's
-    /// session they ran in ended.
+    /// session they ran in ended. A resumable call goes on, sent again to
+    /// the next session, which marks it resumable again when it is.
     pub fn lose_calls(&mut self, reason: &str) {
-        for (_, call) in self.calls.drain() {
+        self.calls.retain(|_, call| {
             // A call that ended takes no more events.
-            let _ended = call.events.send(CallEvent::Lost(reason.to_owned()));
-        }
+            if call.resumable {
+                call.resumable = false;
+                call.events.send(CallEvent::Resume(reason.to_owned())).is_ok()
+            } else {
+                let _ended = call.events.send(CallEvent::Lost(reason.to_owned()));
+                false
+            }
+        });
     }
 
     pub fn ended(&mut self, ended: Ended) {
@@ -504,6 +513,14 @@ impl Relay {
     /// any other message.
     pub fn route(&mut self, message: &Inbound) -> bool {
         let (id, event) = match message {
+            Inbound::RpcResumable { call_id } => {
+                if let Some(call) = self.calls.get_mut(call_id) {
+                    call.resumable = true;
+                    // A call that ended takes no more events.
+                    let _told = call.events.send(CallEvent::Resumable);
+                }
+                return true;
+            }
             Inbound::RpcPipes {
                 call_id,
                 stdin,

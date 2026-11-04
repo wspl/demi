@@ -1,30 +1,32 @@
-//! The image role of a Gemini API key.
+//! The image role of a Gemini API key, and the key its media roles share.
 //!
-//! - An image is asked of a model's `generateContent` with the key in
-//!   `x-goog-api-key`, and read from the answer's first inline part.
-//! - A blocked prompt or answer is told in Google's words.
+//! - An image is a job (`crate::interactions`): the prompt and its images
+//!   in, the image read from the finished interaction's output.
+//! - A model that answers in words instead fails in them.
 //! - The models are the ones Google lists for the key, read when asked.
 
 use std::sync::Arc;
 
-use bytes::Bytes;
 use demi_provider_common::{
     media_catalog::Catalog,
-    ErrorCode, HttpFailureRecord, ProviderFailure, Secret, json_body, model_words,
+    ErrorCode, HttpFailureRecord, ProviderFailure, Secret, model_words,
     images::{ImageMaker, ImageRequest, MadeImage},
     media::{
         MediaAnswer, MediaCall, MediaCredential, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable,
-        vendor_message,
+        vendor_message, within_limit,
+        jobs::{self, JobRef, JobState, Jobs},
     },
     read_http_failure,
 };
-use demi_shared_types::{B64Bytes, Clock, TokenUsage, VendorTrace};
+use demi_shared_types::{Clock, VendorTrace};
 use futures_util::future::BoxFuture;
 use reqwest::{
     StatusCode, Url,
     header::{HeaderMap, HeaderName},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+
+use crate::interactions::{self, Standing};
 
 /// How failure messages name the vendor.
 pub(crate) const LABEL: &str = "Google";
@@ -151,73 +153,74 @@ impl ImageMaker for KeyImages {
     fn make<'a>(
         &'a self,
         http: &'a demi_provider_common::ProviderHttp,
-        _: &'a Catalog,
+        catalog: &'a Catalog,
         request: ImageRequest,
     ) -> BoxFuture<'a, MediaAnswer<MadeImage>> {
         Box::pin(async move {
-            let key = &self.0;
-            let url = key.models_url(Some(&format!("{}:generateContent", request.model)));
-            let headers = key.headers();
-            key.call()
-                .post_json(http, &url, encode(&request), |_| std::future::ready(Ok((headers.clone(), None))))
-                .await
-                .and_then(|body| read_answer(&body))
+            let model = request.model.clone();
+            jobs::made(self, http, catalog, request, &model).await
+        })
+    }
+
+    fn jobs(&self) -> Option<&dyn Jobs<ImageRequest, MadeImage>> {
+        Some(self)
+    }
+}
+
+impl Jobs<ImageRequest, MadeImage> for KeyImages {
+    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a Catalog, request: ImageRequest) -> BoxFuture<'a, MediaAnswer<String>> {
+        Box::pin(interactions::create(&self.0, http, encode(&request)))
+    }
+
+    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState<MadeImage>>> {
+        Box::pin(async move {
+            interactions::get(&self.0, http, job.id).await.and_then(|interaction| match interaction.standing() {
+                Standing::Pending { running: false } => Ok(JobState::Queued),
+                Standing::Pending { running: true } => Ok(JobState::Running { progress: None }),
+                Standing::Failed(trace) => Ok(JobState::Failed { reason: None, trace }),
+                Standing::Completed => read_image(interaction),
+            })
         })
     }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Body<'a> {
-    contents: [Content<'a>; 1],
-    generation_config: GenerationConfig,
+/// The interaction `request` asks for: the prompt, then its images, and an
+/// image back in the shape asked.
+fn encode(request: &ImageRequest) -> serde_json::Value {
+    let mut content = vec![serde_json::json!({ "type": "text", "text": request.prompt })];
+    content.extend(
+        request
+            .images
+            .iter()
+            .map(|image| serde_json::json!({ "type": "image", "data": image.base64(), "mime_type": image.media_type })),
+    );
+    let mut format = serde_json::json!({ "type": "image" });
+    if let Some(aspect) = request.aspect {
+        format["aspect_ratio"] = serde_json::Value::String(aspect.to_string());
+    }
+    serde_json::json!({
+        "model": request.model,
+        "input": [{ "type": "user_input", "content": content }],
+        "response_format": format,
+    })
 }
 
-#[derive(Serialize)]
-struct Content<'a> {
-    parts: Vec<Part<'a>>,
-}
-
-#[derive(Serialize)]
-#[serde(untagged)]
-enum Part<'a> {
-    Text { text: &'a str },
-    Image { inline_data: InlineData },
-}
-
-#[derive(Serialize)]
-struct InlineData {
-    mime_type: &'static str,
-    data: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct GenerationConfig {
-    response_modalities: [&'static str; 1],
-    #[serde(skip_serializing_if = "Option::is_none")]
-    image_config: Option<ImageConfig>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ImageConfig {
-    aspect_ratio: String,
-}
-
-fn encode(request: &ImageRequest) -> Bytes {
-    let mut parts = vec![Part::Text { text: &request.prompt }];
-    parts.extend(request.images.iter().map(|image| Part::Image {
-        inline_data: InlineData { mime_type: image.media_type, data: image.base64() },
-    }));
-    let body = Body {
-        contents: [Content { parts }],
-        generation_config: GenerationConfig {
-            response_modalities: ["IMAGE"],
-            image_config: request.aspect.map(|aspect| ImageConfig { aspect_ratio: aspect.to_string() }),
-        },
+/// The last image of the finished interaction's output; one without an
+/// image fails with what the model said instead, when it said something.
+fn read_image(interaction: interactions::Interaction) -> Result<JobState<MadeImage>, MediaFailure> {
+    let Some(image) = interaction.outputs().rev().find(|content| content.kind == "image" && content.data.is_some()) else {
+        return match interaction.said() {
+            Some(said) => Ok(JobState::Failed { reason: None, trace: VendorTrace::said(said) }),
+            None => Err(unreadable("its answer held no image".to_owned())),
+        };
     };
-    Bytes::from(json_body(&body))
+    let bytes = within_limit(image.data.clone().expect("an image block with data").into_bytes(), "image")?;
+    Ok(JobState::Done(MadeImage {
+        bytes,
+        usage: interaction.usage.as_ref().map(interactions::Usage::counts),
+        vendor_id: interaction.id.clone(),
+        cost: None,
+    }))
 }
 
 /// `GET /v1beta/models`: one page of models.
@@ -239,108 +242,6 @@ struct ListedModel {
     description: Option<String>,
     #[serde(default)]
     supported_generation_methods: Vec<String>,
-}
-
-/// A `generateContent` answer, as far as an image call reads it.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Answer {
-    #[serde(default)]
-    candidates: Vec<Candidate>,
-    #[serde(default)]
-    prompt_feedback: Option<PromptFeedback>,
-    #[serde(default)]
-    usage_metadata: Option<UsageMetadata>,
-    #[serde(default)]
-    response_id: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PromptFeedback {
-    #[serde(default)]
-    block_reason: Option<String>,
-    #[serde(default)]
-    block_reason_message: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Candidate {
-    #[serde(default)]
-    content: Option<CandidateContent>,
-    #[serde(default)]
-    finish_reason: Option<String>,
-    #[serde(default)]
-    finish_message: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct CandidateContent {
-    #[serde(default)]
-    parts: Vec<AnswerPart>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct AnswerPart {
-    #[serde(default, alias = "inline_data")]
-    inline_data: Option<AnswerData>,
-}
-
-#[derive(Deserialize)]
-struct AnswerData {
-    data: B64Bytes,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UsageMetadata {
-    #[serde(default)]
-    prompt_token_count: Option<u64>,
-    #[serde(default)]
-    candidates_token_count: Option<u64>,
-}
-
-/// The image of the first candidate's first inline part; a prompt Google
-/// blocked, or a candidate it ended without an image, is a refusal in its
-/// words.
-fn read_answer(text: &[u8]) -> Result<MadeImage, MediaFailure> {
-    let answer: Answer = serde_json::from_slice(text)
-        .map_err(|error| unreadable(format!("its answer could not be read: {error}")))?;
-    if let Some(PromptFeedback { block_reason: Some(reason), block_reason_message }) = answer.prompt_feedback {
-        let trace = VendorTrace { words: None, code: Some(reason.clone()), id: None }.with_words(block_reason_message);
-        let refused = Some("the prompt was blocked".to_owned());
-        return Err(MediaFailure::Refused { reason: refused, code: Some(ErrorCode::Vendor(reason)), trace });
-    }
-    let candidate = answer.candidates.into_iter().next();
-    let image = candidate
-        .as_ref()
-        .and_then(|candidate| candidate.content.as_ref())
-        .and_then(|content| content.parts.iter().find_map(|part| part.inline_data.as_ref()));
-    let Some(image) = image else {
-        return Err(match candidate.and_then(|candidate| candidate.finish_reason.map(|reason| (reason, candidate.finish_message))) {
-            Some((reason, said)) if reason != "STOP" => {
-                let trace = VendorTrace { words: None, code: Some(reason.clone()), id: None }.with_words(said);
-                let stopped = Some("the answer was stopped".to_owned());
-                MediaFailure::Refused { reason: stopped, code: Some(ErrorCode::Vendor(reason)), trace }
-            }
-            _ => unreadable("its answer held no image".to_owned()),
-        });
-    };
-    let usage = answer.usage_metadata.and_then(|usage| {
-        Some(TokenUsage {
-            input_tokens: usage.prompt_token_count?,
-            output_tokens: usage.candidates_token_count?,
-            cache_read_tokens: 0,
-            cache_write_tokens: 0,
-        })
-    });
-    Ok(MadeImage {
-        bytes: image.data.clone().into_bytes(),
-        usage,
-        vendor_id: answer.response_id,
-    })
 }
 
 /// Google refuses a key it does not accept with HTTP 400 that says *API

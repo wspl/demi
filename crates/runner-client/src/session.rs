@@ -132,41 +132,46 @@ impl DeviceSession {
             Some(previous) if previous != instance => Some(RUNNER_RESTARTED_CALLS),
             Some(_) => Some("the runner did not resume the link's session"),
         };
-        self.restart(reason);
+        self.restart(reason, true);
         self.0.number.set(uuid::Uuid::new_v4().as_u64_pair().0);
         Beginning::Started
     }
 
-    fn restart(&self, reason: Option<&str>) {
+    /// Starts the session's numbers anew; its calls, when it ended for
+    /// `reason`, stop, and a resumable one comes back when `returns`.
+    fn restart(&self, reason: Option<&str>, returns: bool) {
         self.0.numbers.borrow_mut().restart();
         self.0.backlog.clear();
         self.forget_sinks();
         if let Some(reason) = reason {
             tracing::info!(event = "link.session_ended", cause = reason, "a runner's link session ended");
-            self.stop_calls(reason);
+            self.stop_calls(reason, returns);
         }
     }
 
     /// Ends the session: every call stops with `reason`, and what waits for
-    /// the runner is dropped. The device was revoked.
+    /// the runner is dropped. The device was revoked, so no call comes back.
     pub fn end(&self, reason: &str) {
         self.0.instance.set(None);
-        self.restart(Some(reason));
+        self.restart(Some(reason), false);
     }
 
     /// Stops every call with `reason` and waits for their handlers, which
     /// have [`END_GRACE`] to finish, such as one committing its change, and
     /// what still runs then is aborted. The backend shuts down.
     pub async fn drain(&self, reason: &str) {
-        self.stop_calls(reason);
+        self.stop_calls(reason, true);
         self.0.tasks.close();
         self.0.tasks.wait().await;
     }
 
-    fn stop_calls(&self, reason: &str) {
+    /// Stops every call with `reason`; one marked resumable comes back to
+    /// the next session when `returns`.
+    fn stop_calls(&self, reason: &str, returns: bool) {
         let calls: Vec<_> = self.0.calls.borrow_mut().drain().map(|(_, call)| call).collect();
         for call in calls {
             tracing::info!(event = "call.lost", call_job = call.job_id.as_str(), reason, "a runner's call ended with its session");
+            call.lose(returns);
             call.stop(Stop::Ended(reason.into()));
         }
     }

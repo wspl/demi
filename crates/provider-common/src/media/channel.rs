@@ -2,7 +2,7 @@
 //! entry of one Demi server to another (`crates/provider-relay`).
 //!
 //! The makers' traits are defined once, and so is how they cross: a [`Call`]
-//! of each of their methods that sends a request, the [`Reply`]s it is
+//! of each of their methods that sends a request, the one [`Reply`] it is
 //! answered with, [`serve`], which answers a call with a maker's own
 //! methods, and [`Remote`], which implements the traits by sending each
 //! call through a [`Channel`]. A change of a trait changes these, here, and
@@ -12,35 +12,36 @@
 //! caller's backend                         serving backend
 //! Remote (ImageMaker, VideoMaker, ...)     serve(Roles, call)
 //!   call ----> Channel ---- the wire ---->   the maker's own methods
-//!   replies <-------------- the wire <----   one reply, or a job's steps
+//!   reply <---------------- the wire <----   its one reply
 //! ```
 //!
-//! What a trait answers without a call, such as the options a model's
+//! A video's job crosses as its methods do: its ask, then each read of its
+//! state, and its cancel, each a call of its own, so the caller follows a
+//! job across its own restart as it follows its own maker's.
+//!
+//! What a trait answers without a call, such as the options an audio model's
 //! request lacks, crosses as [`Facts`], which [`Remote`] reads with each
 //! listing of the models and answers those methods from.
 //!
 //! What stays with whoever serves is marked on the types themselves, which
-//! skip it when they cross: a failure's words, trace and wait, a vendor's
-//! ids of what it made, and the address of a finished video, which [`serve`]
-//! downloads and sends instead.
+//! skip it when they cross: a failure's words, trace and wait, and the
+//! address of a finished video, which [`serve`] downloads and sends instead.
+//! A job's id at the vendor is the server's to keep: whoever serves sends
+//! one of its own in its place, which the caller's reads and cancel name.
 
 use std::sync::{Arc, OnceLock, RwLock};
-use std::time::Duration;
 
 use bytes::Bytes;
-use demi_shared_types::{AudioKind, MediaKind, VideoResolution};
+use demi_shared_types::{AudioKind, MediaKind};
 use futures_util::future::BoxFuture;
-use futures_util::stream::{self, BoxStream, StreamExt as _};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 use crate::audio::{self, AudioFormatAsk, AudioMaker, AudioOption, AudioRequest, MadeAudio, Voice};
-use crate::images::{Aspect, ImageMaker, ImageRequest, InputImage, MadeImage};
+use crate::images::{ImageMaker, ImageRequest, MadeImage};
 use crate::media::{MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable, within_limit};
 use crate::media_catalog::Catalog;
-use crate::videos::{
-    self, Change, Done, DoneVideo, JobState, JobStep, SourceVideo, VideoMaker, VideoOption, VideoRequest, VideoSource,
-};
+use crate::videos::{Change, Done, DoneVideo, JobRef, JobState, VideoMaker, VideoRequest};
 
 /// What a failed video whose words stayed with whoever served it says.
 pub const NO_REASON: &str = "no reason is shared";
@@ -51,8 +52,12 @@ pub enum Call {
     /// What the maker says of itself and of each of its models.
     Facts,
     Image(ImageRequest),
-    /// A video's whole job, answered with each of its steps.
-    Video(VideoRequest),
+    /// [`VideoMaker::ask`], answered with the job's id.
+    VideoAsk(VideoRequest),
+    /// [`VideoMaker::state`] of the job `job` asked of `model`.
+    VideoState { job: String, model: String },
+    /// [`VideoMaker::cancel`] of the job `job` asked of `model`.
+    VideoCancel { job: String, model: String },
     Audio(AudioRequest),
     Voices { model: String, search: Option<String> },
 }
@@ -63,7 +68,9 @@ impl Call {
         match self {
             Self::Facts => Reply::Facts(Err(failure)),
             Self::Image(_) => Reply::Image(Err(failure)),
-            Self::Video(_) => Reply::Video(Err(failure)),
+            Self::VideoAsk(_) => Reply::VideoAsked(Err(failure)),
+            Self::VideoState { .. } => Reply::VideoState(Err(failure)),
+            Self::VideoCancel { .. } => Reply::VideoCancelled(Err(failure)),
             Self::Audio(_) => Reply::Audio(Err(failure)),
             Self::Voices { .. } => Reply::Voices(Err(failure)),
         }
@@ -74,20 +81,23 @@ impl Call {
         match self {
             Self::Facts => None,
             Self::Image(request) => Some(&request.model),
-            Self::Video(request) => Some(&request.model),
+            Self::VideoAsk(request) => Some(&request.model),
+            Self::VideoState { model, .. } | Self::VideoCancel { model, .. } => Some(model),
             Self::Audio(request) => Some(&request.model),
             Self::Voices { model, .. } => Some(model),
         }
     }
 }
 
-/// An answer to a [`Call`]: one for each, but for a video's job, which is
-/// answered with each of its steps, the last of them its end.
+/// The one answer to a [`Call`].
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum Reply {
     Facts(Result<Facts, MediaFailure>),
     Image(Result<MadeImage, MediaFailure>),
-    Video(Result<JobStep, MediaFailure>),
+    VideoAsked(Result<String, MediaFailure>),
+    /// A finished job's video is sent, never its address.
+    VideoState(Result<JobState, MediaFailure>),
+    VideoCancelled(Result<(), MediaFailure>),
     Audio(Result<MadeAudio, MediaFailure>),
     Voices(Result<Option<Vec<Voice>>, MediaFailure>),
 }
@@ -98,7 +108,9 @@ impl Reply {
         match self {
             Self::Facts(Err(failure))
             | Self::Image(Err(failure))
-            | Self::Video(Err(failure))
+            | Self::VideoAsked(Err(failure))
+            | Self::VideoState(Err(failure))
+            | Self::VideoCancelled(Err(failure))
             | Self::Audio(Err(failure))
             | Self::Voices(Err(failure)) => Some(failure),
             _ => None,
@@ -110,19 +122,12 @@ impl Reply {
         match self {
             Self::Facts(result) => Self::Facts(result.map_err(change)),
             Self::Image(result) => Self::Image(result.map_err(change)),
-            Self::Video(result) => Self::Video(result.map_err(change)),
+            Self::VideoAsked(result) => Self::VideoAsked(result.map_err(change)),
+            Self::VideoState(result) => Self::VideoState(result.map_err(change)),
+            Self::VideoCancelled(result) => Self::VideoCancelled(result.map_err(change)),
             Self::Audio(result) => Self::Audio(result.map_err(change)),
             Self::Voices(result) => Self::Voices(result.map_err(change)),
         }
-    }
-
-    /// Whether it is a call's last: any but a video job's step that is
-    /// not its end.
-    pub fn is_last(&self) -> bool {
-        !matches!(
-            self,
-            Self::Video(Ok(JobStep::Asked(_) | JobStep::State(JobState::Queued | JobState::Running { .. })))
-        )
     }
 }
 
@@ -141,13 +146,11 @@ pub struct Facts {
     pub models: Vec<ModelFacts>,
 }
 
-/// A model, and what a request of it takes.
+/// A model, and what a request of it takes. A video model's options are
+/// its catalog entry's, which the caller reads in its own catalog.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ModelFacts {
     pub info: MediaModelInfo,
-    /// For a video model: of a new video, then of each of the maker's
-    /// [`changes`](Facts::changes), whose request may take less.
-    pub video: Vec<(Option<Change>, Takes<VideoOption>)>,
     /// For an audio model, of each kind.
     pub audio: Vec<(AudioKind, Takes<AudioOption>)>,
 }
@@ -169,45 +172,45 @@ pub struct Roles<'a> {
     pub audio: Option<&'a dyn AudioMaker>,
 }
 
-/// Answers `call` with `maker`'s own methods: one reply, or a video job's
-/// steps, the video it made sent rather than its address. `every` paces
-/// the reads of a vendor whose job is read.
-pub fn serve<'a>(
-    maker: Roles<'a>,
-    http: &'a crate::ProviderHttp,
-    catalog: &'a Catalog,
-    call: Call,
-    every: Duration,
-) -> BoxStream<'a, Reply> {
+/// Answers `call` with `maker`'s own methods, a finished job's video sent
+/// rather than its address. A maker that cancels no job answers its cancel
+/// as done: the job runs to its end, as the maker's own would.
+pub async fn serve(maker: Roles<'_>, http: &crate::ProviderHttp, catalog: &Catalog, call: Call) -> Reply {
     let none = |what: &str| unreadable(format!("it makes no {what}"));
     match call {
-        Call::Facts => stream::once(async move { Reply::Facts(facts(maker, http, catalog).await) }).boxed(),
+        Call::Facts => Reply::Facts(facts(maker, http, catalog).await),
         Call::Image(request) => match maker.images {
-            Some(images) => stream::once(async move { Reply::Image(images.make(http, catalog, request).await.result) }).boxed(),
-            None => stream::iter([Reply::Image(Err(none("images")))]).boxed(),
+            Some(images) => Reply::Image(images.make(http, catalog, request).await.result),
+            None => Reply::Image(Err(none("images"))),
         },
         Call::Audio(request) => match maker.audio {
-            Some(audio) => stream::once(async move { Reply::Audio(audio.make(http, catalog, request).await.result) }).boxed(),
-            None => stream::iter([Reply::Audio(Err(none("audio")))]).boxed(),
+            Some(audio) => Reply::Audio(audio.make(http, catalog, request).await.result),
+            None => Reply::Audio(Err(none("audio"))),
         },
         Call::Voices { model, search } => match maker.audio {
-            Some(audio) => stream::once(async move {
-                Reply::Voices(audio.voices(http, catalog, &model, search.as_deref()).await)
-            })
-            .boxed(),
-            None => stream::iter([Reply::Voices(Err(none("audio")))]).boxed(),
+            Some(audio) => Reply::Voices(audio.voices(http, catalog, &model, search.as_deref()).await),
+            None => Reply::Voices(Err(none("audio"))),
         },
-        Call::Video(request) => match maker.videos {
-            Some(videos) => videos
-                .run(http, catalog, request, every)
-                .then(move |answer| async move {
-                    Reply::Video(match answer.result {
-                        Ok(JobStep::State(JobState::Done(done))) => sent(videos, http, done).await.map(JobStep::State),
-                        step => step,
-                    })
+        Call::VideoAsk(request) => match maker.videos {
+            Some(videos) => Reply::VideoAsked(videos.ask(http, catalog, request).await.result),
+            None => Reply::VideoAsked(Err(none("videos"))),
+        },
+        Call::VideoState { job, model } => match maker.videos {
+            Some(videos) => {
+                let state = videos.state(http, JobRef { id: &job, model: &model, catalog }).await.result;
+                Reply::VideoState(match state {
+                    Ok(JobState::Done(done)) => sent(videos, http, done).await,
+                    state => state,
                 })
-                .boxed(),
-            None => stream::iter([Reply::Video(Err(none("videos")))]).boxed(),
+            }
+            None => Reply::VideoState(Err(none("videos"))),
+        },
+        Call::VideoCancel { job, model } => match maker.videos {
+            Some(videos) => match videos.cancel(http, JobRef { id: &job, model: &model, catalog }) {
+                Some(cancel) => Reply::VideoCancelled(cancel.await.result),
+                None => Reply::VideoCancelled(Ok(())),
+            },
+            None => Reply::VideoCancelled(Err(none("videos"))),
         },
     }
 }
@@ -228,19 +231,6 @@ async fn facts(maker: Roles<'_>, http: &crate::ProviderHttp, catalog: &Catalog) 
     let models = listed
         .into_iter()
         .map(|info| {
-            let video = match maker.videos {
-                Some(videos) => std::iter::once(None)
-                    .chain(videos.changes().into_iter().map(Some))
-                    .map(|change| {
-                        let takes = Takes {
-                            shape_name: videos.shape_name(),
-                            lacks: videos.unsent(catalog, &every_video_option(&info.id, change)),
-                        };
-                        (change, takes)
-                    })
-                    .collect(),
-                None => Vec::new(),
-            };
             let audio = match maker.audio {
                 Some(audio) => AudioKind::ALL
                     .into_iter()
@@ -255,7 +245,7 @@ async fn facts(maker: Roles<'_>, http: &crate::ProviderHttp, catalog: &Catalog) 
                     .collect(),
                 None => Vec::new(),
             };
-            ModelFacts { info, video, audio }
+            ModelFacts { info, audio }
         })
         .collect();
     Ok(Facts {
@@ -273,25 +263,6 @@ async fn facts(maker: Roles<'_>, http: &crate::ProviderHttp, catalog: &Catalog) 
 /// caller lists none rather than failing to list.
 pub fn no_facts(name: String) -> Facts {
     Facts { name, vendor: None, confirms_model: true, needs_voice: false, speeds: None, changes: Vec::new(), models: Vec::new() }
-}
-
-/// A video request that gives every option, a new video's or `change`'s,
-/// whose unsent ones are those a model's request lacks.
-fn every_video_option(model: &str, change: Option<Change>) -> VideoRequest {
-    let image = || InputImage { media_type: "image/png", bytes: Bytes::new() };
-    VideoRequest {
-        model: model.to_owned(),
-        prompt: String::new(),
-        image: Some(image()),
-        last_frame: Some(image()),
-        references: vec![image()],
-        duration: Some(1),
-        aspect: Some(Aspect { width: 1, height: 1 }),
-        resolution: Some(VideoResolution::Height(720)),
-        audio: Some(true),
-        seed: Some(0),
-        source: change.map(|change| VideoSource { change, video: SourceVideo::File(Bytes::new()) }),
-    }
 }
 
 /// An audio request of `kind` that gives every option.
@@ -318,14 +289,9 @@ pub trait Channel: Send + Sync {
     fn name(&self, vendor: Option<&str>) -> String;
 
     /// Sends `call` to the maker of `kind`, with `http`, the entry's
-    /// client, and answers its replies as they come. A call the channel
-    /// could not carry fails as the channel words it.
-    fn call<'a>(
-        &'a self,
-        http: &'a crate::ProviderHttp,
-        kind: MediaKind,
-        call: Call,
-    ) -> BoxStream<'a, Result<Reply, MediaFailure>>;
+    /// client, and answers its reply. A call the channel could not carry
+    /// fails as the channel words it.
+    fn call<'a>(&'a self, http: &'a crate::ProviderHttp, kind: MediaKind, call: Call) -> BoxFuture<'a, Result<Reply, MediaFailure>>;
 
     /// `failure` as the caller reads it: it crossed without its words.
     fn worded(&self, kind: MediaKind, failure: MediaFailure) -> MediaFailure;
@@ -367,11 +333,7 @@ impl<C: Channel> Remote<C> {
         call: Call,
         pick: impl FnOnce(Reply) -> Option<Result<T, MediaFailure>>,
     ) -> Result<T, MediaFailure> {
-        let mut replies = self.channel.call(http, self.kind, call);
-        let reply = match replies.next().await {
-            Some(reply) => reply?,
-            None => return Err(unreadable("its answer ended before its reply".to_owned())),
-        };
+        let reply = self.channel.call(http, self.kind, call).await?;
         match pick(reply) {
             Some(result) => result.map_err(|failure| self.worded(failure)),
             None => Err(unreadable("it answered another call".to_owned())),
@@ -437,26 +399,46 @@ impl<C: Channel> ImageMaker for Remote<C> {
 }
 
 impl<C: Channel> VideoMaker for Remote<C> {
-    fn run<'a>(
-        &'a self,
-        http: &'a crate::ProviderHttp,
-        _: &'a Catalog,
-        request: VideoRequest,
-        _: Duration,
-    ) -> BoxStream<'a, MediaAnswer<JobStep>> {
-        self.channel
-            .call(http, self.kind, Call::Video(request))
-            .map(move |reply| {
-                Self::answered(match reply {
-                    Ok(Reply::Video(Ok(JobStep::State(JobState::Failed { trace, .. })))) => {
-                        Ok(JobStep::State(JobState::Failed { reason: Some(NO_REASON.to_owned()), trace }))
-                    }
-                    Ok(Reply::Video(step)) => step.map_err(|failure| self.worded(failure)),
-                    Ok(_) => Err(unreadable("it answered another call".to_owned())),
-                    Err(failure) => Err(failure),
+    /// Answers the id whoever serves gave the job in place of the vendor's.
+    fn ask<'a>(&'a self, http: &'a crate::ProviderHttp, _: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
+        Box::pin(async move {
+            let asked = self
+                .reply(http, Call::VideoAsk(request), |reply| match reply {
+                    Reply::VideoAsked(job) => Some(job),
+                    _ => None,
                 })
-            })
-            .boxed()
+                .await;
+            Self::answered(asked)
+        })
+    }
+
+    fn state<'a>(&'a self, http: &'a crate::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>> {
+        Box::pin(async move {
+            let call = Call::VideoState { job: job.id.to_owned(), model: job.model.to_owned() };
+            let state = self
+                .reply(http, call, |reply| match reply {
+                    Reply::VideoState(state) => Some(state),
+                    _ => None,
+                })
+                .await;
+            Self::answered(state.map(|state| match state {
+                JobState::Failed { trace, .. } => JobState::Failed { reason: Some(NO_REASON.to_owned()), trace },
+                state => state,
+            }))
+        })
+    }
+
+    fn cancel<'a>(&'a self, http: &'a crate::ProviderHttp, job: JobRef<'a>) -> Option<BoxFuture<'a, MediaAnswer<()>>> {
+        Some(Box::pin(async move {
+            let call = Call::VideoCancel { job: job.id.to_owned(), model: job.model.to_owned() };
+            let cancelled = self
+                .reply(http, call, |reply| match reply {
+                    Reply::VideoCancelled(cancelled) => Some(cancelled),
+                    _ => None,
+                })
+                .await;
+            Self::answered(cancelled)
+        }))
     }
 
     /// Those of the maker that serves, whose source goes as its file: a
@@ -468,21 +450,6 @@ impl<C: Channel> VideoMaker for Remote<C> {
     /// Never asked: whoever serves sends a finished job's video.
     fn download<'a>(&'a self, _: &'a crate::ProviderHttp, _: &'a Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
         Box::pin(async { Self::answered(Err(unreadable("it sent an address rather than its video".to_owned()))) })
-    }
-
-    fn unsent(&self, _: &Catalog, request: &VideoRequest) -> Vec<VideoOption> {
-        let change = request.source.as_ref().map(|source| source.change);
-        let model = self.model(&request.model);
-        let takes = model.and_then(|model| model.video.into_iter().find(|(of, _)| *of == change));
-        let lacks = takes.map(|(_, takes)| takes.lacks).unwrap_or_default();
-        videos::unsent_of(&lacks, request)
-    }
-
-    fn shape_name(&self) -> String {
-        let named = self
-            .facts()
-            .and_then(|facts| facts.models.iter().find_map(|model| model.video.first().map(|(_, takes)| takes.shape_name.clone())));
-        named.unwrap_or_else(|| self.name().to_owned())
     }
 }
 

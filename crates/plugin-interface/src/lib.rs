@@ -71,7 +71,7 @@ pub use providers::{
     AskedVideo, AudioAsk, AudioFacts, AudioFileFormat, AudioOption, AudioVoices, MadeAudio, PcmShape, VoiceInfo,
     CustomSizeRule, EntryStatus, ImageAsk, ImageAspect, ImageFacts, ImageInput, ImageKind, MadeImage,
     MadeVideo, MediaListing, MediaModel, MediaPrice, MediaRefusal, MediaUnlisted, ModelEntry, PriceRate, Unable,
-    SentSource, VideoAsk, VideoChange, VideoFacts, VideoOption, VideoResolution, VideoSourceAsk, VideoStep,
+    SentSource, VideoAsk, VideoChange, VideoFacts, VideoResolution, VideoSourceAsk, VideoStep,
 };
 pub use request::{PluginError, Reply, Request};
 /// What a project search names to watch (`Reply::Project`).

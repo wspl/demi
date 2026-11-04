@@ -161,7 +161,7 @@
     "unknown_provider_type": "Diese Art von Anbieter wird nicht unterstützt.",
     "unknown_vendor": "Dieser Hersteller wird nicht unterstützt.",
     "subscription_only": "Ein Abo-Anbieter wird durch Anmelden hinzugefügt.",
-    "endpoint_kind": "Der Endpunkt dieses Anbieters kann nicht geändert werden.",
+    "vendor_protocol": "Das Protokoll dieses Anbieters kann nicht geändert werden.",
     "duplicate_model": "Ein Modell mit dieser ID ist bereits aufgeführt.",
     "accounts_unsupported": "Dieser Anbieter hat keine Konten.",
     "rotation_needs_accounts": "Rotation braucht mindestens 2 Konten.",

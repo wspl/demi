@@ -7,15 +7,17 @@
 //!   key;
 //! - lists the voices a speech model speaks in.
 //!
-//! Every vendor answers within the call, so a call is one request, as an
-//! image's is. What every vendor's request has in common is in
-//! [`crate::media`]. The backend chooses the entry.
+//! A vendor that keeps the file as a job makes it one
+//! ([`AudioMaker::jobs`], [`crate::media::jobs`]); any other answers within
+//! the call, in one request. What every vendor's request has in common is
+//! in [`crate::media`]. The backend chooses the entry.
 
 use bytes::Bytes;
 use demi_shared_types::audio::Pcm;
 use demi_shared_types::{AudioKind, Cost, TokenUsage};
 use futures_util::future::BoxFuture;
 
+use crate::media::jobs::Jobs;
 use crate::media::{MediaAnswer, MediaFailure, MediaMaker};
 use crate::media_catalog::Catalog;
 
@@ -29,13 +31,20 @@ pub trait AudioMaker: MediaMaker {
 
     /// Makes one file of audio for the provider's key, sending with
     /// `http`, the client of the shard that asks; `catalog` says what the
-    /// model makes.
+    /// model makes. A maker of [`AudioMaker::jobs`] waits for the job.
     fn make<'a>(
         &'a self,
         http: &'a crate::ProviderHttp,
         catalog: &'a Catalog,
         request: AudioRequest,
     ) -> BoxFuture<'a, MediaAnswer<MadeAudio>>;
+
+    /// Its files of `kind` from `model` as jobs the vendor keeps by their
+    /// ids, which outlive a restart of the server; none where the vendor
+    /// answers in one request only.
+    fn jobs(&self, _catalog: &Catalog, _kind: AudioKind, _model: &str) -> Option<&dyn Jobs<AudioRequest, MadeAudio>> {
+        None
+    }
 
     /// The voices speech model `model` speaks in, the vendor's own and the
     /// account's, read when asked; `search`, when given, narrows them as the

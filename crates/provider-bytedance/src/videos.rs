@@ -1,5 +1,4 @@
-//! The Ark Tasks shape, Seedance's through an Ark key and any compatible API
-//! that chose it.
+//! The Ark Tasks shape, Seedance's through an Ark key.
 //!
 //! - `POST …/contents/generations/tasks` with `model` and `content` (the prompt
 //!   its `text` item and each image an `image_url` item with its role) answers
@@ -8,7 +7,8 @@
 //! - `GET …/contents/generations/tasks/<id>` answers its `status`, `queued`,
 //!   `running`, `succeeded`, `failed`, `cancelled` or `expired`. Once succeeded
 //!   it answers its `content.video_url`, kept 24 hours and downloaded without a
-//!   header, with the output tokens it was paid by ([Retrieve a video
+//!   header, with the output tokens it was paid by and the `resolution` it
+//!   was made in, which the catalog's rates price them at ([Retrieve a video
 //!   generation
 //!   task](https://docs.byteplus.com/en/docs/modelark/get-video-generation-task-api)).
 //! - `DELETE` of a task cancels it while it is queued, the one state Ark
@@ -26,8 +26,8 @@ use demi_provider_common::{
     Secret, endpoint_url, request_id_in,
     json_body,
     media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, catalog_models, unreadable},
-    media_catalog::{Catalog, MediaKind},
-    videos::{self, Content, Done, DoneVideo, JobState, VideoMaker, VideoOption, VideoRequest, content},
+    media_catalog::{Catalog, MediaKind, PriceUnit, Tokens},
+    videos::{self, Content, Done, DoneVideo, JobRef, JobState, VideoMaker, VideoRequest, content},
 };
 use demi_shared_types::{Clock, TokenUsage, VendorTrace, VideoResolution};
 use futures_util::future::BoxFuture;
@@ -36,28 +36,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::ark;
 
-/// Whose Ark an entry's tasks go to.
-enum Flavor {
-    /// An Ark key's, whose models are the catalog's.
-    Vendor(MediaVendor),
-    /// A compatible endpoint, which the user knows by the entry's name,
-    /// whose models are the ones the user added.
-    Compatible { name: String, models: Vec<MediaModelInfo> },
-}
-
-/// The video role of an Ark key or of a compatible endpoint that speaks
-/// Ark Tasks.
+/// The video role of an Ark key, of BytePlus or of Volcengine, whose models
+/// are the catalog's.
 pub(crate) struct ArkVideos {
-    flavor: Flavor,
-    /// None for a compatible endpoint that takes none.
-    key: Option<Secret>,
+    vendor: MediaVendor,
+    key: Secret,
     base: Url,
     clock: Arc<dyn Clock>,
 }
 
 impl ArkVideos {
     pub(crate) fn vendor(vendor: MediaVendor, key: Secret, base: Url, clock: Arc<dyn Clock>) -> Self {
-        Self { flavor: Flavor::Vendor(vendor), key: Some(key), base, clock }
+        Self { vendor, key, base, clock }
     }
 
     fn tasks(&self, job: Option<&str>) -> Url {
@@ -68,68 +58,55 @@ impl ArkVideos {
     }
 
     async fn send(&self, http: &demi_provider_common::ProviderHttp, ask: Ask) -> MediaAnswer<Bytes> {
-        let headers = ark::headers(self.key.as_ref());
+        let headers = ark::headers(&self.key);
         ark::call(&*self.clock)
             .send(http, ask, Holding::Json, |_| std::future::ready(Ok((headers.clone(), None))))
             .await
             .and_then(|answered| Ok(answered.body))
     }
 
-    async fn read_state(&self, http: &demi_provider_common::ProviderHttp, job: &str) -> MediaAnswer<JobState> {
-        self.send(http, Ask::get(&self.tasks(Some(job)))).await.and_then(|body| read_state(&body))
+    async fn read_state(&self, http: &demi_provider_common::ProviderHttp, job: JobRef<'_>) -> MediaAnswer<JobState> {
+        let price = job.catalog.model(self.vendor.id(), job.model).and_then(|known| job.catalog.price(known));
+        self.send(http, Ask::get(&self.tasks(Some(job.id)))).await.and_then(|body| {
+            read_state(&body).map(|state| match state {
+                Read::Done { url, tokens, resolution } => {
+                    let priced = [Tokens { unit: PriceUnit::MillionOutputTokens, modality: None, count: tokens.unwrap_or_default() }];
+                    let cost = tokens.and(price).and_then(|price| price.of_tokens(resolution.as_deref(), &priced));
+                    // Ark bills a video by the tokens it made; it reads no input.
+                    let usage = tokens.map(|output_tokens| TokenUsage {
+                        input_tokens: 0,
+                        output_tokens,
+                        cache_read_tokens: 0,
+                        cache_write_tokens: 0,
+                    });
+                    JobState::Done(Done { video: DoneVideo::At(url), cost, usage })
+                }
+                Read::State(state) => state,
+            })
+        })
     }
 }
 
 impl MediaMaker for ArkVideos {
     fn name(&self) -> &str {
-        match &self.flavor {
-            Flavor::Vendor(vendor) => vendor.name(),
-            Flavor::Compatible { name, .. } => name,
-        }
+        self.vendor.name()
     }
 
     fn vendor(&self) -> Option<MediaVendor> {
-        match self.flavor {
-            Flavor::Vendor(vendor) => Some(vendor),
-            Flavor::Compatible { .. } => None,
-        }
+        Some(self.vendor)
     }
 
-    /// The catalog's models of the key's Ark, which lists none to a key; a
-    /// compatible entry's added models.
+    /// The catalog's models of the key's Ark, which lists none to a key.
     fn models<'a>(
         &'a self,
         _: &'a demi_provider_common::ProviderHttp,
         catalog: &'a Catalog,
     ) -> BoxFuture<'a, Result<Vec<MediaModelInfo>, MediaFailure>> {
-        let models = match &self.flavor {
-            Flavor::Vendor(vendor) => catalog_models(catalog, *vendor, MediaKind::Video),
-            Flavor::Compatible { models, .. } => models.clone(),
-        };
-        Box::pin(std::future::ready(Ok(models)))
+        Box::pin(std::future::ready(Ok(catalog_models(catalog, self.vendor, MediaKind::Video))))
     }
 }
 
 impl VideoMaker for ArkVideos {
-    /// Ark's task has a field for every option a call gives.
-    fn unsent(&self, _: &Catalog, _: &VideoRequest) -> Vec<VideoOption> {
-        Vec::new()
-    }
-
-    fn shape_name(&self) -> String {
-        "Ark Tasks".to_owned()
-    }
-
-    fn run<'a>(
-        &'a self,
-        http: &'a demi_provider_common::ProviderHttp,
-        catalog: &'a demi_provider_common::media_catalog::Catalog,
-        request: VideoRequest,
-        every: std::time::Duration,
-    ) -> futures_util::stream::BoxStream<'a, MediaAnswer<demi_provider_common::videos::JobStep>> {
-        demi_provider_common::videos::polled(self, http, catalog, request, every)
-    }
-
     /// The video's address is temporary and takes no header.
     fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, url: &'a reqwest::Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
         Box::pin(videos::download("Ark", &*self.clock, http, url, &self.base, HeaderMap::new()))
@@ -137,20 +114,17 @@ impl VideoMaker for ArkVideos {
 
     /// Deletes the task while it is still queued; a running one runs to its
     /// end, which Ark cannot stop, and a finished one is left as it is.
-    fn cancel<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: demi_provider_common::videos::JobRef<'a>) -> Option<BoxFuture<'a, MediaAnswer<()>>>  {
-        let job = job.id;
+    fn cancel<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: JobRef<'a>) -> Option<BoxFuture<'a, MediaAnswer<()>>>  {
         Some(Box::pin(async move {
             let read = self.read_state(http, job).await;
             match read.result {
-                Ok(JobState::Queued) => self.send(http, Ask::delete(&self.tasks(Some(job)))).await.and_then(|_| Ok(())),
+                Ok(JobState::Queued) => self.send(http, Ask::delete(&self.tasks(Some(job.id)))).await.and_then(|_| Ok(())),
                 Ok(_) => MediaAnswer { result: Ok(()), observed: read.observed },
                 Err(failure) => MediaAnswer { result: Err(failure), observed: read.observed },
             }
         }))
     }
-}
 
-impl demi_provider_common::videos::PolledVideos for ArkVideos {
     fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         Box::pin(async move {
             let body = Bytes::from(encode(&request));
@@ -158,25 +132,9 @@ impl demi_provider_common::videos::PolledVideos for ArkVideos {
         })
     }
 
-    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: demi_provider_common::videos::JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>  {
-        let job = job.id;
+    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>  {
         Box::pin(self.read_state(http, job))
     }
-}
-
-/// The video role of a compatible entry whose video shape is Ark Tasks: Ark's
-/// requests under its `base`, with its `key` when it has one.
-///
-/// It offers the `models` its user added; `name` is the entry's, which its
-/// failures name.
-pub fn compatible_videos(
-    name: String,
-    key: Option<Secret>,
-    base: &Url,
-    models: Vec<MediaModelInfo>,
-    clock: Arc<dyn Clock>,
-) -> Arc<dyn VideoMaker> {
-    Arc::new(ArkVideos { flavor: Flavor::Compatible { name, models }, key, base: base.clone(), clock })
 }
 
 #[derive(Serialize)]
@@ -230,6 +188,16 @@ struct State {
     error: Option<TaskError>,
     #[serde(default)]
     usage: Option<Usage>,
+    /// What a finished task was made in, such as `720p`.
+    #[serde(default)]
+    resolution: Option<String>,
+}
+
+/// What one read of a task says: a finished task's video, its tokens and
+/// its resolution, which the maker prices, or any other state.
+enum Read {
+    Done { url: Url, tokens: Option<u64>, resolution: Option<String> },
+    State(JobState),
 }
 
 #[derive(Deserialize)]
@@ -252,22 +220,23 @@ struct Usage {
 }
 
 /// The state one read of the task answered.
-fn read_state(body: &[u8]) -> Result<JobState, MediaFailure> {
+fn read_state(body: &[u8]) -> Result<Read, MediaFailure> {
     let state: State =
         serde_json::from_slice(body).map_err(|error| unreadable(format!("its task's state could not be read: {error}")))?;
+    let other = |state| Ok(Read::State(state));
     match state.status.as_str() {
-        "queued" => Ok(JobState::Queued),
-        "running" => Ok(JobState::Running { progress: None }),
+        "queued" => other(JobState::Queued),
+        "running" => other(JobState::Running { progress: None }),
         "failed" => match state.error {
             // Ark's message quotes the request ID its support asks for.
             Some(TaskError { code, message }) => {
                 let id = request_id_in(&message);
-                Ok(JobState::Failed { reason: None, trace: VendorTrace { words: None, code, id }.with_words(Some(message)) })
+                other(JobState::Failed { reason: None, trace: VendorTrace { words: None, code, id }.with_words(Some(message)) })
             }
-            None => Ok(JobState::Failed { reason: None, trace: VendorTrace::default() }),
+            None => other(JobState::Failed { reason: None, trace: VendorTrace::default() }),
         },
-        "cancelled" => Ok(JobState::Failed { reason: Some("the task was cancelled".to_owned()), trace: Default::default() }),
-        "expired" => Ok(JobState::Expired),
+        "cancelled" => other(JobState::Failed { reason: Some("the task was cancelled".to_owned()), trace: Default::default() }),
+        "expired" => other(JobState::Expired),
         "succeeded" => {
             let url = state
                 .content
@@ -275,14 +244,8 @@ fn read_state(body: &[u8]) -> Result<JobState, MediaFailure> {
                 .filter(|url| !url.is_empty())
                 .ok_or_else(|| unreadable("its finished task named no video".to_owned()))?;
             let url = Url::parse(&url).map_err(|error| unreadable(format!("its video's address could not be read: {error}")))?;
-            // Ark bills a video by the tokens it made; it reads no input.
-            let usage = state.usage.and_then(|usage| usage.completion_tokens).map(|output_tokens| TokenUsage {
-                input_tokens: 0,
-                output_tokens,
-                cache_read_tokens: 0,
-                cache_write_tokens: 0,
-            });
-            Ok(JobState::Done(Done { video: DoneVideo::At(url), cost: None, usage }))
+            let tokens = state.usage.and_then(|usage| usage.completion_tokens);
+            Ok(Read::Done { url, tokens, resolution: state.resolution })
         }
         other => Err(unreadable(format!("its task's state \"{other}\" is not one it documents"))),
     }

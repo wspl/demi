@@ -30,15 +30,14 @@ serde_plain::derive_fromstr_from_deserialize!(CredentialKind);
 pub use demi_shared_types::Rotation;
 
 /// What a configured model makes (`crates/backend-user-shard/src/provider_settings.rs`):
-/// text, the model menu's, unless its user added it as an image, video or
-/// audio model of a compatible entry with a shape for that kind.
+/// text, the model menu's, unless its user added it as an audio model of a
+/// compatible entry with an audio shape. A compatible entry makes no images
+/// and no videos.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ModelKind {
     #[default]
     Text,
-    Image,
-    Video,
     Audio,
 }
 
@@ -47,8 +46,6 @@ impl ModelKind {
     pub fn media(self) -> Option<MediaKind> {
         match self {
             Self::Text => None,
-            Self::Image => Some(MediaKind::Image),
-            Self::Video => Some(MediaKind::Video),
             Self::Audio => Some(MediaKind::Audio),
         }
     }
@@ -245,11 +242,12 @@ pub enum CreateProvider {
 }
 
 /// `PATCH /providers/:id`: a new label for any entry; for an API-key entry
-/// also a new key, where `null` removes it, and a new model list, where
-/// `null` returns to the vendor's catalog; and, for a compatible entry only,
-/// a new endpoint, where `null` removes it, and a new protocol: a
-/// `providerType` with the `wireApi` it speaks, or a `wireApi` alone for the
-/// entry's own family (`crates/provider-common/src/endpoint.rs`).
+/// also a new key, where `null` removes it, a new model list, where `null`
+/// returns to the vendor's catalog, and a new endpoint, where `null` removes
+/// a compatible entry's and returns a vendor entry's to its vendor's; and,
+/// for a compatible entry only, a new protocol: a `providerType` with the
+/// `wireApi` it speaks, or a `wireApi` alone for the entry's own family
+/// (`crates/provider-common/src/endpoint.rs`).
 #[derive(Debug, Default, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderPatch {
@@ -333,28 +331,20 @@ pub struct MediaPatch {
     pub audio: Option<AudioMediaPatch>,
 }
 
-/// A change of how an entry makes images: `shape`, a compatible entry's
-/// only, null for none; `enabled`, its Image Generation switch, for an
-/// entry that makes images.
+/// A change of how an entry makes images: `enabled`, its Image Generation
+/// switch, for an entry that makes images.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageMediaPatch {
-    #[serde(default, with = "double_option")]
-    #[schemars(with = "Option<Nullable<ImageShape>>")]
-    pub shape: Option<Option<ImageShape>>,
     #[serde(default)]
     pub enabled: Option<bool>,
 }
 
-/// A change of how an entry makes videos: `shape`, a compatible entry's
-/// only, null for none; `enabled`, its Video Generation switch, for an
-/// entry that makes videos.
+/// A change of how an entry makes videos: `enabled`, its Video Generation
+/// switch, for an entry that makes videos.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VideoMediaPatch {
-    #[serde(default, with = "double_option")]
-    #[schemars(with = "Option<Nullable<VideoShape>>")]
-    pub shape: Option<Option<VideoShape>>,
     #[serde(default)]
     pub enabled: Option<bool>,
 }
@@ -774,13 +764,13 @@ pub struct SubscriptionFamily {
     pub name: String,
 }
 
-/// The shapes a compatible entry may choose for each kind of media, in the
-/// order its menu lists them; the backend refuses any other.
+/// The shapes a compatible entry may choose for each kind of media it can
+/// make, in the order its menu lists them; the backend refuses any other.
+/// It makes no images and no videos: a gateway that serves a vendor's is
+/// that vendor's entry with the gateway's endpoint.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CompatibleShapes {
-    pub image: Vec<ImageShape>,
-    pub video: Vec<VideoShape>,
     pub audio: Vec<AudioShape>,
 }
 
@@ -799,7 +789,8 @@ pub struct Vendor {
     )]
     #[schemars(with = "WireApi")]
     pub wire_api: Option<WireApi>,
-    /// The endpoint an entry starts with.
+    /// The endpoint an entry starts with, and a vendor entry's returns to
+    /// when its own is removed; none for a family without one.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub base_url: Option<String>,

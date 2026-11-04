@@ -161,7 +161,7 @@
     "unknown_provider_type": "Este tipo de proveedor no es compatible.",
     "unknown_vendor": "Este fabricante no es compatible.",
     "subscription_only": "Un proveedor de suscripción se agrega iniciando sesión.",
-    "endpoint_kind": "No se puede cambiar el endpoint de este proveedor.",
+    "vendor_protocol": "No se puede cambiar el protocolo de este proveedor.",
     "duplicate_model": "Ya hay un modelo con este ID en la lista.",
     "accounts_unsupported": "Este proveedor no tiene cuentas.",
     "rotation_needs_accounts": "La rotación necesita al menos 2 cuentas.",

@@ -79,12 +79,18 @@ pub fn refusal_words(kind: MediaKind, refusal: &MediaRefusal, aspect: Option<Ima
             format!("\"{model}\" makes no {}; it makes {}", asked.words(), listed(&made))
         }
         MediaRefusal::JobExpired { vendor } => format!("the job expired at {vendor} before it ran"),
+        MediaRefusal::JobLost { vendor } => {
+            format!("{vendor} no longer knows the job, as after a restart; nothing more can be read of it")
+        }
         MediaRefusal::NoChange { model, change } => {
             let verb = match change {
                 VideoChange::Edit => "edits",
                 VideoChange::Extend => "extends",
             };
             format!("{model} {verb} no video; demi video models shows the models that do")
+        }
+        MediaRefusal::Untaken { model, takes } => {
+            format!("{model} {takes}; nothing was sent, and demi video models {model} shows what it takes")
         }
         MediaRefusal::StillRunning { vendor, job, seconds } => {
             let minutes = seconds.div_ceil(60);

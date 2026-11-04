@@ -1852,6 +1852,7 @@ impl Link {
                 cwd,
                 env,
                 stdin,
+                resumed,
             } => crate::relay::start(
                 self,
                 crate::relay::RpcCall {
@@ -1864,6 +1865,7 @@ impl Link {
                     cwd,
                     env,
                     stdin,
+                    resumed,
                 },
             ),
             Outbound::RpcCancel { call_id } => {

@@ -15,8 +15,6 @@ mod images;
 mod speech;
 mod videos;
 
-pub use videos::compatible_videos;
-
 use std::sync::Arc;
 
 use demi_provider_common::{

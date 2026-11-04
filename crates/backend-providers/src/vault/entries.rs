@@ -107,11 +107,15 @@ pub struct SeededAccount {
 
 
 /// The format of the sealed configuration document this release writes
-/// and reads, which the control schema names. Format 1, the bare
-/// configuration that 0.1.21 and the builds before this one sealed, told a
-/// compatible entry by its endpoint rather than by its vendor; the control
-/// database's migration re-encodes it ([`VaultReseal`]).
-const CONFIG_FORMAT: u32 = 2;
+/// and reads, which the control schema names. The control database's
+/// migrations re-encode the earlier ones ([`VaultReseal`]):
+///
+/// - Format 1, the bare configuration that 0.1.21 and the builds before it
+///   sealed, told a compatible entry by its endpoint rather than by its
+///   vendor.
+/// - Format 2 let a compatible entry choose an image and a video shape,
+///   `imageShape` and `videoShape`, and list image and video models.
+const CONFIG_FORMAT: u32 = 3;
 
 /// The sealed document: the configuration under its format.
 #[derive(Serialize)]
@@ -728,9 +732,14 @@ impl Vault {
 ///
 /// - To provider configuration format 2, it opens each configuration of format
 ///   1 under the vault's key, decodes and checks it as any configuration is,
-///   and seals it again in format 2. A configuration that names neither a
-///   vendor nor an endpoint was its family's own vendor's entry and now names
-///   that vendor; one with an endpoint and no vendor stays a compatible entry.
+///   and seals it again in this release's format. A configuration that names
+///   neither a vendor nor an endpoint was its family's own vendor's entry and
+///   now names that vendor; one with an endpoint and no vendor stays a
+///   compatible entry.
+/// - To provider configuration format 3, it seals each configuration of
+///   format 2 again without its image and video shapes and a compatible
+///   entry's image and video models: a compatible entry makes no images and
+///   no videos.
 /// - To schedules, it seals a URL secret as a schedule's in place of an
 ///   automation's.
 /// - To entries that connect through a device, it reads each endpoint and
@@ -747,8 +756,8 @@ impl VaultReseal {
 impl ResealSealed for VaultReseal {
     fn provider_config(&self, id: &ProviderId, family: &str, sealed: &[u8]) -> Result<Vec<u8>, String> {
         let text = open_text(&self.0, id, sealed)?;
-        let config = decode_secret::<ApiKeyConfig>(&text).map_err(|error| error.to_string())?;
-        let mut config = checked(config)?;
+        let config = decode_secret::<serde_json::Value>(&text).map_err(|error| error.to_string())?;
+        let mut config = without_media_shapes(config)?;
         if config.vendor_id.is_none() && config.base_url.is_none() {
             config.vendor_id = Some(family.to_owned());
         }
@@ -769,12 +778,7 @@ impl ResealSealed for VaultReseal {
         sealed: &[u8],
         owned: &dyn Fn(&str) -> bool,
     ) -> Result<Option<(String, Vec<u8>)>, String> {
-        let text = open_text(&self.0, id, sealed)?;
-        let sealed: SealedConfig = decode_secret(&text).map_err(|error| error.to_string())?;
-        if sealed.format != CONFIG_FORMAT {
-            return Err(format!("the configuration's format {} is not {CONFIG_FORMAT}", sealed.format));
-        }
-        let mut config = checked(sealed.config)?;
+        let mut config = open_format(&self.0, id, sealed, &[2, CONFIG_FORMAT])?;
         let Some(endpoint) = &config.base_url else {
             return Ok(None);
         };
@@ -788,6 +792,53 @@ impl ResealSealed for VaultReseal {
         config.base_url = Some(EndpointUrl::try_from(String::from(url)).map_err(|_| "the endpoint on the device is not one".to_owned())?);
         Ok(Some((device, seal_config(&self.0, id, &config))))
     }
+
+    fn provider_config_format_3(&self, id: &ProviderId, sealed: &[u8]) -> Result<Option<Vec<u8>>, String> {
+        let text = open_text(&self.0, id, sealed)?;
+        let document = decode_secret::<SealedDocument>(&text).map_err(|error| error.to_string())?;
+        match document.format {
+            CONFIG_FORMAT => Ok(None),
+            2 => Ok(Some(seal_config(&self.0, id, &without_media_shapes(document.config)?))),
+            format => Err(format!("the configuration's format {format} is neither 2 nor {CONFIG_FORMAT}")),
+        }
+    }
+}
+
+/// A sealed document of any format from 2: its format, and its
+/// configuration as JSON.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SealedDocument {
+    format: u32,
+    config: serde_json::Value,
+}
+
+/// Entry `id`'s configuration `sealed`, of one of the `formats` from 2,
+/// opened as this release reads it ([`without_media_shapes`]).
+fn open_format(key: &VaultKey, id: &ProviderId, sealed: &[u8], formats: &[u32]) -> Result<ApiKeyConfig, String> {
+    let text = open_text(key, id, sealed)?;
+    let document = decode_secret::<SealedDocument>(&text).map_err(|error| error.to_string())?;
+    if !formats.contains(&document.format) {
+        return Err(format!("the configuration's format {} is not one of {formats:?}", document.format));
+    }
+    without_media_shapes(document.config)
+}
+
+/// A configuration of format 1 or 2 as JSON, decoded and checked as this
+/// release's: without the image and video shapes and without image and
+/// video models. A compatible entry listed its own; a vendor entry's come
+/// from the media catalog, so one its list holds, which adding it never
+/// refused, is dropped rather than left to fail the decoding.
+fn without_media_shapes(mut config: serde_json::Value) -> Result<ApiKeyConfig, String> {
+    let object = config.as_object_mut().ok_or("the configuration is not an object")?;
+    object.remove("imageShape");
+    object.remove("videoShape");
+    if let Some(models) = object.get_mut("models").and_then(serde_json::Value::as_array_mut) {
+        models.retain(|model| !matches!(model.get("kind").and_then(serde_json::Value::as_str), Some("image" | "video")));
+    }
+    // A configuration is strings, numbers and lists, which always serialize.
+    let text = serde_json::to_string(&config).expect("a configuration serializes");
+    checked(decode_secret::<ApiKeyConfig>(&text).map_err(|error| error.to_string())?)
 }
 
 /// Entry `id`'s configuration sealed under `key` in this release's format.

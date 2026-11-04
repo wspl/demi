@@ -300,116 +300,23 @@ impl ControlService {
     /// Writes the row, adds it to its conversation's kept cost, announces it
     /// and answers its id.
     pub async fn append_usage(&self, row: UsageRow) -> Result<String, StorageError> {
-        let id = uuid::Uuid::new_v4().to_string();
         let user = row.user.clone();
         let conversation = row.conversation.clone();
         let agent = row.agent;
-        let (id, cost, chart, first) = self.call(move |connection, _| {
+        let (id, written) = self.call(move |connection, _| {
             let transaction = connection.transaction()?;
-            let call = match (row.agent, row.purpose, row.usage) {
-                (Some(agent), "turn", Some(usage)) => Some(next_call(
-                    &transaction,
-                    row.conversation.as_str(),
-                    agent,
-                    &CallFacts {
-                        before: i64::MAX,
-                        model: &row.model,
-                        usage,
-                        started_at: row.started_at,
-                        system_hash: row.system_hash.as_deref(),
-                        tools_hash: row.tools_hash.as_deref(),
-                    },
-                )?),
-                _ => None,
-            };
-            let quota = row.quota.as_ref().map(to_json);
-            let counts = row.usage.map(|usage| {
-                [
-                    usage.input_tokens,
-                    usage.output_tokens,
-                    usage.cache_read_tokens,
-                    usage.cache_write_tokens,
-                    row.cache_write_1h_tokens,
-                ]
-                .map(column_count)
-            });
-            let count = |index: usize| counts.map(|counts| counts[index]);
-            transaction.execute(
-                "INSERT INTO usage_ledger (id, user_id, conversation_id, agent, turn_id, purpose,
-                   provider_id, account_id, model_id, request_id, vendor_id,
-                   input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-                   cache_write_1h_tokens, outcome, quota, started_at, ended_at, media_seconds, cost, cost_currency,
-                   api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
-                   system_hash, tools_hash, call_number, after_compaction, miss, media_digest)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-                   ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33)",
-                params![
-                    id,
-                    row.user.as_str(),
-                    row.conversation.as_str(),
-                    row.agent.map(column_count),
-                    row.turn,
-                    row.purpose,
-                    row.provider.as_str(),
-                    row.account.as_ref().map(CredentialId::as_str),
-                    row.model,
-                    row.request,
-                    row.vendor_id,
-                    count(0),
-                    count(1),
-                    count(2),
-                    count(3),
-                    count(4),
-                    row.outcome,
-                    quota,
-                    row.started_at.as_millisecond(),
-                    row.ended_at.as_millisecond(),
-                    row.media_seconds,
-                    row.cost.map(|cost| cost.amount),
-                    row.cost.map(|cost| cost.currency.to_string()),
-                    row.price.map(|price| price.input),
-                    row.price.map(|price| price.cache_write),
-                    row.price.map(|price| price.cache_read),
-                    row.price.map(|price| price.output),
-                    row.system_hash,
-                    row.tools_hash,
-                    call.map(|call| column_count(call.number)),
-                    call.map(|call| call.after_compaction),
-                    call.and_then(|call| call.miss).map(|miss| miss.to_string()),
-                    row.media_digest,
-                ],
-            )?;
-            // Asked after the insert: a transaction that has read cannot wait for
-            // another connection's write lock, which SQLite refuses at once
-            // with BUSY, and a row that is no turn call reads nothing before
-            // its insert.
-            let first: bool = transaction
-                .prepare_cached(
-                    "SELECT NOT EXISTS (SELECT 1 FROM usage_ledger WHERE conversation_id = ?1 AND id <> ?2)",
-                )?
-                .query_row(params![row.conversation.as_str(), id], |row| row.get(0))?;
-            let added = RowCost {
-                usage: row.usage,
-                parts: row.price,
-                usd: row.cost.filter(|cost| cost.currency == Currency::Usd).map(|cost| cost.amount),
-            };
-            add_cost(&transaction, row.conversation.as_str(), row.agent, &added, call.is_some())?;
-            let totals = kept_cost(&transaction, row.conversation.as_str(), row.agent)?;
-            let chart = match (row.agent, call) {
-                (Some(agent), Some(call)) => Some(agent_chart(&transaction, row.conversation.as_str(), agent, call.number)?),
-                _ => None,
-            };
+            let written = write_usage(&transaction, &row)?;
             transaction.commit()?;
-            Ok((id, totals, chart, first))
+            Ok(written)
         })
         .await?;
         self.announce_usage(UsageWritten {
             user,
             conversation,
             agent,
-            cost,
-            chart,
-            first,
+            cost: written.cost,
+            chart: written.chart,
+            first: written.first,
         });
         Ok(id)
     }
@@ -1074,6 +981,113 @@ fn row_prices(row: &Row<'_>) -> Result<(Option<ApiPrice>, Option<f64>), StorageE
         .get::<_, Option<f64>>("cost")?
         .filter(|_| currency == Some(Currency::Usd.to_string()));
     Ok((parts, usd))
+}
+
+/// What writing a usage row changed, which its announcement says.
+pub(crate) struct UsageWrite {
+    pub(crate) cost: AgentCost,
+    pub(crate) chart: Option<CacheChart>,
+    pub(crate) first: bool,
+}
+
+/// Writes `row` within `transaction` and adds it to its conversation's kept
+/// cost; answers the row's id and what the announcement says.
+pub(crate) fn write_usage(transaction: &rusqlite::Transaction<'_>, row: &UsageRow) -> Result<(String, UsageWrite), StorageError> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let call = match (row.agent, row.purpose, row.usage) {
+        (Some(agent), "turn", Some(usage)) => Some(next_call(
+            &transaction,
+            row.conversation.as_str(),
+            agent,
+            &CallFacts {
+                before: i64::MAX,
+                model: &row.model,
+                usage,
+                started_at: row.started_at,
+                system_hash: row.system_hash.as_deref(),
+                tools_hash: row.tools_hash.as_deref(),
+            },
+        )?),
+        _ => None,
+    };
+    let quota = row.quota.as_ref().map(to_json);
+    let counts = row.usage.map(|usage| {
+        [
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.cache_read_tokens,
+            usage.cache_write_tokens,
+            row.cache_write_1h_tokens,
+        ]
+        .map(column_count)
+    });
+    let count = |index: usize| counts.map(|counts| counts[index]);
+    transaction.execute(
+        "INSERT INTO usage_ledger (id, user_id, conversation_id, agent, turn_id, purpose,
+           provider_id, account_id, model_id, request_id, vendor_id,
+           input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+           cache_write_1h_tokens, outcome, quota, started_at, ended_at, media_seconds, cost, cost_currency,
+           api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
+           system_hash, tools_hash, call_number, after_compaction, miss, media_digest)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
+           ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33)",
+        params![
+            id,
+            row.user.as_str(),
+            row.conversation.as_str(),
+            row.agent.map(column_count),
+            row.turn,
+            row.purpose,
+            row.provider.as_str(),
+            row.account.as_ref().map(CredentialId::as_str),
+            row.model,
+            row.request,
+            row.vendor_id,
+            count(0),
+            count(1),
+            count(2),
+            count(3),
+            count(4),
+            row.outcome,
+            quota,
+            row.started_at.as_millisecond(),
+            row.ended_at.as_millisecond(),
+            row.media_seconds,
+            row.cost.map(|cost| cost.amount),
+            row.cost.map(|cost| cost.currency.to_string()),
+            row.price.map(|price| price.input),
+            row.price.map(|price| price.cache_write),
+            row.price.map(|price| price.cache_read),
+            row.price.map(|price| price.output),
+            row.system_hash,
+            row.tools_hash,
+            call.map(|call| column_count(call.number)),
+            call.map(|call| call.after_compaction),
+            call.and_then(|call| call.miss).map(|miss| miss.to_string()),
+            row.media_digest,
+        ],
+    )?;
+    // Asked after the insert: a transaction that has read cannot wait for
+    // another connection's write lock, which SQLite refuses at once
+    // with BUSY, and a row that is no turn call reads nothing before
+    // its insert.
+    let first: bool = transaction
+        .prepare_cached(
+            "SELECT NOT EXISTS (SELECT 1 FROM usage_ledger WHERE conversation_id = ?1 AND id <> ?2)",
+        )?
+        .query_row(params![row.conversation.as_str(), id], |row| row.get(0))?;
+    let added = RowCost {
+        usage: row.usage,
+        parts: row.price,
+        usd: row.cost.filter(|cost| cost.currency == Currency::Usd).map(|cost| cost.amount),
+    };
+    add_cost(transaction, row.conversation.as_str(), row.agent, &added, call.is_some())?;
+    let totals = kept_cost(transaction, row.conversation.as_str(), row.agent)?;
+    let chart = match (row.agent, call) {
+        (Some(agent), Some(call)) => Some(agent_chart(transaction, row.conversation.as_str(), agent, call.number)?),
+        _ => None,
+    };
+    Ok((id, UsageWrite { cost: totals, chart, first }))
 }
 
 /// The kept cost of the conversation's agent `agent`, or of its rows of no

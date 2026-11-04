@@ -205,6 +205,13 @@ impl Output {
         Ok(())
     }
 
+    /// Tells the caller the invocation waits for backend call `call`
+    /// ([`Record::Resumable`]); only one that asked for it.
+    pub async fn resumable(&self, call: String) -> Result<(), ResidentError> {
+        let _turn = self.turn.lock().await;
+        self.send(Record::Resumable(call)).await
+    }
+
     async fn write(
         &self,
         mut bytes: Bytes,

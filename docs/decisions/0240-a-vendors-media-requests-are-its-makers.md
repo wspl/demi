@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0259
 ---
 
 # A vendor's media requests are its maker's

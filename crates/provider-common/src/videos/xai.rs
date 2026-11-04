@@ -10,16 +10,14 @@
 //!   Tracking](https://docs.x.ai/developers/cost-tracking)).
 
 use bytes::Bytes;
-use demi_shared_types::{Cost, Currency, TokenUsage, VendorTrace, VideoResolution};
+use demi_shared_types::{TokenUsage, VendorTrace, VideoResolution};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 use super::{Done, DoneVideo, JobState, VideoRequest};
+use crate::images::xai::ticks;
 use crate::json_body;
 use crate::media::{MediaFailure, unreadable};
-
-/// Ticks in one US dollar.
-const TICKS_PER_USD: f64 = 1e10;
 
 #[derive(Serialize)]
 struct Body<'a> {
@@ -137,10 +135,7 @@ pub fn read_state(body: &[u8]) -> Result<JobState, MediaFailure> {
             let usage = state.usage;
             Ok(JobState::Done(Done {
                 video: DoneVideo::At(url),
-                cost: usage
-                    .as_ref()
-                    .and_then(|usage| usage.cost_in_usd_ticks)
-                    .map(|ticks| Cost { amount: ticks as f64 / TICKS_PER_USD, currency: Currency::Usd }),
+                cost: usage.as_ref().and_then(|usage| usage.cost_in_usd_ticks).map(ticks),
                 usage: usage.and_then(|usage| {
                     Some(TokenUsage {
                         input_tokens: usage.input_tokens?,

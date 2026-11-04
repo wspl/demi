@@ -12,8 +12,8 @@
 //!   succeeded its `task.content.url`
 //!   ([Query](https://platform.minimax.io/docs/api-reference/video-generation-v2-query)).
 //! - v2 needs a resolution, a duration and, for a video from text alone, a
-//!   ratio. A call that asks none sends `768P`, the model's shortest duration
-//!   and `16:9`.
+//!   ratio. A call that asks none sends `768P` and `16:9`, and its duration is
+//!   the model's shortest, which every call that asks none is sent.
 //! - Its refusals are HTTP statuses with an `error`.
 //! - `DELETE /v2/video_generation/<task_id>` cancels a queued task and deletes
 //!   the record of a finished one, so a stopped call reads the task first and
@@ -47,7 +47,7 @@ use demi_provider_common::{
     json_body,
     media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, catalog_models, unreadable},
     media_catalog::{Catalog, MediaKind},
-    videos::{self, Content, Done, DoneVideo, JobRef, JobState, VideoMaker, VideoOption, VideoRequest, content, unsent_of},
+    videos::{self, Content, Done, DoneVideo, JobRef, JobState, VideoMaker, VideoRequest, content},
 };
 use demi_shared_types::{Clock, VendorTrace, VideoResolution};
 use futures_util::future::BoxFuture;
@@ -168,16 +168,6 @@ impl MediaMaker for Hailuo {
 }
 
 impl VideoMaker for Hailuo {
-    fn run<'a>(
-        &'a self,
-        http: &'a demi_provider_common::ProviderHttp,
-        catalog: &'a demi_provider_common::media_catalog::Catalog,
-        request: VideoRequest,
-        every: std::time::Duration,
-    ) -> futures_util::stream::BoxStream<'a, MediaAnswer<demi_provider_common::videos::JobStep>> {
-        demi_provider_common::videos::polled(self, http, catalog, request, every)
-    }
-
     fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, url: &'a reqwest::Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
         Box::pin(videos::download(minimax::LABEL, &*self.clock, http, url, &self.origin, HeaderMap::new()))
     }
@@ -199,21 +189,6 @@ impl VideoMaker for Hailuo {
         }))
     }
 
-    /// v1 also takes no reference images and no shape; a model the catalog
-    /// names no request for is told at its ask.
-    fn unsent(&self, catalog: &Catalog, request: &VideoRequest) -> Vec<VideoOption> {
-        match self.api(catalog, &request.model) {
-            Ok(Api::V1) => unsent_of(&[VideoOption::Reference, VideoOption::Aspect, VideoOption::Audio, VideoOption::Seed], request),
-            _ => unsent_of(&[VideoOption::Audio, VideoOption::Seed], request),
-        }
-    }
-
-    fn shape_name(&self) -> String {
-        "Hailuo".to_owned()
-    }
-}
-
-impl demi_provider_common::videos::PolledVideos for Hailuo {
     fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, catalog: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         Box::pin(async move {
             let api = match self.api(catalog, &request.model) {
@@ -222,7 +197,7 @@ impl demi_provider_common::videos::PolledVideos for Hailuo {
             };
             match api {
                 Api::V2 => {
-                    let body = Bytes::from(encode_v2(catalog, self.vendor, &request));
+                    let body = Bytes::from(encode_v2(&request));
                     self.send(http, Ask::post_json(&self.url("/v2/video_generation"), body)).await.and_then(|body| read_asked(&body))
                 }
                 Api::V1 => {
@@ -260,23 +235,15 @@ struct V2Body<'a> {
 }
 
 /// A v2 ask: every option given in its field, and what v2 needs and the
-/// call did not ask filled in, `768P`, the model's shortest duration as
-/// `catalog` states it and, for a video from text alone, `16:9`.
-fn encode_v2(catalog: &Catalog, vendor: MediaVendor, request: &VideoRequest) -> Vec<u8> {
+/// call did not ask filled in, `768P` and, for a video from text alone,
+/// `16:9`.
+fn encode_v2(request: &VideoRequest) -> Vec<u8> {
     let from_text = request.image.is_none() && request.last_frame.is_none() && request.references.is_empty();
-    let shortest = || {
-        let video = catalog.model(vendor.id(), &request.model).and_then(|model| catalog.video(model))?;
-        match (&video.durations, video.duration_range) {
-            (Some(durations), _) => durations.iter().copied().min(),
-            (None, Some(range)) => range.min.map(|min| min.ceil() as u32),
-            (None, None) => None,
-        }
-    };
     json_body(&V2Body {
         model: &request.model,
         content: content(request),
         resolution: resolution(request.resolution).unwrap_or_else(|| DEFAULT_RESOLUTION.to_owned()),
-        duration: request.duration.or_else(shortest),
+        duration: request.duration,
         ratio: request.aspect.map(|aspect| aspect.to_string()).or_else(|| from_text.then(|| DEFAULT_RATIO.to_owned())),
     })
 }

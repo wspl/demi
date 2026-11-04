@@ -782,7 +782,7 @@ CREATE TABLE managed_operations (
 -- active account, a sealed secret per subscription account, and one
 -- subscription entry per owner and family. The active account is not a
 -- foreign key: removing an account clears it in the same transaction.
--- providers.config: provider configuration format 2, sealed.
+-- providers.config: provider configuration format 3, sealed.
 CREATE TABLE providers (
   id                   TEXT PRIMARY KEY,
   owner_user_id        TEXT NOT NULL REFERENCES users (id),
@@ -984,6 +984,38 @@ CREATE TABLE usage_costs (
   calls              INTEGER NOT NULL CHECK (calls >= 0)
 ) STRICT;
 CREATE UNIQUE INDEX usage_costs_by_agent ON usage_costs (conversation_id, ifnull(agent, -1));
+
+-- The media jobs vendors took for the calls of `demi image`, `demi video`
+-- and `demi audio`, each followed to its end across restarts
+-- (`crates/backend-database/src/media_jobs.rs`): written with the vendor's
+-- id of the job, ended with its file in the user's blobs or why it failed,
+-- and deleted when its call collects it, or with its conversation. A call
+-- the runner sends again after a restart finds its jobs by its id, in the
+-- order it asked for them.
+-- media_jobs.usage: the call's open usage ledger row, format 1
+-- media_jobs.follow: { vendor, label, manages, answer }, format 1
+-- media_jobs.made: what the call answers besides the file, format 1
+-- media_jobs.refusal: the port's media refusal, format 1
+CREATE TABLE media_jobs (
+  call_id         TEXT NOT NULL,
+  ordinal         INTEGER NOT NULL CHECK (ordinal >= 0),
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  kind            TEXT NOT NULL CHECK (kind IN ('image', 'video', 'audio')),
+  vendor_job      TEXT NOT NULL,
+  asked_at        INTEGER NOT NULL,
+  usage           TEXT NOT NULL,
+  follow          TEXT NOT NULL,
+  status          TEXT NOT NULL CHECK (status IN ('running', 'made', 'failed', 'cancelled')),
+  blob            TEXT,
+  made            TEXT,
+  refusal         TEXT,
+  PRIMARY KEY (call_id, ordinal),
+  CHECK ((status = 'made') = (blob IS NOT NULL AND made IS NOT NULL)),
+  CHECK ((status = 'failed') = (refusal IS NOT NULL))
+) STRICT;
+CREATE INDEX media_jobs_of_conversation ON media_jobs (conversation_id);
+-- The running jobs, which a backend that starts follows.
+CREATE INDEX media_jobs_running ON media_jobs (status) WHERE status = 'running';
 
 CREATE TABLE attachments (
   id         TEXT PRIMARY KEY,

@@ -16,7 +16,9 @@ demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }
 bytes.workspace = true
 futures-util.workspace = true
-hex = "0.4"
 reqwest = { workspace = true, features = ["rustls"] }
 serde.workspace = true
 serde_json.workspace = true
+# The archive an asynchronous speech task's file is, the audio and its
+# timing.
+tar = { version = "0.4", default-features = false }
