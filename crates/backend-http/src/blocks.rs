@@ -6,8 +6,9 @@
 //! - `GET /api/plugins/:plugin/blocks/:tag/:id`, for the signed-in user.
 //! - `POST /api/reply-blocks`, the facts of blocks a page holds replies naming
 //!   but no facts of, which a transcript's pages and frames bring otherwise.
-//! - `GET /api/shares/:token/plugins/:plugin/blocks/:tag/:id`, for a block a
-//!   text of the share names, as the share's owner's: it sends the frame on
+//! - `GET /api/shares/:token/plugins/:plugin/blocks/:tag/:id`, for the block
+//!   a reply block's share is, or a block a text of the share names, as the
+//!   share's owner's: it sends the frame on
 //!   to a link of that block alone, `GET /api/blocks/:link`, which serves
 //!   it. A document's scripts read the address they load from, and the
 //!   share's token there would hand them the whole share; a link reaches

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import SharedConversation from '@demicodes/web-ui/share/SharedConversation.vue'
 import SharedLinkMissing from '@demicodes/web-ui/share/SharedLinkMissing.vue'
+import SharedReplyBlock from '@demicodes/web-ui/share/SharedReplyBlock.vue'
 import type { SharedItem } from '@demicodes/web-ui/share/shared-items'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import GallerySection from './GallerySection.vue'
@@ -18,12 +19,14 @@ function whole(items: SharedItem[]): HeldTranscript<SharedItem> {
 }
 const conversation = whole(sharedItems())
 const answer = whole(sharedAnswerItems())
+const widget = galleryReplyBlock('widget', 'w1')
+const widgetFacts = widget.state === 'found' ? widget.facts : null
 </script>
 
 <template>
   <GallerySection
     title="Shared Page"
-    note="What anyone with a share's link reads, without an account: the messages and the agent's texts under the conversation's title, with a small Shared from Demi at the foot and nothing that acts. The work between them, thinking, commands and subagents, is one muted line that counts its steps and does not open. A file, a commit or an agent is its text, since the page reaches neither the Host nor the work; an attachment shows. The page follows the reader's system for light or dark and for its language."
+    note="What anyone with a share's link reads, without an account: the messages and the agent's texts under the conversation's title, with a small Shared from Demi at the foot and nothing that acts. The work between them, thinking, commands and subagents, is one muted line that counts its steps and does not open. A file, a commit or an agent is its text, since the page reaches neither the Host nor the work; an attachment shows. A widget's share is the widget alone, as wide as the page and centered in its height when lower, over the same foot, with Copy as Image in its corner and no Share. The page follows the reader's system for light or dark and for its language."
   >
     <GallerySpecimen variant="a conversation" wide>
       <div class="gallery-frame h-[46rem]">
@@ -45,6 +48,11 @@ const answer = whole(sharedAnswerItems())
           :attachment="galleryAttachment"
           :reply-block="galleryReplyBlock"
         />
+      </div>
+    </GallerySpecimen>
+    <GallerySpecimen variant="a widget" wide>
+      <div class="gallery-frame h-[34rem]">
+        <SharedReplyBlock tag="widget" id="w1" :facts="widgetFacts" />
       </div>
     </GallerySpecimen>
     <GallerySpecimen variant="a link that names no share" wide>

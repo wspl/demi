@@ -18,16 +18,13 @@ The new checkout folds address and payment into one step:
 
 The jump in September follows the new checkout.`
 
-/** Each widget's document as a blob, made once, as the backend's route would serve it. */
-const documents = new Map<string, string>()
-
 /**
  * The facts of a reply block the gallery's replies name, as a transcript
- * brings them with its replies: the widgets' frames and names.
+ * brings them with its replies: the widgets' frames and titles.
  */
 export function galleryReplyBlock(tag: string, id: string): ReplyBlockLookup {
   const widget = tag === 'widget' ? GALLERY_WIDGETS[id] : undefined
-  return widget ? { state: 'found', facts: { frame: widget.frame, name: widget.name } } : { state: 'missing' }
+  return widget ? { state: 'found', facts: { frame: widget.frame, title: widget.title } } : { state: 'missing' }
 }
 
 /** The widget plugin as the gallery's replies reach it: the guide's pages, by their IDs. */
@@ -35,17 +32,10 @@ export const galleryWidgets: GalleryPlugin = {
   call: async (method) => {
     throw new Error(`the widget plugin has no method ${method}`)
   },
-  blockDocument: (_tag, id) => {
-    const widget = GALLERY_WIDGETS[id]
-    if (!widget)
-      return 'about:blank'
-    let url = documents.get(id)
-    if (!url) {
-      url = URL.createObjectURL(new Blob([widget.document], { type: 'text/html; charset=utf-8' }))
-      documents.set(id, url)
-    }
-    return url
-  },
+  // The gallery's server answers the backend's route (`vite.config.ts`), so
+  // the document loads the plugin's files from the same root as it would.
+  blockDocument: (tag, id) =>
+    GALLERY_WIDGETS[id] ? `/api/plugins/widget/blocks/${tag}/${id}` : 'about:blank',
 }
 
 /** The pages whose blocks the gallery's replies draw. */

@@ -92,6 +92,8 @@ export { downloadProgress } from '@demicodes/web-ui/devices/installed'
 export type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
 // What the page says of a failure, in the page's language.
 export { errorMessage } from '@demicodes/web-ui/infra/errors'
+// A copy button's copy: Copied for a moment after, and the app's toast when it fails.
+export { useCopy } from '@demicodes/web-ui/composables/useCopy'
 export type { SettingsRowStatus } from '@demicodes/web-ui/settings/types'
 // The style a plugin's own prop of UI text declares (the gallery's Writing page).
 export type { HeadlineText, PlaceholderText, SentenceText, TitleText } from '@demicodes/web-ui/ui/ui-text'

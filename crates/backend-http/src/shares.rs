@@ -23,7 +23,7 @@ use demi_backend_user_shard::conversation::shares::{ShareBlobError, ShareRefusal
 use demi_backend_user_shard::services::Services;
 use demi_shared_types::{BlobRef, Block, BlockId};
 use demi_backend_database::tree::{Entry, PageRead};
-use demi_conversation_lane_protocol::{index_u32, light};
+use demi_conversation_lane_protocol::{ReplyBlockFacts, index_u32, light};
 use demi_web_api_protocol::conversations::{ConversationShares, WholeBlock};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, ShareToken};
@@ -136,7 +136,7 @@ fn refused(refusal: ShareRefusal) -> ApiError {
             "No such conversation",
         ),
         ShareRefusal::NoShare => not_found(),
-        ShareRefusal::TargetInvalid => ApiError::new(
+        ShareRefusal::TargetInvalid | ShareRefusal::NoReplyBlock => ApiError::new(
             StatusCode::BAD_REQUEST,
             ErrorCode::ShareTargetInvalid,
             refusal.to_string(),
@@ -162,8 +162,8 @@ pub(super) async fn found(services: &Services, token: String) -> Result<ShareRec
 }
 
 /// The document of `plugin`'s reply block `id` of `tag`, as the share
-/// `token`'s owner's, for a block a text of the share names; anything else
-/// is not found.
+/// `token`'s owner's, for the block the share is or a block a text of the
+/// share names; anything else is not found.
 pub(super) async fn block_document(
     state: &AppState,
     token: String,
@@ -197,16 +197,38 @@ enum BlockError {
     Call(PageCallError),
 }
 
-/// `GET /shares/:token`: what the shared page shows above the transcript.
+/// `GET /shares/:token`: what the shared page shows above the transcript,
+/// and a reply block's share's block, with its facts as the owner's for a
+/// plugin the owner has on, as the transcript's blocks have theirs.
 pub(super) async fn read(
     State(state): State<AppState>,
     Path(token): Path<String>,
 ) -> Result<Json<SharedConversation>, ApiError> {
     let share = found(&state.services, token).await?;
+    let reply_block = match &share.target {
+        ShareTarget::ReplyBlock { tag, id, .. } => {
+            let (tag, id) = (tag.clone(), id.clone());
+            let facts = state
+                .shards
+                .of(&share.owner)
+                .call(move |shard, _| async move {
+                    if !shard.plugins().reply_block_on(&tag).await.unwrap_or(false) {
+                        return ReplyBlockFacts { tag, id, facts: serde_json::Value::Null };
+                    }
+                    let named = [(tag.clone(), id.clone())].into_iter().collect();
+                    let facts = reply_block_facts(shard.plugins(), named).await.pop();
+                    facts.unwrap_or(ReplyBlockFacts { tag, id, facts: serde_json::Value::Null })
+                })
+                .await?;
+            Some(facts)
+        }
+        _ => None,
+    };
     Ok(Json(SharedConversation {
         kind: share.target.kind(),
         title: share.title,
         taken_at: share.taken_at,
+        reply_block,
     }))
 }
 

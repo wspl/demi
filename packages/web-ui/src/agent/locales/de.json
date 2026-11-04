@@ -248,8 +248,10 @@
   "share": {
     "titleConversation": "Chat teilen",
     "titleAnswer": "Antwort teilen",
+    "titleReplyBlock": "„{title}“ teilen",
     "whoConversation": "Alle mit dem Link können die Nachrichten dieses Chats lesen, nicht die Arbeit dazwischen. Spätere Nachrichten sind nicht enthalten.",
     "whoAnswer": "Alle mit dem Link können diese Antwort und die Nachricht lesen, auf die sie antwortet.",
+    "whoReplyBlock": "Alle mit dem Link können es sehen.",
     "field": "Link zum Teilen",
     "copyLink": "Link kopieren",
     "creating": "Link wird erstellt …",
@@ -261,6 +263,7 @@
     "updatedMessage": "Der Link zeigt den Chat jetzt im aktuellen Stand.",
     "failedConversation": "Chat konnte nicht geteilt werden",
     "failedAnswer": "Antwort konnte nicht geteilt werden",
+    "failedReplyBlock": "Konnte nicht geteilt werden",
     "failedUpdate": "Link konnte nicht aktualisiert werden",
     "failedStop": "Teilen konnte nicht beendet werden"
   },

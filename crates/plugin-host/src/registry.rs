@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use demi_command_declarations::{LeafKind, NativeOperation, Node};
 use demi_host_interface::RegisterError;
 use demi_plugin_interface::{
-    Commands, DEMI_ROOT, Manifest, Page, Placement, PluginFactory, PluginId, Scope, State, Stream,
+    Commands, DEMI_ROOT, Manifest, Page, Placement, PluginFactory, PluginFile, PluginId, Scope, State, Stream,
 };
 
 use crate::commands::{TAKEN_GROUPS, compose};
@@ -201,6 +201,12 @@ impl Registry {
         self.plugins
             .iter()
             .position(|registered| registered.owns_kind(kind))
+    }
+
+    /// The file `name` the plugin `plugin`'s pages load
+    /// ([`PluginFactory::file`]), the same for every user.
+    pub fn file(&self, plugin: &str, name: &str) -> Option<PluginFile> {
+        self.plugin(plugin).and_then(|(_, registered)| registered.factory.file(name))
     }
 
     pub(crate) fn plugin(&self, id: &str) -> Option<(usize, &Registered)> {

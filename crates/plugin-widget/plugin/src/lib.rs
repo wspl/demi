@@ -12,7 +12,7 @@
 //!                                     │ draw, light and dark
 //!                                     v
 //!                        browser package on the Host ──> two screenshots
-//!   reply "<widget id="w1" />" ── its facts, frame and name, with the reply
+//!   reply "<widget id="w1" />" ── its facts, frame and title, with the reply
 //!                             └── page ── frames the widget's document
 //! ```
 
@@ -26,12 +26,15 @@ mod widget;
 use std::rc::Rc;
 
 use demi_plugin_interface::{
-    CommandPlugin, Manifest, Page, Plugin, PluginError, PluginFactory, PluginId, PluginPort,
+    CommandPlugin, Manifest, Page, Plugin, PluginError, PluginFactory, PluginFile, PluginId, PluginPort,
     Reply, Request,
 };
 
 pub use frame::{AspectRatio, FrameSize};
 pub use widget::specimens;
+
+/// The plugin's id, which the address of its files holds too.
+const PLUGIN: &str = "widget";
 
 /// The plugin's factory.
 pub struct Widgets {
@@ -41,17 +44,13 @@ pub struct Widgets {
 impl Widgets {
     pub fn new() -> Self {
         let mut manifest = Manifest::new(
-            PluginId::try_from("widget").expect("a valid plugin id"),
+            PluginId::try_from(PLUGIN).expect("a valid plugin id"),
             "Widgets",
             "Agents put charts, diagrams and interactive pages into their replies with demi widget.",
         );
         manifest.commands = commands::manifest_commands(&commands::commands());
         manifest.conversations = true;
-        manifest.page = Some(
-            Page::new("@demicodes/plugin-widget")
-                .block::<widget::WidgetFacts>("widget", true)
-                .panel_kind("widget"),
-        );
+        manifest.page = Some(Page::new("@demicodes/plugin-widget").block::<widget::WidgetFacts>("widget", true));
         Self { manifest }
     }
 }
@@ -69,6 +68,13 @@ impl PluginFactory for Widgets {
 
     fn instance(&self) -> Rc<dyn Plugin> {
         Rc::new(Instance(commands::commands()))
+    }
+
+    fn file(&self, name: &str) -> Option<PluginFile> {
+        page::LIBRARIES
+            .iter()
+            .find(|library| library.name == name)
+            .map(|library| library.file())
     }
 }
 
@@ -105,8 +111,7 @@ impl Plugin for Instance {
                 }),
                 Request::PageCall { .. } => Err(PluginError::undeclared("method")),
                 Request::PageState { .. } => Err(PluginError::undeclared("page state")),
-                // A widget's tab holds nothing of the plugin's to release when it closes.
-                Request::PanelTab { .. } => Ok(Reply::Done),
+                Request::PanelTab { .. } => Err(PluginError::undeclared("panel kind")),
                 Request::Context { .. } => Err(PluginError::undeclared("context source")),
                 Request::ProjectSearch { .. } => Err(PluginError::undeclared("project search")),
                 // The browser package it draws with keeps nothing of a

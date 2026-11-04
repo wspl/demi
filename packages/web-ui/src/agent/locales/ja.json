@@ -248,8 +248,10 @@
   "share": {
     "titleConversation": "チャットを共有",
     "titleAnswer": "応答を共有",
+    "titleReplyBlock": "「{title}」を共有",
     "whoConversation": "リンクを知っている全員が、このチャットのメッセージを読むことができます。その間の作業は含まれません。以降のメッセージは含まれません。",
     "whoAnswer": "リンクを知っている全員が、この応答と、それに対するメッセージを読むことができます。",
+    "whoReplyBlock": "リンクを知っている全員が見ることができます。",
     "field": "共有リンク",
     "copyLink": "リンクをコピー",
     "creating": "リンクを作成中…",
@@ -261,6 +263,7 @@
     "updatedMessage": "リンクには現在のチャットの内容が表示されます。",
     "failedConversation": "チャットを共有できませんでした",
     "failedAnswer": "応答を共有できませんでした",
+    "failedReplyBlock": "共有できませんでした",
     "failedUpdate": "リンクを更新できませんでした",
     "failedStop": "共有を停止できませんでした"
   },

@@ -8,6 +8,9 @@
 //! list as a conversation's pages read its transcript
 //! ([`tree::Transcript::Shared`]).
 //!
+//! A reply block's share has an empty list: the block's plugin keeps the
+//! block, and the record names it.
+//!
 //! A record goes with its conversation; the list goes with the conversation's
 //! database.
 
@@ -37,7 +40,7 @@ pub struct ShareRecord {
     pub conversation: ConversationId,
     pub target: ShareTarget,
     /// The conversation's title when the list was made; none while it
-    /// was the placeholder.
+    /// was the placeholder. A reply block's share holds its target's title.
     pub title: Option<String>,
     pub taken_at: Timestamp,
 }
@@ -53,17 +56,29 @@ pub enum Added {
     NoConversation,
 }
 
-const SHARE_COLUMNS: &str = "token, user_id, conversation_id, kind, block_id, title, taken_at";
+const SHARE_COLUMNS: &str =
+    "token, user_id, conversation_id, kind, block_id, reply_block_tag, reply_block_id, title, taken_at";
 
 fn share_row(row: &Row<'_>) -> Result<ShareRecord, StorageError> {
     let kind: String = row.get("kind")?;
     let block: Option<String> = row.get("block_id")?;
-    let target = match (kind.as_str(), block) {
-        ("conversation", None) => ShareTarget::Conversation,
-        ("answer", Some(block)) => ShareTarget::Answer {
+    let reply_block: (Option<String>, Option<String>) = (row.get("reply_block_tag")?, row.get("reply_block_id")?);
+    let title: Option<String> = row.get("title")?;
+    let target = match (kind.as_str(), block, reply_block) {
+        ("conversation", None, (None, None)) => ShareTarget::Conversation,
+        ("answer", Some(block), (None, None)) => ShareTarget::Answer {
             block_id: decode("shares", "block_id", BlockId::try_from(block))?,
         },
-        (kind, _) => {
+        ("reply_block", None, (Some(tag), Some(id))) => ShareTarget::ReplyBlock {
+            tag,
+            id,
+            title: title.clone().ok_or_else(|| StorageError::Corrupt {
+                table: "shares",
+                column: "title",
+                reason: "a reply block's share without its title".to_owned(),
+            })?,
+        },
+        (kind, _, _) => {
             return Err(StorageError::Corrupt {
                 table: "shares",
                 column: "kind",
@@ -80,16 +95,31 @@ fn share_row(row: &Row<'_>) -> Result<ShareRecord, StorageError> {
             ConversationId::try_from(row.get::<_, String>("conversation_id")?),
         )?,
         target,
-        title: row.get("title")?,
+        title,
         taken_at: instant(row, "shares", "taken_at")?,
     })
 }
 
-/// The kind and block columns of `target`.
-fn target_columns(target: &ShareTarget) -> (&'static str, Option<&str>) {
+/// The columns that say which thing `target` is: its kind, the answer's
+/// block, and the reply block's tag and ID.
+struct TargetColumns<'a> {
+    kind: &'static str,
+    block: Option<&'a str>,
+    reply_block_tag: Option<&'a str>,
+    reply_block_id: Option<&'a str>,
+}
+
+fn target_columns(target: &ShareTarget) -> TargetColumns<'_> {
+    let none = TargetColumns { kind: "conversation", block: None, reply_block_tag: None, reply_block_id: None };
     match target {
-        ShareTarget::Conversation => ("conversation", None),
-        ShareTarget::Answer { block_id } => ("answer", Some(block_id.as_str())),
+        ShareTarget::Conversation => none,
+        ShareTarget::Answer { block_id } => TargetColumns { kind: "answer", block: Some(block_id.as_str()), ..none },
+        ShareTarget::ReplyBlock { tag, id, .. } => TargetColumns {
+            kind: "reply_block",
+            reply_block_tag: Some(tag),
+            reply_block_id: Some(id),
+            ..none
+        },
     }
 }
 
@@ -98,14 +128,21 @@ fn share_of(
     conversation: &ConversationId,
     target: &ShareTarget,
 ) -> Result<Option<ShareRecord>, StorageError> {
-    let (kind, block) = target_columns(target);
+    let columns = target_columns(target);
     connection
         .query_row(
             &format!(
                 "SELECT {SHARE_COLUMNS} FROM shares
-                 WHERE conversation_id = ?1 AND kind = ?2 AND block_id IS ?3"
+                 WHERE conversation_id = ?1 AND kind = ?2 AND block_id IS ?3
+                   AND reply_block_tag IS ?4 AND reply_block_id IS ?5"
             ),
-            params![conversation.as_str(), kind, block],
+            params![
+                conversation.as_str(),
+                columns.kind,
+                columns.block,
+                columns.reply_block_tag,
+                columns.reply_block_id,
+            ],
             |row| Ok(share_row(row)),
         )
         .optional()?
@@ -138,13 +175,13 @@ impl ControlService {
             .await
     }
 
-    /// The conversation's shares, its own first, then its answers' in the
-    /// order they were taken.
+    /// The conversation's shares, its own first, then its answers' and its
+    /// reply blocks' in the order they were taken.
     pub async fn shares_of(&self, conversation: ConversationId) -> Result<Vec<ShareRecord>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare(&format!(
                 "SELECT {SHARE_COLUMNS} FROM shares WHERE conversation_id = ?1
-                 ORDER BY kind = 'answer', taken_at, token"
+                 ORDER BY kind <> 'conversation', taken_at, token"
             ))?;
             let mut rows = statement.query([conversation.as_str()])?;
             let mut shares = Vec::new();
@@ -164,18 +201,21 @@ impl ControlService {
             if let Some(existing) = share_of(&transaction, &share.conversation, &share.target)? {
                 return Ok(Added::Existing(existing));
             }
-            let (kind, block) = target_columns(&share.target);
+            let columns = target_columns(&share.target);
             let added = transaction.execute(
-                "INSERT INTO shares (token, user_id, conversation_id, kind, block_id, title, taken_at)
-                 SELECT ?1, ?2, id, ?3, ?4, ?5, ?6 FROM conversations WHERE id = ?7 AND user_id = ?2",
+                "INSERT INTO shares
+                   (token, user_id, conversation_id, kind, block_id, reply_block_tag, reply_block_id, title, taken_at)
+                 SELECT ?1, ?2, id, ?3, ?4, ?8, ?9, ?5, ?6 FROM conversations WHERE id = ?7 AND user_id = ?2",
                 params![
                     share.token.as_str(),
                     share.owner.as_str(),
-                    kind,
-                    block,
+                    columns.kind,
+                    columns.block,
                     share.title,
                     share.taken_at.as_millisecond(),
                     share.conversation.as_str(),
+                    columns.reply_block_tag,
+                    columns.reply_block_id,
                 ],
             )?;
             transaction.commit()?;
@@ -745,6 +785,22 @@ pub fn shows_block(connection: &Connection, token: &ShareToken, tag: &str, id: &
         let table = if source == "blocks" { "blocks" } else { "share_blocks" };
         let stored = Stored::of(row, 1)?;
         if let Block::Text(text) = codec.block(table, &stored)?
+            && named_blocks(&text.text, tag).contains(id)
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Whether a text of the conversation names the reply block
+/// `<tag id="id" />` ([`named_blocks`]), whichever agent wrote it.
+pub fn names_block(connection: &Connection, tag: &str, id: &str) -> Result<bool, StorageError> {
+    let codec = Codec::new(connection);
+    let mut statement = connection.prepare(&format!("SELECT {} FROM blocks WHERE type = 'text'", record_of("blocks")))?;
+    let mut rows = statement.query([])?;
+    while let Some(row) = rows.next()? {
+        if let Block::Text(text) = codec.block("blocks", &Stored::of(row, 0)?)?
             && named_blocks(&text.text, tag).contains(id)
         {
             return Ok(true);

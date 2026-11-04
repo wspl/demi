@@ -803,10 +803,6 @@ const sessionFiles = {
     panelWork.openIn({ intent: 'attachment', payload: { id, name, size, url } })
     view.value = 'panel'
   }),
-  openReplyBlock: (tag: string, id: string, title: string) => {
-    panelWork.openIn({ intent: 'block', payload: { tag, id, title } })
-    view.value = 'panel'
-  },
   attachmentOrigin: galleryAttachmentOrigin(project.source, () => hostOnline.value),
 }
 // The session's pictures and videos open in the Media tab of the frame's panel, as a conversation's do.

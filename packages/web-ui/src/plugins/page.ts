@@ -505,7 +505,6 @@ export interface PanelKind<Data> {
     attachment?(payload: IntentPayloads['attachment'], current: Data | null): Data
     media?(payload: IntentPayloads['media'], current: Data | null): Data
     web?(payload: IntentPayloads['web'], current: Data | null): Data
-    block?(payload: IntentPayloads['block'], current: Data | null): Data
   }
 }
 
@@ -526,9 +525,10 @@ export interface PluginSettingsSection {
  * (`markdown/reply-block.ts`) is the place of `component`, with the page's
  * context, and the props `id`, the line's id, and `facts`, what its plugin
  * answered for the block and the transcript brought with the reply, null for
- * a block the user does not have or whose facts did not come; and `open`,
- * which opens the block whole in the work panel under a title through the
- * `block` intent, absent where no panel opens it, as on a share.
+ * a block the user does not have or whose facts did not come; `share`,
+ * which opens the share dialog for the block alone under a title, absent
+ * where the page cannot share, as on a share; and `whole`, true where the
+ * block is drawn alone filling its box, as a reply block's share shows it.
  */
 export interface ReplyBlock {
   /** A lowercase word that no HTML element and no other page's block has, such as `widget`. */
@@ -955,19 +955,14 @@ function bindKind(kind: PanelKind<unknown>, tab: KindTab, context: PageContext):
   }
 }
 
-/**
- * The kind of the first page the user has on that opens `intent`, or null. A
- * `block` intent for a block's `tag` opens only in a kind of the page that
- * draws it.
- */
+/** The kind of the first page the user has on that opens `intent`, or null. */
 export function intentKind(
   pages: readonly AnyPluginPage[],
   enabled: (plugin: string) => boolean,
   intent: IntentName,
-  tag?: string,
 ): PanelKind<unknown> | null {
   for (const page of pages) {
-    if (!enabled(page.plugin) || (tag !== undefined && !(page.blocks ?? []).some((block) => block.tag === tag))) {
+    if (!enabled(page.plugin)) {
       continue
     }
     const kind = (page.kinds ?? []).find((candidate) => candidate.intents?.[intent])

@@ -61,7 +61,7 @@ pub use web::{
     SecretName, SecretNameError, StoredSecret, WebFailure, WebHeader, WebMethod, WebRequest,
     WebResponse,
 };
-pub use plugin::{CommandPlugin, NoRequests, Plugin, PluginFactory, PortHandled};
+pub use plugin::{CommandPlugin, NoRequests, Plugin, PluginFactory, PluginFile, PortHandled};
 pub use port::{
     CallKind, DirectoryFile, DirectoryPath, HostDirectory, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal,
     WorkspaceName, Workspaces, DeviceName, GitEntry, GitFile, GitRefusal, GitTree,

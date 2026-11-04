@@ -4,6 +4,7 @@ import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import UpdatingScreen from '@demicodes/web-ui/ui/UpdatingScreen.vue'
 import SharedConversation from '@demicodes/web-ui/share/SharedConversation.vue'
 import SharedLinkMissing from '@demicodes/web-ui/share/SharedLinkMissing.vue'
+import SharedReplyBlock from '@demicodes/web-ui/share/SharedReplyBlock.vue'
 import type { SharedItem } from '@demicodes/web-ui/share/shared-items'
 import { t } from '@demicodes/web-ui/share/locales/text'
 import { pageTitle } from '@demicodes/web-ui/sidebar/tab-attention'
@@ -28,7 +29,8 @@ import { replyBlockKey } from '../conversation/activity'
 /**
  * A share's page at `/s/<token>`: what the share shows above what it holds, and
  * what it holds, read from its latest page back as the reader scrolls, through
- * the share's routes alone.
+ * the share's routes alone; or, for a reply block's share, the block alone,
+ * which the share's record brings.
  */
 const props = defineProps<{ token: string }>()
 
@@ -70,7 +72,9 @@ async function load(): Promise<void> {
       return
     }
     share.value = { state: 'found', share: found }
-    readLatest()
+    // A reply block's share holds no list: the record brings its block.
+    if (found.kind !== 'reply_block')
+      readLatest()
   } catch (error) {
     if (!lifetime.signal.aborted) {
       share.value = { state: 'failed', error: shownError(error) }
@@ -118,6 +122,8 @@ function readBeside(side: 'before' | 'after'): void {
 }
 
 const attachments = { path: sharePath(props.token), blobUrl }
+/** The block a reply block's share shows alone; null for any other share. */
+const replyBlock = computed(() => share.value.state === 'found' ? share.value.share.replyBlock ?? null : null)
 const title = computed(() => share.value.state === 'found' ? share.value.share.title : null)
 // The tab names the shared conversation and the product, and counts nothing:
 // its reader has no sidebar.
@@ -130,6 +136,7 @@ watchEffect(() => {
 
 <template>
   <SharedLinkMissing v-if="share.state === 'missing'" />
+  <SharedReplyBlock v-else-if="replyBlock" :tag="replyBlock.tag" :id="replyBlock.id" :facts="replyBlock.facts" />
   <SharedConversation
     v-else
     :title="title"

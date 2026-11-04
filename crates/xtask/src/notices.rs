@@ -95,7 +95,9 @@ struct Library {
 /// - The public holidays exported from the `holidays` Python package, which
 ///   a schedule's working days skip
 ///   (`crates/backend-user-shard/src/schedules/holidays.rs`).
-const LIBRARIES: [Library; 7] = [
+/// - Tailwind's browser build and html-to-image, which a widget's document
+///   runs and the widget plugin serves (`crates/plugin-widget/plugin/src/page.rs`).
+const LIBRARIES: [Library; 9] = [
     Library {
         name: "idb",
         version: "1.7.6",
@@ -137,6 +139,18 @@ const LIBRARIES: [Library; 7] = [
         version: "0.107",
         license: "MIT",
         notice: "crates/backend-user-shard/src/schedules/LICENSE-holidays",
+    },
+    Library {
+        name: "@tailwindcss/browser",
+        version: "4.3.4",
+        license: "MIT",
+        notice: "crates/plugin-widget/plugin/vendor/LICENSE-tailwindcss",
+    },
+    Library {
+        name: "html-to-image",
+        version: "1.11.13",
+        license: "MIT",
+        notice: "crates/plugin-widget/plugin/vendor/LICENSE-html-to-image",
     },
 ];
 

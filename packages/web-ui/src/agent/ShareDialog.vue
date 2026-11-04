@@ -11,12 +11,13 @@ import { shownError } from '../infra/errors'
 import { t as shared } from '../locales/text'
 import { t } from './locales/text'
 import type { Action, Operation } from '../ui/operations'
-import type { SharePhase } from './sharing'
+import type { SharePhase, ShareTarget } from './sharing'
 
 /**
  * The dialog of a share: who can read it, its link in a read-only field, and
  * the buttons Copy Link, Update Link (for a conversation's share) and Stop
- * Sharing, which stands apart at the leading edge since it ends the link.
+ * Sharing, which stands apart at the leading edge since it ends the link. A
+ * reply block's share is titled by the block's own title.
  *
  * The dialog opens before the link exists:
  *
@@ -34,7 +35,7 @@ const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
   /** What the share holds. */
-  kind: 'conversation' | 'answer'
+  target: ShareTarget
   phase: SharePhase
   /** The link was just copied. */
   copied: boolean
@@ -49,7 +50,20 @@ const emit = defineEmits<{
   retry: []
 }>()
 
-const title = computed(() => (props.kind === 'conversation' ? t('share.titleConversation') : t('share.titleAnswer')))
+const title = computed(() => {
+  switch (props.target.kind) {
+    case 'conversation': return t('share.titleConversation')
+    case 'answer': return t('share.titleAnswer')
+    case 'reply_block': return t('share.titleReplyBlock', { title: props.target.title })
+  }
+})
+const who = computed(() => {
+  switch (props.target.kind) {
+    case 'conversation': return t('share.whoConversation')
+    case 'answer': return t('share.whoAnswer')
+    case 'reply_block': return t('share.whoReplyBlock')
+  }
+})
 const link = computed(() => (props.phase.status === 'ready' ? props.phase : null))
 const failure = computed(() => (props.phase.status === 'failed' ? shownError(props.phase.error) : null))
 const busy = computed(() => props.phase.status === 'creating' || props.phase.status === 'updating')
@@ -64,7 +78,7 @@ const stop = computed<Operation>(() => ({ action: 'stop', target: `share:${token
     <div class="flex flex-col gap-3 px-5 pt-5">
       <h3 class="select-none pr-8 text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
       <p class="text-explanation leading-5 text-fg-body">
-        {{ kind === 'conversation' ? t('share.whoConversation') : t('share.whoAnswer') }}
+        {{ who }}
       </p>
       <TextInput
         :model-value="link?.url ?? ''"
@@ -88,7 +102,7 @@ const stop = computed<Operation>(() => ({ action: 'stop', target: `share:${token
       <Button variant="danger" :operation="stop" :disabled="!link" @click="onStop?.()">{{ t('share.stopSharing') }}</Button>
     </template>
     <template #footer>
-      <Button v-if="kind === 'conversation'" :operation="update" :disabled="!link" @click="onUpdate?.()">{{ t('share.updateLink') }}</Button>
+      <Button v-if="target.kind === 'conversation'" :operation="update" :disabled="!link" @click="onUpdate?.()">{{ t('share.updateLink') }}</Button>
       <Button v-if="phase.status === 'failed'" variant="primary" @click="emit('retry')">{{ t('share.tryAgain') }}</Button>
       <Button v-else variant="primary" :disabled="!link" @click="emit('copy')">
         <component :is="copied ? Check : Copy" :size="14" />

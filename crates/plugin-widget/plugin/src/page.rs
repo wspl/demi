@@ -5,8 +5,9 @@
 //!
 //! - the page's encoding, UTF-8, which the page's text is;
 //! - a `<base>` that opens every link in a new tab;
-//! - Tailwind's browser build from its CDN, pinned to the product's major
-//!   release;
+//! - Tailwind's browser build, which the plugin ships and serves
+//!   ([`LIBRARIES`]), or holds in itself for a document a Host's browser
+//!   draws, which reaches no backend;
 //! - a `@theme` with the color and font names of the product's own Tailwind
 //!   theme (`packages/web-ui/src/styles/base.css`), so `bg-surface` is the
 //!   product's surface, and the same names as the root's properties, which a
@@ -16,14 +17,17 @@
 //!   `data-tone` and `data-accent`, as the product's own pages do;
 //! - the base sheet;
 //! - the script that sets the root's appearance from the frame's name, or
-//!   the default look in a page named nothing, and reports the page's
-//!   height.
+//!   the default look in a page named nothing, reports the page's height,
+//!   and draws a picture of the page with html-to-image, which it loads from
+//!   the plugin's files at the first ask.
 //!
 //! A frame whose appearance changes draws its page again under its new name:
 //! a chart a script drew holds the colors it read.
 //!
 //! The page's own head comes after, so its `@theme` and CSS override any of
 //! it name by name.
+
+use demi_plugin_interface::PluginFile;
 
 use crate::markup;
 
@@ -36,14 +40,67 @@ const APPEARANCE: &str = include_str!("../../../../packages/web-ui/src/styles/pr
 const BASE: &str = include_str!("base.css");
 const SCRIPT: &str = include_str!("bootstrap.js");
 
-/// Tailwind's browser build: the product's major release, so the classes a
-/// widget writes are the ones the product's own pages use.
-const TAILWIND: &str = "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4";
+/// A library the bootstrap runs, a copy of its npm release
+/// (`crates/plugin-widget/plugin/vendor/`, each beside its license), named
+/// with its version.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Library {
+    pub(crate) name: &'static str,
+    pub(crate) code: &'static str,
+    /// `code` compressed with gzip (`build.rs`).
+    gzip: &'static [u8],
+}
+
+impl Library {
+    /// Where the backend serves it (`PluginFactory::file`), from the root of
+    /// the document's own server.
+    fn address(self) -> String {
+        format!("/api/plugins/{}/files/{}", crate::PLUGIN, self.name)
+    }
+
+    pub(crate) fn file(self) -> PluginFile {
+        PluginFile {
+            content_type: "text/javascript; charset=utf-8",
+            bytes: self.code.as_bytes(),
+            gzip: Some(self.gzip),
+        }
+    }
+}
+
+/// Tailwind's browser build, of the product's own Tailwind's major release,
+/// so the classes a widget writes are the ones the product's pages use.
+const TAILWIND: Library = Library {
+    name: "tailwindcss-browser-4.3.4.js",
+    code: include_str!("../vendor/tailwindcss-browser-4.3.4.js"),
+    gzip: include_bytes!(concat!(env!("OUT_DIR"), "/tailwindcss-browser-4.3.4.js.gz")),
+};
+
+/// html-to-image's browser build, which draws a copy's picture. Not its fork
+/// modern-screenshot, which reads a frame of its own that an opaque origin
+/// cannot.
+const PICTURE: Library = Library {
+    name: "html-to-image-1.11.13.js",
+    code: include_str!("../vendor/html-to-image-1.11.13.js"),
+    gzip: include_bytes!(concat!(env!("OUT_DIR"), "/html-to-image-1.11.13.js.gz")),
+};
+
+/// The libraries the plugin serves.
+pub(crate) const LIBRARIES: [Library; 2] = [TAILWIND, PICTURE];
+
+/// How a document loads Tailwind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Tailwind {
+    /// From the backend that serves the document.
+    Served,
+    /// From the document itself, which a Host's browser draws away from
+    /// any backend.
+    Held,
+}
 
 /// The appearance the product fixes for every user
 /// (`packages/web-ui/src/theme/productAppearance.ts`), and the tone and
 /// accent a user starts with, which a widget drawn away from a reply takes,
-/// as in its screenshots or in a tab of its own.
+/// as in its screenshots.
 pub(crate) const DEFAULT_LOOK: [(&str, &str); 5] = [
     ("data-tone", "ink"),
     ("data-accent", "blue"),
@@ -63,15 +120,21 @@ fn default_look() -> String {
 
 /// `page` with the bootstrap in front of its head, and `prelude`, markup
 /// that runs before the bootstrap, in front of that.
-pub(crate) fn bootstrapped(page: &str, prelude: &str) -> String {
+pub(crate) fn bootstrapped(page: &str, prelude: &str, tailwind: Tailwind) -> String {
+    let tailwind = match tailwind {
+        Tailwind::Served => format!("<script src=\"{}\"></script>", TAILWIND.address()),
+        // A script element ends at the first `</script` in its text.
+        Tailwind::Held => format!("<script>{}</script>", TAILWIND.code.replace("</script", "<\\/script")),
+    };
     let bootstrap = format!(
-        "<meta charset=\"utf-8\">{prelude}<base target=\"_blank\"><script src=\"{TAILWIND}\"></script>\
+        "<meta charset=\"utf-8\">{prelude}<base target=\"_blank\">{tailwind}\
          <style type=\"text/tailwindcss\">@theme {{\n{names}}}</style>\
          <style>:root {{\n{names}}}</style>\
-         <style>{values}{APPEARANCE}</style><style>{BASE}</style><script>({SCRIPT})({look});</script>",
+         <style>{values}{APPEARANCE}</style><style>{BASE}</style><script>({SCRIPT})({look}, {picture});</script>",
         names = theme_names(),
         values = theme_values(),
         look = default_look(),
+        picture = serde_json::Value::from(PICTURE.address()),
     );
     let scanned = markup::scan(page);
     if let Some((_, at)) = markup::find_tag(&scanned, "head") {
@@ -124,26 +187,54 @@ fn theme_names() -> String {
         })
 }
 
-/// The name of a widget's file, which a download of it takes: its page's
-/// title made a file's name, else `widget-w<n>.html`.
-pub(crate) fn file_name(page: &str, number: u32) -> String {
-    let lower = page.to_ascii_lowercase();
-    let title = lower.find("<title").and_then(|start| {
-        let open = start + lower[start..].find('>')? + 1;
-        let close = open + lower[open..].find("</title")?;
-        Some(page[open..close].trim().to_owned())
-    });
-    let stem: String = title
-        .unwrap_or_default()
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { ' ' })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    if stem.is_empty() {
-        format!("widget-w{number}.html")
-    } else {
-        format!("{}.html", stem.chars().take(80).collect::<String>())
+/// The page's title as a browser shows it, its `<title>`'s text with its
+/// references read and its spaces collapsed; none for a page without one or
+/// with one of no text.
+pub(crate) fn title(page: &str) -> Option<String> {
+    let scanned = markup::scan(page);
+    let (start, open) = markup::find_tag(&scanned, "title")?;
+    // An SVG's `<title>` names its drawing, not the page.
+    if markup::find_tag(&scanned, "svg").is_some_and(|(svg, _)| svg < start) {
+        return None;
     }
+    // The title's text is blanked in the scan, its end tag is not.
+    let close = open + scanned[open..].find("</title")?;
+    let title = decoded(&page[open..close]).split_whitespace().collect::<Vec<_>>().join(" ");
+    (!title.is_empty()).then_some(title)
+}
+
+/// `text` with its character references, named and numeric, read as a
+/// browser reads a title's; one that names nothing stays as written.
+fn decoded(text: &str) -> String {
+    let mut decoded = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find('&') {
+        decoded.push_str(&rest[..at]);
+        rest = &rest[at..];
+        let reference = rest[1..].find(';').map(|end| &rest[1..1 + end]);
+        let characters = reference.and_then(|name| match name.strip_prefix('#') {
+            Some(number) => number
+                .strip_prefix(['x', 'X'])
+                .map_or_else(|| number.parse::<u32>(), |hex| u32::from_str_radix(hex, 16))
+                .ok()
+                // As a browser does, a reference to no character is U+FFFD.
+                .map(|code| char::from_u32(code).filter(|&c| c != '\0').unwrap_or('\u{fffd}').to_string()),
+            None => entities::ENTITIES
+                .iter()
+                .find(|entity| entity.entity.strip_prefix('&').and_then(|entity| entity.strip_suffix(';')) == Some(name))
+                .map(|entity| entity.characters.to_owned()),
+        });
+        match (reference, characters) {
+            (Some(name), Some(characters)) => {
+                decoded.push_str(&characters);
+                rest = &rest[name.len() + 2..];
+            }
+            _ => {
+                decoded.push('&');
+                rest = &rest[1..];
+            }
+        }
+    }
+    decoded.push_str(rest);
+    decoded
 }

@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { holdsTarget, type ExistingShare, type ShareService } from '@demicodes/web-ui/agent/sharing'
+import { holdsTarget, type ExistingShare, type ShareService, type ShareTarget } from '@demicodes/web-ui/agent/sharing'
 import { productWould } from '../product-would'
 import { simulatedRequestId } from './request-failures'
 import { slow } from './slow'
@@ -33,7 +33,7 @@ export function useGalleryShares(initial: readonly ExistingShare[] = [], options
         return { token: held.token, url: link(held.token) }
       }
       const token = crypto.randomUUID().replaceAll('-', '').slice(0, 22)
-      shares.value.push(target.kind === 'conversation' ? { kind: 'conversation', token } : { kind: 'answer', token, blockId: target.blockId })
+      shares.value.push(listed(target, token))
       productWould('Create the Share')
       return { token, url: link(token) }
     },
@@ -48,4 +48,13 @@ export function useGalleryShares(initial: readonly ExistingShare[] = [], options
     },
   }
   return { shares, service }
+}
+
+/** The share of `target` under `token`, as the conversation lists it. */
+export function listed(target: ShareTarget, token: string): ExistingShare {
+  switch (target.kind) {
+    case 'conversation': return { kind: 'conversation', token }
+    case 'answer': return { kind: 'answer', token, blockId: target.blockId }
+    case 'reply_block': return { kind: 'reply_block', token, tag: target.tag, id: target.id }
+  }
 }

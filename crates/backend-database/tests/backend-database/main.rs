@@ -40,6 +40,79 @@ fn the_grants_and_requests_of_the_other_conversations_go() {
     assert_eq!((grants, requests), (vec!["credentials.use".to_owned()], vec!["other".to_owned()]));
 }
 
+#[test]
+fn a_panel_loses_its_widget_tabs_and_keeps_the_others() {
+    let shipped = include_str!("../../src/schema/control/from_0_1_5979.sql");
+    let mut connection = Connection::open_in_memory().unwrap();
+    connection.execute_batch(shipped).unwrap();
+    connection.pragma_update(None, "user_version", version_of(shipped)).unwrap();
+    // The rows need no conversation of their own.
+    connection.pragma_update(None, "foreign_keys", false).unwrap();
+    connection
+        .execute_batch(
+            r#"INSERT INTO conversation_panels VALUES
+                 ('c1', 4, '{"tabs":[{"id":"t1","kind":"file","data":{"path":"a.md"}},{"id":"t2","kind":"widget","data":{"id":"w1","title":"Orders"}}],"retired":["t0"]}', 1),
+                 ('c2', 2, '{"tabs":[{"id":"t1","kind":"file","data":{}}],"retired":[]}', 1);
+               INSERT INTO shares (token, user_id, conversation_id, kind, block_id, title, taken_at) VALUES
+                 ('s1', 'u1', 'c1', 'answer', 'b1', 'Orders', 1);"#,
+        )
+        .unwrap();
+    migrate(DatabaseKind::Control, &mut connection).unwrap();
+    let panels = query(&connection, "SELECT conversation_id, revision, document FROM conversation_panels ORDER BY 1", |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?))
+    });
+    assert_eq!(
+        panels,
+        vec![
+            ("c1".to_owned(), 5, r#"{"tabs":[{"id":"t1","kind":"file","data":{"path":"a.md"}}],"retired":["t0","t2"]}"#.to_owned()),
+            ("c2".to_owned(), 2, r#"{"tabs":[{"id":"t1","kind":"file","data":{}}],"retired":[]}"#.to_owned()),
+        ]
+    );
+    let shares = query(&connection, "SELECT token, kind, block_id FROM shares", |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+    });
+    assert_eq!(shares, vec![("s1".to_owned(), "answer".to_owned(), "b1".to_owned())]);
+}
+
+#[test]
+fn a_widget_keeps_its_title_in_place_of_its_file_name() {
+    let shipped = include_str!("../../src/schema/control/from_0_1_5979.sql");
+    let mut connection = Connection::open_in_memory().unwrap();
+    connection.execute_batch(shipped).unwrap();
+    connection.pragma_update(None, "user_version", version_of(shipped)).unwrap();
+    // The rows need no user of their own.
+    connection.pragma_update(None, "foreign_keys", false).unwrap();
+    connection
+        .execute_batch(
+            r#"INSERT INTO plugin_values VALUES
+                 ('u1', 'widget', 'w1', '{"number":1,"name":"Orders per week.html","frame":{}}', 2, '[]'),
+                 ('u1', 'widget', 'w2', '{"number":2,"name":"widget-w2.html","frame":{}}', 1, '[]'),
+                 ('u1', 'widget', 'w3', '{"number":3,"name":"widget-w2 sales.html","frame":{}}', 1, '[]'),
+                 ('u1', 'widget', 'w4', '{"number":4,"name":"x","frame":{}}', 1, '[]'),
+                 ('u1', 'widget', 'count', '2', 3, '[]'),
+                 ('u1', 'web', 'w1', '{"name":"Kept.html"}', 1, '[]');"#,
+        )
+        .unwrap();
+    migrate(DatabaseKind::Control, &mut connection).unwrap();
+    let values = query(&connection, "SELECT plugin, key, document, revision FROM plugin_values ORDER BY 1, 2", |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, i64>(3)?))
+    });
+    let value = |plugin: &str, key: &str, document: &str, revision: i64| {
+        (plugin.to_owned(), key.to_owned(), document.to_owned(), revision)
+    };
+    assert_eq!(
+        values,
+        vec![
+            value("web", "w1", r#"{"name":"Kept.html"}"#, 1),
+            value("widget", "count", "2", 3),
+            value("widget", "w1", r#"{"number":1,"frame":{},"title":"Orders per week"}"#, 3),
+            value("widget", "w2", r#"{"number":2,"frame":{},"title":null}"#, 2),
+            value("widget", "w3", r#"{"number":3,"frame":{},"title":"widget-w2 sales"}"#, 2),
+            value("widget", "w4", r#"{"number":4,"frame":{},"title":null}"#, 2),
+        ]
+    );
+}
+
 fn every_step_leads_to_the_current_schema(kind: DatabaseKind) {
     let fresh = Connection::open_in_memory().unwrap();
     fresh.execute_batch(current(kind)).unwrap();

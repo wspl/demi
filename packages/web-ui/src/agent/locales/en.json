@@ -248,8 +248,10 @@
   "share": {
     "titleConversation": "Share Conversation",
     "titleAnswer": "Share Answer",
+    "titleReplyBlock": "Share “{title}”",
     "whoConversation": "Anyone with the link can read the messages of this conversation, not the work between them. Later messages are not included.",
     "whoAnswer": "Anyone with the link can read this answer and the message it replies to.",
+    "whoReplyBlock": "Anyone with the link can see it.",
     "field": "Share link",
     "copyLink": "Copy Link",
     "creating": "Creating link…",
@@ -261,6 +263,7 @@
     "updatedMessage": "The link now shows the conversation as it is.",
     "failedConversation": "Could Not Share Conversation",
     "failedAnswer": "Could Not Share Answer",
+    "failedReplyBlock": "Could Not Share",
     "failedUpdate": "Could Not Update Link",
     "failedStop": "Could Not Stop Sharing"
   },

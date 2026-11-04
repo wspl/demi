@@ -248,8 +248,10 @@
   "share": {
     "titleConversation": "分享對話",
     "titleAnswer": "分享回覆",
+    "titleReplyBlock": "分享「{title}」",
     "whoConversation": "任何擁有連結的人都可以閱讀此對話中的訊息，但看不到其間的工作過程。之後的訊息不包含在內。",
     "whoAnswer": "任何擁有連結的人都可以閱讀此回覆及其所回應的訊息。",
+    "whoReplyBlock": "任何擁有連結的人都可以檢視。",
     "field": "分享連結",
     "copyLink": "複製連結",
     "creating": "正在建立連結…",
@@ -261,6 +263,7 @@
     "updatedMessage": "連結現在顯示對話的目前內容。",
     "failedConversation": "無法分享對話",
     "failedAnswer": "無法分享回覆",
+    "failedReplyBlock": "無法分享",
     "failedUpdate": "無法更新連結",
     "failedStop": "無法停止分享"
   },

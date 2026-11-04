@@ -18,7 +18,13 @@ demi-command-declarations = { path = "../../command-declarations" }
 demi-host-interface = { path = "../../host-interface" }
 demi-plugin-interface = { path = "../../plugin-interface" }
 demi-shared-types = { path = "../../shared-types" }
+# The named character references a page's title reads (`src/page.rs`).
+entities = "1"
 futures-util.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[build-dependencies]
+# The vendored libraries' gzip copies (`build.rs`).
+flate2 = "1"

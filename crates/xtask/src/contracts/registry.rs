@@ -125,7 +125,7 @@ fn widgets(header: &str) -> String {
     let mut module = String::from(header);
     module.push_str("import type { FrameSize } from \"@demicodes/plugin-widget/generated/plugin\"\n\n");
     module.push_str("/** The guide's pages as a reply draws them, by the IDs the gallery's replies name them by. */\n");
-    module.push_str("export const GALLERY_WIDGETS: Record<string, { frame: FrameSize; name: string; document: string }> = {\n");
+    module.push_str("export const GALLERY_WIDGETS: Record<string, { frame: FrameSize; title: string | null; document: string }> = {\n");
     for (id, widget) in demi_plugin_widget::specimens() {
         let _ = writeln!(module, "  {id}: {widget},");
     }

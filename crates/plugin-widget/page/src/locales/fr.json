@@ -2,7 +2,12 @@
   "block": {
     "missing": "Le widget {id} n’est pas disponible.",
     "off": "Les widgets sont désactivés. Activez-les dans les Paramètres pour voir celui-ci.",
-    "openInPanel": "Ouvrir dans le panneau de travail",
-    "openInTab": "Ouvrir dans un nouvel onglet"
+    "copyAsImage": "Copier en tant qu’image",
+    "share": "Partager",
+    "untitled": "Widget {number}"
+  },
+  "picture": {
+    "notLoaded": "Le widget n’a pas fini de se charger.",
+    "timedOut": "Le widget n’a pas fini de créer l’image. Faites-le défiler pour l’afficher, puis réessayez."
   }
 }

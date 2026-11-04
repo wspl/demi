@@ -5,13 +5,20 @@ import { showToast } from '../infra/toast'
 import { t } from './locales/text'
 
 /**
- * What a share holds: the conversation, or the answer that the text block
- * `blockId` ends.
+ * What a share holds: the conversation, the answer that the text block
+ * `blockId` ends, or a plugin's reply block `<tag id="id" />` alone, under
+ * the title its component names it.
  */
-export type ShareTarget = { kind: 'conversation' } | { kind: 'answer'; blockId: string }
+export type ShareTarget =
+  | { kind: 'conversation' }
+  | { kind: 'answer'; blockId: string }
+  | { kind: 'reply_block'; tag: string; id: string; title: string }
 
 /** A share the conversation has, as the host lists it when the dialog opens. */
-export type ExistingShare = { kind: 'conversation'; token: string } | { kind: 'answer'; token: string; blockId: string }
+export type ExistingShare =
+  | { kind: 'conversation'; token: string }
+  | { kind: 'answer'; token: string; blockId: string }
+  | { kind: 'reply_block'; token: string; tag: string; id: string }
 
 export interface ShareLink {
   token: string
@@ -46,11 +53,21 @@ export interface AnswerShare {
 
 /**
  * Whether `existing`, a share or a target, is the share of `target`: the
- * conversation's, or the answer's of that block.
+ * conversation's, the answer's of that block, or that reply block's.
  */
-export function holdsTarget(existing: ShareTarget, target: ShareTarget): boolean {
-  return existing.kind === target.kind && (existing.kind === 'conversation' || (target.kind === 'answer' && existing.blockId === target.blockId))
+export function holdsTarget(existing: ShareTarget | ExistingShare, target: ShareTarget): boolean {
+  switch (existing.kind) {
+    case 'conversation':
+      return target.kind === 'conversation'
+    case 'answer':
+      return target.kind === 'answer' && existing.blockId === target.blockId
+    case 'reply_block':
+      return target.kind === 'reply_block' && existing.tag === target.tag && existing.id === target.id
+  }
 }
+
+/** The title of a failure to share `target`. */
+const FAILED = { conversation: 'share.failedConversation', answer: 'share.failedAnswer', reply_block: 'share.failedReplyBlock' } as const
 
 /**
  * What the share dialog shows: the link being made, the link, the link
@@ -109,9 +126,7 @@ export function useShare(service: () => ShareService | undefined) {
         }
       },
       (error: unknown) => {
-        reportError(target.kind === 'conversation' ? t('share.failedConversation') : t('share.failedAnswer'), error, {
-          site: target.kind === 'conversation' ? 'share.failedConversation' : 'share.failedAnswer',
-        })
+        reportError(t(FAILED[target.kind]), error, { site: FAILED[target.kind] })
         if (shown.value === attempt) {
           shown.value = { target, status: 'failed', error }
         }
