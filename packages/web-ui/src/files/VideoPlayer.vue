@@ -7,22 +7,26 @@ import { t } from './locales/text'
 import { dropSource } from './preview'
 
 /**
- * A video under a frosted capsule of controls that floats over the bottom of
- * its picture, always there, and takes no room of its own: Play or Pause,
- * the time played, the playhead, the length, the speed, Mute and Full
- * Screen. A click on the picture plays or pauses; with the player or one of
+ * A video on its stage, the space it is shown in, with a frosted capsule of
+ * controls that floats over the stage's bottom, always there, and takes no
+ * room of its own: Play or Pause, the time played, the playhead, the length,
+ * the speed, Mute and Full Screen. The picture is drawn in `picture`, its box
+ * on the stage; a picture that comes down to the capsule lies under it.
+ * A click on the picture plays or pauses; with the player or one of
  * its controls focused, Space does but on a button, which it presses, and
  * Left and Right go back or ahead 5 seconds, so a viewer that steps between
  * media with them leaves them to the player (`media-viewer.ts`).
  *
- * Full Screen shows the player, capsule and all, on the whole screen; an
- * iPhone, which shows no element full screen, plays the video in its own
- * player instead.
+ * Full Screen shows the player, capsule and all, on the whole screen, the
+ * picture as large as the screen lets it; an iPhone, which shows no element
+ * full screen, plays the video in its own player instead.
  */
 const props = defineProps<{
   src: string
   name: string
   autoplay?: boolean
+  /** The picture's box on the stage; the whole stage, fitted, while unknown. */
+  picture?: { width: string; height: string }
 }>()
 const emit = defineEmits<{ loadedmetadata: [video: HTMLVideoElement]; error: [] }>()
 
@@ -153,7 +157,7 @@ onBeforeUnmount(() => {
 <template>
   <div
     ref="root"
-    class="video-player relative bg-black outline-none"
+    class="video-player relative flex items-center justify-center outline-none"
     tabindex="0"
     role="group"
     :aria-label="props.name"
@@ -166,7 +170,9 @@ onBeforeUnmount(() => {
       :autoplay="props.autoplay"
       preload="metadata"
       playsinline
-      class="block size-full object-contain"
+      class="block shrink-0 bg-black object-contain"
+      :class="{ 'size-full': !props.picture || fullScreen }"
+      :style="fullScreen ? undefined : props.picture"
       @click="toggle"
       @loadedmetadata="loadedMetadata"
       @durationchange="measured"
@@ -186,8 +192,8 @@ onBeforeUnmount(() => {
         :aria-label="playing ? t('player.pause', { name: props.name }) : t('player.play', { name: props.name })"
         @click="toggle"
       >
-        <Pause v-if="playing" :size="icons.in20" fill="currentColor" stroke-width="0" aria-hidden="true" />
-        <Play v-else :size="icons.in20" fill="currentColor" stroke-width="0" aria-hidden="true" />
+        <Pause v-if="playing" :size="icons.in32" fill="currentColor" stroke-width="0" aria-hidden="true" />
+        <Play v-else :size="icons.in32" fill="currentColor" stroke-width="0" aria-hidden="true" />
       </button>
       <span class="video-time" :style="{ minWidth: timeWidth }">{{ clock(Math.floor(current)) }}</span>
       <span class="video-track">
@@ -211,8 +217,8 @@ onBeforeUnmount(() => {
         {{ rate }}×
       </button>
       <button type="button" class="video-control" :aria-label="muted ? t('player.unmute') : t('player.mute')" @click="toggleMute">
-        <VolumeX v-if="muted" :size="icons.in20" aria-hidden="true" />
-        <Volume2 v-else :size="icons.in20" aria-hidden="true" />
+        <VolumeX v-if="muted" :size="icons.in32" aria-hidden="true" />
+        <Volume2 v-else :size="icons.in32" aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -220,29 +226,39 @@ onBeforeUnmount(() => {
         :aria-label="fullScreen ? t('player.exitFullScreen') : t('player.enterFullScreen')"
         @click="toggleFullScreen"
       >
-        <Minimize v-if="fullScreen" :size="icons.in20" aria-hidden="true" />
-        <Maximize v-else :size="icons.in20" aria-hidden="true" />
+        <Minimize v-if="fullScreen" :size="icons.in32" aria-hidden="true" />
+        <Maximize v-else :size="icons.in32" aria-hidden="true" />
       </button>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* The capsule's size follows the stage's width. */
+.video-player {
+  container-type: inline-size;
+}
+
+/* Full screen, the stage is black around the picture, as a system player's is. */
+.video-player:fullscreen {
+  background: #000;
+}
+
 /*
- * The capsule: the floating surface at about two thirds over a blur of the
- * picture behind it, at most 360 px wide and 24 px narrower than a smaller
- * picture, where the playhead gives up the width.
+ * The capsule: the floating surface at about two thirds over a blur of what
+ * lies behind it, the same on a phone, at most 560 px wide and 32 px narrower
+ * than a smaller stage, where the playhead gives up the width.
  */
 .video-controls {
   position: absolute;
   bottom: 12px;
   left: 50%;
   display: flex;
-  width: min(360px, calc(100% - 24px));
-  height: 30px;
+  width: min(560px, calc(100% - 32px));
+  height: 44px;
   align-items: center;
-  gap: 6px;
-  padding: 0 6px 0 5px;
+  gap: 8px;
+  padding: 0 10px 0 6px;
   border-radius: 9999px;
   color: var(--color-fg);
   background: color-mix(in srgb, var(--color-surface-float) 62%, transparent);
@@ -255,8 +271,8 @@ onBeforeUnmount(() => {
 
 .video-control {
   display: flex;
-  min-width: 20px;
-  height: 20px;
+  min-width: 32px;
+  height: 32px;
   flex: none;
   align-items: center;
   justify-content: center;
@@ -264,22 +280,27 @@ onBeforeUnmount(() => {
   cursor: default;
 }
 
-.video-control:focus-visible,
-.video-player:focus-visible {
+.video-control:focus-visible {
   outline: 2px solid var(--color-accent-fill);
   outline-offset: 2px;
 }
 
+/* Inside the stage, which fills its space edge to edge. */
+.video-player:focus-visible {
+  outline: 2px solid var(--color-accent-fill);
+  outline-offset: -2px;
+}
+
 .video-rate {
-  min-width: 26px;
-  font-size: 10.5px;
+  min-width: 36px;
+  font-size: 12px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
 .video-time {
   flex: none;
-  font-size: 10.5px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   text-align: center;
@@ -288,11 +309,11 @@ onBeforeUnmount(() => {
 
 .video-track {
   position: relative;
-  height: 3px;
+  height: 4px;
   min-width: 0;
   flex: 1;
   border-radius: 9999px;
-  background: color-mix(in srgb, var(--color-fg) 16%, transparent);
+  background: color-mix(in srgb, var(--color-fg) 14%, transparent);
 }
 
 .video-track-loaded,
@@ -302,8 +323,9 @@ onBeforeUnmount(() => {
   border-radius: inherit;
 }
 
+/* What is loaded but not played, between the track and the played part, as a system player draws it. */
 .video-track-loaded {
-  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+  background: color-mix(in srgb, var(--color-fg) 32%, transparent);
 }
 
 .video-track-played {
@@ -318,9 +340,9 @@ onBeforeUnmount(() => {
 .video-knob {
   position: absolute;
   top: 50%;
-  width: 10px;
-  height: 10px;
-  margin: -5px 0 0 -5px;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
   border-radius: 9999px;
   background: #fff;
   box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.2), 0 1px 3px rgb(0 0 0 / 0.3);
@@ -361,26 +383,32 @@ onBeforeUnmount(() => {
   border: 0;
 }
 
-@media (max-width: 767px) {
+/*
+ * On a stage narrower than 360 px, such as a 320 px phone or the media
+ * viewer's window at its narrowest, the capsule takes more of the width and
+ * its controls draw closer, so the playhead keeps a length beside an hour's
+ * times.
+ */
+@container (width < 360px) {
   .video-controls {
-    height: 40px;
-    gap: 8px;
-    padding: 0 10px 0 8px;
+    width: calc(100% - 16px);
+    gap: 2px;
+    padding: 0 6px 0 4px;
   }
 
   .video-control {
     min-width: 28px;
-    height: 28px;
   }
 
-  /* A finger takes the playhead anywhere up and down the capsule. */
+  .video-rate {
+    min-width: 30px;
+  }
+}
+
+/* A finger takes the playhead anywhere up and down the capsule. */
+@media (max-width: 767px) {
   .video-seek {
-    inset: -18px 0;
-  }
-
-  .video-rate,
-  .video-time {
-    font-size: 12px;
+    inset: -20px 0;
   }
 }
 </style>

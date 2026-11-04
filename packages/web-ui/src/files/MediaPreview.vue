@@ -7,10 +7,11 @@ import { dropSource } from './preview'
 import VideoPlayer from './VideoPlayer.vue'
 
 /**
- * A video in Demi's own player (`VideoPlayer`), or an audio file in the web
- * browser's, which plays at once when `autoplay` says so, as a video opened
- * large does. Leaving the page stops it. A video shows as large as the space
- * lets it, enlarged when it is smaller, as a picture opens (`ImagePreview`).
+ * A video in Demi's own player (`VideoPlayer`), which takes the whole space
+ * as its stage, or an audio file in the web browser's, which plays at once
+ * when `autoplay` says so, as a video opened large does. Leaving the page
+ * stops it. A video shows as large as the space inside its margin lets it,
+ * enlarged when it is smaller, as a picture opens (`ImagePreview`).
  *
  * While `hidden` it never plays: a player that is playing pauses, and one
  * mounted or given another address meanwhile does not start. Shown again, it
@@ -35,22 +36,25 @@ const media = computed<HTMLMediaElement | null>(() => (props.kind === 'video' ? 
 /** The space the player is shown in. */
 const room = ref<HTMLElement | null>(null)
 const { width: roomWidth, height: roomHeight } = useElementSize(room)
+/** The margin around the video on each side, in pixels: the stage's `p-4`, none when `flush`. */
+const margin = computed(() => (props.flush ? 0 : 16))
 /** The video's pixel size, once its metadata came. */
 const videoSize = shallowRef<PixelSize | null>(null)
 watch(() => props.src, () => {
   videoSize.value = null
 })
 /**
- * The player's box: the video as large as the space lets it, as a picture is
- * fitted (`fillScale`), and the player no larger than the video, so its
- * controls stay on it and what lies beside it stays the stage's. Until the
- * size is known the player fills the space unseen.
+ * The picture's box: the video as large as the space inside the margin lets
+ * it, as a picture is fitted (`fillScale`). Until the size is known the
+ * player is unseen.
  */
 const videoBox = computed(() => {
   const size = videoSize.value
-  if (!size || !size.width || !size.height || !roomWidth.value || !roomHeight.value)
+  const width = roomWidth.value - 2 * margin.value
+  const height = roomHeight.value - 2 * margin.value
+  if (!size || !size.width || !size.height || width <= 0 || height <= 0)
     return undefined
-  const scale = fillScale(size, { width: roomWidth.value, height: roomHeight.value })
+  const scale = fillScale(size, { width, height })
   return { width: `${size.width * scale}px`, height: `${size.height * scale}px` }
 })
 // After the render, so a new address the player was just given is the one
@@ -72,15 +76,16 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="room" class="flex h-full min-h-0 w-full items-center justify-center" :class="{ 'p-4': !flush }">
+  <div ref="room" class="flex h-full min-h-0 w-full items-center justify-center" :class="{ 'p-4': !flush && kind === 'audio' }">
     <VideoPlayer
       v-if="kind === 'video'"
       ref="player"
       :src="src"
       :name="name"
       :autoplay="autoplay && !hidden"
-      :class="videoBox ? 'shrink-0' : 'invisible size-full'"
-      :style="videoBox"
+      :picture="videoBox"
+      class="size-full"
+      :class="{ invisible: !videoBox }"
       @loadedmetadata="metadata"
       @error="emit('failed')"
     />

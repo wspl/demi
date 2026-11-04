@@ -118,7 +118,7 @@ function onScreenPress(event: PointerEvent): void {
     tapSpoiled = true
     return
   }
-  if (event.button !== 0 || event.defaultPrevented || (event.target instanceof Element && event.target.closest('video')))
+  if (event.button !== 0 || event.defaultPrevented || (event.target instanceof Element && event.target.closest('video, [data-video-controls]')))
     return
   tapSpoiled = false
   let moved = false
