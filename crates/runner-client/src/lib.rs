@@ -14,9 +14,11 @@
 //! - manifests built from a command set ([`CommandCatalog`]).
 //!
 //! It owns no HTTP route: the driving program's connection tasks and pipe
-//! routes feed it, and with its `edge` feature it relays a stream pipe's
-//! WebSocket that a pipe route accepted ([`accept_stream_pipe`]). In the
-//! backend, everything but the pipe ends runs inside the user's shard.
+//! routes feed it, and with its `edge` feature it relays a stream pipe from
+//! a lane of the runner's pipe connection ([`relay_stream_pipe`]) and a
+//! call's output over the WebSocket a pipe route accepted
+//! ([`accept_call_sink`]). In the backend, everything but the pipe ends runs
+//! inside the user's shard.
 //!
 //! It depends on the wire's contracts alone, never on the backend: it is
 //! Apache-licensed, and no Apache crate depends on a Demi License one.
@@ -65,7 +67,7 @@ pub use remote_host::{
 #[cfg(feature = "edge")]
 pub use runner_socket::{close_frame, socket_frame};
 #[cfg(feature = "edge")]
-pub use stream_pipe::{accept_call_sink, accept_stream_pipe};
+pub use stream_pipe::{FromSource, ToSource, accept_call_sink, relay_stream_pipe};
 pub use withdrawal::Withdrawal;
 pub use shell_environment::{
     CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, JobWaiting, KeptStart, RemoteShellEnvironment,

@@ -1,14 +1,16 @@
 //! The routes runners use, which authenticate with a device token instead of
 //! the user's session cookie.
 //!
-//! - `WS /api/runner` is the one socket each runner holds.
+//! - `WS /api/runner` is the runner's link.
+//! - `WS /api/runner/pipes` is its pipe connection, whose lanes carry the
+//!   stream pipes it writes (`pipe_connection`).
 //! - `/api/pipes/:id` is the device ends of a pipe
 //!   (`crates/runner-protocol/src/wire/pipe_frames.rs`).
 //!
 //! A pipe works as follows:
 //!
 //! - The source's runner puts a content pipe's bytes as a request body and
-//!   sends a stream pipe's over a WebSocket.
+//!   sends a stream pipe's over a lane of its pipe connection.
 //! - The sink's runner gets them.
 //! - The edge copies them between the requests and the pipe's ends.
 //! - The pipe records are the device owner's shard's.
@@ -17,10 +19,9 @@
 //! open for as long as its command runs.
 
 use axum::body::Body;
-use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{ConnectInfo, Path, State};
-use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, UPGRADE};
+use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
@@ -29,7 +30,7 @@ use axum_extra::headers::authorization::Bearer;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::devices::DeviceRecord;
 use demi_runner_client::{
-    ChunkEnd, ChunkRefusal, DeviceChunk, DeviceSource, PipeRefusal, SourceMessage, accept_call_sink, accept_stream_pipe, offer_response,
+    ChunkEnd, ChunkRefusal, DeviceChunk, DeviceSource, PipeRefusal, SourceMessage, accept_call_sink, offer_response,
 };
 use demi_runner_protocol::release::{
     RELEASE_HEADER, RunnerUpdate, TARGET_HEADER, TOKEN_HEADER, UpdateExecutable,
@@ -187,7 +188,7 @@ pub(super) async fn put(
     }
     let source = match claim_source(&state, id, device).await {
         Ok(source) => source,
-        Err(refusal) => return *refusal,
+        Err(refusal) => return refusal.into_response(),
     };
     let body = body.into_data_stream().map(|chunk| chunk.map(SourceMessage::Bytes));
     match source.pump(body).await {
@@ -196,8 +197,7 @@ pub(super) async fn put(
     }
 }
 
-/// `GET /api/pipes/:id`: the pipe's bytes for its sink, or, as a WebSocket
-/// upgrade, a stream pipe's bytes from its source. A sink's answer goes out
+/// `GET /api/pipes/:id`: the pipe's bytes for its sink. The answer goes out
 /// at once, its body in the pipe's frames (`crates/runner-protocol/src/wire/pipe_frames.rs`),
 /// which say how the pipe ended.
 pub(super) async fn get(
@@ -205,19 +205,11 @@ pub(super) async fn get(
     ConnectInfo(peer): ConnectInfo<Peer>,
     Path(id): Path<String>,
     authorization: Option<TypedHeader<Authorization<Bearer>>>,
-    headers: HeaderMap,
-    upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Response {
     let device = match device_of(&state, authorization).await {
         Ok(device) => device,
         Err(refusal) => return *refusal,
     };
-    match upgrade {
-        Ok(upgrade) => return stream_source(&state, id, device, upgrade).await,
-        // An upgrade the request asks for wrongly is no sink's GET.
-        Err(rejection) if headers.contains_key(UPGRADE) => return rejection.into_response(),
-        Err(_) => {}
-    }
     let owner = device.user.clone();
     let claimed = state
         .shards
@@ -308,13 +300,13 @@ pub(super) async fn offer(
     }
 }
 
-/// The source end of pipe `id`, which `device` claims; the refusal answers
-/// the request.
-async fn claim_source(
+/// The source end of pipe `id`, which `device` claims, or the status and
+/// words of its refusal.
+pub(super) async fn claim_source(
     state: &AppState,
     id: String,
     device: DeviceRecord,
-) -> Result<DeviceSource, Box<Response>> {
+) -> Result<DeviceSource, (StatusCode, String)> {
     let owner = device.user.clone();
     let claimed = state
         .shards
@@ -325,8 +317,8 @@ async fn claim_source(
         .await;
     match claimed {
         Ok(Ok(source)) => Ok(source),
-        Ok(Err(refusal)) => Err(Box::new(refused(refusal))),
-        Err(_) => Err(Box::new(StatusCode::SERVICE_UNAVAILABLE.into_response())),
+        Ok(Err(refusal)) => Err(refusal_of(refusal)),
+        Err(_) => Err((StatusCode::SERVICE_UNAVAILABLE, String::new())),
     }
 }
 
@@ -384,23 +376,9 @@ async fn claim_chunk(
     }
 }
 
-/// `WS /api/pipes/:id`: a stream pipe's source (`crates/runner-protocol/src/wire/pipe_frames.rs`), relayed into the pipe as `accept_stream_pipe` says. A
-/// refusal is an HTTP answer before the upgrade.
-async fn stream_source(
-    state: &AppState,
-    id: String,
-    device: DeviceRecord,
-    upgrade: WebSocketUpgrade,
-) -> Response {
-    match claim_source(state, id, device).await {
-        Ok(source) => accept_stream_pipe(upgrade, source),
-        Err(refusal) => *refusal,
-    }
-}
-
 /// The device whose token the request bears; 401 without one the backend
 /// issued.
-async fn device_of(
+pub(super) async fn device_of(
     state: &AppState,
     authorization: Option<TypedHeader<Authorization<Bearer>>>,
 ) -> Result<DeviceRecord, Box<Response>> {
@@ -428,9 +406,13 @@ async fn device_of(
 }
 
 fn refused(refusal: PipeRefusal) -> Response {
+    refusal_of(refusal).into_response()
+}
+
+fn refusal_of(refusal: PipeRefusal) -> (StatusCode, String) {
     let status = match refusal {
         PipeRefusal::NotFound => StatusCode::NOT_FOUND,
         PipeRefusal::AlreadyConnected => StatusCode::CONFLICT,
     };
-    (status, refusal.to_string()).into_response()
+    (status, refusal.to_string())
 }

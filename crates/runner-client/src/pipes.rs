@@ -2,9 +2,9 @@
 //! stream between processes.
 //!
 //! A pipe has a source and a sink. An end on a device is that runner's HTTP
-//! exchange with the backend: a `PUT` body or a stream pipe's WebSocket from
-//! the source, `GET` by the sink. An end in this process is a reader or a
-//! writer.
+//! exchange with the backend: a `PUT` body or a stream pipe's lane of its
+//! pipe connection from the source, `GET` by the sink. An end in this process
+//! is a reader or a writer.
 //!
 //! The records live in the user's shard and hold only the byte in flight. The
 //! ends are `Send`, so the edge that serves a device's request copies the

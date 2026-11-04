@@ -377,6 +377,8 @@ impl Owner<'_> {
     /// have lost of the jobs not released: their media's announcements and
     /// the exits of those that ended.
     async fn online(&mut self) -> io::Result<()> {
+        // The device token is known by now, a just paired runner's too.
+        self.registered.pipes.connect_lanes();
         let announcements = self.kept.connected(self.live.clone(), self.output.clone());
         for announcement in announcements {
             self.output

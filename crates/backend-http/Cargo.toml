@@ -34,6 +34,7 @@ demi-provider-common = { path = "../provider-common" }
 demi-provider-registry = { path = "../provider-registry" }
 demi-provider-relay = { path = "../provider-relay" }
 demi-runner-protocol = { path = "../runner-protocol" }
+demi-shared-lanes = { path = "../shared-lanes" }
 demi-host-interface = { path = "../host-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 axum = { version = "0.8", features = ["ws"] }

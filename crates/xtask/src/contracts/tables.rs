@@ -134,7 +134,7 @@ pub fn module(header: &str) -> String {
     .expect("writing to a string");
 
     {
-        use demi_web_api_protocol::connection as connection;
+        use demi_shared_lanes as connection;
         for (name, description, value) in [
             ("CONNECTION_FRAME", "A page connection frame's kind: JSON of the connection's own message.", connection::CONNECTION_FRAME),
             ("OPEN_FRAME", "A page connection frame's kind: a lane's open.", connection::OPEN_FRAME),
@@ -155,8 +155,8 @@ pub fn module(header: &str) -> String {
     for (name, description, value) in [
         (
             "LANE_PIECE_BYTES",
-            "The most bytes of a lane's message one data piece carries (`crates/web-api-protocol/src/connection.rs`).",
-            count(demi_web_api_protocol::connection::LANE_PIECE_BYTES),
+            "The most bytes of a lane's message one data piece carries (`crates/shared-lanes/src/lib.rs`).",
+            count(demi_shared_lanes::LANE_PIECE_BYTES),
         ),
         (
             "LANE_CREDIT",

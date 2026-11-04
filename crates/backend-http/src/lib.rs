@@ -76,6 +76,7 @@ mod runner_socket;
 pub use blocks::BlockLinks;
 pub use html_view::HtmlGrants;
 pub use manage::manage_socket;
+mod pipe_connection;
 mod runners;
 mod saved;
 mod search;
@@ -783,6 +784,10 @@ fn edge(app: Router<AppState>, closing: CancellationToken, state: AppState) -> R
             get(runners::call_output),
         )
         .route("/api/offers/{id}", get(runners::offer))
+        .route(
+            demi_runner_protocol::wire::PIPE_CONNECTION_ROUTE,
+            get(pipe_connection::connect),
+        )
         .method_not_allowed_fallback(no_route);
     app.layer(DefaultBodyLimit::max(body::JSON_BODY_LIMIT))
         .layer(middleware::from_fn_with_state(

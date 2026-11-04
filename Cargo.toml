@@ -54,6 +54,7 @@ members = [
   "crates/plugin-file/command",
   "crates/plugin-file/protocol",
   "crates/shared-gates",
+  "crates/shared-lanes",
   "crates/runner-client",
   "crates/machine-manager",
   "crates/machine-manager-protocol",
