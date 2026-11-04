@@ -18,10 +18,12 @@ mod host;
 pub mod lane;
 mod permissions;
 pub(crate) mod media;
+pub(crate) mod media_jobs;
 pub mod lent_media;
 pub(crate) mod provider_commands;
 
 pub use self::adoption::KeptJobs;
+pub use self::media_jobs::start_media_followers;
 pub use self::permissions::deliver_decisions;
 mod plugins;
 
@@ -176,6 +178,10 @@ pub struct Shard {
     /// The turns its conversations' trees work on, and the agents' own
     /// notifications, for the user's push notifications.
     pub(crate) notifications: Notifications,
+    /// The videos' jobs borrowers of the user's lent entries asked for.
+    lent_jobs: lent_media::LentJobs,
+    /// The media jobs the user's calls asked for, while they run.
+    media_jobs: media_jobs::MediaJobs,
 }
 
 impl Shard {
@@ -265,6 +271,8 @@ impl Shard {
             retry_resumes: RetryResumes::default(),
             idle_compactions: IdleCompactions::default(),
             notifications: Notifications::default(),
+            lent_jobs: lent_media::LentJobs::default(),
+            media_jobs: media_jobs::MediaJobs::default(),
         }
     }
 
@@ -904,6 +912,11 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                         shard
                             .tasks
                             .spawn_local(shard.clone().follow_schedules());
+                        // And the media jobs an earlier start kept, which
+                        // end whether or not their calls come back.
+                        shard
+                            .tasks
+                            .spawn_local(shard.clone().follow_media_jobs());
                         shard
                     })
                     .clone();

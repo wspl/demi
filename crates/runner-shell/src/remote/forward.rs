@@ -1,7 +1,8 @@
 //! A job's declared commands in a shell process: each invocation goes to the
 //! runner's local endpoint, as a command alias's does
 //! (`crates/runner-process/src/command_client.rs`), and the runner's
-//! dispatcher serves it.
+//! dispatcher serves it. A call that outlives the runner goes on with the
+//! next one, as an alias's does.
 
 use std::{future::Future, pin::Pin};
 
@@ -11,7 +12,10 @@ use demi_command_sdk::{
     Client, Exchange, ExchangeError, Handler, Input, InputSource, InvocationContext, Output,
     OutputSink, ResidentError,
 };
-use demi_runner_process::{command_client::RAW, local_socket};
+use demi_runner_process::{
+    command_client::{RAW, Resuming},
+    local_socket,
+};
 use tokio_util::task::AbortOnDropHandle;
 
 /// Forwards each invocation to the runner's local endpoint.
@@ -38,24 +42,60 @@ impl Handler for Forward {
                 output,
                 cancellation,
             } = context;
-            let socket = local_socket::connect_returning(&endpoint, &cancellation, local_socket::RUNNER_RETURN)
-                .await
-                .map_err(ResidentError::from)?;
-            let (client, connection) = Client::connect(socket).await?;
-            // The connection lives while the invocation does.
-            let _driver = AbortOnDropHandle::new(tokio::spawn(connection));
-            let (command_input, command_output) = client.invoke(&request).await?;
-            let (mut source, mut sink) = (Source(input), Sink(output));
-            let exchange = Exchange::new(command_input, command_output).run(&mut source, &mut sink);
-            tokio::select! {
-                _ = cancellation.cancelled() => Err(ResidentError::Cancelled),
-                result = exchange => result.map_err(|error| match error {
-                    ExchangeError::Resident(error)
-                    | ExchangeError::Input(error)
-                    | ExchangeError::Output(error) => error,
-                }),
+            let (mut source, mut sink) = (Source(input), Sink { output, resuming: Resuming::default() });
+            let mut request = Resuming::asking(&request).map_err(ResidentError::from)?;
+            loop {
+                let sent = forward_once(&endpoint, &request, &mut source, &mut sink, &cancellation).await;
+                match sent {
+                    // The runner went away: a failure of the job's own
+                    // input or output ends the command.
+                    Err(Failure::Runner(error)) if !cancellation.is_cancelled() => {
+                        match sink.resuming.again(&request) {
+                            Some(again) => {
+                                tracing::info!(event = "command.resumed", %error, "a command's call goes on with the next runner");
+                                request = again;
+                            }
+                            None => return Err(error),
+                        }
+                    }
+                    Err(Failure::Runner(error) | Failure::Job(error)) => return Err(error),
+                    Ok(completion) => return Ok(completion),
+                }
             }
         })
+    }
+}
+
+/// What ended an invocation before its completion.
+enum Failure {
+    /// The runner, or the connection to it.
+    Runner(ResidentError),
+    /// The job's input or output.
+    Job(ResidentError),
+}
+
+/// Sends `request` to the runner that listens now.
+async fn forward_once(
+    endpoint: &str,
+    request: &LocalInvocation,
+    source: &mut Source,
+    sink: &mut Sink,
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<Completion, Failure> {
+    let socket = local_socket::connect_returning(endpoint, cancellation, local_socket::RUNNER_RETURN)
+        .await
+        .map_err(|error| Failure::Runner(error.into()))?;
+    let (client, connection) = Client::connect(socket).await.map_err(Failure::Runner)?;
+    // The connection lives while the invocation does.
+    let _driver = AbortOnDropHandle::new(tokio::spawn(connection));
+    let (command_input, command_output) = client.invoke(request).await.map_err(Failure::Runner)?;
+    let exchange = Exchange::new(command_input, command_output).run(source, sink);
+    tokio::select! {
+        _ = cancellation.cancelled() => Err(Failure::Job(ResidentError::Cancelled)),
+        result = exchange => result.map_err(|error| match error {
+            ExchangeError::Resident(error) => Failure::Runner(error),
+            ExchangeError::Input(error) | ExchangeError::Output(error) => Failure::Job(error),
+        }),
     }
 }
 
@@ -71,17 +111,26 @@ impl InputSource for Source {
 }
 
 /// The builtin's standard output and error.
-struct Sink(Output);
+struct Sink {
+    output: Output,
+    resuming: Resuming,
+}
 
 impl OutputSink for Sink {
     type Error = ResidentError;
 
     async fn stdout(&mut self, bytes: Bytes) -> Result<(), ResidentError> {
-        self.0.stdout(bytes).await
+        self.resuming.wrote();
+        self.output.stdout(bytes).await
     }
 
     async fn stderr(&mut self, bytes: Bytes) -> Result<(), ResidentError> {
-        self.0.stderr(bytes).await
+        self.output.stderr(bytes).await
+    }
+
+    async fn resumable(&mut self, call: String) -> Result<(), ResidentError> {
+        self.resuming.told(call);
+        Ok(())
     }
 
     /// The runner hands a command's media to the job itself

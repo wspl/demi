@@ -284,6 +284,13 @@ pub enum Inbound {
     JobRelease {
         job_id: String,
     },
+    /// The call waits for what outlives the backend, a vendor's media job,
+    /// and wrote nothing to its standard output: when the link's session
+    /// ends, the runner sends the call again, `resumed`, to the next one,
+    /// rather than ending it.
+    RpcResumable {
+        call_id: String,
+    },
     /// The call's pipe ends, sent before anything else for the call.
     RpcPipes {
         call_id: String,
@@ -1015,6 +1022,7 @@ impl Inbound {
             | Self::JobFollow { .. }
             | Self::JobRelease { .. }
             | Self::Manifest { .. }
+            | Self::RpcResumable { .. }
             | Self::RpcPipes { .. }
             | Self::RpcOutput { .. }
             | Self::RpcMedium { .. }
@@ -1436,7 +1444,9 @@ pub enum Outbound {
         error: Option<String>,
     },
     /// An `rpc` command invoked on the target. It names only its job; `stdin`
-    /// says whether the process has a pipe on fd 0.
+    /// says whether the process has a pipe on fd 0, and `resumed` whether
+    /// the call ran in a session that ended and is sent again, its id kept
+    /// (`Inbound::RpcResumable`).
     RpcCall {
         job_id: String,
         call_id: String,
@@ -1448,6 +1458,7 @@ pub enum Outbound {
         cwd: String,
         env: BTreeMap<String, String>,
         stdin: bool,
+        resumed: bool,
     },
     RpcCancel {
         call_id: String,

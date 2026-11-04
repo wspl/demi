@@ -39,6 +39,9 @@
 //!   END_STREAM: a caller that sent it in a second step could find the request
 //!   already reset, and a release the resident answered would look failed, which
 //!   retires the resident.
+//! - A resumable record goes only to a caller that asked for it: it names the
+//!   backend's call the invocation waits for, which a caller that loses its
+//!   runner asks the next runner to resume.
 //! - A medium is a medium record then its bytes, with no other record between.
 //!   Sizes that do not add up, bytes without a medium and a medium over
 //!   [`MAX_MEDIUM_BYTES`] break the protocol. The resident neither routes nor
@@ -229,6 +232,9 @@ pub enum Record {
     Medium { size: u64, facts: MediumFacts },
     /// Bytes of the medium that began last.
     MediumBytes(Bytes),
+    /// The invocation waits for backend call `0`, which outlives the
+    /// runner: a caller that asked to resume it sends it to the next one.
+    Resumable(String),
 }
 
 /// The payload of a medium record: its size, then its facts.
@@ -269,6 +275,7 @@ impl Record {
                 (5, Bytes::from(serde_json::to_vec(&header)?))
             }
             Self::MediumBytes(bytes) => (6, bytes.clone()),
+            Self::Resumable(call) => (7, Bytes::from(call.clone().into_bytes())),
         };
         if payload.len() > MAX_RECORD_BYTES {
             return Err(ProtocolError::TooLarge);
@@ -339,7 +346,7 @@ impl RecordDecoder {
             return Ok(None);
         }
         let kind = self.pending[0];
-        if !(1..=6).contains(&kind) {
+        if !(1..=7).contains(&kind) {
             return Err(ProtocolError::UnknownRecord);
         }
         let length = u32::from_be_bytes(self.pending[1..5].try_into().unwrap()) as usize;
@@ -383,6 +390,10 @@ impl RecordDecoder {
                 }
             }
             6 => Record::MediumBytes(payload),
+            7 => Record::Resumable(
+                String::from_utf8(payload.to_vec())
+                    .map_err(|_| ProtocolError::Invalid("a resumable record names its call in UTF-8".into()))?,
+            ),
             _ => unreachable!(),
         };
         Ok(Some(record))

@@ -27,7 +27,7 @@ use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_minimax::{MinimaxConfig, MinimaxProvider, Region};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
 use demi_shared_types::{Clock, SystemClock, VideoResolution, WireApi};
-use futures_util::StreamExt;
+
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -199,9 +199,8 @@ impl Vendor {
     async fn asked(&self, provider: &dyn Provider, http: &ProviderHttp, catalog: &Catalog, request: VideoRequest) -> Vec<String> {
         self.seen.lock().expect("the record").clear();
         let videos = provider.videos().expect("the provider makes videos");
-        let mut steps = videos.run(http, catalog, request, Duration::from_millis(1));
         // The deadline only guards against a maker that never gives up.
-        tokio::time::timeout(Duration::from_secs(10), async { while steps.next().await.is_some() {} })
+        tokio::time::timeout(Duration::from_secs(10), videos.ask(http, catalog, request))
             .await
             .expect("the maker gives up on a refused ask");
         self.seen.lock().expect("the record").clone()

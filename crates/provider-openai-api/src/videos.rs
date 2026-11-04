@@ -9,11 +9,10 @@ use demi_provider_common::{
     Secret, endpoint_url,
     media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor},
     media_catalog::Catalog,
-    videos::{self, JobRef, JobState, JobStep, PolledVideos, VideoMaker, VideoRequest, xai},
+    videos::{self, JobRef, JobState, VideoMaker, VideoRequest, xai},
 };
 use demi_shared_types::Clock;
 use futures_util::future::BoxFuture;
-use futures_util::stream::BoxStream;
 use reqwest::{
     Url,
     header::{AUTHORIZATION, HeaderMap},
@@ -78,23 +77,11 @@ impl MediaMaker for KeyVideos {
 }
 
 impl VideoMaker for KeyVideos {
-    fn run<'a>(
-        &'a self,
-        http: &'a demi_provider_common::ProviderHttp,
-        catalog: &'a Catalog,
-        request: VideoRequest,
-        every: std::time::Duration,
-    ) -> BoxStream<'a, MediaAnswer<JobStep>> {
-        videos::polled(self, http, catalog, request, every)
-    }
-
     /// xAI's address is temporary and takes no header.
     fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, url: &'a Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
         Box::pin(videos::download("xAI", &*self.clock, http, url, &self.base, HeaderMap::new()))
     }
-}
 
-impl PolledVideos for KeyVideos {
     fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         Box::pin(async move {
             let url = self.url("/videos/generations");

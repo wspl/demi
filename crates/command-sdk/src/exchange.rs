@@ -41,6 +41,13 @@ pub trait OutputSink {
         facts: MediumFacts,
         bytes: Bytes,
     ) -> impl Future<Output = Result<(), Self::Error>>;
+
+    /// The invocation waits for backend call `call`, which a caller that
+    /// asked for it resumes on the next runner ([`Record::Resumable`]).
+    fn resumable(&mut self, call: String) -> impl Future<Output = Result<(), Self::Error>> {
+        let _ = call;
+        std::future::ready(Ok(()))
+    }
 }
 
 /// Which side of an exchange failed.
@@ -123,6 +130,9 @@ impl Exchange {
                         )
                     })?,
                     Record::Completion(value) => completion = Some(value),
+                    Record::Resumable(call) => {
+                        sink.resumable(call).await.map_err(ExchangeError::Output)?
+                    }
                 }
                 if let Some((size, _, received)) = &medium
                     && received.len() as u64 == *size

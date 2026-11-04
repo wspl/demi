@@ -168,16 +168,6 @@ impl MediaMaker for Hailuo {
 }
 
 impl VideoMaker for Hailuo {
-    fn run<'a>(
-        &'a self,
-        http: &'a demi_provider_common::ProviderHttp,
-        catalog: &'a demi_provider_common::media_catalog::Catalog,
-        request: VideoRequest,
-        every: std::time::Duration,
-    ) -> futures_util::stream::BoxStream<'a, MediaAnswer<demi_provider_common::videos::JobStep>> {
-        demi_provider_common::videos::polled(self, http, catalog, request, every)
-    }
-
     fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, url: &'a reqwest::Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
         Box::pin(videos::download(minimax::LABEL, &*self.clock, http, url, &self.origin, HeaderMap::new()))
     }
@@ -198,9 +188,7 @@ impl VideoMaker for Hailuo {
             }
         }))
     }
-}
 
-impl demi_provider_common::videos::PolledVideos for Hailuo {
     fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, catalog: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         Box::pin(async move {
             let api = match self.api(catalog, &request.model) {

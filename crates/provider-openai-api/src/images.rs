@@ -7,6 +7,9 @@
 //! - the models the vendor lists for the key, read when asked;
 //! - the vendor's failures, read as its text failures are: a usage or billing
 //!   limit used up and a refused key named.
+//!
+//! An xAI image is a job, asked `deferred` (`images::xai`), whose image is
+//! downloaded from its address; OpenAI's Image API answers in one request.
 
 use std::sync::Arc;
 
@@ -16,10 +19,11 @@ use demi_provider_common::{
     images::{ImageMaker, ImageRequest, MadeImage, openai, read_data_answer, xai},
     media::{
         MediaAnswer, MediaCall, MediaCredential, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, created_date,
-        unreadable, vendor_message,
+        unreadable, vendor_message, within_limit,
+        jobs::{self, JobRef, JobState, Jobs},
     },
     media_catalog::Catalog,
-    json_body, read_http_failure,
+    json_body, read_http_failure, videos,
 };
 use demi_shared_types::Clock;
 use futures_util::future::BoxFuture;
@@ -39,6 +43,7 @@ enum Flavor {
 pub(crate) struct KeyImages {
     flavor: Flavor,
     key: Secret,
+    base: Url,
     generations: Url,
     edits: Url,
     models: Url,
@@ -59,6 +64,7 @@ impl KeyImages {
         };
         Self {
             flavor,
+            base: base.clone(),
             generations: endpoint_url(base, "/images/generations"),
             edits: endpoint_url(base, "/images/edits"),
             models: endpoint_url(base, models),
@@ -111,7 +117,7 @@ impl KeyImages {
                     prompt: &request.prompt,
                     model: &request.model,
                     aspect_ratio: request.aspect.map(|aspect| aspect.to_string()),
-                    response_format: "b64_json",
+                    deferred: true,
                     image,
                     images,
                 })
@@ -168,20 +174,62 @@ impl ImageMaker for KeyImages {
         request: ImageRequest,
     ) -> BoxFuture<'a, MediaAnswer<MadeImage>> {
         Box::pin(async move {
+            if let Some(jobs) = self.jobs() {
+                let model = request.model.clone();
+                return jobs::made(jobs, http, catalog, request, &model).await;
+            }
             let url = if request.images.is_empty() { &self.generations } else { &self.edits };
             let headers = self.headers();
-            let answer = self
-                .call()
-                .post_json(http, url, self.encode(catalog, &request), |_| {
-                    std::future::ready(Ok((headers.clone(), None)))
-                })
+            self.call()
+                .post_json(http, url, self.encode(catalog, &request), |_| std::future::ready(Ok((headers.clone(), None))))
                 .await
-                .and_then(|body| read_data_answer(&body));
-            match self.flavor {
-                // A refused shape is told with the shapes xAI named.
-                Flavor::Xai => xai::with_shapes(answer),
-                Flavor::OpenAi => answer,
-            }
+                .and_then(|body| read_data_answer(&body))
+        })
+    }
+
+    fn jobs(&self) -> Option<&dyn Jobs<ImageRequest, MadeImage>> {
+        matches!(self.flavor, Flavor::Xai).then_some(self)
+    }
+}
+
+/// An xAI key's deferred images.
+impl Jobs<ImageRequest, MadeImage> for KeyImages {
+    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, catalog: &'a Catalog, request: ImageRequest) -> BoxFuture<'a, MediaAnswer<String>> {
+        Box::pin(async move {
+            let url = if request.images.is_empty() { &self.generations } else { &self.edits };
+            let headers = self.headers();
+            let asked = self
+                .call()
+                .post_json(http, url, self.encode(catalog, &request), |_| std::future::ready(Ok((headers.clone(), None))))
+                .await
+                .and_then(|body| videos::xai::read_asked(&body));
+            // A refused shape is told with the shapes xAI named.
+            xai::with_shapes(asked)
+        })
+    }
+
+    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState<MadeImage>>> {
+        Box::pin(async move {
+            let url = endpoint_url(&self.base, &format!("/images/{}", job.id));
+            let read = self.call().get(http, &url, self.headers()).await.and_then(|body| xai::read_state(&body));
+            let mut observed = Vec::new();
+            let result = match read {
+                Ok(JobState::Done(image)) => {
+                    let label = MediaVendor::Xai.name();
+                    let downloaded = videos::download(label, &*self.clock, http, &image.url, &self.base, self.headers()).await;
+                    observed.extend(downloaded.observed);
+                    downloaded.result.and_then(|bytes| within_limit(bytes, "image")).map(|bytes| {
+                        JobState::Done(MadeImage { bytes, usage: None, vendor_id: Some(job.id.to_owned()), cost: image.cost })
+                    })
+                }
+                Ok(JobState::Queued) => Ok(JobState::Queued),
+                Ok(JobState::Running { progress }) => Ok(JobState::Running { progress }),
+                Ok(JobState::Failed { reason, trace }) => Ok(JobState::Failed { reason, trace }),
+                Ok(JobState::Expired) => Ok(JobState::Expired),
+                Ok(JobState::Lost) => Ok(JobState::Lost),
+                Err(failure) => Err(failure),
+            };
+            MediaAnswer { result, observed }
         })
     }
 }
@@ -260,13 +308,14 @@ struct OpenAiImage {
     image_url: String,
 }
 
+/// A deferred request: xAI then answers the image only at an address.
 #[derive(Serialize)]
 struct XaiBody<'a> {
     prompt: &'a str,
     model: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     aspect_ratio: Option<String>,
-    response_format: &'static str,
+    deferred: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     image: Option<XaiImage>,
     #[serde(skip_serializing_if = "Vec::is_empty")]

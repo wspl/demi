@@ -22,7 +22,7 @@ use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_backend_host_access::stream::{ResidentBinding, ResidentCall, UserCallError, UserCallKind};
 use demi_backend_page_sync::Part;
 use demi_backend_host_access::host_commands::reachable;
-use demi_plugin_host::{Lost, ProductPort, ReadOn, VideoJob};
+use demi_plugin_host::{Lost, MediaCall, ProductPort, ReadOn, VideoJob};
 use demi_backend_providers::vault::seal::Row;
 use demi_runner_client::ResidentCallError;
 use demi_command_declarations::NativeOperation;
@@ -204,12 +204,13 @@ impl ProductPort for ShardPort {
         &'a self,
         conversation: &'a ConversationId,
         caller: Option<&'a JobCaller>,
+        call: &'a MediaCall,
         ask: ImageAsk,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<MadeImage, PortFailure>> {
         Box::pin(async move {
             let shard = self.shard()?;
-            super::media::make_image(&shard, conversation, caller, ask, cancel).await
+            super::media::make_image(&shard, conversation, caller, call, ask, cancel).await
         })
     }
 
@@ -217,12 +218,13 @@ impl ProductPort for ShardPort {
         &'a self,
         conversation: &'a ConversationId,
         caller: Option<&'a JobCaller>,
+        call: &'a MediaCall,
         ask: VideoAsk,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<(AskedVideo, VideoJob), PortFailure>> {
         Box::pin(async move {
             let shard = self.shard()?;
-            super::media::make_video(&shard, conversation, caller, ask, cancel).await
+            super::media::make_video(&shard, conversation, caller, call, ask, cancel).await
         })
     }
 
@@ -230,12 +232,13 @@ impl ProductPort for ShardPort {
         &'a self,
         conversation: &'a ConversationId,
         caller: Option<&'a JobCaller>,
+        call: &'a MediaCall,
         ask: AudioAsk,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<MadeAudio, PortFailure>> {
         Box::pin(async move {
             let shard = self.shard()?;
-            super::media::make_audio(&shard, conversation, caller, ask, cancel).await
+            super::media::make_audio(&shard, conversation, caller, call, ask, cancel).await
         })
     }
 

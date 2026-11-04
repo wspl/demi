@@ -15,10 +15,12 @@
 //! A call belongs to its device's session, not to the connection it started
 //! on ([`crate::session::DeviceSession`]): its handler goes on when the
 //! connection drops, the messages it sends wait for the next one, and only the
-//! end of the session, of its job or of the device stops it.
+//! end of the session, of its job or of the device stops it. A resumable call
+//! that its session's end stops tells the runner no end: the runner sends it
+//! again to the next session.
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::BTreeMap,
     rc::Rc,
 };
@@ -88,6 +90,8 @@ pub(crate) struct RpcCall {
     pub(crate) cwd: String,
     pub(crate) env: BTreeMap<String, String>,
     pub(crate) stdin: bool,
+    /// Sent again after the session it ran in ended.
+    pub(crate) resumed: bool,
 }
 
 /// Why a call stopped before its handler finished.
@@ -119,6 +123,11 @@ pub(crate) struct CallEntry {
     /// The first cause that stopped the call.
     cause: RefCell<Option<Stop>>,
     pipes: RefCell<Option<CallPipes>>,
+    /// The backend told the runner the call is resumable.
+    resumable: Cell<bool>,
+    /// The call stopped with a session that the runner sends it again
+    /// after, when it is resumable.
+    returns: Cell<bool>,
 }
 
 /// The pipes a call relays, once minted: its standard streams, and the
@@ -144,7 +153,22 @@ impl CallEntry {
             handler: RefCell::new(None),
             cause: RefCell::new(None),
             pipes: RefCell::new(None),
+            resumable: Cell::new(false),
+            returns: Cell::new(false),
         })
+    }
+
+    /// Says the call's session ended, and whether a resumable call comes
+    /// back to the next.
+    pub(crate) fn lose(&self, returns: bool) {
+        self.returns.set(returns);
+    }
+
+    /// Whether the call, stopped, comes back: it was resumable and its
+    /// session ended, so the runner sends it again, and its end here tells
+    /// the runner nothing.
+    fn comes_back(&self) -> bool {
+        self.resumable.get() && self.returns.get()
     }
 
     /// Ends the call's finite standard input as finished, read or unread:
@@ -243,6 +267,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
             (Err(Ended::Failed(_)), None) if no_origin => ("refused", Some("no_origin"), None),
             (Err(Ended::Failed(_)), None) => ("failed", Some("handler_failed"), None),
         };
+        let cause = entry.cause();
         tracing::info!(
             event = "rpc_call.ended",
             host_id = relaying.device(),
@@ -251,10 +276,16 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
             command = command.as_str(),
             outcome,
             reason,
+            cause = cause.as_ref().map(Stop::text),
             exit,
             ms = began.elapsed().as_millis() as u64,
             "a runner's call of a demi command ended"
         );
+        if entry.comes_back() {
+            relaying.session.remove_call(&call_id);
+            entry.stop(Stop::Ended("rpc call ended".into()));
+            return;
+        }
         let exit_code = match ran {
             Ok(code) => code,
             Err(ended) => {
@@ -297,7 +328,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
         let (relaying, entry, call_id) = (link.call_env(), entry_for_abort, call_id_for_abort);
         let command = command_for_abort;
         move || {
-            if relaying.session.remove_call(&call_id).is_none() {
+            if relaying.session.remove_call(&call_id).is_none() || entry.comes_back() {
                 return;
             }
             entry.finish_input();
@@ -390,6 +421,8 @@ async fn run(
     };
     link.send(&pipes).map_err(|error| error.to_string())?;
     let invocation = RpcInvocation {
+        call_id: call.call_id.clone(),
+        resumed: call.resumed,
         path: call.path,
         argv: call.argv,
         args: call.args,
@@ -434,6 +467,9 @@ async fn run(
     // A relayed pipe that fails stops the call; the handler is awaited to
     // its end all the same, since it may be committing, until the
     // connection's end gives up on it after its grace (`link::END_GRACE`).
+    // A resumable call whose output has not begun outlives its pipe, which
+    // its runner's going away fails: the end of the session stops it, and
+    // the runner sends it again.
     let broken = {
         let stdout = stdout.failed();
         let stdin = stdin.as_ref().map(Pipe::failed);
@@ -454,7 +490,11 @@ async fn run(
             result = &mut handler => break result,
             failure = &mut broken, if watching => {
                 watching = false;
-                entry.stop(Stop::Ended(failure.reason().to_owned()));
+                if entry.resumable.get() && port.untouched() {
+                    tracing::info!(event = "rpc_call.pipe_lost", call = %port.call_id, reason = failure.reason(), "a resumable call's pipe ended; the call waits for its session");
+                } else {
+                    entry.stop(Stop::Ended(failure.reason().to_owned()));
+                }
             }
         }
     };
@@ -607,6 +647,10 @@ impl RelayPort {
 }
 
 impl PortTransport for RelayPort {
+    fn comes_back(&self) -> bool {
+        self.entry.comes_back()
+    }
+
     fn request(&self, request: PortRequest) -> LocalBoxFuture<'_, Result<PortResponse, PortError>> {
         Box::pin(async move {
             match request {
@@ -637,12 +681,30 @@ impl PortTransport for RelayPort {
                     self.write_medium(facts, bytes.into_bytes()).await?;
                     Ok(PortResponse::Written {})
                 }
+                PortRequest::Resumable {} => {
+                    // A call whose output began, or that reads its input,
+                    // cannot start over.
+                    if self.untouched() {
+                        let resumable = Inbound::RpcResumable { call_id: self.call_id.clone() };
+                        self.link
+                            .send(&resumable)
+                            .map_err(|error| PortError::Ended(error.to_string()))?;
+                        self.entry.resumable.set(true);
+                    }
+                    Ok(PortResponse::Written {})
+                }
             }
         })
     }
 }
 
 impl RelayPort {
+    /// Whether the call could start over: its output has not begun and it
+    /// has no input.
+    fn untouched(&self) -> bool {
+        matches!(*self.stdout.borrow(), Stdout::Held(_)) && self.stdin.borrow().is_none()
+    }
+
     /// Says whether the call waits for the user's answer, under a key of the
     /// call's own.
     fn await_user(&self, awaits: bool) {

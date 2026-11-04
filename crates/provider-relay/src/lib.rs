@@ -16,7 +16,7 @@
 //! |   delta::Outbox         |                   |   delta::Inbox           |
 //! |                    <----+-- events ---------+-- the entry's runtime    |
 //! | media: Remote     ------+-- POST, a call -->|   channel::serve         |
-//! |                    <----+-- its replies ----+-- the entry's maker      |
+//! |                    <----+-- its reply ------+-- the entry's maker      |
 //! +-------------------------+                   +--------------------------+
 //!   GET provider: name, catalog, limits  ------>
 //! ```

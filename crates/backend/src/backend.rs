@@ -550,6 +550,14 @@ impl Backend {
             demi_backend_user_shard::schedules::start_schedulers(&services.control, &shards.shards()),
         )
         .await;
+        // Each media job a vendor took before the restart is followed to
+        // its end, whether or not its call comes back. A failure does not
+        // stop the start: a user's next call follows them.
+        start_step(
+            "media_jobs",
+            demi_backend_user_shard::shard::start_media_followers(&services.control, &shards.shards()),
+        )
+        .await;
         // Each user's search index catches up with the conversations, in the
         // background (`crates/backend-database/src/search.rs`). A failure
         // does not stop the start: a conversation not indexed here is

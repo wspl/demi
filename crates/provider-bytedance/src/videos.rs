@@ -107,16 +107,6 @@ impl MediaMaker for ArkVideos {
 }
 
 impl VideoMaker for ArkVideos {
-    fn run<'a>(
-        &'a self,
-        http: &'a demi_provider_common::ProviderHttp,
-        catalog: &'a demi_provider_common::media_catalog::Catalog,
-        request: VideoRequest,
-        every: std::time::Duration,
-    ) -> futures_util::stream::BoxStream<'a, MediaAnswer<demi_provider_common::videos::JobStep>> {
-        demi_provider_common::videos::polled(self, http, catalog, request, every)
-    }
-
     /// The video's address is temporary and takes no header.
     fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, url: &'a reqwest::Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
         Box::pin(videos::download("Ark", &*self.clock, http, url, &self.base, HeaderMap::new()))
@@ -134,9 +124,7 @@ impl VideoMaker for ArkVideos {
             }
         }))
     }
-}
 
-impl demi_provider_common::videos::PolledVideos for ArkVideos {
     fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         Box::pin(async move {
             let body = Bytes::from(encode(&request));

@@ -2964,6 +2964,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -3105,10 +3106,10 @@ dependencies = [
  "demi-provider-common",
  "demi-shared-types",
  "futures-util",
- "hex",
  "reqwest",
  "serde",
  "serde_json",
+ "tar",
 ]
 
 [[package]]

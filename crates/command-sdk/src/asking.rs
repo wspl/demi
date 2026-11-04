@@ -249,8 +249,8 @@ impl RequestStream {
                         "a command stream's resident wrote to its standard error"
                     ),
                     // A stream's writer refuses media.
-                    Some(Record::Medium { .. } | Record::MediumBytes(_)) => {
-                        return Err(ProtocolError::Invalid(format!("a medium on the {} stream", A::NAME)).into());
+                    Some(Record::Medium { .. } | Record::MediumBytes(_) | Record::Resumable(_)) => {
+                        return Err(ProtocolError::Invalid(format!("an invocation's record on the {} stream", A::NAME)).into());
                     }
                     // The resident ended the stream, as its shutdown does.
                     Some(Record::Completion(_)) | None => return Ok(()),

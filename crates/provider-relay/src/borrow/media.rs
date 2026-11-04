@@ -8,7 +8,8 @@ use demi_provider_common::media::channel::{Call, Channel, NO_REASON, Reply};
 use demi_provider_common::media::{MediaFailure, transport, unreadable};
 use demi_provider_common::{ErrorCode, ProviderHttp};
 use demi_shared_types::{MediaKind, VendorTrace};
-use futures_util::stream::{BoxStream, StreamExt as _};
+use futures_util::future::BoxFuture;
+use futures_util::stream::StreamExt as _;
 use http::Method;
 
 use super::{Config, Refusal};
@@ -51,78 +52,46 @@ impl Channel for Relay {
         }
     }
 
-    fn call<'a>(&'a self, http: &'a ProviderHttp, kind: MediaKind, call: Call) -> BoxStream<'a, Result<Reply, MediaFailure>> {
-        async_stream::stream! {
+    fn call<'a>(&'a self, http: &'a ProviderHttp, kind: MediaKind, call: Call) -> BoxFuture<'a, Result<Reply, MediaFailure>> {
+        Box::pin(async move {
             let url = self.0.route(&kind_route(kind));
-            let Some(body) = frame(&call) else {
-                yield Err(unreadable("its call could not be sent".to_owned()));
-                return;
-            };
+            let body = frame(&call).ok_or_else(|| unreadable("its call could not be sent".to_owned()))?;
             let request = self
                 .0
                 .authorized(http.request(Method::POST, url))
                 .header(http::header::CONTENT_TYPE, "application/octet-stream")
                 .body(body);
-            let response = match request.send().await {
-                Ok(response) => response,
-                Err(error) => {
-                    yield Err(transport(error.without_url()));
-                    return;
-                }
-            };
+            let response = request.send().await.map_err(|error| transport(error.without_url()))?;
             let status = response.status();
             if !status.is_success() {
-                yield Err(self.refused(kind, status));
-                return;
+                return Err(self.refused(kind, status));
             }
             let mut frames = Frames::default();
             let mut body = response.bytes_stream();
-            let mut ended = false;
             loop {
-                match frames.next() {
-                    Ok(Some(message)) => match decoded::<Reply>(&message) {
-                        Some(reply) => {
-                            ended = reply.is_last();
-                            yield Ok(reply);
-                            continue;
-                        }
-                        None => {
-                            yield Err(unreadable(format!("{} answered what no lender answers", self.0.lender)));
-                            return;
-                        }
-                    },
-                    Ok(None) => {}
-                    Err(error) => {
-                        yield Err(unreadable(error.to_string()));
-                        return;
-                    }
+                if let Some(message) = frames.next().map_err(|error| unreadable(error.to_string()))? {
+                    return decoded::<Reply>(&message)
+                        .ok_or_else(|| unreadable(format!("{} answered what no lender answers", self.0.lender)));
                 }
                 match body.next().await {
                     Some(Ok(chunk)) => frames.push(&chunk),
-                    Some(Err(error)) => {
-                        yield Err(transport(error.without_url()));
-                        return;
-                    }
+                    Some(Err(error)) => return Err(transport(error.without_url())),
+                    None if frames.is_partial() => return Err(unreadable("its answer ended within a message".to_owned())),
                     None => {
-                        if frames.is_partial() {
-                            yield Err(unreadable("its answer ended within a message".to_owned()));
-                        } else if !ended {
-                            // A revoked key ends its calls: the call says so
-                            // rather than that its answer ended.
-                            if let Err(refusal) = self.0.lending().await {
-                                yield Err(MediaFailure::Unanswered {
-                                    cause: refusal.message(&self.0),
-                                    code: refusal.code(),
-                                    trace: VendorTrace::default(),
-                                });
-                            }
-                        }
-                        return;
+                        // A revoked key ends its calls: the call says so
+                        // rather than that its answer ended.
+                        return Err(match self.0.lending().await {
+                            Err(refusal) => MediaFailure::Unanswered {
+                                cause: refusal.message(&self.0),
+                                code: refusal.code(),
+                                trace: VendorTrace::default(),
+                            },
+                            Ok(_) => unreadable("its answer ended before its reply".to_owned()),
+                        });
                     }
                 }
             }
-        }
-        .boxed()
+        })
     }
 
     fn worded(&self, _: MediaKind, failure: MediaFailure) -> MediaFailure {

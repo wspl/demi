@@ -10,6 +10,7 @@
 mod audio;
 mod files;
 mod images;
+mod interactions;
 mod request;
 mod stream;
 mod videos;

@@ -5,7 +5,8 @@
 //!
 //! - the drafts of the user's conversations and the messages they keep saved for
 //!   later;
-//! - the plugins' values and Host directories.
+//! - the plugins' values and Host directories;
+//! - the files of the media jobs no call collected yet.
 //!
 //! In each of the user's conversation databases:
 //!
@@ -32,6 +33,7 @@ use super::command_outputs::{self, OutputRow};
 use super::control::ControlService;
 use super::{conversation_attachments, shares};
 use super::drafts::draft_blobs;
+use super::media_jobs::media_job_blobs;
 use super::plugin_values::plugin_blobs;
 
 /// What the control database says about a user's blobs.
@@ -60,6 +62,7 @@ impl ControlService {
             let mut references = ControlReferences::default();
             references.blobs.extend(draft_blobs(&transaction, &owner)?);
             references.blobs.extend(plugin_blobs(&transaction, &owner)?);
+            references.blobs.extend(media_job_blobs(&transaction, &owner)?);
             {
                 let mut uploads = transaction.prepare(
                     "SELECT sha256 FROM attachments WHERE user_id = ?1 AND created_at > ?2",

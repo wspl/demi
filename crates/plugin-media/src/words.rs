@@ -79,6 +79,9 @@ pub fn refusal_words(kind: MediaKind, refusal: &MediaRefusal, aspect: Option<Ima
             format!("\"{model}\" makes no {}; it makes {}", asked.words(), listed(&made))
         }
         MediaRefusal::JobExpired { vendor } => format!("the job expired at {vendor} before it ran"),
+        MediaRefusal::JobLost { vendor } => {
+            format!("{vendor} no longer knows the job, as after a restart; nothing more can be read of it")
+        }
         MediaRefusal::NoChange { model, change } => {
             let verb = match change {
                 VideoChange::Edit => "edits",

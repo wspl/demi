@@ -58,11 +58,44 @@ use crate::commands::compose;
 use crate::oauth::{Callback, CallbackError, SignIns};
 use crate::web;
 
-/// A video's job as the product runs it: each change of its state, then
-/// its video or the failure that ended it. Dropped before its video, the
-/// job's waiting ends and the job is cancelled where the vendor can cancel
-/// one.
+/// A video's job as the product follows it: each change of its state, then
+/// its video or the failure that ended it. Dropped, only the waiting ends:
+/// the job is the product's to follow to its end, and only a stop of the
+/// call cancels it.
 pub type VideoJob = LocalBoxStream<'static, Result<VideoStep, PortFailure>>;
+
+/// The call a media request belongs to, by which the product keeps the job
+/// a vendor took for it.
+#[derive(Clone)]
+pub struct MediaCall {
+    /// The `rpc` call's id, which the runner keeps when it sends the call
+    /// again after a restart; a request of no call has one of its own.
+    pub id: String,
+    /// The request's place among the call's media requests, the first 0.
+    pub ordinal: u32,
+    /// Whether the runner sent the call again after a restart: the request
+    /// follows the job the first one asked for rather than asking again.
+    pub resumed: bool,
+    /// The call's port, for a command's call.
+    pub rpc: Option<RpcPort>,
+}
+
+impl MediaCall {
+    /// Says the call waits for a job the product keeps, which a call sent
+    /// again after a restart finds ([`RpcPort::resumable`]).
+    pub async fn resumable(&self) {
+        if let Some(rpc) = &self.rpc
+            && let Err(error) = rpc.resumable().await
+        {
+            tracing::warn!(event = "rpc_call.resumable_unsent", %error, "a call was not marked resumable");
+        }
+    }
+
+    /// Whether the call, stopped, comes back ([`RpcPort::comes_back`]).
+    pub fn comes_back(&self) -> bool {
+        self.rpc.as_ref().is_some_and(RpcPort::comes_back)
+    }
+}
 
 /// What the product does for the plugins' port: the operations that reach
 /// a conversation's Hosts through its host access, and the user's blobs.
@@ -116,11 +149,12 @@ pub trait ProductPort {
     /// Makes the image `ask` names for the conversation, through the entry
     /// and account the providers choose; its usage ledger row names the
     /// agent and the turn of `caller`, the job that called the command, if
-    /// any.
+    /// any. A vendor's job is kept as [`ProductPort::make_video`] keeps it.
     fn make_image<'a>(
         &'a self,
         conversation: &'a ConversationId,
         caller: Option<&'a JobCaller>,
+        call: &'a MediaCall,
         ask: ImageAsk,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<MadeImage, PortFailure>>;
@@ -128,23 +162,27 @@ pub trait ProductPort {
     /// Asks for the video `ask` names for the conversation, through the
     /// entry and account the providers choose, and answers the job the
     /// vendor took with its steps; its usage ledger row names the agent and
-    /// the turn of `caller`. Dropping the steps before the video ends the
-    /// job's waiting and cancels it where the vendor can.
+    /// the turn of `caller`. A resumed `call` follows the job its first
+    /// asked for. `cancel` stops the call and cancels the job where the
+    /// vendor can, unless the product is closing.
     fn make_video<'a>(
         &'a self,
         conversation: &'a ConversationId,
         caller: Option<&'a JobCaller>,
+        call: &'a MediaCall,
         ask: VideoAsk,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<(AskedVideo, VideoJob), PortFailure>>;
 
     /// Makes the audio `ask` names for the conversation, through the entry
     /// the providers choose; its usage ledger row names the agent and the
-    /// turn of `caller`.
+    /// turn of `caller`. A vendor's job is kept as
+    /// [`ProductPort::make_video`] keeps it.
     fn make_audio<'a>(
         &'a self,
         conversation: &'a ConversationId,
         caller: Option<&'a JobCaller>,
+        call: &'a MediaCall,
         ask: AudioAsk,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<MadeAudio, PortFailure>>;
@@ -365,7 +403,7 @@ impl Shared {
         rpc: Option<RpcPort>,
         cancel: CancellationToken,
     ) -> Result<Reply, PluginError> {
-        let (caller, read_on) = match (&request, host) {
+        let (caller, read_on, call) = match (&request, host) {
             (Request::Command { invocation, .. }, _) => {
                 let caller = invocation.caller.clone();
                 // A Host name that is no device's reads nowhere; the read
@@ -374,11 +412,13 @@ impl Shared {
                     Ok(device) => ReadOn::Job { device, directory: invocation.cwd.clone() },
                     Err(_) => ReadOn::Primary,
                 };
-                (caller, read_on)
+                let call = (!invocation.call_id.is_empty()).then(|| (invocation.call_id.clone(), invocation.resumed));
+                (caller, read_on, call)
             }
-            (_, Some(device)) => (None, ReadOn::PrimaryOf(device)),
-            (_, None) => (None, ReadOn::Primary),
+            (_, Some(device)) => (None, ReadOn::PrimaryOf(device), None),
+            (_, None) => (None, ReadOn::Primary, None),
         };
+        let call = call.unwrap_or_else(|| (format!("{:032x}", rand::random::<u128>()), false));
         let transport = RequestPort {
             shared: self.clone(),
             plugin,
@@ -387,6 +427,8 @@ impl Shared {
             cancel: cancel.clone(),
             read_on,
             caller,
+            call,
+            media_asked: std::cell::Cell::new(0),
             video: RefCell::new(None),
         };
         let enabled = self.enabled().await.map_err(PluginError::failed)?;
@@ -1527,12 +1569,23 @@ struct RequestPort {
     /// The job that called the command, for a command an agent's job
     /// called.
     caller: Option<JobCaller>,
+    /// The id of the request's call, and whether the runner sent it again.
+    call: (String, bool),
+    /// How many media requests it made.
+    media_asked: std::cell::Cell<u32>,
     /// The request's video's job, from its ask to its video; dropped with
     /// the request.
     video: RefCell<Option<VideoJob>>,
 }
 
 impl RequestPort {
+    /// The call of the request's next media request.
+    fn media_call(&self) -> MediaCall {
+        let ordinal = self.media_asked.get();
+        self.media_asked.set(ordinal + 1);
+        MediaCall { id: self.call.0.clone(), ordinal, resumed: self.call.1, rpc: self.rpc.clone() }
+    }
+
     async fn answer(&self, message: PortMessage) -> Result<PortAnswer, PortFailure> {
         let shared = &self.shared;
         let product = &*shared.product;
@@ -1780,26 +1833,33 @@ impl RequestPort {
             PortMessage::MediaModels { kind } => PortAnswer::MediaModels {
                 listing: product.media_models(kind).await?,
             },
-            PortMessage::MakeImage { ask } => PortAnswer::Image {
-                image: product
-                    .make_image(self.conversation()?, self.caller.as_ref(), ask, &self.cancel)
-                    .await?,
-            },
+            PortMessage::MakeImage { ask } => {
+                let call = self.media_call();
+                PortAnswer::Image {
+                    image: product
+                        .make_image(self.conversation()?, self.caller.as_ref(), &call, ask, &self.cancel)
+                        .await?,
+                }
+            }
             PortMessage::MakeVideo { ask } => {
                 if self.video.borrow().is_some() {
                     return Err(Self::job_failure("the call has a video's job already"));
                 }
+                let call = self.media_call();
                 let (asked, job) = product
-                    .make_video(self.conversation()?, self.caller.as_ref(), ask, &self.cancel)
+                    .make_video(self.conversation()?, self.caller.as_ref(), &call, ask, &self.cancel)
                     .await?;
                 self.video.replace(Some(job));
                 PortAnswer::VideoAsked { asked }
             }
-            PortMessage::MakeAudio { ask } => PortAnswer::Audio {
-                audio: product
-                    .make_audio(self.conversation()?, self.caller.as_ref(), ask, &self.cancel)
-                    .await?,
-            },
+            PortMessage::MakeAudio { ask } => {
+                let call = self.media_call();
+                PortAnswer::Audio {
+                    audio: product
+                        .make_audio(self.conversation()?, self.caller.as_ref(), &call, ask, &self.cancel)
+                        .await?,
+                }
+            }
             PortMessage::AudioVoices { model, search } => PortAnswer::AudioVoices {
                 voices: product.audio_voices(self.conversation()?, model, search, &self.cancel).await?,
             },

@@ -13,10 +13,11 @@ use std::fmt;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bytes::Bytes;
-use demi_shared_types::{B64Bytes, TokenUsage};
+use demi_shared_types::{B64Bytes, Cost, TokenUsage};
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
+use crate::media::jobs::Jobs;
 use crate::media::{MediaAnswer, MediaFailure, MediaMaker, unreadable};
 use crate::media_catalog::{Catalog, ImageSize};
 
@@ -24,13 +25,20 @@ use crate::media_catalog::{Catalog, ImageSize};
 pub trait ImageMaker: MediaMaker {
     /// Makes one image for the provider's account or key, sending with
     /// `http`, the client of the shard that asks; `catalog` says what the
-    /// model takes.
+    /// model takes. A maker of [`ImageMaker::jobs`] waits for the job.
     fn make<'a>(
         &'a self,
         http: &'a crate::ProviderHttp,
         catalog: &'a Catalog,
         request: ImageRequest,
     ) -> BoxFuture<'a, MediaAnswer<MadeImage>>;
+
+    /// Its images as jobs the vendor keeps by their ids, which outlive a
+    /// restart of the server; none for a vendor that answers in one
+    /// request only.
+    fn jobs(&self) -> Option<&dyn Jobs<ImageRequest, MadeImage>> {
+        None
+    }
 }
 
 /// The shape asked for, such as 16:9, which the plugin read and checks
@@ -150,6 +158,9 @@ pub struct MadeImage {
     /// relay.
     #[serde(skip)]
     pub vendor_id: Option<String>,
+    /// The cost the vendor reported, in its documented unit; none
+    /// otherwise.
+    pub cost: Option<Cost>,
 }
 
 /// The answer of the OpenAI-shaped image APIs, OpenAI's, xAI's and the
@@ -196,5 +207,6 @@ pub fn read_data_answer(text: &[u8]) -> Result<MadeImage, MediaFailure> {
         bytes: datum.b64_json.into_bytes(),
         usage,
         vendor_id: datum.generation_id,
+        cost: None,
     })
 }

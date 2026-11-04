@@ -449,9 +449,13 @@ pub struct AskedVideo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
     /// How the video an edit or an extension changes was sent; none for a
-    /// new video.
+    /// new video, and for a job followed again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<SentSource>,
+    /// Whether the call was sent again after a restart of the server and
+    /// follows the job its first asked for.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub resumed: bool,
 }
 
 /// What one wait for the job answers: its next state, or its video.
@@ -732,6 +736,9 @@ pub enum MediaRefusal {
     /// The job expired at the vendor before it ran.
     #[error("the job expired at {vendor} before it ran")]
     JobExpired { vendor: String },
+    /// The server that served the job through a channel no longer knows it.
+    #[error("{vendor} no longer knows the job")]
+    JobLost { vendor: String },
     /// The model's entry has no field for the change asked of a video.
     #[error("{model} cannot make the change asked of a video")]
     NoChange { model: String, change: VideoChange },

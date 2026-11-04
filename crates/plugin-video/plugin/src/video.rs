@@ -127,8 +127,12 @@ async fn generate(invocation: &RpcInvocation, port: &PluginPort, ask: VideoAsk, 
     let rpc = port.rpc();
     // The job is named at once: from here it runs, and is paid for, at the
     // vendor whatever becomes of the call.
-    rpc.stderr(format!("{command}: asked {} ({}), job {}\n", asked.model, entry(&asked), asked.job))
-        .await?;
+    let named = if asked.resumed {
+        format!("{command}: reconnected; following job {} again\n", asked.job)
+    } else {
+        format!("{command}: asked {} ({}), job {}\n", asked.model, entry(&asked), asked.job)
+    };
+    rpc.stderr(named).await?;
     let video = loop {
         let step = port
             .video_progress()

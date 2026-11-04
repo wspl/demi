@@ -1,13 +1,12 @@
 //! The video role of a provider.
 //!
-//! A provider that makes videos lists its video models and runs one job for its
-//! account or key as one stream of its steps: the job's id, then each change of
-//! its state until its end, whose video the role downloads. A whole job is one
-//! call, so it crosses a channel as one (`crate::media::channel`). Most vendors
-//! answer a job's ask with its id and are read until it ends ([`PolledVideos`],
-//! [`polled`]); one that streams the job's states, as Gemini Omni does, answers
-//! them as they come. The backend chooses the entry and the account, paces the
-//! reads and bounds the job.
+//! A provider that makes videos lists its video models and makes one job for
+//! its account or key in two steps that each stand alone: the ask, which the
+//! vendor answers with the job's id, and a read of the job by that id, which
+//! says its state, at its end the video and its cost. Nothing but the id joins
+//! them, so whoever keeps the id reads the job again after a restart of the
+//! server that asked. The backend chooses the entry and the account, keeps the
+//! job, paces the reads and downloads the video.
 //!
 //! A maker sends every option a request gives, each in its field. What a model
 //! takes is its catalog entry's to say: the call checks a request against it
@@ -19,12 +18,9 @@
 
 pub mod xai;
 
-use std::time::Duration;
-
 use bytes::Bytes;
-use demi_shared_types::{Clock, Cost, TokenUsage, VendorTrace, VideoResolution};
+use demi_shared_types::{Clock, Cost, TokenUsage, VideoResolution};
 use futures_util::future::BoxFuture;
-use futures_util::stream::{self, BoxStream, StreamExt as _};
 use http::HeaderMap;
 use reqwest::Url;
 use serde::Serialize;
@@ -61,17 +57,12 @@ pub fn content(request: &VideoRequest) -> Vec<Content> {
 
 /// A provider's video role.
 pub trait VideoMaker: MediaMaker {
-    /// The job `request` describes, as the vendor tells it: its id first,
-    /// then each state it reads or sends, the last of them its end;
-    /// `catalog` says what the model takes, and a vendor that is read is
-    /// read every `every`.
-    fn run<'a>(
-        &'a self,
-        http: &'a crate::ProviderHttp,
-        catalog: &'a Catalog,
-        request: VideoRequest,
-        every: Duration,
-    ) -> BoxStream<'a, MediaAnswer<JobStep>>;
+    /// Asks for the video `request` describes and answers the job's id;
+    /// `catalog` says what the model takes.
+    fn ask<'a>(&'a self, http: &'a crate::ProviderHttp, catalog: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>>;
+
+    /// Reads the state of the job `job` once.
+    fn state<'a>(&'a self, http: &'a crate::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>;
 
     /// The changes of a video its request has a field for; none for a
     /// vendor that only makes new ones.
@@ -94,65 +85,6 @@ pub trait VideoMaker: MediaMaker {
     fn cancel<'a>(&'a self, _http: &'a crate::ProviderHttp, _job: JobRef<'a>) -> Option<BoxFuture<'a, MediaAnswer<()>>> {
         None
     }
-}
-
-/// The role of a vendor whose job is asked once and then read until it
-/// ends, which [`polled`] makes its [`VideoMaker::run`] of.
-pub trait PolledVideos: VideoMaker {
-    /// Asks for the video `request` describes and answers the job's id;
-    /// `catalog` says what the model takes.
-    fn ask<'a>(&'a self, http: &'a crate::ProviderHttp, catalog: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>>;
-
-    /// Reads the state of the job `job` once.
-    fn state<'a>(&'a self, http: &'a crate::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>;
-}
-
-/// One step of a job as [`VideoMaker::run`] tells it.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-pub enum JobStep {
-    /// The vendor took the job, under its id.
-    Asked(String),
-    /// A state of the job; it ends with [`JobState::Done`],
-    /// [`JobState::Failed`] or [`JobState::Expired`].
-    State(JobState),
-}
-
-/// `maker`'s job as its ask and its reads every `every` tell it, the reads
-/// ending at the job's end or the first failure.
-pub fn polled<'a, M: PolledVideos + ?Sized>(
-    maker: &'a M,
-    http: &'a crate::ProviderHttp,
-    catalog: &'a Catalog,
-    request: VideoRequest,
-    every: Duration,
-) -> BoxStream<'a, MediaAnswer<JobStep>> {
-    let model = request.model.clone();
-    let asked = stream::once(maker.ask(http, catalog, request));
-    asked
-        .flat_map(move |answer| {
-            let id = answer.result.as_ref().ok().cloned();
-            let first = stream::once(std::future::ready(answer.and_then(|id| Ok(JobStep::Asked(id)))));
-            let reads = match id {
-                Some(id) => {
-                    let model = model.clone();
-                    stream::unfold(Some(id), move |id| {
-                        let model = model.clone();
-                        async move {
-                            let id = id?;
-                            tokio::time::sleep(every).await;
-                            let answer = maker.state(http, JobRef { id: &id, model: &model, catalog }).await;
-                            let ended = !matches!(answer.result, Ok(JobState::Queued | JobState::Running { .. }));
-                            let next = (!ended).then_some(id);
-                            Some((answer.and_then(|state| Ok(JobStep::State(state))), next))
-                        }
-                    })
-                    .boxed()
-                }
-                None => stream::empty().boxed(),
-            };
-            first.chain(reads)
-        })
-        .boxed()
 }
 
 /// What `demi video edit` and `demi video extend` ask of a video.
@@ -186,15 +118,7 @@ pub enum SourceVideo {
     Job(String),
 }
 
-/// A job a vendor took: its id at the vendor, and the model it makes as
-/// `catalog` states it, by which a vendor whose models take different
-/// requests, as MiniMax's do, reads its state.
-#[derive(Debug, Clone, Copy)]
-pub struct JobRef<'a> {
-    pub id: &'a str,
-    pub model: &'a str,
-    pub catalog: &'a Catalog,
-}
+pub use crate::media::jobs::JobRef;
 
 /// One video to make; an option left out is the vendor's default.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
@@ -311,27 +235,8 @@ fn either(values: &[String]) -> String {
     }
 }
 
-/// A job's state as one read of it says.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-pub enum JobState {
-    /// Waiting for the vendor to start it.
-    Queued,
-    /// Being made, with how far along when the vendor says.
-    Running { progress: Option<u8> },
-    /// Made, and where the video is.
-    Done(Done),
-    /// The vendor failed the video; `reason` is Demi's, for a failure it
-    /// read out of an answer, such as a video withheld, and `trace` what
-    /// the vendor said. Neither crosses a relay.
-    Failed {
-        #[serde(skip)]
-        reason: Option<String>,
-        #[serde(skip)]
-        trace: VendorTrace,
-    },
-    /// The job expired at the vendor before it ran.
-    Expired,
-}
+/// A video's job's state as one read of it says.
+pub type JobState = crate::media::jobs::JobState<Done>;
 
 /// A finished job: its video and what the vendor said it cost.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]

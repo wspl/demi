@@ -81,7 +81,9 @@ async fn echo(client: &Client, size: usize, delay: Duration) -> Result<(), Error
                 input.write(bytes).await?;
             }
             Record::InputPull => input.end()?,
-            Record::Medium { .. } | Record::MediumBytes(_) => unreachable!("echo returns no media"),
+            Record::Medium { .. } | Record::MediumBytes(_) | Record::Resumable(_) => {
+                unreachable!("echo returns no media and waits for no call")
+            }
             Record::Stdout(bytes) => {
                 assert!(bytes.iter().all(|byte| *byte == 0xa5));
                 received += bytes.len();

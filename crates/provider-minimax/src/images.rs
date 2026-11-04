@@ -126,7 +126,7 @@ fn read_answer(body: &[u8]) -> Result<MadeImage, MediaFailure> {
         serde_json::from_slice(body).map_err(|error| unreadable(format!("its answer could not be read: {error}")))?;
     let image = answer.data.and_then(|data| data.image_base64.into_iter().next());
     match image {
-        Some(image) => Ok(MadeImage { bytes: image.into_bytes(), usage: None, vendor_id: answer.id }),
+        Some(image) => Ok(MadeImage { bytes: image.into_bytes(), usage: None, cost: None, vendor_id: answer.id }),
         None => Err(MediaFailure::Refused { reason: Some("it blocked the image for its content".to_owned()), code: None, trace: Default::default() }),
     }
 }

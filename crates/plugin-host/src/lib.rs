@@ -55,6 +55,6 @@ pub use features::FeatureError;
 pub use registry::{Registry, RegistryError};
 pub use user::{
     ReadOn,
-    ContextAsk, Lost, PageCall, PageCallError, PanelError, PluginToolset, ProductPort,
+    ContextAsk, Lost, MediaCall, PageCall, PageCallError, PanelError, PluginToolset, ProductPort,
     SwitchError, Switched, UserPlugins, VideoJob,
 };

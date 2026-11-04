@@ -1,25 +1,9 @@
 //! The video role of a Gemini API key, Gemini Omni's.
 //!
-//! A job is one streamed interaction
-//! ([Gemini Omni](https://ai.google.dev/gemini-api/docs/omni)):
-//!
-//! 1. `POST …/interactions?alt=sse` with `"stream": true`. Its first event,
-//!    `interaction.created`, names the job; Google sends a keep-alive while
-//!    the video is made.
-//! 2. A `model_output` step's `video` delta holds the video, as base64.
-//! 3. `interaction.completed` holds the job's tokens by kind, which the
-//!    catalog's rates price.
-//!
-//! Two choices follow from what Google continues:
-//!
-//! - The stream, not a job in the background with polling, because Google
-//!   fails every continuation of a kept job asked in the background.
-//! - The video within the answer, not at an address (`delivery: "uri"`),
-//!   because Google continues only a job whose video it sent within its
-//!   answer: one it sent at an address it refuses as "HTTP video input".
-//!   Continuing a kept job is the one way to change a video where Google
-//!   refuses uploaded videos, in the European Economic Area, Switzerland and
-//!   the United Kingdom, and to extend one past 10 seconds.
+//! A job is an interaction in the background (`crate::interactions`,
+//! [Gemini Omni](https://ai.google.dev/gemini-api/docs/omni)): its video
+//! comes at an address (`delivery: "uri"`), which is downloaded with the key,
+//! and its tokens by kind, which the catalog's rates price.
 //!
 //! What a request sends:
 //!
@@ -31,26 +15,28 @@
 //! - A length is `response_format.duration`, such as `"4s"`, as Google's own
 //!   Omni client sends it; the API reference does not list the field.
 //! - An edit or an extension of a video Google keeps continues its job by
-//!   `previous_interaction_id`; of a file, names it with the change as
-//!   `video_config.task`, which Google refuses beside a kept job. A kept
-//!   job Google no longer has is answered `not_found`.
+//!   `previous_interaction_id`, in the background as well; of a file, names
+//!   it with the change as `video_config.task`, which Google refuses beside a
+//!   kept job. A kept job Google no longer has is answered `not_found`.
+//!   Continuing a kept job is the one way to change a video where Google
+//!   refuses uploaded videos, in the European Economic Area, Switzerland and
+//!   the United Kingdom, and to extend one past 10 seconds.
 //! - The models are those Google lists for the key that the catalog has as
 //!   video models: Google still lists models it shut down.
 
 use bytes::Bytes;
 use demi_provider_common::{
-    ErrorCode, endpoint_url, json_body,
     media::{MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable, within_limit},
-    media_catalog::{Catalog, Modality, Price, PriceUnit, Tokens},
-    videos::{self, Change, Done, DoneVideo, JobState, JobStep, SourceVideo, VideoMaker, VideoRequest},
+    media_catalog::{Catalog, Modality, PriceUnit, Tokens},
+    videos::{self, Change, Done, DoneVideo, JobRef, JobState, SourceVideo, VideoMaker, VideoRequest},
 };
-use demi_shared_types::{TokenUsage, VendorTrace, VideoResolution};
+use demi_shared_types::VideoResolution;
 use futures_util::future::BoxFuture;
-use futures_util::stream::{self, BoxStream, StreamExt as _};
 use reqwest::Url;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-use crate::images::{GeminiKey, LABEL, QuotaDetails};
+use crate::images::{GeminiKey, LABEL};
+use crate::interactions::{self, Standing, Usage};
 
 /// The catalog's vendor of Google's models.
 const VENDOR: &str = "google";
@@ -97,41 +83,65 @@ impl VideoMaker for KeyVideos {
         true
     }
 
-    fn run<'a>(
-        &'a self,
-        http: &'a demi_provider_common::ProviderHttp,
-        catalog: &'a Catalog,
-        request: VideoRequest,
-        _: std::time::Duration,
-    ) -> BoxStream<'a, MediaAnswer<JobStep>> {
-        let key = &self.0;
-        let mut url = endpoint_url(key.base(), "/interactions");
-        url.query_pairs_mut().append_pair("alt", "sse");
-        let price = catalog.model(VENDOR, &request.model).and_then(|known| catalog.price(known)).cloned();
-        let kept = matches!(&request.source, Some(source) if matches!(source.video, SourceVideo::Job(_)));
-        let opened = async move {
-            let body = Bytes::from(json_body(&encode(key, http, &request).await?));
-            key.call().post_events(http, &url, body, key.headers()).await
-        };
-        stream::once(opened)
-            .flat_map(move |opened| match opened {
-                Ok(events) => read_events(events, price.clone()).boxed(),
-                Err(failure) => stream::once(std::future::ready(answer(Err(gone(failure, kept))))).boxed(),
-            })
-            .boxed()
+    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
+        Box::pin(async move {
+            let key = &self.0;
+            let kept = matches!(&request.source, Some(source) if matches!(source.video, SourceVideo::Job(_)));
+            let body = match encode(key, http, &request).await {
+                Ok(body) => body,
+                Err(failure) => return MediaAnswer { result: Err(failure), observed: Vec::new() },
+            };
+            let body = serde_json::to_value(&body).expect("a video's body serializes");
+            let asked = interactions::create(key, http, body).await;
+            MediaAnswer { result: asked.result.map_err(|failure| gone(failure, kept)), observed: asked.observed }
+        })
     }
 
-    /// Omni sends its video within its answer; a video at an address is
-    /// downloaded with the key all the same.
-    fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, url: &'a reqwest::Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
-        // The file's address is the key's own endpoint's, and its redirect
-        // to storage gets no key.
+    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>> {
+        Box::pin(async move {
+            let read = interactions::get(&self.0, http, job.id).await;
+            read.and_then(|interaction| match interaction.standing() {
+                Standing::Pending { running: false } => Ok(JobState::Queued),
+                Standing::Pending { running: true } => Ok(JobState::Running { progress: None }),
+                Standing::Failed(trace) => Ok(JobState::Failed { reason: None, trace }),
+                Standing::Completed => {
+                    // A model that answers in words instead declined the
+                    // video, and says why.
+                    let Some(video) = interaction.outputs().rev().find(|content| content.kind == "video") else {
+                        return match interaction.said() {
+                            Some(said) => Ok(JobState::Failed { reason: Some(said), trace: Default::default() }),
+                            None => Err(unreadable("its finished job sent no video".to_owned())),
+                        };
+                    };
+                    let video = match (&video.data, &video.uri) {
+                        (Some(data), _) => DoneVideo::Sent(within_limit(data.clone().into_bytes(), "video")?),
+                        (None, Some(uri)) => DoneVideo::At(media_of(uri)?),
+                        (None, None) => return Err(unreadable("its video came without its bytes or an address".to_owned())),
+                    };
+                    let usage = interaction.usage.unwrap_or_default();
+                    let price = job.catalog.model(VENDOR, job.model).and_then(|known| job.catalog.price(known));
+                    let cost = price.and_then(|price| price.of_tokens(None, &priced(&usage)));
+                    Ok(JobState::Done(Done { video, cost, usage: Some(usage.counts()) }))
+                }
+            })
+        })
+    }
+
+    /// The file's address is the key's own endpoint's, and its redirect to
+    /// storage gets no key.
+    fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, url: &'a Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
         Box::pin(videos::download(LABEL, &*self.0.clock, http, url, self.0.base(), self.0.headers()))
     }
 }
 
-fn answer<T>(result: Result<T, MediaFailure>) -> MediaAnswer<T> {
-    MediaAnswer { result, observed: Vec::new() }
+/// The address of a file's bytes: its `uri`, asked for its media rather
+/// than its description.
+fn media_of(uri: &str) -> Result<Url, MediaFailure> {
+    let mut url = Url::parse(uri).map_err(|error| unreadable(format!("its video's address could not be read: {error}")))?;
+    if !url.query_pairs().any(|(name, _)| name == "alt") {
+        url.query_pairs_mut().append_pair("alt", "media");
+    }
+    Ok(url)
 }
 
 /// A refusal of a request that continues a kept job, read as the job's
@@ -145,10 +155,21 @@ fn gone(failure: MediaFailure, kept: bool) -> MediaFailure {
     }
 }
 
+/// The counts as the catalog's rates price them: its input, its video and
+/// the rest of its output with its thinking, which Google prices as text.
+fn priced(usage: &Usage) -> [Tokens; 3] {
+    let video: u64 = usage.output_tokens_by_modality.iter().filter(|count| count.modality == "video").map(|count| count.tokens).sum();
+    let text = usage.total_output_tokens.saturating_sub(video) + usage.total_thought_tokens;
+    [
+        Tokens { unit: PriceUnit::MillionInputTokens, modality: None, count: usage.total_input_tokens },
+        Tokens { unit: PriceUnit::MillionOutputTokens, modality: Some(Modality::Video), count: video },
+        Tokens { unit: PriceUnit::MillionOutputTokens, modality: Some(Modality::Text), count: text },
+    ]
+}
+
 #[derive(Serialize)]
 struct Body<'a> {
     model: &'a str,
-    stream: bool,
     input: Vec<Item>,
     response_format: Format,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -166,12 +187,12 @@ enum Item {
     Video { uri: String, mime_type: &'static str },
 }
 
-/// The answer's video, sent within it, so that Google keeps it for the
-/// job's continuation.
+/// The answer's video, at an address.
 #[derive(Serialize)]
 struct Format {
     #[serde(rename = "type")]
     kind: &'static str,
+    delivery: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     aspect_ratio: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -222,10 +243,10 @@ async fn encode<'a>(
     input.push(Item::Text { text: prompt(request) });
     Ok(Body {
         model: &request.model,
-        stream: true,
         input,
         response_format: Format {
             kind: "video",
+            delivery: "uri",
             aspect_ratio: request.aspect.map(|aspect| aspect.to_string()),
             resolution: request.resolution.map(VideoResolution::lowercase),
             duration: request.duration.map(|seconds| format!("{seconds}s")),
@@ -262,224 +283,4 @@ fn prompt(request: &VideoRequest) -> String {
     }
     heads.push(request.prompt.clone());
     heads.join(" ")
-}
-
-/// An event of the stream; a failure Google sends outside an event has no
-/// type, only its `error`.
-#[derive(Deserialize)]
-struct Event {
-    #[serde(default)]
-    event_type: String,
-    #[serde(default)]
-    interaction: Option<Interaction>,
-    #[serde(default)]
-    delta: Option<Delta>,
-    #[serde(default)]
-    error: Option<Said>,
-}
-
-#[derive(Deserialize)]
-struct Interaction {
-    #[serde(default)]
-    id: Option<String>,
-    #[serde(default)]
-    status: Option<String>,
-    #[serde(default)]
-    usage: Option<Usage>,
-    #[serde(default)]
-    errors: Vec<Said>,
-}
-
-#[derive(Deserialize)]
-struct Delta {
-    #[serde(rename = "type", default)]
-    kind: Option<String>,
-    #[serde(default)]
-    uri: Option<String>,
-    /// The video, as base64.
-    #[serde(default)]
-    data: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct Said {
-    #[serde(default)]
-    message: Option<String>,
-    #[serde(default)]
-    code: Option<String>,
-    #[serde(flatten)]
-    quotas: QuotaDetails,
-}
-
-impl Said {
-    /// What Google said, as the failure keeps it.
-    fn trace(&self) -> VendorTrace {
-        VendorTrace { words: None, code: self.code.clone(), id: None }.with_words(self.message.clone())
-    }
-}
-
-#[derive(Deserialize, Default)]
-struct Usage {
-    #[serde(default)]
-    total_input_tokens: u64,
-    #[serde(default)]
-    total_output_tokens: u64,
-    #[serde(default)]
-    total_thought_tokens: u64,
-    #[serde(default)]
-    output_tokens_by_modality: Vec<ModalityTokens>,
-}
-
-#[derive(Deserialize)]
-struct ModalityTokens {
-    modality: String,
-    tokens: u64,
-}
-
-impl Usage {
-    fn video_tokens(&self) -> u64 {
-        self.output_tokens_by_modality.iter().filter(|count| count.modality == "video").map(|count| count.tokens).sum()
-    }
-
-    /// The counts as the catalog's rates price them: its input, its video
-    /// and the rest of its output with its thinking, which Google prices
-    /// as text.
-    fn priced(&self) -> [Tokens; 3] {
-        let video = self.video_tokens();
-        let text = self.total_output_tokens.saturating_sub(video) + self.total_thought_tokens;
-        [
-            Tokens { unit: PriceUnit::MillionInputTokens, modality: None, count: self.total_input_tokens },
-            Tokens { unit: PriceUnit::MillionOutputTokens, modality: Some(Modality::Video), count: video },
-            Tokens { unit: PriceUnit::MillionOutputTokens, modality: Some(Modality::Text), count: text },
-        ]
-    }
-
-    /// The counts, thinking among the output, as the ledger keeps them.
-    fn counts(&self) -> TokenUsage {
-        TokenUsage {
-            input_tokens: self.total_input_tokens,
-            output_tokens: self.total_output_tokens + self.total_thought_tokens,
-            cache_read_tokens: 0,
-            cache_write_tokens: 0,
-        }
-    }
-}
-
-/// What the stream has said so far.
-struct Read {
-    events: BoxStream<'static, Result<String, MediaFailure>>,
-    /// The model's prices in the catalog.
-    price: Option<Price>,
-    /// The video, once its step sent it.
-    video: Option<DoneVideo>,
-}
-
-/// The job's steps, as its events tell them: its id, that it runs, then its
-/// video or its failure; a stream that ends before either is unreadable.
-fn read_events(events: BoxStream<'static, Result<String, MediaFailure>>, price: Option<Price>) -> BoxStream<'static, MediaAnswer<JobStep>> {
-    stream::unfold(Some(Read { events, price, video: None }), |read| async move {
-        let mut read = read?;
-        loop {
-            let Some(event) = read.events.next().await else {
-                return Some((answer(Err(unreadable("its answer ended before the video".to_owned()))), None));
-            };
-            let data = match event {
-                Ok(data) => data,
-                Err(failure) => return Some((answer(Err(failure)), None)),
-            };
-            if data == "[DONE]" {
-                continue;
-            }
-            let event: Event = match serde_json::from_str(&data) {
-                Ok(event) => event,
-                Err(error) => {
-                    let failure = unreadable(format!("its event could not be read: {error}"));
-                    return Some((answer(Err(failure)), None));
-                }
-            };
-            match read.step(event) {
-                Ok(None) => {}
-                Ok(Some(step)) => {
-                    let ended = matches!(step, JobStep::State(JobState::Done(_) | JobState::Failed { .. }));
-                    return Some((answer(Ok(step)), (!ended).then_some(read)));
-                }
-                Err(failure) => return Some((answer(Err(failure)), None)),
-            }
-        }
-    })
-    .boxed()
-}
-
-impl Read {
-    /// The step `event` tells, if any.
-    fn step(&mut self, event: Event) -> Result<Option<JobStep>, MediaFailure> {
-        match event.event_type.as_str() {
-            "interaction.created" => {
-                let id = event.interaction.and_then(|interaction| interaction.id);
-                let id = id.ok_or_else(|| unreadable("its created interaction named no id".to_owned()))?;
-                Ok(Some(JobStep::Asked(id)))
-            }
-            "interaction.status_update" => Ok(Some(JobStep::State(JobState::Running { progress: None }))),
-            "step.delta" => {
-                if let Some(delta) = event.delta.filter(|delta| delta.kind.as_deref() == Some("video")) {
-                    self.video = Some(video_of(delta)?);
-                }
-                Ok(None)
-            }
-            // A key's limit comes as the stream's error, after the job was
-            // named; a refusal of its input, as a line of JSON outside an
-            // event. A limit is read as an HTTP refusal's is: used up only
-            // by the quota its details name.
-            "error" | "" if event.error.is_some() => {
-                let Some(said) = event.error else { return Ok(None) };
-                let trace = said.trace();
-                if said.quotas.spent() {
-                    return Err(MediaFailure::UsageLimit { retry_at: None, trace });
-                }
-                match ErrorCode::classify(said.code.as_deref(), said.message.as_deref().unwrap_or_default()) {
-                    Some(ErrorCode::RateLimit) => Err(MediaFailure::limited(trace)),
-                    Some(ErrorCode::Overloaded) => Err(MediaFailure::service_failed(trace)),
-                    _ => Ok(Some(failed(vec![said]))),
-                }
-            }
-            _ => {
-                let Some(interaction) = event.interaction else {
-                    return Ok(None);
-                };
-                match interaction.status.as_deref() {
-                    Some("completed") => {
-                        let video = self.video.take().ok_or_else(|| unreadable("its finished job sent no video".to_owned()))?;
-                        let usage = interaction.usage.unwrap_or_default();
-                        let cost = self.price.as_ref().and_then(|price| price.of_tokens(None, &usage.priced()));
-                        Ok(Some(JobStep::State(JobState::Done(Done { video, cost, usage: Some(usage.counts()) }))))
-                    }
-                    Some("failed" | "cancelled" | "incomplete") => Ok(Some(failed(interaction.errors))),
-                    _ => Ok(None),
-                }
-            }
-        }
-    }
-}
-
-/// The video a delta holds, within it or, as Google may still send one, at
-/// an address.
-fn video_of(delta: Delta) -> Result<DoneVideo, MediaFailure> {
-    use base64::Engine as _;
-    if let Some(data) = delta.data {
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(data)
-            .map_err(|error| unreadable(format!("its video could not be decoded: {error}")))?;
-        return Ok(DoneVideo::Sent(within_limit(Bytes::from(bytes), "video")?));
-    }
-    let uri = delta.uri.ok_or_else(|| unreadable("its video came without its bytes or an address".to_owned()))?;
-    let url = Url::parse(&uri).map_err(|error| unreadable(format!("its video's address could not be read: {error}")))?;
-    Ok(DoneVideo::At(url))
-}
-
-/// The job's failure, with what Google said of each of its errors.
-fn failed(errors: Vec<Said>) -> JobStep {
-    let words: Vec<String> = errors.iter().filter_map(|said| said.message.clone()).collect();
-    let code = errors.iter().find_map(|said| said.code.clone());
-    let trace = VendorTrace { words: None, code, id: None }.with_words(Some(words.join("; ")));
-    JobStep::State(JobState::Failed { reason: None, trace })
 }

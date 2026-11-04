@@ -292,6 +292,8 @@ impl Dispatcher {
                         cwd: invocation.request.cwd,
                         env: invocation.request.env,
                         finite: raw.stdin && leaf.stdin_field.is_none(),
+                        tells: raw.resumable,
+                        resume: raw.resume.clone(),
                     },
                     invocation.input,
                     &mut output,

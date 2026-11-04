@@ -185,7 +185,7 @@ fn read_answer(body: &[u8], trace_id: Option<String>) -> Result<MadeImage, Media
         return Err(unreadable("its answer held no image".to_owned()));
     };
     match (datum.b64_json, datum.error) {
-        (Some(image), _) => Ok(MadeImage { bytes: image.into_bytes(), usage: None, vendor_id: None }),
+        (Some(image), _) => Ok(MadeImage { bytes: image.into_bytes(), usage: None, cost: None, vendor_id: None }),
         (None, Some(error)) => {
             let id = request_id_in(&error.message).or(trace_id);
             let trace = VendorTrace { words: None, code: error.code, id }.with_words(Some(error.message));

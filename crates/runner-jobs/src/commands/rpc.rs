@@ -9,6 +9,17 @@
 //! session ended (`crates/runner/src/connection/link_state.rs`). Its
 //! standard input, when it is a pipe, is cut with the connection it goes
 //! over, which fails the call.
+//!
+//! A call the backend marked resumable (`Inbound::RpcResumable`) outlives
+//! the session too: it waits for what outlives the backend, such as a
+//! vendor's media job. When the session ends, the call is sent again to the
+//! next one, under its id and marked `resumed`, unless the runner delivered
+//! some of its output meanwhile, which the call would write again.
+//!
+//! It outlives the runner as well: the caller that asked for it is told the
+//! call's id (`demi_command_protocol::Record::Resumable`), and once an
+//! update replaced the runner, sends the command again naming it, which the
+//! next runner sends as that call, `resumed`.
 
 use crate::{
     commands::command_output::CommandOutput,
@@ -22,7 +33,14 @@ use demi_command_sdk::{Input, ResidentError};
 use demi_runner_process::pipes::PipeClient;
 use demi_runner_protocol::wire::{self, PipeRef};
 use futures_util::StreamExt;
-use std::{collections::BTreeMap, io, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    io,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -36,6 +54,10 @@ pub struct Request {
     /// Whether the call's input goes to the backend on a pipe; a leaf that
     /// takes stdin as an argument has it read already.
     pub finite: bool,
+    /// Whether the caller is told the call's id once it is resumable.
+    pub tells: bool,
+    /// The call a runner before this one sent, which this one resumes.
+    pub resume: Option<String>,
 }
 
 /// What the backend tells a call.
@@ -51,9 +73,22 @@ pub enum CallEvent {
     /// The link's session ended, for this reason, so the call cannot end
     /// with its exit.
     Lost(String),
+    /// The link's session ended and the call is resumable: it is sent again
+    /// to the next one.
+    Resume(String),
+    /// The backend marked the call resumable.
+    Resumable,
+}
+
+/// How one session's part of a call ended.
+enum Part {
+    Exit(u8),
+    /// The session ended, for this reason, and the call goes on in the next.
+    Resume(String),
 }
 
 struct CallTransport<'a> {
+    id: &'a str,
     output: &'a wire::Backlog,
     stop: &'a CancellationToken,
 }
@@ -156,7 +191,8 @@ pub async fn invoke(
             .map_err(|_| ResidentError::failed(io::Error::other(UNREACHABLE)))?,
     };
     let backlog = handle.backlog().clone();
-    let id = uuid::Uuid::new_v4().simple().to_string();
+    let resumed = request.resume.is_some();
+    let id = request.resume.clone().unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string());
     let stop = cancel.child_token();
     let _stop_guard = stop.clone().drop_guard();
     let (events, receiver) = mpsc::unbounded_channel();
@@ -171,29 +207,49 @@ pub async fn invoke(
         ended: stop.clone(),
         completed: false,
     };
-    let message = wire::encode(&wire::Outbound::RpcCall {
-        job_id: request.context.job_id.clone(),
-        call_id: id.clone(),
-        root: request.root.clone(),
-        path: request.parsed.path.clone(),
-        argv: request.argv.clone(),
-        args: request.parsed.values.clone().into_iter().collect(),
-        json: request.parsed.json,
-        cwd: request.cwd.clone(),
-        env: request.env.clone(),
-        stdin: request.finite,
-    })
-    .map_err(ResidentError::failed)?;
+    let message = |resumed: bool| {
+        wire::encode(&wire::Outbound::RpcCall {
+            job_id: request.context.job_id.clone(),
+            call_id: id.clone(),
+            root: request.root.clone(),
+            path: request.parsed.path.clone(),
+            argv: request.argv.clone(),
+            args: request.parsed.values.clone().into_iter().collect(),
+            json: request.parsed.json,
+            cwd: request.cwd.clone(),
+            env: request.env.clone(),
+            stdin: request.finite,
+            resumed,
+        })
+        .map_err(ResidentError::failed)
+    };
+    let mut receiver = receiver;
     let result = async {
         // What the job changed of the Host's projects goes first, so the
         // backend knows a worktree the command names (`Backlog::report`).
         backlog.report();
-        backlog.push(message);
+        backlog.push(message(resumed)?);
         let transport = CallTransport {
+            id: &id,
             output: &backlog,
             stop: &stop,
         };
-        exchange(pipes, &request, receiver, input, output, &transport).await
+        let mut input = Some(input);
+        let delivered = AtomicBool::new(false);
+        loop {
+            let part = exchange(pipes, &request, &mut receiver, &mut input, output, &transport, &delivered).await?;
+            match part {
+                Part::Exit(code) => return Ok(code),
+                // Output delivered would be written again.
+                Part::Resume(reason) if delivered.load(Ordering::Relaxed) => {
+                    return Err(ResidentError::failed(io::Error::other(reason)));
+                }
+                Part::Resume(reason) => {
+                    tracing::info!(event = "rpc_call.resumed", call = %id, cause = %reason, "a call is sent again to the backend's new session");
+                    backlog.push(message(true)?);
+                }
+            }
+        }
     };
     // The call goes on across the connections it runs on, whichever of them
     // carry its messages.
@@ -207,20 +263,25 @@ pub async fn invoke(
     result
 }
 
+/// One session's part of a call: its pipes, its events and its standard
+/// output, until its exit or the session's end. `delivered` is set once some
+/// of the call's output reached the process or its job.
 async fn exchange(
     pipes: &PipeClient,
     request: &Request,
-    mut events: mpsc::UnboundedReceiver<CallEvent>,
-    input: Input,
+    events: &mut mpsc::UnboundedReceiver<CallEvent>,
+    input: &mut Option<Input>,
     output: &mut CommandOutput<'_>,
     transport: &CallTransport<'_>,
-) -> Result<u8, ResidentError> {
+    delivered: &AtomicBool,
+) -> Result<Part, ResidentError> {
     let errors = output.errors();
     let media = output.media();
     // A medium the call handed its job is kept before the standard output
     // the call wrote after it reaches the job: the output waits its turn.
     let turn = tokio::sync::Mutex::new(());
     let &CallTransport {
+        id,
         output: connection,
         stop,
     } = transport;
@@ -253,10 +314,14 @@ async fn exchange(
                     };
                     report(connection, &reference, &kept)?;
                     kept.map_err(ResidentError::failed)?;
+                    delivered.store(true, Ordering::Relaxed);
                 }
                 CallEvent::Lost(reason) => {
                     return Err(ResidentError::failed(io::Error::other(reason)));
                 }
+                CallEvent::Resume(reason) => return Ok(Part::Resume(reason)),
+                CallEvent::Resumable if request.tells => errors.resumable(id.to_owned()).await?,
+                CallEvent::Resumable => {}
                 CallEvent::Exit(code) => {
                     if let Some((stdin, stdout)) = pipe_senders.take() {
                         if code == 0 {
@@ -265,7 +330,7 @@ async fn exchange(
                         stdin.send(None).map_err(|_| ResidentError::Cancelled)?;
                         stdout.send(None).map_err(|_| ResidentError::Cancelled)?;
                     }
-                    return Ok(code);
+                    return Ok(Part::Exit(code));
                 }
             }
         }
@@ -277,12 +342,31 @@ async fn exchange(
         else {
             return Ok(());
         };
-        download(pipes, connection, stop, output, &reference, &turn).await
+        download(pipes, connection, stop, output, &reference, &turn, delivered).await
     };
     let input = send_input(pipes, stdin_receiver, input, transport);
+    // The exit waits for the whole stdout; a session's end leaves the
+    // stdout of its pipe unread, the next session's pipe carrying it.
     let complete = async {
-        let (code, ()) = tokio::try_join!(control, download)?;
-        Ok(code)
+        tokio::pin!(control, download);
+        let mut downloaded = false;
+        loop {
+            tokio::select! {
+                part = &mut control => match part? {
+                    Part::Exit(code) => {
+                        if !downloaded {
+                            (&mut download).await?;
+                        }
+                        return Ok(Part::Exit(code));
+                    }
+                    part @ Part::Resume(_) => return Ok(part),
+                },
+                result = &mut download, if !downloaded => {
+                    result?;
+                    downloaded = true;
+                }
+            }
+        }
     };
     // The call's exit and its whole stdout own its lifetime: its input
     // ending, read or unread, ends nothing else, however long the stdout
@@ -313,6 +397,7 @@ async fn download(
     output: &mut CommandOutput<'_>,
     reference: &PipeRef,
     turn: &tokio::sync::Mutex<()>,
+    delivered: &AtomicBool,
 ) -> Result<(), ResidentError> {
     let mut unwritten = None;
     let result = async {
@@ -325,6 +410,7 @@ async fn download(
                 unwritten = Some(error);
                 return Err(reported);
             }
+            delivered.store(true, Ordering::Relaxed);
         }
         Ok::<_, io::Error>(())
     }
@@ -351,17 +437,21 @@ async fn medium_bytes(pipes: &PipeClient, stop: &CancellationToken, reference: &
     Ok(Bytes::from(bytes))
 }
 
+/// Sends the call's input to the pipe `reference` names, once: a call
+/// whose input is a pipe is never resumed.
 async fn send_input(
     pipes: &PipeClient,
     reference: oneshot::Receiver<Option<PipeRef>>,
-    input: Input,
+    input: &mut Option<Input>,
     transport: &CallTransport<'_>,
 ) -> Result<(), ResidentError> {
     let &CallTransport {
         output: connection,
         stop,
+        ..
     } = transport;
     if let Some(reference) = reference.await.map_err(|_| ResidentError::Cancelled)? {
+        let input = input.take().ok_or_else(|| ResidentError::failed(RpcError::DuplicatePipes))?;
         let token = stop.clone();
         let body = futures_util::stream::unfold((input, token), |(mut input, stop)| async move {
             tokio::select! {

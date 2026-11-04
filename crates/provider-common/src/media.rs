@@ -19,6 +19,7 @@ use serde::Deserialize;
 use crate::media_catalog::{Catalog, MediaKind, Subscription};
 
 pub mod channel;
+pub mod jobs;
 use crate::{
     ErrorCode, FailureReader, HttpFailureRecord, ProviderFailure, Secret,
     credentials::{AuthFailure, AuthReason},

@@ -72,6 +72,14 @@ pub struct RpcInvocation {
     pub caller: Option<JobCaller>,
     /// Whether the calling process has a pipe on its standard input.
     pub stdin: bool,
+    /// The call's id, which the runner keeps when it sends the call again
+    /// after a restart of the backend ([`PortRequest::Resumable`]).
+    #[serde(default)]
+    pub call_id: String,
+    /// Whether the runner sent the call again, after a restart of the
+    /// backend ended the session it ran in.
+    #[serde(default)]
+    pub resumed: bool,
     /// The pipes relayed for the call's standard input and output, which a
     /// handler that starts a job elsewhere can hand to it.
     #[serde(
@@ -199,6 +207,12 @@ pub enum PortRequest {
         facts: MediumFacts,
         bytes: B64Bytes,
     },
+    /// The call waits for what outlives the backend, such as a vendor's
+    /// media job, which a call sent again after a restart finds by the
+    /// call's id ([`RpcInvocation::call_id`]): the runner sends it again
+    /// rather than ending it, as long as the call wrote nothing to its
+    /// standard output and reads no standard input.
+    Resumable {},
 }
 
 /// The reply to a [`PortRequest`].
@@ -223,6 +237,13 @@ pub enum PortResponse {
 /// or a test's memory.
 pub trait PortTransport {
     fn request(&self, request: PortRequest) -> LocalBoxFuture<'_, Result<PortResponse, PortError>>;
+
+    /// Whether the call, stopped, comes back: it was resumable
+    /// ([`PortRequest::Resumable`]) and its runner's session ended, so the
+    /// runner sends it again, `resumed`.
+    fn comes_back(&self) -> bool {
+        false
+    }
 }
 
 /// The handler's side of a call: every operation is one request and one
@@ -262,6 +283,12 @@ impl RpcPort {
         )
     }
 
+    /// Says the call can be sent again after a restart
+    /// ([`PortRequest::Resumable`]).
+    pub async fn resumable(&self) -> Result<(), PortError> {
+        written(self.transport.request(PortRequest::Resumable {}).await?, "resumable")
+    }
+
     /// Says whether the call waits for the user's answer
     /// ([`PortRequest::AwaitsUser`]).
     pub async fn awaits_user(&self, awaits: bool) -> Result<(), PortError> {
@@ -287,6 +314,12 @@ impl RpcPort {
 
     pub fn is_cancelled(&self) -> bool {
         self.cancel.is_cancelled()
+    }
+
+    /// Whether the call, stopped, comes back
+    /// ([`PortTransport::comes_back`]): what it waits for goes on for it.
+    pub fn comes_back(&self) -> bool {
+        self.transport.comes_back()
     }
 
     /// Sends `request` as it is: what a handler elsewhere, such as a plugin,
