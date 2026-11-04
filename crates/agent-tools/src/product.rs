@@ -203,9 +203,12 @@ pub struct WorkflowChild {
     pub instructions: Option<String>,
     pub can_spawn: bool,
     /// None for the parent's model; otherwise the selection its model id
-    /// makes in the first entry that offers it, or what is missing or not
-    /// offered, its Context included, which makes the profile unavailable.
+    /// makes in the entry it names or the first that offers it, or what is
+    /// missing or not offered, its Context included, which makes the profile
+    /// unavailable.
     pub model: Option<Result<ModelSelection, String>>,
+    /// The name of the entry that serves its model, as the user named it.
+    pub provider_name: Option<String>,
     /// The tokens of its own Context, which the model offers; none for the
     /// user's limit.
     pub context_limit: Option<u32>,

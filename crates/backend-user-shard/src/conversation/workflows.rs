@@ -50,7 +50,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::project_files::KeptWorkflows;
 use crate::shard::Shard;
-use crate::shard::agent_profiles::{Scope, first_offering};
+use crate::shard::agent_profiles::{Scope, first_offering, named_entry};
 
 /// The workflows a working directory has now.
 pub(crate) struct ProjectWorkflows {
@@ -566,12 +566,20 @@ impl Shard {
                     }
                 }
             };
+            let provider_name = model.as_ref().and_then(|model| model.as_ref().ok()).and_then(|selection| {
+                scope
+                    .entries
+                    .iter()
+                    .find(|entry| entry.id.as_str() == selection.provider_id)
+                    .map(|entry| entry.label.clone())
+            });
             profiles.push(WorkflowChild {
                 name: profile.id.clone(),
                 description: profile.description.clone(),
                 instructions: profile.instructions.clone(),
                 can_spawn: profile.spawning,
                 model,
+                provider_name,
                 context_limit,
             });
         }
@@ -586,8 +594,9 @@ impl Shard {
     }
 
     /// The selection a workflow profile's model `model` makes now: in the
-    /// first of the user's entries that offers it, with its effort and
-    /// tier; or what is missing, which the file at `path` changes.
+    /// entry the profile names, else the first of the user's entries that
+    /// offers it, with its effort and tier; or what is missing, which the
+    /// file at `path` changes.
     async fn workflow_selection(
         &self,
         scope: &Scope,
@@ -595,10 +604,14 @@ impl Shard {
         model: &str,
         path: &str,
     ) -> Result<ModelSelection, String> {
-        let Some(provider_id) = first_offering(scope, model) else {
-            return Err(format!(
-                "no provider entry of the user's offers model \"{model}\"; change the profile's model in {path}, or ask the user to add a provider that offers it"
-            ));
+        let provider_id = match &profile.provider {
+            Some(named) => named_entry(scope, named, model)
+                .map_err(|reason| format!("its provider in {path}: {reason}"))?,
+            None => first_offering(scope, model).ok_or_else(|| {
+                format!(
+                    "no provider entry of the user's offers model \"{model}\"; change the profile's model in {path}, or ask the user to add a provider that offers it"
+                )
+            })?,
         };
         let chosen = ModelSettings {
             provider_id,
