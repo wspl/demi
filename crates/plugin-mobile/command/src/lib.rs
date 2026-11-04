@@ -85,9 +85,10 @@ use crate::{devices::Devices, driver::Driver, live::Hub, operations::Produced};
 pub struct DemiMobile {
     devices: Arc<Devices>,
     hub: Arc<Hub>,
-    /// The installation, `DEMI_HOME`, whose `scratch/<12 digits of the conversation's id>` is each
-    /// conversation's scratch directory; none for a resident without one.
-    home: Option<std::path::PathBuf>,
+    /// The runner's scratch root, whose `<12 digits of the conversation's
+    /// id>` is each conversation's scratch directory; none for a resident
+    /// without an installation.
+    scratch_root: Option<std::path::PathBuf>,
     codec: Arc<dyn Codec>,
     /// Each conversation's recordings, in the conversation's scratch directory.
     libraries: std::sync::Mutex<std::collections::HashMap<String, Arc<Library>>>,
@@ -100,28 +101,38 @@ impl DemiMobile {
         // and the open devices are kept across the program's ends (`crates/plugin-mobile/command/src/devices.rs`).
         let home = std::env::var_os("DEMI_HOME").map(std::path::PathBuf::from);
         let codec: Arc<dyn Codec> = Arc::new(Cisco::in_installation(home.as_deref()));
-        Self::with_drivers(host_drivers(home.as_deref(), codec.clone()), home.as_deref(), codec)
+        Self::with_drivers(
+            host_drivers(home.as_deref(), codec.clone()),
+            home.as_deref(),
+            demi_command_protocol::scratch_root(),
+            codec,
+        )
     }
 
     /// The resident with `drivers`, such as a test's, in the installation
-    /// `home`: it keeps the simulators it boots in `home/mobile`, and each
-    /// conversation's files in `home/scratch/<12 digits of the conversation's id>`.
-    pub fn with_drivers(drivers: Vec<Arc<dyn Driver>>, home: Option<&std::path::Path>, codec: Arc<dyn Codec>) -> Self {
+    /// `home`, where it keeps the simulators it boots in `home/mobile`, and
+    /// each conversation's files under `scratch_root`.
+    pub fn with_drivers(
+        drivers: Vec<Arc<dyn Driver>>,
+        home: Option<&std::path::Path>,
+        scratch_root: Option<std::path::PathBuf>,
+        codec: Arc<dyn Codec>,
+    ) -> Self {
         let mobile = home.map(|home| home.join("mobile"));
         // A conversation is still on this Host while its scratch directory
         // is: the runner removes the directories of the conversations the
         // backend no longer lists as it connects
         // (`crates/runner-jobs/src/scratch.rs`).
-        let scratch = home.map(|home| home.join("scratch"));
+        let scratch = scratch_root.clone();
         let exists = Box::new(move |conversation: &str| {
             scratch
-                .as_ref()
-                .is_none_or(|scratch| scratch.join(demi_command_protocol::scratch_name(conversation)).is_dir())
+                .as_deref()
+                .is_none_or(|root| demi_command_protocol::scratch_directory(Some(root), conversation).is_dir())
         });
         Self {
             devices: Devices::new(drivers, kept::Kept::load(mobile.as_deref()), exists),
             hub: Arc::default(),
-            home: home.map(std::path::Path::to_owned),
+            scratch_root,
             codec,
             libraries: std::sync::Mutex::default(),
         }
@@ -130,11 +141,7 @@ impl DemiMobile {
     /// `conversation`'s scratch directory on this Host, or the system's
     /// temporary directory's for a resident without an installation.
     fn scratch(&self, conversation: &str) -> std::path::PathBuf {
-        self.home
-            .clone()
-            .unwrap_or_else(std::env::temp_dir)
-            .join("scratch")
-            .join(demi_command_protocol::scratch_name(conversation))
+        demi_command_protocol::scratch_directory(self.scratch_root.as_deref(), conversation)
     }
 
     /// `conversation`'s recordings on this Host.
@@ -145,7 +152,7 @@ impl DemiMobile {
             .entry(conversation.to_owned())
             .or_insert_with(|| {
                 Arc::new(Library::new(
-                    demi_command_protocol::recordings_directory(self.home.as_deref(), conversation),
+                    demi_command_protocol::recordings_directory(self.scratch_root.as_deref(), conversation),
                     self.codec.clone(),
                 ))
             })
@@ -236,7 +243,7 @@ impl Handler for DemiMobile {
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ResidentError>> + Send>> {
         let devices = self.devices.clone();
         let hub = self.hub.clone();
-        let installed = self.home.is_some();
+        let installed = self.scratch_root.is_some();
         let scratch = self.scratch(&context.request.context.conversation);
         let library = self.library(&context.request.context.conversation);
         devices.reached(&context.request.context.conversation);

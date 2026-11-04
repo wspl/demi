@@ -116,7 +116,6 @@ mod start;
 mod state;
 mod update;
 
-use demi_runner_jobs::scratch::Scratch;
 use demi_command_protocol::{LocalInvocation, host_target};
 use demi_runner_process::{
     command_client::{self, RAW, RawCommand, Stdio},
@@ -564,7 +563,14 @@ async fn runner(cli: Cli) -> io::Result<u8> {
         Some(_) if !removing => Some(autostart::Registration::of(&directory, &home)?),
         _ => None,
     };
-    let scratch_root = Scratch::new(&directory).root().to_string_lossy().into_owned();
+    // A Cloud's installation directory is in memory, which each stop
+    // empties; its conversations' files go to its home, which stops and
+    // resets keep, as its artifacts do.
+    let scratch = match &boot {
+        Some(_) => home.join(".demi").join("scratch"),
+        None => directory.join("scratch"),
+    };
+    let scratch_root = scratch.to_string_lossy().into_owned();
     // The home as its Host names it, so the backend tells a directory that
     // is the home from another (`crates/backend-database/src/selection.rs`); one that cannot be resolved is reported as it is set.
     let canonical_home = dunce::canonicalize(&home).unwrap_or_else(|_| home.clone());
@@ -685,6 +691,7 @@ async fn runner(cli: Cli) -> io::Result<u8> {
         }),
         directory,
         jobs,
+        scratch,
         executable: executable.clone(),
         cwd: std::env::current_dir()?,
         env,

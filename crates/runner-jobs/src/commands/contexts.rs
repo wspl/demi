@@ -131,7 +131,7 @@ impl ExecutionContext {
     pub fn environment(
         &self,
         endpoint: &str,
-        home: &str,
+        installation: &[(String, String)],
         path: Option<&str>,
     ) -> io::Result<BTreeMap<String, String>> {
         let mut paths = vec![self.aliases.path.clone()];
@@ -142,12 +142,13 @@ impl ExecutionContext {
         let path = path
             .into_string()
             .map_err(|_| io::Error::other("command PATH is not UTF-8"))?;
-        Ok(BTreeMap::from([
+        let mut environment = BTreeMap::from([
             (ENDPOINT_ENV.into(), endpoint.into()),
             (CONTEXT_ENV.into(), self.id.clone()),
-            ("DEMI_HOME".into(), home.into()),
             ("PATH".into(), path),
-        ]))
+        ]);
+        environment.extend(installation.iter().cloned());
+        Ok(environment)
     }
 
     /// Whether something holds the context beyond the job's own end.

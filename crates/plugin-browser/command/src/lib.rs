@@ -89,14 +89,15 @@ impl DemiBrowser {
     pub fn with_chrome(chrome: Chrome) -> Self {
         let home = std::env::var_os("DEMI_HOME").map(std::path::PathBuf::from);
         let codec = Arc::new(Cisco::in_installation(home.as_deref()));
-        Self::with_recording(chrome, home, codec)
+        Self::with_recording(chrome, demi_command_protocol::scratch_root(), codec)
     }
 
-    /// The resident, whose browsers start `chrome`, and whose recordings are
-    /// kept in the installation `home`, coded and decoded with `codec`.
-    pub fn with_recording(chrome: Chrome, home: Option<std::path::PathBuf>, codec: Arc<dyn Codec>) -> Self {
+    /// The resident, whose browsers start `chrome`, and whose recordings and
+    /// profiles are kept under the scratch root `scratch_root`, coded and
+    /// decoded with `codec`.
+    pub fn with_recording(chrome: Chrome, scratch_root: Option<std::path::PathBuf>, codec: Arc<dyn Codec>) -> Self {
         Self {
-            browsers: Arc::new(conversations::Conversations::new(chrome.clone(), home, codec)),
+            browsers: Arc::new(conversations::Conversations::new(chrome.clone(), scratch_root, codec)),
             chrome,
         }
     }

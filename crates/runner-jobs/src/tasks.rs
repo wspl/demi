@@ -143,8 +143,9 @@ pub struct Commands {
     pub residents: ResidentHandle,
     /// The local endpoint command clients reach.
     pub endpoint: String,
-    /// The installation directory, `DEMI_HOME`.
-    pub home: String,
+    /// The variables that name the installation, `DEMI_HOME` and
+    /// `DEMI_SCRATCH_ROOT`.
+    pub installation: [(String, String); 2],
 }
 
 struct Entry {
@@ -606,7 +607,7 @@ impl JobConfig {
             .register_context(context.clone(), leases)
             .await?;
         let path = env.get("PATH").cloned();
-        env.extend(context.environment(&commands.endpoint, &commands.home, path.as_deref())?);
+        env.extend(context.environment(&commands.endpoint, &commands.installation, path.as_deref())?);
         let declared = JobCommands {
             context: context.id.clone(),
             roots: context.manifest.roots.keys().cloned().collect(),

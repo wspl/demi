@@ -93,17 +93,21 @@ impl RunnerProcess {
     }
 
     /// Empties the runner's state while it is stopped, as a Cloud reset
-    /// replaces the system the runner's state lives on; its home stays.
+    /// replaces the system the runner's state lives on; its home stays, and
+    /// with it the conversations' scratch directories, which a Cloud's
+    /// runner keeps there (`crates/runner-jobs/src/scratch.rs`) and this one
+    /// in its state.
     pub fn clear_state(&mut self) {
-        self.clear_state_but(&[]);
+        self.clear_state_but(&["scratch"]);
     }
 
     /// Empties the runner's state while it is stopped as a Cloud's stop
     /// does: its temporary state, `/run/demi` on a Cloud, goes, while its
     /// log and its job directories, which a Cloud keeps on its system image
-    /// (`crates/machine-manager/src/storage/mod.rs`), and its home stay.
+    /// (`crates/machine-manager/src/storage/mod.rs`), its home and the
+    /// scratch directories stay.
     pub fn clear_run_state(&mut self) {
-        self.clear_state_but(&["log", "jobs"]);
+        self.clear_state_but(&["log", "jobs", "scratch"]);
     }
 
     fn clear_state_but(&mut self, kept: &[&str]) {

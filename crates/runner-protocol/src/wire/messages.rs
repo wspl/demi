@@ -2070,7 +2070,7 @@ pub struct HostIdentity {
     pub hostname: String,
     pub home_dir: String,
     /// The absolute directory that holds the conversations' scratch
-    /// directories, `<DEMI_HOME>/scratch` (`crates/runner-jobs/src/scratch.rs`).
+    /// directories, the scratch root (`crates/runner-jobs/src/scratch.rs`).
     pub scratch_root: String,
 }
 

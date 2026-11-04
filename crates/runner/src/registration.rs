@@ -62,6 +62,8 @@ pub struct Options {
     /// The job root, where each shell job keeps its output under its
     /// conversation (`crates/runner-jobs/src/job_directories.rs`).
     pub jobs: PathBuf,
+    /// The scratch root (`crates/runner-jobs/src/scratch.rs`).
+    pub scratch: PathBuf,
     pub executable: PathBuf,
     pub cwd: PathBuf,
     /// The device environment, which jobs, raw processes and resident
@@ -201,13 +203,12 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     // looks on every Host, and a paired device has nothing there; Cloud
     // images are Linux only, so a Windows runner does not look.
     let image = cfg!(unix).then(|| PathBuf::from(ARTIFACTS_PATH));
-    // A resident finds the installation, as a job does, by
-    // DEMI_HOME (`crates/runner/src/environment.rs`), whoever called it.
+    // A resident finds the installation, as a job does, by DEMI_HOME and
+    // DEMI_SCRATCH_ROOT (`crates/runner/src/environment.rs`), whoever called
+    // it.
+    let scratch = Scratch::new(options.scratch.clone());
     let mut residents_env = options.env.clone();
-    residents_env.insert(
-        "DEMI_HOME".to_owned(),
-        state.root.to_string_lossy().into_owned(),
-    );
+    residents_env.extend(crate::connection::installation_env(&state.root, &scratch));
     let registry = ResidentRegistry::new(
         options.artifacts.clone(),
         image,
@@ -259,7 +260,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     let registered = Registered {
         installed: options.installed.map(Arc::new),
         managed: options.managed,
-        scratch: Scratch::new(&state.root),
+        scratch,
         backend: options.backend,
         runner,
         state: Arc::new(state),
