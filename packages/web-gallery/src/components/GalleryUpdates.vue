@@ -8,7 +8,7 @@ import { slow } from '../fixtures/slow'
 import { productWould } from '../product-would'
 
 /** Which moment of the server's updates the specimen starts at. */
-export type UpdatesMoment = 'upToDate' | 'checking' | 'offered' | 'preparing' | 'available' | 'prepareFailed' | 'downloading' | 'installing' | 'failed' | 'checkFailed'
+export type UpdatesMoment = 'loading' | 'loadFailed' | 'upToDate' | 'checking' | 'offered' | 'preparing' | 'available' | 'prepareFailed' | 'downloading' | 'installing' | 'failed' | 'checkFailed'
 
 /**
  * Settings › Updates with a stand-in server that runs 0.1.5469:
@@ -18,7 +18,9 @@ export type UpdatesMoment = 'upToDate' | 'checking' | 'offered' | 'preparing' | 
  * background in a few seconds; turning them on gets the one offered ready
  * at once. Update Now runs the rest of the update in a few seconds, what was
  * got ready ahead already installed, and says the product would restart,
- * where the product shows every page the update's screen.
+ * where the product shows every page the update's screen. Before the page
+ * holds the server's state, the section shows it loading; after a failed
+ * read, Retry reads it again in a moment.
  */
 const props = withDefaults(defineProps<{ moment?: UpdatesMoment }>(), { moment: 'available' })
 
@@ -69,6 +71,8 @@ const READY: UpgradePreparation = { state: 'ready', version: NEWER }
 function startingAt(moment: UpdatesMoment): ServerUpgrade {
   const offered = { state: 'checked', at: AT, newer: OFFERED } as const
   switch (moment) {
+    case 'loading':
+    case 'loadFailed':
     case 'upToDate':
       return { running: RUNNING, runningNotesUrl: notesOf(RUNNING), channel: 'beta', prepareAhead: false, check: { state: 'checked', at: AT, newer: null }, preparation: NONE, run: { state: 'none' } }
     case 'checking':
@@ -121,8 +125,17 @@ function startingAt(moment: UpdatesMoment): ServerUpgrade {
   }
 }
 
+/** Where the read of the server's state stands, as a page that just loaded waits for it. */
+function loadOf(moment: UpdatesMoment): 'loading' | 'ready' | 'failed' {
+  return moment === 'loading' ? 'loading' : moment === 'loadFailed' ? 'failed' : 'ready'
+}
+
 const state = ref<ServerUpgrade>(startingAt(props.moment))
-watch(() => props.moment, (moment) => (state.value = startingAt(moment)))
+const load = ref(loadOf(props.moment))
+watch(() => props.moment, (moment) => {
+  state.value = startingAt(moment)
+  load.value = loadOf(moment)
+})
 let stopped = false
 onUnmounted(() => (stopped = true))
 
@@ -214,16 +227,25 @@ async function update(version: string): Promise<void> {
   productWould(`Restart in ${version}`)
   state.value = { ...startingAt('upToDate'), running: version, runningNotesUrl: notesOf(version), channel: state.value.channel, prepareAhead: state.value.prepareAhead }
 }
+
+async function retry(): Promise<void> {
+  load.value = 'loading'
+  await slow(800)
+  if (!stopped)
+    load.value = 'ready'
+}
 </script>
 
 <template>
   <SettingsUpdates
-    :state="state"
+    :state="load === 'ready' ? state : null"
+    :load="load"
     :overlay-store="appOverlayStore"
     :on-set-channel="setChannel"
     :on-set-prepare-ahead="setPrepareAhead"
     :on-check="check"
     :on-count-agents="async () => { await slow(600); return 2 }"
     :on-update="update"
+    @retry="retry"
   />
 </template>
