@@ -18,6 +18,7 @@ use demi_provider_common::{
     json_body,
     media::{Ask, Holding, MediaFailure, unreadable},
 };
+use demi_shared_types::VendorTrace;
 use reqwest::Url;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::Deserialize;
@@ -98,12 +99,9 @@ impl GeminiKey {
             match file.state.as_deref() {
                 Some("PROCESSING") => {}
                 Some("FAILED") => {
-                    let message = file.error.and_then(|error| error.message);
-                    return Err(MediaFailure::Refused {
-                        message: message.unwrap_or_else(|| "it could not process the file".to_owned()),
-                        code: None,
-                        trace: Default::default(),
-                    });
+                    let trace = VendorTrace::default().with_words(file.error.and_then(|error| error.message));
+                    let reason = trace.words.is_none().then(|| "it could not process the file".to_owned());
+                    return Err(MediaFailure::Refused { reason, code: None, trace });
                 }
                 _ => return Ok(file.uri),
             }

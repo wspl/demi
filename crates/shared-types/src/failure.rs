@@ -155,13 +155,18 @@ pub struct ContinueWith {
     pub label: String,
 }
 
-/// What a vendor's failure names to trace it: its own error code and its
-/// request or trace ID, such as OpenAI's `x-request-id`, MiniMax's
-/// `trace_id` or Seed speech's `X-Tt-Logid`, which the vendor's support
-/// asks for first.
+/// What a vendor's failure said: its own words, as it sent them; its error
+/// code; and its request or trace ID, such as OpenAI's `x-request-id`,
+/// MiniMax's `trace_id` or Seed speech's `X-Tt-Logid`, which the vendor's
+/// support asks for first.
+///
+/// A failure's sentence is Demi's; what the vendor said follows it, never
+/// in its place.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VendorTrace {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub words: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -169,23 +174,39 @@ pub struct VendorTrace {
 }
 
 impl VendorTrace {
-    /// Whether the failure named nothing to trace it by.
+    /// A trace of the vendor's `words` alone; none when they are blank.
+    pub fn said(words: impl Into<String>) -> Self {
+        Self::default().with_words(Some(words.into()))
+    }
+
+    /// This trace with the vendor's `words`, when they are not blank.
+    pub fn with_words(mut self, words: Option<String>) -> Self {
+        self.words = words.map(|words| words.trim().to_owned()).filter(|words| !words.is_empty());
+        self
+    }
+
+    /// Whether the failure said nothing and named nothing to trace it by.
     pub fn is_empty(&self) -> bool {
-        self.code.is_none() && self.id.is_none()
+        self.words.is_none() && self.code.is_none() && self.id.is_none()
     }
 
     /// This trace, with what it lacks taken from `other`.
     pub fn or(self, other: Self) -> Self {
-        Self { code: self.code.or(other.code), id: self.id.or(other.id) }
+        Self { words: self.words.or(other.words), code: self.code.or(other.code), id: self.id.or(other.id) }
     }
 
-    /// The trace as a failure's words end with it, `(code 1042, trace
-    /// 0a1b2c)` with a space before it; nothing when it names nothing.
-    pub fn words(&self) -> String {
+    /// What a failure's sentence ends with: `. Google said: "…" (code
+    /// rate_limit_exceeded, trace 0a1b2c)`, the words as `vendor` sent
+    /// them, or ` (code …)` without words; nothing when the trace is empty.
+    pub fn told(&self, vendor: &str) -> String {
         let parts: Vec<String> = [self.code.as_ref().map(|code| format!("code {code}")), self.id.as_ref().map(|id| format!("trace {id}"))]
             .into_iter()
             .flatten()
             .collect();
-        if parts.is_empty() { String::new() } else { format!(" ({})", parts.join(", ")) }
+        let named = if parts.is_empty() { String::new() } else { format!(" ({})", parts.join(", ")) };
+        match &self.words {
+            Some(words) => format!(". {vendor} said: \"{words}\"{named}"),
+            None => named,
+        }
     }
 }

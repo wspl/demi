@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use demi_provider_common::refusal_words;
 use demi_provider_common::quota::{
     Observation, ObservedWindows, ProbeCost, ProbeReading, QuotaError, QuotaSource,
     clamp_used_percent, header_number, plan_label, severity, unix_seconds,
@@ -78,9 +79,9 @@ impl QuotaSource for CodexQuota {
                     ))
                 })?;
             if !response.status().is_success() {
-                let status = response.status().as_u16();
                 return Err(QuotaError::Unavailable(format!(
-                    "Codex usage request failed with HTTP {status}"
+                    "Codex usage request failed with {}",
+                    refusal_words(response, "Codex").await
                 )));
             }
             let text = response.text().await.map_err(|error| {

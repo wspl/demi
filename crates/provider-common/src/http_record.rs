@@ -5,7 +5,7 @@
 use std::time::SystemTime;
 
 use demi_shared_types::{
-    Clock, FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts, Timestamp,
+    Clock, FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts, Timestamp, VendorTrace,
 };
 use http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
@@ -121,6 +121,15 @@ impl ProviderFailure {
         };
         failure.with_retry_wait(reader, received_at)
     }
+}
+
+/// A refused request's status and what `vendor` said in its body, as a
+/// failed list or read ends with them: `HTTP 401. OpenAI said: "…"`.
+pub async fn refusal_words(response: reqwest::Response, vendor: &str) -> String {
+    let status = response.status().as_u16();
+    let body = response.text().await.unwrap_or_default();
+    let said = VendorTrace::default().with_words(crate::media::vendor_message(&body));
+    format!("HTTP {status}{}", said.told(vendor))
 }
 
 /// The standard reading of a failure record, which every provider can use:

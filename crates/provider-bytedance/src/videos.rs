@@ -262,11 +262,11 @@ fn read_state(body: &[u8]) -> Result<JobState, MediaFailure> {
             // Ark's message quotes the request ID its support asks for.
             Some(TaskError { code, message }) => {
                 let id = request_id_in(&message);
-                Ok(JobState::Failed { message, trace: VendorTrace { code, id } })
+                Ok(JobState::Failed { reason: None, trace: VendorTrace { words: None, code, id }.with_words(Some(message)) })
             }
-            None => Ok(JobState::Failed { message: "the task failed".to_owned(), trace: VendorTrace::default() }),
+            None => Ok(JobState::Failed { reason: None, trace: VendorTrace::default() }),
         },
-        "cancelled" => Ok(JobState::Failed { message: "the task was cancelled".to_owned(), trace: Default::default() }),
+        "cancelled" => Ok(JobState::Failed { reason: Some("the task was cancelled".to_owned()), trace: Default::default() }),
         "expired" => Ok(JobState::Expired),
         "succeeded" => {
             let url = state

@@ -265,11 +265,12 @@ pub enum JobState {
     Running { progress: Option<u8> },
     /// Made, and where the video is.
     Done(Done),
-    /// The vendor failed the video, in its own words, with what it named
-    /// to trace the failure; neither crosses a relay.
+    /// The vendor failed the video; `reason` is Demi's, for a failure it
+    /// read out of an answer, such as a video withheld, and `trace` what
+    /// the vendor said. Neither crosses a relay.
     Failed {
         #[serde(skip)]
-        message: String,
+        reason: Option<String>,
         #[serde(skip)]
         trace: VendorTrace,
     },

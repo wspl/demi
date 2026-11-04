@@ -23,6 +23,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::claude_cli::{CrossPlacement, ProcessWork};
 use crate::shard::Shard;
+use crate::shard::media::vendor_refusal;
 
 impl Shard {
     /// Tests the key of an entry of media alone, which makes no text, as its
@@ -62,7 +63,7 @@ impl Shard {
                 let first = models.into_iter().next().map(|model| model.name.unwrap_or(model.id));
                 TestResult::Passed { model: first.unwrap_or_else(|| entry.label.clone()) }
             }
-            Err(failure) => TestResult::Failed { message: failure_words(&failure), model: None },
+            Err(failure) => TestResult::Failed { message: failure_words(&failure, maker.media().name()), model: None },
         }
     }
 
@@ -182,15 +183,13 @@ impl Shard {
     }
 }
 
-/// What a media request's failure says, as a test shows it: the vendor's
-/// own words where it gave some.
-fn failure_words(failure: &MediaFailure) -> String {
-    match failure {
-        MediaFailure::UsageLimit { .. } => "The usage limit is reached".to_owned(),
-        MediaFailure::SignIn(failure) => failure.message(),
-        MediaFailure::KeyRefused { message, .. } | MediaFailure::Refused { message, .. } => message.clone(),
-        MediaFailure::Shape { takes, .. } => format!("It takes only {}", takes.join(", ")),
-        MediaFailure::Unanswered { cause, .. } => cause.clone(),
-        MediaFailure::SourceGone { .. } => "It no longer keeps the job of the video".to_owned(),
+/// What a media request's failure says, as a test shows it: the refusal a
+/// media call would have, in its own sentence, then what `vendor` said.
+fn failure_words(failure: &MediaFailure, vendor: &str) -> String {
+    if let MediaFailure::SignIn(failure) = failure {
+        return failure.message();
     }
+    let refusal = vendor_refusal(failure.clone(), vendor.to_owned(), None, true);
+    let said = refusal.trace().map(|trace| trace.told(vendor)).unwrap_or_default();
+    format!("{refusal}{said}")
 }

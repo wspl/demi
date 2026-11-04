@@ -3,7 +3,7 @@
 //! is a failed refresh, and the backend keeps its last one.
 
 use demi_provider_common::{
-    CatalogError,
+    CatalogError, refusal_words,
     wire::{NonEmpty, decode_untagged},
 };
 use demi_shared_types::{Clock, ProviderModel, ProviderModelList};
@@ -34,9 +34,9 @@ pub(crate) async fn list(shared: &Shared) -> Result<ProviderModelList, CatalogEr
             ))
         })?;
     if !response.status().is_success() {
-        let status = response.status().as_u16();
         return Err(CatalogError::Unavailable(format!(
-            "Grok Build models request failed with HTTP {status}"
+            "Grok Build models request failed with {}",
+            refusal_words(response, "Grok").await
         )));
     }
     let text = response.text().await.map_err(|error| {

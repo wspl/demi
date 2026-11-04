@@ -188,7 +188,8 @@ fn read_answer(body: &[u8], trace_id: Option<String>) -> Result<MadeImage, Media
         (Some(image), _) => Ok(MadeImage { bytes: image.into_bytes(), usage: None, vendor_id: None }),
         (None, Some(error)) => {
             let id = request_id_in(&error.message).or(trace_id);
-            Err(MediaFailure::Refused { message: error.message, code: None, trace: VendorTrace { code: error.code, id } })
+            let trace = VendorTrace { words: None, code: error.code, id }.with_words(Some(error.message));
+            Err(MediaFailure::Refused { reason: None, code: None, trace })
         }
         (None, None) => Err(unreadable("its answer held no image".to_owned())),
     }
