@@ -50,7 +50,7 @@ use super::columns::{count, decode, instant, json, to_json};
 use super::command_outputs::{self, OutputRow};
 use super::contents;
 use super::records::{self, Codec, Stored, record_of};
-use super::conversations::ConversationDb;
+use super::conversations::{ConversationDb, WriterHold};
 use super::search::{IndexedAgent, IndexedMessage, TranscriptChange, searchable_text};
 use super::{conversation_attachments, running, sequences};
 
@@ -67,11 +67,13 @@ pub struct SqliteTreeStore {
     db: ConversationDb,
     blobs: Arc<dyn BlobStore>,
     saved: Saved,
+    /// A live tree keeps its store, and so its writer, while it lives.
+    _writer: WriterHold,
 }
 
 impl SqliteTreeStore {
     pub fn new(db: ConversationDb, blobs: Arc<dyn BlobStore>, saved: Saved) -> Self {
-        Self { db, blobs, saved }
+        Self { _writer: db.hold(), db, blobs, saved }
     }
 
     /// Creates the node of `record` with its first checkpoint `initial`, its
