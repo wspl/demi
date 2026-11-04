@@ -46,7 +46,7 @@ contents room.
 
 ## The theme
 
-Tailwind (v4, from its CDN) and the product's own names are there before your
+Tailwind (v4) and the product's own names are there before your
 head, which may override them:
 
 - Surfaces: `surface`, `surface-raised`, `surface-float`, `sunken`.

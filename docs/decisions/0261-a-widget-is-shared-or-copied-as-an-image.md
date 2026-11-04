@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, superseded in part by 0265
 ---
 
 # A widget is shared, or copied as an image

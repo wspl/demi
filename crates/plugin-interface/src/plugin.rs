@@ -19,6 +19,26 @@ pub trait PluginFactory: Send + Sync {
 
     /// The instance that serves one user's shard, on its thread.
     fn instance(&self) -> Rc<dyn Plugin>;
+
+    /// A file its pages load by name, such as a library a document it serves
+    /// runs, which the backend serves to anyone: a file is the same for every
+    /// user, and a sandboxed frame or a share's reader has no session. A name
+    /// holds its version, so a file never changes under it.
+    fn file(&self, _name: &str) -> Option<PluginFile> {
+        None
+    }
+}
+
+/// A file a plugin's pages load ([`PluginFactory::file`]), held in the
+/// plugin's binary.
+#[derive(Debug, Clone, Copy)]
+pub struct PluginFile {
+    /// Its media type, such as `text/javascript`.
+    pub content_type: &'static str,
+    pub bytes: &'static [u8],
+    /// The same bytes compressed with gzip, which the backend answers a
+    /// browser that accepts gzip with.
+    pub gzip: Option<&'static [u8]>,
 }
 
 /// A plugin's instance for one user. It runs on its user's shard thread, so

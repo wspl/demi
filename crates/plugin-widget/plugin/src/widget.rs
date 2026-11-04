@@ -10,7 +10,7 @@ use serde_json::{Map, Value, json};
 
 use crate::commands::{CreateArgs, GuideArgs, Kind, draw};
 use crate::frame::{self, FrameSize};
-use crate::page::{self, DEFAULT_LOOK};
+use crate::page::{self, DEFAULT_LOOK, Tailwind};
 use crate::store;
 
 const CREATE: &str = "demi widget create";
@@ -87,7 +87,7 @@ async fn screenshots(
             args.insert("height".into(), json!(height));
         }
         args.insert("timeout".into(), json!(DRAW_TIMEOUT_MS));
-        let document = page::bootstrapped(page, &prelude);
+        let document = page::bootstrapped(page, &prelude, Tailwind::Held);
         let drawn = match port.package_call_reading(draw(), args, document, CallKind::Starts).await {
             Ok(drawn) => drawn,
             Err(error) => {
@@ -191,7 +191,7 @@ pub(crate) async fn facts(ids: Vec<String>, port: &PluginPort) -> Result<Map<Str
 /// The widget `id`'s page with its bootstrap, which the backend serves for
 /// the block's frame; none for a widget the user does not have.
 pub(crate) async fn document(id: &str, port: &PluginPort) -> Result<Option<String>, PluginError> {
-    Ok(store::read(port, id).await?.map(|(_, page)| page::bootstrapped(&page, "")))
+    Ok(store::read(port, id).await?.map(|(_, page)| page::bootstrapped(&page, "", Tailwind::Served)))
 }
 
 fn decode<T: serde::de::DeserializeOwned>(invocation: &RpcInvocation) -> Result<T, PluginError> {
@@ -214,7 +214,7 @@ pub fn specimens() -> Vec<(String, Value)> {
         let specimen = serde_json::json!({
             "frame": frame::declared(kind).expect("a guide's page declares a frame that reads"),
             "title": page::title(kind),
-            "document": page::bootstrapped(kind, ""),
+            "document": page::bootstrapped(kind, "", Tailwind::Served),
         });
         (format!("w{number}"), specimen)
     })

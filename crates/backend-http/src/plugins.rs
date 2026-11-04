@@ -4,6 +4,8 @@
 //!   conversations.
 //! - The read of a plugin's state for one conversation (§ Conversation state of
 //!   plugins).
+//! - A file a plugin's pages load, such as a library its documents run, which
+//!   its factory gives, for anyone ([`file`]).
 //!
 //! The user's shard checks the parameters against the method's schema, and the
 //! user's instance answers. What the call changes reaches the user's pages on
@@ -12,6 +14,12 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use axum::http::HeaderMap;
+use axum::http::header::{
+    ACCEPT_ENCODING, ACCESS_CONTROL_ALLOW_ORIGIN, CACHE_CONTROL, CONTENT_ENCODING, CONTENT_TYPE, VARY,
+    X_CONTENT_TYPE_OPTIONS,
+};
+use axum::response::{IntoResponse, Response};
 use demi_plugin_host::{PageCall, PageCallError, SwitchError};
 use demi_backend_user_shard::shard::ReloadRefusal;
 use demi_plugin_interface::{PluginError, PortRefusal};
@@ -25,6 +33,63 @@ use super::body::{JsonBody, JsonValueBody};
 use super::conversations::owned;
 use super::error::{ApiError, status_of};
 use super::gate::AuthUser;
+
+/// `GET /api/plugins/:plugin/files/:name`: a file the plugin's pages load.
+///
+/// No session gates it: a sandboxed frame sends no cookie and a share's
+/// reader has none, and a file is the same for every user, a plugin's whom
+/// it is off for included. A frame's opaque origin reads it with `fetch`, so
+/// any origin may, a refusal included.
+///
+/// Its name holds its version, so the answer may be kept for good, but Chrome
+/// keeps nothing an opaque origin's frame loads in its HTTP cache: every
+/// frame that shows fetches the file again. The gzip copy a file has answers
+/// a browser that accepts gzip, which every one does.
+pub(super) async fn file(
+    State(state): State<AppState>,
+    Path((plugin, name)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    let Some(file) = state.services.plugins.file(&plugin, &name) else {
+        let mut refusal = ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "No such file").into_response();
+        refusal
+            .headers_mut()
+            .insert(ACCESS_CONTROL_ALLOW_ORIGIN, axum::http::HeaderValue::from_static("*"));
+        return refusal;
+    };
+    let common = [
+        (CONTENT_TYPE, file.content_type),
+        (CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        (ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+        (X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        (VARY, "Accept-Encoding"),
+    ];
+    match file.gzip.filter(|_| accepts_gzip(&headers)) {
+        Some(gzip) => (common, [(CONTENT_ENCODING, "gzip")], gzip).into_response(),
+        None => (common, file.bytes).into_response(),
+    }
+}
+
+/// Whether `Accept-Encoding` (RFC 9110 § 12.5.3) names gzip, or any coding,
+/// without refusing it by `q=0`.
+fn accepts_gzip(headers: &HeaderMap) -> bool {
+    headers
+        .get_all(ACCEPT_ENCODING)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .any(|coding| {
+            let mut parts = coding.split(';').map(str::trim);
+            let name = parts.next().unwrap_or_default();
+            let refused = parts.any(|parameter| {
+                parameter
+                    .strip_prefix("q=")
+                    .and_then(|weight| weight.parse::<f32>().ok())
+                    .is_some_and(|weight| weight == 0.0)
+            });
+            (name.eq_ignore_ascii_case("gzip") || name == "*") && !refused
+        })
+}
 
 /// `PUT /plugins/:plugin { enabled }`: turns the plugin on or off for the
 /// caller.

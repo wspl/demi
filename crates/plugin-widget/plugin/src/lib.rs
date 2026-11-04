@@ -26,12 +26,15 @@ mod widget;
 use std::rc::Rc;
 
 use demi_plugin_interface::{
-    CommandPlugin, Manifest, Page, Plugin, PluginError, PluginFactory, PluginId, PluginPort,
+    CommandPlugin, Manifest, Page, Plugin, PluginError, PluginFactory, PluginFile, PluginId, PluginPort,
     Reply, Request,
 };
 
 pub use frame::{AspectRatio, FrameSize};
 pub use widget::specimens;
+
+/// The plugin's id, which the address of its files holds too.
+const PLUGIN: &str = "widget";
 
 /// The plugin's factory.
 pub struct Widgets {
@@ -41,7 +44,7 @@ pub struct Widgets {
 impl Widgets {
     pub fn new() -> Self {
         let mut manifest = Manifest::new(
-            PluginId::try_from("widget").expect("a valid plugin id"),
+            PluginId::try_from(PLUGIN).expect("a valid plugin id"),
             "Widgets",
             "Agents put charts, diagrams and interactive pages into their replies with demi widget.",
         );
@@ -65,6 +68,13 @@ impl PluginFactory for Widgets {
 
     fn instance(&self) -> Rc<dyn Plugin> {
         Rc::new(Instance(commands::commands()))
+    }
+
+    fn file(&self, name: &str) -> Option<PluginFile> {
+        page::LIBRARIES
+            .iter()
+            .find(|library| library.name == name)
+            .map(|library| library.file())
     }
 }
 

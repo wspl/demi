@@ -24,3 +24,7 @@ futures-util.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[build-dependencies]
+# The vendored libraries' gzip copies (`build.rs`).
+flate2 = "1"

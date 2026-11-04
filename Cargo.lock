@@ -2929,6 +2929,7 @@ dependencies = [
  "demi-plugin-interface",
  "demi-shared-types",
  "entities",
+ "flate2",
  "futures-util",
  "schemars",
  "serde",

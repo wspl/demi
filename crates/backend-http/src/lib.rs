@@ -675,6 +675,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/api/sync", get(sync::legacy))
         .merge(public_shares())
         .merge(html_views())
+        .route("/api/plugins/{plugin}/files/{name}", get(plugins::file))
         .method_not_allowed_fallback(no_route)
         .nest("/api", session_api)
         // After the nest, so the check covers every web app route, the

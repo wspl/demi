@@ -1,9 +1,9 @@
 // A widget's bootstrap script, a function of the default look's root
-// attributes (`page.rs`): the reply's appearance on the page's root, as the
-// frame's name gives it, the page's height for a frame that follows it, and
-// a picture of the page as it shows now, which the frame's parent asks for
-// to copy it.
-(defaultLook) => {
+// attributes and the address of html-to-image (`page.rs`): the reply's
+// appearance on the page's root, as the frame's name gives it, the page's
+// height for a frame that follows it, and a picture of the page as it shows
+// now, which the frame's parent asks for to copy it.
+(defaultLook, pictureLibrary) => {
   const root = document.documentElement
   const apply = (look) => {
     for (const [name, value] of Object.entries(look.attributes ?? {})) root.setAttribute(name, value)
@@ -45,12 +45,21 @@
   addEventListener('load', report)
 
   // The picture: the frame's box as the page draws it now, at twice its CSS
-  // pixels, on the surface the page draws on. The library loads at the first
-  // ask; the frame's parent cannot draw it, since it cannot read an opaque
-  // origin. html-to-image, not its fork modern-screenshot, which reads a
-  // frame of its own that an opaque origin cannot.
-  const PICTURE_LIBRARY = 'https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/+esm'
+  // pixels, on the surface the page draws on. The frame's parent cannot draw
+  // it, since it cannot read an opaque origin. The library loads at the first
+  // ask, and again at the next after one that failed. It runs with the page's
+  // own `define`, `exports` and `module` out of its sight, so an AMD loader
+  // or a CommonJS shim of the page does not take its exports from `window`.
   let library = null
+  const load = async () => {
+    const answer = await fetch(pictureLibrary).catch(() => undefined)
+    if (!answer?.ok)
+      throw new Error(`the image library did not load${answer ? `: ${answer.status}` : ''}`)
+    new Function('define', 'exports', 'module', await answer.text()).call(window)
+    if (!window.htmlToImage)
+      throw new Error('the image library did not load')
+    return window.htmlToImage
+  }
   const surface = () => {
     const probe = document.createElement('div')
     probe.style.background = 'var(--color-surface, var(--surface))'
@@ -64,7 +73,10 @@
       return
     const { request } = event.data
     try {
-      library ??= import(PICTURE_LIBRARY)
+      library ??= load().catch((error) => {
+        library = null
+        throw error
+      })
       const { toBlob } = await library
       const picture = await toBlob(root, {
         pixelRatio: 2,
@@ -76,7 +88,6 @@
         throw new Error('the page drew no picture')
       parent.postMessage({ widget: 'picture', request, picture }, '*')
     } catch (error) {
-      library = null
       parent.postMessage({ widget: 'picture', request, error: String(error?.message ?? error) }, '*')
     }
   })
