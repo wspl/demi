@@ -12,9 +12,9 @@
 //!    that manager left its running sandboxes to this one (`handover`): then
 //!    the manager entered that namespace before it started a thread, and takes
 //!    each sandbox it recorded over.
-//! 5. With the resource limits on, it requires the cgroup v2 CPU, memory and
-//!    PID controllers and enables them for the sandboxes. With them off, it
-//!    touches no cgroup.
+//! 5. With the resource limits on, it requires the cgroup CPU, memory and PID
+//!    controllers, of cgroup v2 or v1, and enables v2's for the sandboxes.
+//!    With them off, it touches no cgroup.
 //! 6. It stops and saves every device left behind but those it took over
 //!    (`recovery`), ends the processes of its unit that no sandbox owns, then
 //!    migrates its records when they are in an earlier release's format

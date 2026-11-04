@@ -103,13 +103,75 @@ mod linux {
         nft: &std::path::Path,
         ruleset: &nftables::schema::Nftables<'_>,
     ) -> Result<(), NetworkError> {
-        use nftables::helper::{DEFAULT_ARGS, NftablesError, apply_ruleset_with_args};
-        apply_ruleset_with_args(ruleset, Some(nft), DEFAULT_ARGS).map_err(|error| match error {
-            NftablesError::NftFailed { stderr, .. } => {
-                NetworkError::Firewall(stderr.trim().to_owned())
-            }
-            other => NetworkError::Firewall(other.to_string()),
-        })
+        run_nft(nft, ruleset, &[])
+    }
+
+    /// Has `nft` read `ruleset` and check it against the kernel, applying
+    /// nothing, so a kernel that lacks what the table uses refuses it before
+    /// the manager starts.
+    fn check_ruleset(
+        nft: &std::path::Path,
+        ruleset: &nftables::schema::Nftables<'_>,
+    ) -> Result<(), NetworkError> {
+        run_nft(nft, ruleset, &["-c"])
+    }
+
+    /// The oldest nftables that reads the table's JSON: 0.9.0 refuses its
+    /// concatenated set type, and says nothing of why.
+    const NFT_OLDEST: [u32; 3] = [0, 9, 3];
+
+    /// Refuses an `nft` older than [`NFT_OLDEST`], by what `nft --version`
+    /// prints, `nftables v0.9.3 (Topsy)`. A version it does not print so
+    /// leaves the judgment to [`check_ruleset`].
+    fn check_version(nft: &std::path::Path) -> Result<(), NetworkError> {
+        let output = std::process::Command::new(nft)
+            .arg("--version")
+            .output()
+            .map_err(|error| NetworkError::Firewall(format!("running {}: {error}", nft.display())))?;
+        let printed = String::from_utf8_lossy(&output.stdout);
+        let Some(version) = printed.split_whitespace().find_map(|word| word.strip_prefix('v')) else {
+            return Ok(());
+        };
+        let Ok(parts) = version.split('.').map(str::parse::<u32>).collect::<Result<Vec<_>, _>>() else {
+            return Ok(());
+        };
+        if parts.as_slice() < NFT_OLDEST.as_slice() {
+            return Err(NetworkError::Firewall(format!(
+                "nftables {version} cannot read the firewall's JSON; 0.9.3 or later reads it"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Runs `nft -j -f -` with `args` first on `ruleset`. Not through the
+    /// `nftables` crate's helper, which leaves nft's standard error to the
+    /// manager's, so a refusal would say nothing of why.
+    fn run_nft(
+        nft: &std::path::Path,
+        ruleset: &nftables::schema::Nftables<'_>,
+        args: &[&str],
+    ) -> Result<(), NetworkError> {
+        use std::io::Write as _;
+        let payload = serde_json::to_vec(ruleset).expect("a ruleset serializes");
+        let mut child = std::process::Command::new(nft)
+            .args(args)
+            .args(["-j", "-f", "-"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|error| NetworkError::Firewall(format!("running {}: {error}", nft.display())))?;
+        let written = child.stdin.take().expect("stdin is piped").write_all(&payload);
+        let output = child
+            .wait_with_output()
+            .map_err(|error| NetworkError::Firewall(format!("running {}: {error}", nft.display())))?;
+        if output.status.success() {
+            return Ok(());
+        }
+        written.map_err(|error| NetworkError::Firewall(format!("writing to {}: {error}", nft.display())))?;
+        let said = String::from_utf8_lossy(&output.stderr);
+        let said = said.lines().map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join("; ");
+        Err(NetworkError::Firewall(said))
     }
 
     /// The host side of Cloud networking.
@@ -182,7 +244,8 @@ mod linux {
             netns::path(&slot.namespace())
         }
 
-        /// Checks that the pool overlaps no host route, changing nothing.
+        /// Checks that the pool overlaps no host route and that `nft` takes
+        /// the firewall table, changing nothing.
         pub async fn check(&self) -> Result<(), NetworkError> {
             let routes =
                 netlink::session(|handle| async move { netlink::main_routes(&handle).await })
@@ -198,7 +261,21 @@ mod linux {
                     return Err(NetworkError::Overlap(network));
                 }
             }
-            Ok(())
+            let table = ruleset::table(
+                &Policy {
+                    pool: self.pool,
+                    dns: &self.dns,
+                    rules: &NetworkRules::default(),
+                    named: &[],
+                },
+                &[],
+            );
+            let nft = self.nft.clone();
+            blocking::run(move |_| {
+                check_version(&nft)?;
+                check_ruleset(&nft, &table)
+            })
+            .await
         }
 
         /// Creates `slot`'s namespace and veth pair, gives both ends their

@@ -26,13 +26,43 @@ pub fn mount_root(_: &OffLoop, path: &Path) -> io::Result<Option<bool>> {
                 status.stx_attributes.contains(StatxAttributes::MOUNT_ROOT),
             ))
         }
-        Ok(_) => Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "the kernel does not report mount roots (Linux 5.8 or later is required)",
-        )),
+        // Linux before 5.8 reports no mount roots through statx; the
+        // namespace's mount table names each mount point.
+        Ok(_) => Ok(Some(in_mount_table(path)?)),
         Err(Errno::NOENT) => Ok(None),
         Err(error) => Err(failed("inspecting", path, error)),
     }
+}
+
+/// Whether `path`, which exists, is a mount point of the calling thread's
+/// mount table, `/proc/thread-self/mountinfo`: the thread may have entered
+/// the host's namespace, where `/proc/self` names the main thread's. The
+/// table writes a space, a tab, a newline and a backslash in a path as an
+/// octal escape.
+fn in_mount_table(path: &Path) -> io::Result<bool> {
+    use std::os::unix::ffi::OsStrExt;
+    let parent = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => fs_err::canonicalize(parent)?,
+        _ => return Ok(true),
+    };
+    let wanted = match path.file_name() {
+        Some(name) => parent.join(name),
+        None => parent,
+    };
+    let escaped: Vec<u8> = wanted
+        .as_os_str()
+        .as_bytes()
+        .iter()
+        .flat_map(|&byte| match byte {
+            b' ' | b'\t' | b'\n' | b'\\' => format!("\\{byte:03o}").into_bytes(),
+            _ => vec![byte],
+        })
+        .collect();
+    let table = fs_err::read("/proc/thread-self/mountinfo")?;
+    Ok(table
+        .split(|&byte| byte == b'\n')
+        .filter_map(|line| line.split(|&byte| byte == b' ').nth(4))
+        .any(|point| point == escaped.as_slice()))
 }
 
 /// Binds `source` onto `target`.

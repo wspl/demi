@@ -37,13 +37,15 @@ Both runtimes need:
 
 gVisor needs, in addition:
 
-- Linux 5.14 or later.
+- Linux 5.4 or later.
 - seccomp, namespaces, veth interfaces, OverlayFS, ext4, loop devices,
   filesystem freeze and nftables.
-- cgroup v2 with the CPU, memory and PID controllers, while the manager's
-  resource limits are on (the default). A host without them runs the manager
-  with `DEMI_MANAGED_LIMITS=off`, and its Clouds then have no CPU, memory or
-  PID limits.
+- The cgroup CPU, memory and PID controllers, of cgroup v2 or v1, while the
+  manager's resource limits are on (the default). A host booted with
+  `systemd.unified_cgroup_hierarchy=0`, as some hosts of Docker are, has them
+  as v1. On v1 the memory limit covers swap only with `swapaccount=1`. A host
+  without them runs the manager with `DEMI_MANAGED_LIMITS=off`, and its Clouds
+  then have no CPU, memory or PID limits.
 - No seccomp listener on the processes the system starts. gVisor intercepts
   system calls with a seccomp listener of its own, and the kernel allows one
   listener in a process's filters; a filter without one does not matter. WSL
@@ -60,7 +62,7 @@ Both runtimes need:
 
 - `proot`, which the server release carries in `bin/`, built from the sources
   `crates/machine-manager/proot/release.json` pins.
-- `bsdtar` from libarchive-tools.
+- `bsdtar` from libarchive-tools 3.3.3 or later, which reads zstd.
 
 gVisor needs, in addition:
 
@@ -68,7 +70,7 @@ gVisor needs, in addition:
   from `/opt/demi/gvisor/<version>/`. `demi-server` fetches it before a
   release that pins it runs.
 - `mke2fs`, `e2fsck` and `resize2fs` from e2fsprogs.
-- `nft` from nftables.
+- `nft` from nftables 0.9.3 or later, which reads the firewall's JSON.
 
 Docker and containerd are not required.
 
@@ -127,7 +129,7 @@ The backend's definition of each holds.
 | `DEMI_MANAGED_RUNSC` | The pinned runsc executable; default `/opt/demi/gvisor/<pinned version>/runsc`. A deployment leaves it out. |
 | `DEMI_MANAGED_PROOT` | The proot executable; default `bin/proot` in the manager's release. A deployment leaves it out. |
 | `DEMI_MANAGED_DNS` | The IPv4 resolvers a Cloud uses. Optional: see [DNS](#dns). |
-| `DEMI_MANAGED_LIMITS` | `on` (default) or `off`: whether gVisor sandboxes run under the cgroup v2 CPU, memory and PID limits. |
+| `DEMI_MANAGED_LIMITS` | `on` (default) or `off`: whether gVisor sandboxes run under the cgroup CPU, memory and PID limits. |
 | `DEMI_MANAGED_CPUS`, `DEMI_MANAGED_MEM_MIB` | Per-sandbox CPU budget and total memory limit, with the limits on. Either one with `DEMI_MANAGED_LIMITS=off` fails configuration. |
 | `DEMI_MANAGED_SUBNET`, `DEMI_MANAGED_SLOTS` | The IPv4 address pool and the maximum number of network slots. |
 

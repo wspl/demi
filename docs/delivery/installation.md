@@ -139,7 +139,7 @@ The following table lists the parameters:
 | `--storage local\|s3` | Where the object store lives (`crates/backend-blobs/src/store.rs`). Default `local`. |
 | `--s3-bucket`, `--s3-region`, `--s3-endpoint`, `--s3-force-path-style` | The bucket, with `s3`. The credentials come from `setup`'s own `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, never from the command line, which other users of the machine can read. |
 | `--cloud-data <directory>` | The machine manager's state directory, on one filesystem. Default `/opt/demi/data/cloud`. |
-| `--cloud-limits on\|off` | Whether gVisor Clouds run under cgroup limits. Default `on`. On a machine without the cgroup v2 controllers, `on` leaves gVisor unavailable, so Clouds run on Simple Isolation, and `off` runs gVisor without limits. |
+| `--cloud-limits on\|off` | Whether gVisor Clouds run under cgroup limits. Default `on`. On a machine without the cgroup controllers, `on` leaves gVisor unavailable, so Clouds run on Simple Isolation, and `off` runs gVisor without limits. |
 | `--version <version>` | The release to set up. Default the release of the running `demi-server`. |
 | `--beta`, `--canary` | Set up the newest release of the channel instead of the running `demi-server`'s. Not with `--version`. |
 | `--no-packages` | Install no system package: the operator installed e2fsprogs, bsdtar and nftables, on a distribution `setup` does not know ([Distributions](#distributions)). |
@@ -255,8 +255,10 @@ e2fsprogs and nftables have those names everywhere. Four notes apply:
   on an Arch machine yet.
 - **openSUSE.** `setup` does not offer it.
 
-Each distribution offered needs Linux 5.14 or later, systemd and cgroup v2,
-which their current releases have.
+Each distribution offered needs Linux 5.4 or later and systemd, which their
+current releases have, and nftables 0.9.3 or later. Debian 10 ships 0.9.0;
+install `nftables` from `buster-backports` there before `setup`, and run it
+with `--no-packages`.
 
 ## In a container
 

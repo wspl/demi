@@ -124,7 +124,7 @@ struct Cli {
         required_unless_present = "fetch_gvisor"
     )]
     backend_url: Option<url::Url>,
-    /// Whether sandboxes run under cgroup v2 CPU, memory and PID limits.
+    /// Whether sandboxes run under cgroup CPU, memory and PID limits.
     #[arg(
         long,
         env = "DEMI_MANAGED_LIMITS",
@@ -218,11 +218,11 @@ pub struct Config {
     pub dns: Option<Vec<Ipv4Addr>>,
 }
 
-/// One sandbox's cgroup v2 limits.
+/// One sandbox's cgroup limits.
 ///
 /// They are a capability the operator turns on or off with one setting,
 /// `DEMI_MANAGED_LIMITS`: the choice belongs to the execution host, not to the
-/// kind of deployment, so a production host without the cgroup v2 controllers
+/// kind of deployment, so a production host without the cgroup controllers
 /// runs with them off and a development VM that has them runs with them on.
 /// Only the setting decides, and the manager never falls back from one mode to
 /// the other.
