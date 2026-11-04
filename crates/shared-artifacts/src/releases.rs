@@ -20,9 +20,9 @@ pub enum Channel {
     Canary,
 }
 
-/// How many redirects a request for a release's asset follows: GitHub sends
-/// one, to short-lived storage, and two servers can redirect to each other
-/// without end.
+/// How many redirects a request for a release follows: GitHub sends one for
+/// an asset, to short-lived storage, and one more for a repository that moved,
+/// and two servers can redirect to each other without end.
 pub const REDIRECTS: usize = 10;
 
 /// A release as GitHub's API describes it, of which only the tag, whether
@@ -180,8 +180,16 @@ async fn github<T: serde::de::DeserializeOwned>(path: &str) -> std::io::Result<O
 
 /// The body GitHub answers `url` with, of the media type `accept`; none when
 /// it has nothing there.
+///
+/// It follows GitHub's redirects, over HTTPS alone: a repository that moved to
+/// another owner answers its old addresses, the API's and the feed's, with an
+/// empty redirect to the new ones, and an installed server asks the addresses
+/// its own release was built with.
 async fn get(url: &str, accept: &str) -> std::io::Result<Option<bytes::Bytes>> {
-    let client = crate::client().map_err(std::io::Error::other)?;
+    let client = crate::download::builder()
+        .redirect(reqwest::redirect::Policy::limited(REDIRECTS))
+        .build()
+        .map_err(|error| std::io::Error::other(error.without_url().to_string()))?;
     let response = client
         .get(url)
         .header("user-agent", "demi")

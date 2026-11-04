@@ -43,7 +43,7 @@ newest() {
 # with 404. Any other failure, such as GitHub's limit on requests, stops the
 # script with its reason.
 latest() {
-  answer=$(curl -sS -w '\n%{http_code}' -H 'Accept: application/vnd.github+json' \
+  answer=$(curl -sSL -w '\n%{http_code}' -H 'Accept: application/vnd.github+json' \
     "https://api.github.com/repos/$repository/releases/latest") ||
     fail 'GitHub could not be asked for the newest beta release'
   status=$(printf '%s\n' "$answer" | tail -n 1)
