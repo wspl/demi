@@ -110,6 +110,11 @@ impl Shard {
             mount_path(path).map_err(IntegrationRefusal::Invalid)?;
         }
         let changed = self.services().control.update_integration(id, patch).await?;
+        if let Some(integration) = &changed
+            && !integration.capabilities.browser
+        {
+            self.services().views.withdraw(&integration.id);
+        }
         self.mark_integrations();
         Ok(changed)
     }
@@ -785,6 +790,7 @@ impl Shard {
         // No program reaches it from here on.
         control.replace_integration_token(id.clone()).await?;
         self.integration_events.close(id);
+        self.services().views.withdraw(id);
         for kept in control.integration_conversations(integration.id.clone()).await? {
             self.delete_conversation(&kept.conversation).await?;
         }

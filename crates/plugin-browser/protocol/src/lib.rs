@@ -32,7 +32,7 @@ use demi_shared_types::DecodeError;
 pub enum Operation {
     Browser(Box<browser::BrowserOperation>),
     /// `browser.live`: a viewer of the conversation's browser.
-    Live,
+    Live(live::LiveInput),
 }
 
 /// Why an invocation could not be decoded.
@@ -55,7 +55,7 @@ impl Operation {
     pub fn parse(name: &str, args: serde_json::Value) -> Result<Self, OperationError> {
         if name == live::OPERATION {
             return demi_shared_types::decode_value::<live::LiveInput>(args)
-                .map(|_| Self::Live)
+                .map(Self::Live)
                 .map_err(OperationError::Invalid);
         }
         match name.strip_prefix(browser::PREFIX) {

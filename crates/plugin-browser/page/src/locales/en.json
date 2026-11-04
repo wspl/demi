@@ -79,7 +79,8 @@
     "couldntOpen": "Couldn’t open this page.",
     "couldntShow": "Couldn’t show this page.",
     "noH264": "This browser can’t decode H.264 video.",
-    "waiting": "Waiting for the Host…"
+    "waiting": "Waiting for the Host…",
+    "notRunning": "The browser isn’t running."
   },
   "menu": {
     "copyLink": "Copy Link Address",

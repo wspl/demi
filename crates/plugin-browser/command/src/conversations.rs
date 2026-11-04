@@ -70,6 +70,7 @@ use demi_command_package_browser_chrome::tabs::{
 };
 use demi_command_package_browser_chrome::tabs::registry::Snapshot;
 use demi_command_package_browser_protocol::OperationError;
+use demi_command_package_browser_protocol::live::LiveInput;
 use demi_command_protocol::{
     ColorScheme, CommandError, CommandLocale, Completion, ConversationRequest, ConversationStatus,
 };
@@ -1049,9 +1050,10 @@ impl Conversations {
     pub async fn live(
         &self,
         context: InvocationContext,
+        scope: LiveInput,
     ) -> std::result::Result<Completion, ResidentError> {
         let (browser, _command) = self.admit(&context).await?;
-        demi_command_package_browser_chrome::live::viewer::serve(browser, context).await
+        demi_command_package_browser_chrome::live::viewer::serve(browser, context, scope).await
     }
 
     /// Admits an invocation into its conversation's browser, made on first

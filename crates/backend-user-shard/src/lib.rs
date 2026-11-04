@@ -111,6 +111,7 @@ mod integration_inits;
 pub mod integrations;
 mod scripts;
 pub mod lifecycle;
+pub mod open_views;
 pub mod provider_settings;
 pub mod provider_sharing;
 pub mod services;

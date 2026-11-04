@@ -81,6 +81,7 @@ struct ModeRequest {
 
 enum Request {
     Join {
+        drives: bool,
         notices: mpsc::Sender<Notice>,
         left: CancellationToken,
         operated: watch::Receiver<u64>,
@@ -188,7 +189,9 @@ impl Hub {
     }
 
     /// Joins the hub; what it cannot do for the viewer arrives as notices.
-    pub(crate) async fn join(&self) -> Result<(Membership, mpsc::Receiver<Notice>)> {
+    /// A viewer that `drives` may decide the screen and the size of a tab
+    /// the user opens; one that does not decides only the tabs it watches.
+    pub(crate) async fn join(&self, drives: bool) -> Result<(Membership, mpsc::Receiver<Notice>)> {
         let left = CancellationToken::new();
         // Leaves even if this future is dropped before it returns.
         let leave = left.clone().drop_guard();
@@ -197,6 +200,7 @@ impl Hub {
         let (reply, answer) = oneshot::channel();
         self.requests
             .send(Request::Join {
+                drives,
                 notices,
                 left,
                 operated: stamps,
@@ -286,6 +290,7 @@ impl Membership {
 }
 
 struct Viewer {
+    drives: bool,
     panel: Option<Panel>,
     watching: Option<BrowserTab>,
     /// The stamp of the viewer's latest operation the hub took in; 0 if never.
@@ -378,6 +383,7 @@ impl Owner {
     async fn request(&mut self, request: Request, departures: &mut FuturesUnordered<Departure>) {
         match request {
             Request::Join {
+                drives,
                 notices,
                 left,
                 operated,
@@ -388,6 +394,7 @@ impl Owner {
                 self.viewers.insert(
                     id,
                     Viewer {
+                        drives,
                         panel: None,
                         watching: None,
                         operated: 0,
@@ -410,9 +417,10 @@ impl Owner {
                 };
                 entry.panel = Some(panel);
                 // Without a driver, the first viewer to show its screen decides.
-                if self
-                    .driver
-                    .is_none_or(|driver| !self.viewers.contains_key(&driver))
+                if entry.drives
+                    && self
+                        .driver
+                        .is_none_or(|driver| !self.viewers.contains_key(&driver))
                 {
                     self.driver = Some(viewer);
                 }

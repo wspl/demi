@@ -169,6 +169,11 @@ fn routes() -> Vec<Route> {
             .refuses(400, "The query names more than one of `before`, `after` and `around`, `before` or `after` without `edge`, or an index outside the transcript (`invalid_query`).")
             .refuses(409, "The page moved since: `edge` is no longer the block at `before` or `after` (`transcript_changed`)."),
         json("get", "/conversations/{conversation}/agents/{agent}/blocks/{block}", "A block whole, where the transcript's is light", None, (200, Some(of::<demi_web_api_protocol::conversations::WholeBlock>))),
+        json("post", "/conversations/{conversation}/browser/tabs/{tab}/views", "A link to one tab of the conversation's browser, live, which any page may frame; only this answer carries its `url`", Some(of::<CreateBrowserView>), (201, Some(of::<BrowserView>)))
+            .refuses(400, "`tab` is no tab's id, such as `t3`, or `expiresIn` is beyond the times Demi keeps (`integration_refused`).")
+            .refuses(409, "The integration's browser capability is off (`integration_refused`)."),
+        json("get", "/conversations/{conversation}/browser/views", "The links to the conversation's browser tabs that have not expired", None, (200, Some(of::<BrowserViewList>))),
+        json("delete", "/conversations/{conversation}/browser/views/{view}", "Remove a link; each page open on it ends", None, (204, None)),
         json("get", "/conversations/{conversation}/fs", "A directory's entries on the conversation's Cloud, its working directory without `path`", None, (200, Some(of::<files::Directory>)))
             .query(of::<files::DirectoryQuery>),
         json("post", "/conversations/{conversation}/fs", "Make a directory, with its parents", Some(of::<files::CreateDirectory>), (201, Some(of::<files::CreatedDirectory>))),

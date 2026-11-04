@@ -93,6 +93,7 @@ mod from_0_1_65_dev_uninitialized_integrations;
 mod from_0_1_65_dev_usage_without_messages;
 mod from_0_1_65_dev_conversations_without_identities;
 mod from_0_1_65_dev_unsized_clouds;
+mod from_0_1_65_dev_no_browser_views;
 
 pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
@@ -429,5 +430,9 @@ pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
         sql: include_str!("from_0_1_65_dev_unsized_clouds.sql"),
         migration: from_0_1_65_dev_unsized_clouds::MIGRATION,
+    },
+    Shipped {
+        sql: include_str!("from_0_1_65_dev_no_browser_views.sql"),
+        migration: from_0_1_65_dev_no_browser_views::MIGRATION,
     },
 ];

@@ -138,10 +138,11 @@ export interface SitePage {
 /**
  * The page of the product a click on a notification opens its conversation
  * in: the focused one, else a visible one, else any; never a share's page
- * (`/s/…`), which is no product page. None when no product page is open.
+ * (`/s/…`) or a view link's (`/v/…`), which are no product pages. None when
+ * no product page is open.
  */
 export function productPage<P extends SitePage>(pages: readonly P[]): P | undefined {
-  const product = pages.filter((page) => !new URL(page.url).pathname.startsWith('/s/'))
+  const product = pages.filter((page) => !/^\/[sv]\//.test(new URL(page.url).pathname))
   return product.find((page) => page.focused)
     ?? product.find((page) => page.visibilityState === 'visible')
     ?? product[0]

@@ -23,8 +23,8 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Result as BrowserResult};
 use crate::tabs::{environment::BrowserEnvironment, tab::BrowserTab};
 use demi_command_package_browser_protocol::live::{
-    CursorRegion, EndReason, LiveControl, LiveDialog, LiveDownload, LiveMenu, LiveModuleMessage,
-    LiveTab, LiveViewerMessage, ViewerMode,
+    CursorRegion, EndReason, LiveControl, LiveDialog, LiveDownload, LiveInput, LiveMenu,
+    LiveModuleMessage, LiveTab, LiveViewerMessage, ViewerMode,
 };
 use demi_live_view::{delivery::Delivery, input::Item};
 use demi_live_view_protocol::{
@@ -81,10 +81,17 @@ pub trait ViewedBrowser: Send + Sync + 'static {
 }
 
 /// Serves one view of `browser`, the invocation of `browser.live` that
-/// `context` carries, until the page or the conversation ends it.
+/// `context` carries, within `scope`, until the page or the conversation
+/// ends it.
+///
+/// A view of one tab watches that tab whenever the browser has it, hears of
+/// it alone, and ignores a watch of any other. A read-only view's input,
+/// pastes, choices, uploads, dialog answers and modes are dropped, and its
+/// panel never reaches the hub, so it sizes neither the screen nor a tab.
 pub async fn serve<B: ViewedBrowser>(
     browser: Arc<B>,
     context: InvocationContext,
+    scope: LiveInput,
 ) -> Result<Completion, ResidentError> {
     let InvocationContext {
         input,
@@ -93,9 +100,10 @@ pub async fn serve<B: ViewedBrowser>(
         ..
     } = context;
     let (writer, writing) = Writer::start(output);
-    let (inbound, acks, uploads, _reading) = read(input);
+    let (inbound, acks, uploads, _reading) = read(input, scope.read_only);
     let mut viewer = Viewer {
         browser,
+        scope,
         cancel: cancellation,
         writer,
         inbound,
@@ -127,9 +135,10 @@ pub async fn serve<B: ViewedBrowser>(
 type Inbounds = mpsc::Receiver<Result<LiveViewerMessage, String>>;
 
 /// Splits the page's bytes into messages; acknowledgements go to the
-/// delivery, chosen files to the uploads.
+/// delivery, chosen files to the uploads, or nowhere when `read_only`.
 fn read(
     input: ResidentInput,
+    read_only: bool,
 ) -> (
     Inbounds,
     mpsc::Receiver<Vec<ChunkAck>>,
@@ -147,6 +156,11 @@ fn read(
                 Err(error) => {
                     let _ended = messages.send(Err(error.to_string())).await;
                     break;
+                }
+                Ok(Some(Inbound::Control(LiveViewerMessage::Upload { .. }) | Inbound::File { .. }))
+                    if read_only =>
+                {
+                    true
                 }
                 Ok(Some(Inbound::Control(LiveViewerMessage::Upload {
                     tab,
@@ -181,6 +195,7 @@ fn read(
 
 struct Viewer<B> {
     browser: Arc<B>,
+    scope: LiveInput,
     cancel: CancellationToken,
     writer: Writer,
     inbound: Inbounds,
@@ -277,13 +292,17 @@ impl<B: ViewedBrowser> Viewer<B> {
         environment: BrowserEnvironment,
         live: &Arc<Hub>,
     ) -> Result<(), Failure> {
-        let Ok((membership, mut notices)) = live.join().await else {
+        // A viewer pinned to one tab decides nothing of the browser's other
+        // tabs.
+        let Ok((membership, mut notices)) = live.join(self.scope.tab.is_none()).await else {
             // The hub ends with the browser.
             self.end(EndReason::BrowserEnded).await;
             return Ok(());
         };
         let membership = Arc::new(membership);
-        if let Some(panel) = self.panel {
+        if let Some(panel) = self.panel
+            && !self.scope.read_only
+        {
             membership.panel(panel).await;
         }
         let mut changes = live.subscribe();
@@ -310,6 +329,7 @@ impl<B: ViewedBrowser> Viewer<B> {
             );
         }
         let mut session = Session {
+            scope: &self.scope,
             environment: &environment,
             live,
             membership: &membership,
@@ -340,7 +360,9 @@ impl<B: ViewedBrowser> Viewer<B> {
                     Some(Err(error)) => break Err(Failure::Protocol(error)),
                     Some(Ok(message)) => match message {
                         LiveViewerMessage::Panel { .. } => {
-                            if let Some(panel) = panel(&message) {
+                            if let Some(panel) = panel(&message)
+                                && !self.scope.read_only
+                            {
                                 self.panel = Some(panel);
                                 membership.panel(panel).await;
                             }
@@ -540,6 +562,7 @@ fn stream(watched: &Option<Watched>) -> Option<&StreamView> {
 }
 
 struct Session<'a> {
+    scope: &'a LiveInput,
     environment: &'a BrowserEnvironment,
     live: &'a Arc<Hub>,
     membership: &'a Membership,
@@ -577,9 +600,17 @@ impl Session<'_> {
         {
             self.watch(None).await;
         }
+        // A view of one tab watches it from the first list that has it.
+        if let Some(pinned) = &self.scope.tab
+            && self.watched.is_none()
+            && let Some(tab) = listing.find(pinned)
+        {
+            self.watch(Some(tab.clone())).await;
+        }
         let tabs = listing
             .tabs
             .iter()
+            .filter(|listed| self.scope.tab.as_ref().is_none_or(|pinned| listed.tab.id() == pinned))
             .map(|listed| {
                 let (title, url) = listed.shown();
                 LiveTab {
@@ -636,6 +667,16 @@ impl Session<'_> {
 
     async fn receive(&mut self, message: LiveViewerMessage, commands: &mpsc::Sender<Command>) {
         match message {
+            LiveViewerMessage::Watch { tab: Some(tab) }
+                if self.scope.tab.as_ref().is_some_and(|pinned| *pinned != tab) => {}
+            // A pinned viewer has no viewport menu.
+            LiveViewerMessage::Mode { .. } if self.scope.tab.is_some() => {}
+            LiveViewerMessage::Dialog { .. }
+            | LiveViewerMessage::Input { .. }
+            | LiveViewerMessage::Paste { .. }
+            | LiveViewerMessage::Choice { .. }
+            | LiveViewerMessage::Recapture {}
+                if self.scope.read_only => {}
             LiveViewerMessage::Watch { tab } => {
                 let tab = match tab {
                     Some(id) => match commands::find(self.environment, &id).await {
@@ -855,6 +896,11 @@ impl Session<'_> {
                     return;
                 };
                 let downloads = observed.downloads.borrow_and_update().clone();
+                // A pinned viewer has no downloads list, and a download's
+                // path is the Host's.
+                if self.scope.tab.is_some() {
+                    return;
+                }
                 self.writer
                     .control(&LiveModuleMessage::Downloads { tab, downloads })
                     .await;

@@ -123,18 +123,20 @@ function directHotUpdates(): Plugin {
 }
 
 /**
- * The shared page's own entry: the build emits `share.html` beside
- * `index.html`, which the backend serves at `/s/:token`; the development server
- * answers that address with it the same way.
+ * The pages without an account, each its own entry: the build emits
+ * `share.html` and `view.html` beside `index.html`, which the backend serves at
+ * `/s/:token` and `/v/:token`; the development server answers those addresses
+ * with them the same way.
  */
-function sharedPage(): Plugin {
+function accountlessPages(): Plugin {
   return {
-    name: 'demi-shared-page',
+    name: 'demi-accountless-pages',
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use((request, _response, next) => {
-        if (request.url && /^\/s\/[^/?#]+\/?(?:[?#]|$)/.test(request.url)) {
-          request.url = '/share.html'
+        const entry = request.url && /^\/([sv])\/[^/?#]+\/?(?:[?#]|$)/.exec(request.url)?.[1]
+        if (entry) {
+          request.url = entry === 's' ? '/share.html' : '/view.html'
         }
         next()
       })
@@ -143,7 +145,7 @@ function sharedPage(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [vue(), tailwindcss(), webBuild(), serviceWorker(), appleTouchIcon(), directHotUpdates(), sharedPage()],
+  plugins: [vue(), tailwindcss(), webBuild(), serviceWorker(), appleTouchIcon(), directHotUpdates(), accountlessPages()],
   // The repository's `.env` carries the local development account
   // (`DEMI_DEV_EMAIL`, `DEMI_DEV_PASSWORD`); the sign-in page fills it in
   // during development only.
@@ -159,6 +161,7 @@ export default defineConfig({
       input: {
         index: resolve(import.meta.dirname, 'index.html'),
         share: resolve(import.meta.dirname, 'share.html'),
+        view: resolve(import.meta.dirname, 'view.html'),
       },
     },
   },

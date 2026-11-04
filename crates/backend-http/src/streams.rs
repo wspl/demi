@@ -6,12 +6,17 @@
 //! - The page's word on whether it watches the stream, a text message of the
 //!   user stream's own layer (`crates/runner-protocol/src/direct.rs`,
 //!   `StreamWatched`), which decides whether the stream is activity.
+//!
+//! The relay serves any page side: a lane of the page connection, or a view
+//! link's own socket (`browser_views.rs`).
+
+use std::future::Future;
 
 use axum::http::StatusCode;
+use bytes::Bytes;
 use demi_backend_user_shard::shard::lane::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::UserId;
-use tokio_util::sync::CancellationToken;
 
 use super::AppState;
 use super::connection::Opened;
@@ -48,7 +53,7 @@ pub(super) async fn open(state: &AppState, user: &UserId, id: &str, name: String
                 };
                 let stream = shard
                     .host_shard()
-                    .open_user_stream(&record.id, &binding, &cancel)
+                    .open_user_stream(&record.id, &binding, &serde_json::Map::new(), &cancel)
                     .await?;
                 Ok::<_, ApiError>(Some((stream, plugin_off)))
             })
@@ -59,13 +64,44 @@ pub(super) async fn open(state: &AppState, user: &UserId, id: &str, name: String
     Ok(Opened {
         conversation: Some(conversation),
         stream: Some(name),
-        ..Opened::new(move |lane, reader| relay(lane, reader, stream, plugin_off))
+        ..Opened::new(move |lane, reader| async move {
+            let until = async move {
+                plugin_off.cancelled().await;
+                End::PluginDisabled
+            };
+            relay(lane, reader, stream, until, |lane, reader, end| lane.end(reader, end.close())).await;
+        })
     })
 }
 
-/// How a stream ended, which its lane closes with.
+/// The page's side of a stream, where the Host's bytes go.
+pub(super) trait ToPage {
+    /// Writes `bytes` once what went before was written; an error once the
+    /// page is gone.
+    fn send_bytes(&mut self, bytes: Bytes) -> impl Future<Output = Result<(), ()>>;
+}
+
+/// The page's side of a stream, which its messages come from.
+pub(super) trait FromPage {
+    /// The page's next message; none once it closed.
+    fn next(&mut self) -> impl Future<Output = Option<LaneMessage>>;
+}
+
+impl ToPage for Lane {
+    async fn send_bytes(&mut self, bytes: Bytes) -> Result<(), ()> {
+        Lane::send_bytes(self, bytes).await.map_err(|_| ())
+    }
+}
+
+impl FromPage for LaneReader {
+    async fn next(&mut self) -> Option<LaneMessage> {
+        LaneReader::next(self).await
+    }
+}
+
+/// How a stream ended, which its page side closes with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum End {
+pub(super) enum End {
     /// The invocation completed.
     Completed,
     /// The page sent a text message that says nothing of the user stream's
@@ -79,12 +115,18 @@ enum End {
     PluginDisabled,
     /// The page closed the lane, or its connection ended.
     PageClosed,
+    /// The view link the page opened the stream by expired.
+    ViewExpired,
+    /// The view link the page opened the stream by was removed.
+    ViewRemoved,
+    /// The view link the page opened the stream by no longer opens.
+    ViewNotFound,
 }
 
 impl End {
-    /// How the lane ends: with the close the page hears, or as the page left
-    /// it.
-    fn lane_end(self) -> LaneEnd {
+    /// How the page side ends: with the close the page hears, or as the page
+    /// left it.
+    pub(super) fn close(self) -> LaneEnd {
         let frame = |code, reason| LaneEnd::Close(LaneClose { code, reason });
         match self {
             Self::Completed => frame(1000, "completed"),
@@ -92,6 +134,9 @@ impl End {
             Self::HostUnreachable => frame(1011, "host_unreachable"),
             Self::Changed => frame(4000, "conversation_changed"),
             Self::PluginDisabled => frame(4001, "plugin_disabled"),
+            Self::ViewExpired => frame(4002, "view_expired"),
+            Self::ViewRemoved => frame(4003, "view_removed"),
+            Self::ViewNotFound => frame(4004, "view_not_found"),
             Self::PageClosed => LaneEnd::Gone,
         }
     }
@@ -105,14 +150,15 @@ impl End {
 ///   before.
 /// - Message boundaries mean nothing.
 /// - The page's text message says whether it watches the stream.
-/// - Whichever side ends first ends the stream, and so does `plugin_off`, once
-///   the user turns its plugin off; dropping the lease then ends it in the
-///   shard.
-async fn relay(
-    mut to_page: Lane,
-    mut from_page: LaneReader,
+/// - Whichever side ends first ends the stream, and so does `until`, such as
+///   once the user turns its plugin off. `close` ends the page side with how
+///   it ended; dropping the lease then ends it in the shard.
+pub(super) async fn relay<T: ToPage, F: FromPage>(
+    mut to_page: T,
+    mut from_page: F,
     stream: UserStream,
-    plugin_off: CancellationToken,
+    until: impl Future<Output = End>,
+    close: impl FnOnce(T, F, End),
 ) {
     let UserStream {
         mut to_host,
@@ -159,11 +205,11 @@ async fn relay(
         tokio::select! {
             biased;
             () = lease.ended() => End::Changed,
-            () = plugin_off.cancelled() => End::PluginDisabled,
+            end = until => end,
             end = deliver => end,
             end = forward => end,
         }
     };
-    to_page.end(from_page, end.lane_end());
+    close(to_page, from_page, end);
     drop(lease);
 }

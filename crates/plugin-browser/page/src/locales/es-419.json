@@ -79,7 +79,8 @@
     "couldntOpen": "No se pudo abrir esta página.",
     "couldntShow": "No se pudo mostrar esta página.",
     "noH264": "Este navegador no puede decodificar video H.264.",
-    "waiting": "Esperando el host…"
+    "waiting": "Esperando el host…",
+    "notRunning": "El navegador no se está ejecutando."
   },
   "menu": {
     "copyLink": "Copiar dirección del enlace",

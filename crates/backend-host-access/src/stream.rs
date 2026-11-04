@@ -161,20 +161,30 @@ pub enum UserCallError {
     Call(#[from] ResidentCallError),
 }
 
+/// What a resident invocation for the user is given.
+#[derive(Clone, Copy)]
+enum Invoked<'a> {
+    /// A user stream's operation, with its arguments.
+    Stream(&'a Map<String, Value>),
+    /// A one-shot call's, which answers in JSON.
+    Call(&'a Map<String, Value>),
+}
+
 impl dyn HostShard + '_ {
     /// Opens the user stream `binding` names on the conversation's primary
-    /// Host. The stream is admitted without waking a stopped Cloud, and open
+    /// Host, its operation invoked with `args`. The stream is admitted without waking a stopped Cloud, and open
     /// until the edge drops its lease, the invocation completes, or a
     /// transition ends it. Nothing moves before the runner opened it.
     pub async fn open_user_stream(
         &self,
         id: &ConversationId,
         binding: &ResidentBinding,
+        args: &Map<String, Value>,
         cancel: &CancellationToken,
     ) -> Result<UserStream, StreamError> {
         let access = self.admit_stream(id, None, Attention::Watches, cancel).await?;
         let request = self
-            .resident_request(&access.conversation, &access.host, binding, None)
+            .resident_request(&access.conversation, &access.host, binding, Invoked::Stream(args))
             .await?;
         let device = access.device.as_str();
         let input = self.pipes().to_device(device);
@@ -238,7 +248,7 @@ impl dyn HostShard + '_ {
                 return self
                     .with_reading_host(&record.id, None, cancel, async |host| {
                         let request = self
-                            .resident_request(&record.id, host, &call.binding, Some(&call.args))
+                            .resident_request(&record.id, host, &call.binding, Invoked::Call(&call.args))
                             .await?;
                         let answer = host
                             .host
@@ -259,7 +269,7 @@ impl dyn HostShard + '_ {
                 &access.conversation,
                 &access.host,
                 &call.binding,
-                Some(&call.args),
+                Invoked::Call(&call.args),
             )
             .await?;
         let waits = Waits::until_ended(cancel, &access.open.ended);
@@ -343,7 +353,7 @@ impl dyn HostShard + '_ {
     /// - The operation in the package the conversation's jobs use, with a
     ///   `user` caller.
     /// - The conversation's directory as the working directory.
-    /// - `args` for a one-shot call, which answers in JSON.
+    /// - The arguments `invoked` gives it.
     ///
     /// The runner fetches the resident's executable from where the published
     /// catalog says, while the work is open.
@@ -352,8 +362,12 @@ impl dyn HostShard + '_ {
         conversation: &ConversationId,
         host: &ConversationHost,
         binding: &ResidentBinding,
-        args: Option<&Map<String, Value>>,
+        invoked: Invoked<'_>,
     ) -> Result<ResidentRequest, HostAccessError> {
+        let (args, json) = match invoked {
+            Invoked::Stream(args) => (args, None),
+            Invoked::Call(args) => (args, Some(true)),
+        };
         let context = command_context(
             self.control(),
             self.user(),
@@ -365,8 +379,8 @@ impl dyn HostShard + '_ {
             context,
             package: binding.package.clone(),
             operation: binding.operation.clone(),
-            args: args.cloned(),
-            json: args.map(|_| true),
+            args: Some(args.clone()),
+            json,
             cwd: host.root.clone(),
             resolver: self.native().resolver(self.public_url()),
             attached: Vec::new(),

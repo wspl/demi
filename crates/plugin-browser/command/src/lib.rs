@@ -152,7 +152,7 @@ impl Handler for DemiBrowser {
             Ok(Operation::Browser(operation)) => {
                 Box::pin(async move { browsers.invoke(context, Ok(*operation)).await })
             }
-            Ok(Operation::Live) => Box::pin(async move { browsers.live(context).await }),
+            Ok(Operation::Live(scope)) => Box::pin(async move { browsers.live(context, scope).await }),
             Err(OperationError::Unknown(operation)) => {
                 Box::pin(async move { Err(ResidentError::UnknownOperation(operation)) })
             }

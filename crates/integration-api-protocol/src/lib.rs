@@ -172,6 +172,47 @@ pub struct CloudList {
     pub clouds: Vec<Cloud>,
 }
 
+/// `POST /conversations/:conversation/browser/tabs/:tab/views`: a link to
+/// one tab of the conversation's browser.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateBrowserView {
+    /// How many seconds the link opens for.
+    #[schemars(range(min = 1))]
+    #[garde(range(min = 1))]
+    pub expires_in: u64,
+    /// Whether the person only watches: no click, key or paste of theirs
+    /// reaches the page, and their window sizes no tab.
+    #[garde(skip)]
+    pub read_only: bool,
+}
+
+/// A link to one tab of a conversation's browser.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserView {
+    pub id: String,
+    /// The tab, as the agent's `demi browser` commands name it.
+    pub tab: String,
+    pub read_only: bool,
+    pub created_at: Timestamp,
+    /// From then the link opens nothing, and a page open on it ends.
+    pub expires_at: Timestamp,
+    /// The page that shows the tab, which may be framed anywhere; only the
+    /// answer that made the link carries it, as Demi keeps no copy of its
+    /// token.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+/// `GET /conversations/:conversation/browser/views`: the links that have not
+/// expired, the newest first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserViewList {
+    pub views: Vec<BrowserView>,
+}
+
 /// A model a conversation runs on: one of the provider entries and models of
 /// `GET /models`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]

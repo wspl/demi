@@ -205,6 +205,9 @@ pub enum ErrorCode {
     /// block or blob: one answer for each, so it tells nothing of what
     /// exists.
     ShareNotFound,
+    /// No view link answers the token, or it expired or was removed: one
+    /// answer for each, so it tells nothing of what exists.
+    ViewNotFound,
     /// The conversation has no undecided permission request of that id:
     /// another page decided it, an Allow of its category did, or a newer
     /// request replaced it.

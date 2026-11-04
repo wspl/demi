@@ -190,11 +190,11 @@ async function openConversation(conversationId: string): Promise<void> {
 
 /**
  * Whether a navigation to `path` is one of the app's pages, which the
- * backend answers with `index.html`: an extensionless path outside the API
- * and a share's page.
+ * backend answers with `index.html`: an extensionless path outside the API,
+ * a share's page and a view link's page.
  */
 function isAppPage(path: string): boolean {
-  if (path.startsWith('/api/') || path.startsWith('/s/'))
+  if (path.startsWith('/api/') || path.startsWith('/s/') || path.startsWith('/v/'))
     return false
   return !/\.[^/]*$/.test(path)
 }

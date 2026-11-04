@@ -79,7 +79,8 @@
     "couldntOpen": "無法開啟此頁面。",
     "couldntShow": "無法顯示此頁面。",
     "noH264": "此瀏覽器無法解碼 H.264 影片。",
-    "waiting": "正在等待主機…"
+    "waiting": "正在等待主機…",
+    "notRunning": "瀏覽器未在執行。"
   },
   "menu": {
     "copyLink": "複製連結位址",

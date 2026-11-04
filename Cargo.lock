@@ -2103,6 +2103,7 @@ dependencies = [
  "demi-backend-providers",
  "demi-backend-runners",
  "demi-backend-user-shard",
+ "demi-command-package-browser-protocol",
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
  "demi-host-interface",

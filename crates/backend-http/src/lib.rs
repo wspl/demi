@@ -33,6 +33,7 @@ mod auth;
 mod schedules;
 mod blobs;
 mod blocks;
+mod browser_views;
 mod body;
 mod cloud;
 mod connection;
@@ -716,6 +717,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/api/sync", get(sync::legacy))
         .merge(public_shares())
+        .merge(public_views())
         .merge(html_views())
         .route("/api/plugins/{plugin}/files/{name}", get(plugins::file))
         .method_not_allowed_fallback(no_route)
@@ -760,6 +762,16 @@ fn public_shares() -> Router<AppState> {
             "/api/shares/{token}/attachments/{attachment}",
             get(shares::attachment),
         )
+        .layer(middleware::map_response(shares::public_headers))
+}
+
+/// The public routes of the view links, as a share's are: no session gate,
+/// the token their only key, each answer kept out of indexes, referrers and
+/// caches.
+fn public_views() -> Router<AppState> {
+    Router::new()
+        .route("/api/views/{token}", get(browser_views::read))
+        .route("/api/views/{token}/stream", get(browser_views::stream))
         .layer(middleware::map_response(shares::public_headers))
 }
 

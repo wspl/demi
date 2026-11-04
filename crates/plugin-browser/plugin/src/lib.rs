@@ -32,8 +32,7 @@ use demi_plugin_interface::{
 };
 use futures_util::future::LocalBoxFuture;
 
-/// The name of the live view's user stream.
-pub const STREAM: &str = "browser";
+pub use demi_command_package_browser_protocol::live::STREAM;
 
 /// The plugin's factory.
 pub struct Browser {

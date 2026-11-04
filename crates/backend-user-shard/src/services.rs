@@ -114,6 +114,8 @@ pub struct Services {
     /// The sessions and media calls other servers borrow this one's entries
     /// in, by share key, which revoking a key ends.
     pub lent: crate::provider_sharing::LentSessions,
+    /// The pages open on view links.
+    pub views: Arc<crate::open_views::OpenViews>,
     /// The build of the web app the backend serves, if it serves one.
     pub web_build: Option<String>,
     /// The runner releases paired devices follow.
@@ -495,6 +497,7 @@ impl Services {
             cloud: settings.cloud,
             public_url: settings.public_url,
             lent: Default::default(),
+            views: Arc::default(),
             web_build: settings.web_build,
             runner_releases: settings.runner_releases,
             prefetches: Prefetches::default(),

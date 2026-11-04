@@ -24,7 +24,7 @@ import { BLANK_PAGE, cursorAt, panelRect, placePicture, tabPoint, type PanelSize
  * with it. The conversation's browser alone decides which tab a session
  * watches.
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   /** The page's view, while one is open. */
   session: LiveSession | null
   /** The tab as a view last reported it. */
@@ -37,7 +37,14 @@ const props = defineProps<{
   panel: PanelSize
   /** What moves the picture onto the screen's pixel grid. */
   snap: { x: number; y: number }
-}>()
+  /**
+   * The viewer only watches: nothing of theirs reaches the page, and the
+   * picture shows no cursor, control or dialog of the page's to take it.
+   */
+  readOnly?: boolean
+  /** The browser's menu offers Back, Forward and Reload, which the view asks of the browser through `history`. */
+  history?: boolean
+}>(), { readOnly: false, history: true })
 const emit = defineEmits<{
   /** Back, Forward or Reload, chosen in the browser's menu. */
   history: [action: 'back' | 'forward' | 'reload']
@@ -88,7 +95,7 @@ const pointer = shallowRef<{ x: number; y: number } | null>(null)
 /** The cursor the page shows under the pointer, resolved here from the page's cursor regions. */
 const cursor = computed(() => {
   const at = pointer.value
-  if (!at || !state.value) {
+  if (!at || !state.value || props.readOnly) {
     return 'default'
   }
   return cursorAt(at, state.value.regions, state.value.cursor.cursor)
@@ -125,6 +132,9 @@ function flushMove(): void {
 
 function pointerDown(event: PointerEvent): void {
   event.preventDefault()
+  if (props.readOnly) {
+    return
+  }
   const bounds = frame.value?.getBoundingClientRect()
   // The field follows the pointer, so an input method composes where the
   // viewer is typing, and the viewer's own paste reaches this page first.
@@ -141,6 +151,9 @@ function pointerDown(event: PointerEvent): void {
 }
 
 function pointerMove(event: PointerEvent): void {
+  if (props.readOnly) {
+    return
+  }
   const at = point(event)
   pointer.value = at
   if (event.buttons) {
@@ -158,6 +171,9 @@ function pointerMove(event: PointerEvent): void {
 }
 
 function pointerUp(event: PointerEvent): void {
+  if (props.readOnly) {
+    return
+  }
   flushMove()
   if (canvas.value?.hasPointerCapture(event.pointerId)) {
     canvas.value.releasePointerCapture(event.pointerId)
@@ -167,6 +183,9 @@ function pointerUp(event: PointerEvent): void {
 
 function wheel(event: WheelEvent): void {
   event.preventDefault()
+  if (props.readOnly) {
+    return
+  }
   flushMove()
   props.session?.input(inputMessage(props.tab.id, wheelInput(point(event), event, generation.value.viewport.height)))
 }
@@ -261,7 +280,12 @@ function answered(accept: boolean, text: string | undefined): void {
  */
 const menu = computed(() => {
   const open = state.value?.menu
-  return watching.value && open && open.tab === props.tab.id ? open.menu : null
+  if (!watching.value || !open || open.tab !== props.tab.id) {
+    return null
+  }
+  // Without the history, the page's own menu has nothing to offer.
+  const offers = open.menu.link || open.menu.editable || open.menu.selection || props.history
+  return offers ? open.menu : null
 })
 /** Where the menu opens on the screen: at the click. */
 const menuAt = computed(() => {
@@ -448,9 +472,10 @@ onBeforeUnmount(() => {
       status="failed"
       :label="t('region.couldntShow')"
       :detail="reasonSentence(state.pictureless)"
-      :on-retry="state.pictureless === LIVE_CAPTURE_STOPPED ? () => session?.recapture() : undefined"
+      :on-retry="state.pictureless === LIVE_CAPTURE_STOPPED && !readOnly ? () => session?.recapture() : undefined"
     />
     <input
+      v-if="!readOnly"
       ref="bridge"
       class="pointer-events-none absolute h-[2px] w-[2px] border-0 bg-transparent p-0 text-transparent caret-transparent outline-none"
       :aria-label="t('browserInput')"
@@ -467,7 +492,7 @@ onBeforeUnmount(() => {
       @blur="release"
     >
     <LiveControls
-      v-if="session && watching"
+      v-if="session && watching && !readOnly"
       :session="session"
       :controls="session.state.controls"
       :placement="placement"
@@ -481,7 +506,7 @@ onBeforeUnmount(() => {
       </span>
     </div>
     <LiveDialog
-      v-if="watching && session?.state.dialog"
+      v-if="watching && !readOnly && session?.state.dialog"
       :dialog="session.state.dialog.dialog"
       :host="host"
       @answer="answered($event.accept, $event.text)"
@@ -509,7 +534,7 @@ onBeforeUnmount(() => {
           <MenuDivider v-if="menu.link" />
           <MenuItem :icon="Copy" :label="t('menu.copy')" @select="edit('c')" />
         </template>
-        <template v-if="!menu.link && !menu.editable && !menu.selection">
+        <template v-if="history && !menu.link && !menu.editable && !menu.selection">
           <MenuItem :icon="ArrowLeft" :label="t('menu.back')" :disabled="!tab.canGoBack" @select="chooseHistory('back')" />
           <MenuItem :icon="ArrowRight" :label="t('menu.forward')" :disabled="!tab.canGoForward" @select="chooseHistory('forward')" />
           <MenuItem :icon="RotateCw" :label="t('menu.reload')" @select="chooseHistory('reload')" />

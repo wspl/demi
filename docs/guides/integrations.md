@@ -383,6 +383,39 @@ under the Host's home, as in a shell:
 | `POST …/fs/search` | Searches the names and the text of files, one JSON object per line. |
 | `GET …/hosts/{device}/fs`, `POST …/hosts/{device}/fs` | The same on another Host the conversation reaches. |
 
+### Show a browser tab
+
+When a site asks for what the agent must not know, such as a password, show
+the person the agent's tab and let them type it. Ask for a link to the tab
+the agent's `demi browser` commands name, such as `t3`:
+
+```sh
+curl -X POST "$DEMI/v1/conversations/$CONVERSATION/browser/tabs/t3/views" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"expiresIn": 900, "readOnly": false}'
+```
+
+The answer's `url` is a page with the tab and nothing else. Open it, or show
+it in an `iframe` of your product; any page may frame it. Only this answer
+carries the URL, so pass it on at once. Anyone who has it sees the tab until
+the link expires, `expiresIn` seconds later, or you remove it with
+`DELETE …/browser/views/{id}`, which ends each page open on it.
+`GET …/browser/views` lists the links that haven't expired.
+
+With `readOnly`, the person only watches: no click, key or paste of theirs
+reaches the page. The page has no address bar or other tabs, and Back, Forward
+and Reload aren't offered.
+
+The page tells the window that frames it how it stands, with `postMessage`:
+
+```js
+addEventListener('message', (event) => {
+  if (event.data?.type !== 'demi.view') return
+  if (event.data.state === 'live') { /* the tab shows */ }
+  if (event.data.state === 'ended') { /* event.data.reason: expired, removed, not_found or tab_closed */ }
+})
+```
+
 ## Hear what happens
 
 Open a WebSocket to `/v1/socket` with the same bearer token. Each message is a

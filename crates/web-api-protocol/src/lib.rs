@@ -55,6 +55,7 @@ pub mod subagents;
 pub mod text;
 pub mod usage;
 pub mod users;
+pub mod views;
 pub mod workflows;
 pub mod projects;
 pub mod workspaces;

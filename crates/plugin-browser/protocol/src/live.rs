@@ -24,10 +24,26 @@ use crate::browser::{BrowserCreatedBy, BrowserViewport, DialogType, TabId};
 /// The declared operation that serves a view (`crates/runner-jobs/src/commands/streams.rs`).
 pub const OPERATION: &str = "browser.live";
 
-/// The view's arguments: none; the page and the module speak over the stream.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(deny_unknown_fields)]
-pub struct LiveInput {}
+/// The name of the live view's user stream, which the plugin declares and a
+/// view link opens.
+pub const STREAM: &str = "browser";
+
+/// The view's arguments: what its viewer may see and do, which the module
+/// enforces since the backend relays the stream's bytes unread. The work
+/// panel's view leaves both out; a view link's names them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LiveInput {
+    /// The one tab the viewer sees; none for every tab.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub tab: Option<TabId>,
+    /// The viewer only watches: its input reaches no page, and its panel
+    /// sizes no tab.
+    #[serde(default)]
+    #[garde(skip)]
+    pub read_only: bool,
+}
 
 /// A chosen file's bytes: [`FileHeader`], then the data. The live view's
 /// own frames are `live-view-protocol`'s, kinds 1 to 3.

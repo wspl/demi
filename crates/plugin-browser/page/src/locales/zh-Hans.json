@@ -79,7 +79,8 @@
     "couldntOpen": "无法打开此页面。",
     "couldntShow": "无法显示此页面。",
     "noH264": "此浏览器无法解码 H.264 视频。",
-    "waiting": "正在等待主机…"
+    "waiting": "正在等待主机…",
+    "notRunning": "浏览器未在运行。"
   },
   "menu": {
     "copyLink": "复制链接地址",

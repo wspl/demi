@@ -12,7 +12,9 @@
 //!
 //! A share's page at `/s/:token` is the build's `share.html`, an entry of its
 //! own, under the content policy and headers
-//! `crates/backend-http/src/shares.rs` sets.
+//! `crates/backend-http/src/shares.rs` sets. A view link's page at
+//! `/v/:token` is its `view.html`, under its own policy, which alone lets
+//! any page frame it.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -81,6 +83,8 @@ pub(super) fn serve<S: Clone + Send + Sync + 'static>(
     let index = directory.join("index.html");
     let build = directory.join("build.json");
     let shared = directory.join("share.html");
+    let viewed = directory.join("view.html");
+    let view_public = public.clone();
     let page = {
         let index = index.clone();
         move |request: Request| page(index.clone(), request)
@@ -106,6 +110,13 @@ pub(super) fn serve<S: Clone + Send + Sync + 'static>(
         get(move |UrlPath(token): UrlPath<String>, request: Request| {
             let policy = shared_page_policy(&token, public.get().map(|url| url.url()));
             revalidated_shared_page(shared.clone(), policy, request)
+        }),
+    )
+    .route(
+        "/v/{token}",
+        get(move |UrlPath(token): UrlPath<String>, request: Request| {
+            let policy = view_page_policy(&token, view_public.get().map(|url| url.url()));
+            revalidated_shared_page(viewed.clone(), policy, request)
         }),
     )
     .fallback_service(files)
@@ -174,6 +185,30 @@ fn shared_page_policy(token: &str, public: Option<&url::Url>) -> String {
         "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; \
          img-src {media}blob: data:; media-src {media}blob:; frame-src {frames}; connect-src {connect}; \
          base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    )
+}
+
+/// The Content Security Policy of view link `token`'s page.
+///
+/// As a share's page, it loads the build's own scripts, styles and fonts, and
+/// connects only to its link's routes at `public`: its read under `public`'s
+/// scheme and its socket under `ws` or `wss`, since Chrome admits neither
+/// under the other's source. It frames nothing. Unlike every other page of
+/// Demi, any page may frame it: a product shows the tab where its users are,
+/// and the token is the key, which a page that frames it already holds.
+fn view_page_policy(token: &str, public: Option<&url::Url>) -> String {
+    let encoded = percent_encoding::utf8_percent_encode(token, percent_encoding::NON_ALPHANUMERIC);
+    let connect = public
+        .and_then(|public| public.join(&format!("api/views/{encoded}")).ok())
+        .and_then(|route| {
+            let mut socket = route.join(&format!("{encoded}/stream")).ok()?;
+            socket.set_scheme(if route.scheme() == "https" { "wss" } else { "ws" }).ok()?;
+            Some(format!("{route} {socket}"))
+        })
+        .unwrap_or_else(|| "'none'".to_owned());
+    format!(
+        "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; \
+         img-src data:; connect-src {connect}; base-uri 'none'; form-action 'none'; frame-ancestors *"
     )
 }
 

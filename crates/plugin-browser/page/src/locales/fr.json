@@ -79,7 +79,8 @@
     "couldntOpen": "Impossible d’ouvrir cette page.",
     "couldntShow": "Impossible d’afficher cette page.",
     "noH264": "Ce navigateur ne peut pas décoder la vidéo H.264.",
-    "waiting": "En attente de l’hôte…"
+    "waiting": "En attente de l’hôte…",
+    "notRunning": "Le navigateur n’est pas ouvert."
   },
   "menu": {
     "copyLink": "Copier l’adresse du lien",

@@ -40,6 +40,7 @@ use demi_web_api_protocol::query::StrictBool;
 use demi_shared_types::{BlockId, CommandId, NodeId, TurnId};
 
 use super::AppState;
+use super::browser_views;
 use super::body::{JsonBody, OptionalJsonBody};
 use super::error::ApiError;
 use super::files::{self, FileHost};
@@ -91,6 +92,9 @@ pub(super) fn routes() -> Router<AppState> {
             )
             .route("/conversations/{conversation}/fs/raw", get(read_file).put(write_file))
             .route("/conversations/{conversation}/fs/search", post(search_files))
+            .route("/conversations/{conversation}/browser/tabs/{tab}/views", post(browser_views::create))
+            .route("/conversations/{conversation}/browser/views", get(browser_views::list))
+            .route("/conversations/{conversation}/browser/views/{view}", delete(browser_views::remove))
             .route(
                 "/conversations/{conversation}/hosts/{device}/fs",
                 get(list_files_on).post(make_directory_on),
@@ -107,7 +111,7 @@ pub(super) fn routes() -> Router<AppState> {
 }
 
 /// The integration whose token the request carries as its bearer token.
-async fn authenticated(state: &AppState, headers: &HeaderMap) -> Result<IntegrationRecord, ApiError> {
+pub(super) async fn authenticated(state: &AppState, headers: &HeaderMap) -> Result<IntegrationRecord, ApiError> {
     let token = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
@@ -794,7 +798,7 @@ async fn fork(
 
 /// The record of the integration's conversation `conversation`, whose
 /// history and Host the web app's routes read for it.
-async fn owned_conversation(
+pub(super) async fn owned_conversation(
     state: &AppState,
     record: IntegrationRecord,
     conversation: String,
