@@ -1,7 +1,7 @@
 //! The words of a media refusal, for the plugin's kind.
 
 use demi_host_interface::RpcInvocation;
-use demi_plugin_interface::{ImageAspect, MediaRefusal, PluginError, PortFailure, PortRefusal, Unable};
+use demi_plugin_interface::{ImageAspect, MediaRefusal, PluginError, PortFailure, PortRefusal, Unable, VideoChange};
 use demi_shared_types::{MediaKind, Timestamp};
 use jiff::tz::TimeZone;
 
@@ -78,6 +78,13 @@ pub fn refusal_words(kind: MediaKind, refusal: &MediaRefusal, aspect: Option<Ima
         }
         MediaRefusal::JobFailed { vendor, message, trace } => format!("{vendor} failed the video: {message}{}", trace.words()),
         MediaRefusal::JobExpired { vendor } => format!("the job expired at {vendor} before it ran"),
+        MediaRefusal::NoChange { model, change } => {
+            let verb = match change {
+                VideoChange::Edit => "edits",
+                VideoChange::Extend => "extends",
+            };
+            format!("{model} {verb} no video; demi video models shows the models that do")
+        }
         MediaRefusal::StillRunning { vendor, job, seconds } => {
             let minutes = seconds.div_ceil(60);
             format!("the job {job} is still running at {vendor} after {minutes} minutes; it runs to its end there")

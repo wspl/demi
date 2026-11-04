@@ -933,9 +933,14 @@ CREATE TABLE usage_ledger (
   call_number           INTEGER CHECK (call_number >= 1),
   after_compaction      INTEGER CHECK (after_compaction IN (0, 1)),
   miss                  TEXT CHECK (miss IN ('model_changed', 'tools_changed', 'system_prompt_changed', 'cache_expired', 'not_cached')),
+  -- The SHA-256 of the video a video call made, in hex; null for any other
+  -- call, and for a video call written before the ledger kept it.
+  media_digest          TEXT,
   CHECK ((cost IS NULL) = (cost_currency IS NULL))
 ) STRICT;
 CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
+-- A video's call by the video it made.
+CREATE INDEX usage_ledger_media_digest ON usage_ledger (media_digest) WHERE media_digest IS NOT NULL;
 -- A conversation's rows by their end: its first call and its last hour.
 CREATE INDEX usage_ledger_conversation ON usage_ledger (conversation_id, ended_at);
 -- An agent's rows, newest last: its previous call and its recent calls.

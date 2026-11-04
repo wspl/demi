@@ -4,10 +4,11 @@
 //! OpenAI-compatible one, so a video is a real inline part and thought
 //! summaries, thought signatures and thinking token counts arrive as fields of
 //! their own. It reads its failure records by the standard reading. The key of
-//! a Gemini API vendor entry also makes images, videos with Veo, and speech and
-//! music.
+//! a Gemini API vendor entry also makes images, videos with Gemini Omni, and
+//! speech and music.
 
 mod audio;
+mod files;
 mod images;
 mod request;
 mod stream;
@@ -49,8 +50,8 @@ pub struct GoogleConfig {
     /// Whether the key makes images: an entry of the Gemini API vendor,
     /// not another vendor that speaks its protocol.
     pub makes_images: bool,
-    /// Whether the key makes videos with Veo: an entry of the Gemini API
-    /// vendor.
+    /// Whether the key makes videos with Gemini Omni: an entry of the
+    /// Gemini API vendor.
     pub makes_videos: bool,
     /// Whether the key makes speech and music: an entry of the Gemini API
     /// vendor.

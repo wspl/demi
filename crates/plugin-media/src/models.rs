@@ -254,7 +254,10 @@ fn video_facts(fields: &mut Fields, model: &MediaModel) {
         .field("First frame", video.first_frame)
         .field("Last frame", video.last_frame)
         .field("Max reference images", video.max_reference_images)
-        .field("Sound", video.audio);
+        .field("Sound", video.audio)
+        .field("Edits", video.edits)
+        .field("Extends", video.extends)
+        .field("Max source seconds", video.max_source_seconds);
 }
 
 /// What an audio model makes and takes: its kinds, voices, languages,

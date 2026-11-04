@@ -35,7 +35,7 @@ pub trait ImageMaker: MediaMaker {
 
 /// The shape asked for, such as 16:9, which the plugin read and checks
 /// the result against.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Aspect {
     pub width: u32,
     pub height: u32,
@@ -74,7 +74,7 @@ impl fmt::Display for Aspect {
 }
 
 /// One image to make.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ImageRequest {
     pub model: String,
     pub prompt: String,
@@ -86,11 +86,32 @@ pub struct ImageRequest {
 }
 
 /// An image an edit sends.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, schemars::JsonSchema)]
 pub struct InputImage {
-    /// `image/png`, `image/jpeg` or `image/webp`.
+    /// One of [`INPUT_TYPES`].
     pub media_type: &'static str,
     pub bytes: Bytes,
+}
+
+/// The types of the images a request sends.
+pub const INPUT_TYPES: [&str; 3] = ["image/png", "image/jpeg", "image/webp"];
+
+/// An [`InputImage`] as it is read, whose type is checked.
+#[derive(Deserialize)]
+struct ReadImage {
+    media_type: String,
+    bytes: Bytes,
+}
+
+impl<'de> Deserialize<'de> for InputImage {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let image = ReadImage::deserialize(deserializer)?;
+        let Some(media_type) = INPUT_TYPES.into_iter().find(|known| *known == image.media_type) else {
+            let message = format!("{} is no type of an image a request sends", image.media_type);
+            return Err(serde::de::Error::custom(message));
+        };
+        Ok(Self { media_type, bytes: image.bytes })
+    }
 }
 
 impl InputImage {
@@ -107,12 +128,14 @@ impl InputImage {
 }
 
 /// The image a vendor made, with what the usage ledger keeps of the call.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, Deserialize, schemars::JsonSchema)]
 pub struct MadeImage {
     pub bytes: Bytes,
     /// The counts the vendor reported; none when it reported none.
     pub usage: Option<TokenUsage>,
-    /// The vendor's id of the image, when it gives one.
+    /// The vendor's id of the image, when it gives one; it never crosses a
+    /// relay.
+    #[serde(skip)]
     pub vendor_id: Option<String>,
 }
 

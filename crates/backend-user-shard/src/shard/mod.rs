@@ -18,7 +18,7 @@ mod host;
 pub mod lane;
 mod permissions;
 pub(crate) mod media;
-pub(crate) mod lent_media;
+pub mod lent_media;
 pub(crate) mod provider_commands;
 
 pub use self::adoption::KeptJobs;

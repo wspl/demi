@@ -14,7 +14,7 @@ use demi_shared_types::{Cost, Currency, TokenUsage, VideoResolution};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
-use super::{Done, JobState, VideoRequest};
+use super::{Done, DoneVideo, JobState, VideoRequest};
 use crate::json_body;
 use crate::media::{MediaFailure, unreadable};
 
@@ -137,7 +137,7 @@ pub fn read_state(body: &[u8]) -> Result<JobState, MediaFailure> {
             let url = Url::parse(&url).map_err(|error| unreadable(format!("its video's address could not be read: {error}")))?;
             let usage = state.usage;
             Ok(JobState::Done(Done {
-                url,
+                video: DoneVideo::At(url),
                 cost: usage
                     .as_ref()
                     .and_then(|usage| usage.cost_in_usd_ticks)

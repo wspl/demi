@@ -234,6 +234,11 @@ pub struct VideoCapabilities {
     pub max_reference_images: Option<u32>,
     /// Whether it makes sound.
     pub audio: Option<bool>,
+    /// Whether it edits a video, and extends one.
+    pub edits: Option<bool>,
+    pub extends: Option<bool>,
+    /// The longest video it edits or extends, in seconds.
+    pub max_source_seconds: Option<f64>,
 }
 
 /// The range of durations a model takes, in seconds, ends included; an
@@ -358,6 +363,7 @@ pub enum PriceUnit {
 pub enum Modality {
     Image,
     Text,
+    Video,
     /// A kind this backend does not know, whose rate it cannot use.
     #[serde(other)]
     Other,

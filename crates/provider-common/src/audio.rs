@@ -78,7 +78,7 @@ pub fn sent_speed(maker: &dyn AudioMaker, speed: f64) -> f64 {
 }
 
 /// One file of audio to make; an option left out is the vendor's default.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct AudioRequest {
     pub kind: AudioKind,
     pub model: String,
@@ -100,7 +100,7 @@ pub struct AudioRequest {
 }
 
 /// The formats `--format` asks for.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum AudioFormatAsk {
     #[default]
     Mp3,
@@ -123,7 +123,7 @@ impl AudioFormatAsk {
 
 /// An option of `demi audio`, as a shape that has no field for it is said
 /// not to take it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum AudioOption {
     Instructions,
     Speed,
@@ -153,7 +153,7 @@ pub fn unsent_of(lacks: &[AudioOption], request: &AudioRequest) -> Vec<AudioOpti
 }
 
 /// The audio a vendor made, as it sent it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct MadeAudio {
     pub bytes: Bytes,
     /// The shape of raw PCM, for a vendor that sent no file, which the
@@ -164,12 +164,14 @@ pub struct MadeAudio {
     pub cost: Option<Cost>,
     /// The counts the vendor reported; none when it reported none.
     pub usage: Option<TokenUsage>,
-    /// The vendor's id of the call, when it gives one.
+    /// The vendor's id of the call, when it gives one; it never crosses a
+    /// relay.
+    #[serde(skip)]
     pub vendor_id: Option<String>,
 }
 
 /// A voice a speech model speaks in, as its vendor lists it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Voice {
     /// What `--voice` takes.
     pub id: String,

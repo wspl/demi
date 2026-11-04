@@ -1,11 +1,12 @@
 //! The relay: one Demi server lends a provider entry to another, which uses
 //! it as a provider of its own while its conversations stay where they are.
 //!
-//! Only inference crosses. The borrower's session sends each request to the
-//! lender, which runs it on the runtime of its own entry, with that entry's
-//! rotation, device and process placement, and streams the events back; a
-//! tool call comes back as an event and runs where the conversation's tools
-//! run.
+//! Only inference and media cross. The borrower's session sends each request
+//! to the lender, which runs it on the runtime of its own entry, with that
+//! entry's rotation, device and process placement, and streams the events
+//! back; a tool call comes back as an event and runs where the conversation's
+//! tools run. A media call goes to the lender's maker of its kind, which
+//! answers it with its own methods (`demi_provider_common::media::channel`).
 //!
 //! ```text
 //! borrower                              lender
@@ -14,12 +15,17 @@
 //! |   Borrowed runtime  ----+-- Bearer key ---->|   lend::serve            |
 //! |   delta::Outbox         |                   |   delta::Inbox           |
 //! |                    <----+-- events ---------+-- the entry's runtime    |
+//! | media: Remote     ------+-- POST, a call -->|   channel::serve         |
+//! |                    <----+-- its replies ----+-- the entry's maker      |
 //! +-------------------------+                   +--------------------------+
 //!   GET provider: name, catalog, limits  ------>
 //! ```
 //!
-//! - `wire`: the routes, headers and messages, and the copies of the
-//!   provider contract's types they carry.
+//! Everything that crosses is the contract's own type, as it is, in the
+//! relay's envelopes; the types skip what stays with the lender.
+//!
+//! - `wire`: the routes, headers, envelopes and frames, and the wire's
+//!   version, the digest of their schemas.
 //! - `delta`: a session's requests as what changed since its last.
 //! - `key`: a share key as a person copies it.
 //! - `lend`: the lender's end of a session; the lender's server owns its

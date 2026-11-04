@@ -24,7 +24,7 @@ bench = false
 
 [dependencies]
 base64.workspace = true
-bytes.workspace = true
+bytes = { workspace = true, features = ["serde"] }
 garde.workspace = true
 jiff.workspace = true
 regex = "1"

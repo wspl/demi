@@ -2071,6 +2071,7 @@ dependencies = [
 name = "demi-backend-http"
 version = "0.1.65"
 dependencies = [
+ "async-stream",
  "axum",
  "axum-extra",
  "bytes",
@@ -3029,6 +3030,7 @@ dependencies = [
  "jiff",
  "regex",
  "reqwest",
+ "schemars",
  "semver",
  "serde",
  "serde_json",
@@ -3156,11 +3158,15 @@ dependencies = [
  "demi-provider-common",
  "demi-shared-types",
  "futures-util",
+ "hex",
  "hostname",
  "http",
  "reqwest",
+ "rmp-serde",
+ "schemars",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.20",
  "tokio",
  "tokio-tungstenite",
@@ -9248,6 +9254,7 @@ version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "687274d293b6cdc6e73e0fee520bf2049650090d7164f87672d212a3c530cf4a"
 dependencies = [
+ "bytes",
  "chrono",
  "dyn-clone",
  "ref-cast",

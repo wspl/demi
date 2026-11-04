@@ -740,21 +740,12 @@ fn hooks() -> Router<AppState> {
 fn relay() -> Router<AppState> {
     use demi_provider_relay::wire::media::MEDIA_ROUTE;
     // A media call's body, an edit's or a video's carrying their images, is
-    // read within the limit of one message, as `media_body` reads it.
-    let images = DefaultBodyLimit::max(demi_provider_relay::wire::MESSAGE_BYTES);
+    // read within the limit of one frame, as `lending::media` reads it.
+    let calls = DefaultBodyLimit::max(demi_provider_relay::wire::MESSAGE_BYTES + 4);
     Router::new()
         .route(demi_provider_relay::wire::PROVIDER_ROUTE, get(lending::provider))
         .route(demi_provider_relay::wire::SOCKET_ROUTE, get(lending::socket))
-        .route(&format!("{MEDIA_ROUTE}/makers/{{kind}}"), get(lending::media_maker))
-        .route(&format!("{MEDIA_ROUTE}/image"), post(lending::media_image).layer(images))
-        .route(&format!("{MEDIA_ROUTE}/audio"), post(lending::media_audio).layer(images))
-        .route(&format!("{MEDIA_ROUTE}/audio/voices"), post(lending::media_voices).layer(images))
-        .route(&format!("{MEDIA_ROUTE}/video"), post(lending::media_video).layer(images))
-        .route(
-            &format!("{MEDIA_ROUTE}/video/{{job}}"),
-            get(lending::media_video_state).delete(lending::media_video_cancel),
-        )
-        .route(&format!("{MEDIA_ROUTE}/video/{{job}}/file"), get(lending::media_video_file))
+        .route(&format!("{MEDIA_ROUTE}/{{kind}}"), post(lending::media).layer(calls))
 }
 
 /// The routes of the backend's runner socket: what a Cloud's runner reaches

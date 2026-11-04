@@ -9,7 +9,7 @@ use demi_provider_common::{
     endpoint_url,
     media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, subscription_models},
     media_catalog::{Catalog, MediaKind, Subscription},
-    videos::{self, Done, JobState, VideoMaker, VideoOption, VideoRequest, unsent_of, xai},
+    videos::{self, JobState, VideoMaker, VideoOption, VideoRequest, unsent_of, xai},
 };
 use futures_util::future::BoxFuture;
 use reqwest::header::HeaderMap;
@@ -49,6 +49,22 @@ impl VideoMaker for GrokVideos {
         "Grok".to_owned()
     }
 
+    fn run<'a>(
+        &'a self,
+        http: &'a demi_provider_common::ProviderHttp,
+        catalog: &'a demi_provider_common::media_catalog::Catalog,
+        request: VideoRequest,
+        every: std::time::Duration,
+    ) -> futures_util::stream::BoxStream<'a, MediaAnswer<demi_provider_common::videos::JobStep>> {
+        demi_provider_common::videos::polled(self, http, catalog, request, every)
+    }
+
+    fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, url: &'a reqwest::Url) -> BoxFuture<'a, MediaAnswer<Bytes>> {
+        Box::pin(videos::download(crate::LABEL, &*self.0.clock, http, url, url, HeaderMap::new()))
+    }
+}
+
+impl demi_provider_common::videos::PolledVideos for GrokVideos {
     fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         Box::pin(async move {
             let shared = &*self.0;
@@ -73,9 +89,5 @@ impl VideoMaker for GrokVideos {
                 .await
                 .and_then(|answered| xai::read_state(&answered.body))
         })
-    }
-
-    fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, done: &'a Done) -> BoxFuture<'a, MediaAnswer<Bytes>> {
-        Box::pin(videos::download(crate::LABEL, &*self.0.clock, http, &done.url, &done.url, HeaderMap::new()))
     }
 }

@@ -133,9 +133,9 @@ pub enum VideoShape {
     /// serves them.
     #[serde(rename = "xai-videos")]
     XaiVideos,
-    /// Gemini's `predictLongRunning` and its operations.
-    #[serde(rename = "veo")]
-    Veo,
+    /// Gemini's `…/interactions`, streamed, as Gemini Omni answers it.
+    #[serde(rename = "gemini-interactions")]
+    GeminiInteractions,
     /// `…/videos`, `…/videos/<id>` and `…/videos/<id>/content`, as OpenAI's
     /// Videos API served them and vLLM-Omni serves them.
     #[serde(rename = "openai-videos")]

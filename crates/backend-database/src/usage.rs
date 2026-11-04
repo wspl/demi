@@ -122,6 +122,9 @@ pub struct UsageRow {
     /// What the vendor said the call cost; none when it said nothing in a
     /// documented unit.
     pub cost: Option<Cost>,
+    /// The SHA-256 of the video the call made, in hex, by which a change of
+    /// that video finds the job that made it; none for any other call.
+    pub media_digest: Option<String>,
     /// What the call's tokens would cost on the vendor's API; none when the
     /// model has no price for a kind the call used, or the call reported no
     /// counts.
@@ -261,7 +264,39 @@ fn column_count(count: u64) -> i64 {
     i64::try_from(count).unwrap_or(i64::MAX)
 }
 
+/// The call that made a video: its entry, the model it was sent as and the
+/// vendor's id of its job.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MadeVideoCall {
+    pub provider: ProviderId,
+    pub model: String,
+    pub job: String,
+}
+
 impl ControlService {
+    /// The newest of `user`'s answered video calls that made a video whose
+    /// SHA-256 is `digest`; none when no call did.
+    pub async fn made_video(&self, user: UserId, digest: String) -> Result<Option<MadeVideoCall>, StorageError> {
+        self.call(move |connection, _| {
+            let made = connection
+                .prepare_cached(
+                    "SELECT provider_id, model_id, vendor_id FROM usage_ledger
+                     WHERE media_digest = ?1 AND user_id = ?2 AND purpose = 'video' AND outcome = 'answered'
+                       AND vendor_id IS NOT NULL
+                     ORDER BY ended_at DESC LIMIT 1",
+                )?
+                .query_row(params![digest, user.as_str()], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+                })
+                .optional()?;
+            made.map(|(provider, model, job)| {
+                Ok(MadeVideoCall { provider: decode("usage_ledger", "provider_id", ProviderId::try_from(provider))?, model, job })
+            })
+            .transpose()
+        })
+        .await
+    }
+
     /// Writes the row, adds it to its conversation's kept cost, announces it
     /// and answers its id.
     pub async fn append_usage(&self, row: UsageRow) -> Result<String, StorageError> {
@@ -305,9 +340,9 @@ impl ControlService {
                    input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
                    cache_write_1h_tokens, outcome, quota, started_at, ended_at, media_seconds, cost, cost_currency,
                    api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
-                   system_hash, tools_hash, call_number, after_compaction, miss)
+                   system_hash, tools_hash, call_number, after_compaction, miss, media_digest)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-                   ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32)",
+                   ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33)",
                 params![
                     id,
                     row.user.as_str(),
@@ -341,6 +376,7 @@ impl ControlService {
                     call.map(|call| column_count(call.number)),
                     call.map(|call| call.after_compaction),
                     call.and_then(|call| call.miss).map(|miss| miss.to_string()),
+                    row.media_digest,
                 ],
             )?;
             // Asked after the insert: a transaction that has read cannot wait for

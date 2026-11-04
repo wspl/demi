@@ -11,8 +11,9 @@
 //! - Each use marks the key with the server that used it, by the host it
 //!   gives, and when. Nothing else of a borrowed session is kept: its usage
 //!   is the borrower's.
-//! - Revoking a key closes every session it opened and cancels the video jobs
-//!   it asked for (`crate::shard::lent_media`).
+//! - Revoking a key closes every session it opened and ends every media call
+//!   it made, which cancels a video's job left unfinished
+//!   (`crate::shard::lent_media`).
 //!
 //! A borrowed session runs on the shard of the key's maker, on the runtime a
 //! conversation of theirs would have, unmetered
@@ -49,20 +50,21 @@ use crate::shard::Shard;
 /// lasts by default in the apps people share them from.
 pub const UNUSED_FOR_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 
-/// The open borrowed sessions of each key, which revoking it closes.
+/// The open borrowed sessions and media calls of each key, which revoking it
+/// ends.
 #[derive(Default)]
 pub struct LentSessions(Mutex<HashMap<String, Vec<CancellationToken>>>);
 
 impl LentSessions {
-    fn open(&self, key: &str) -> CancellationToken {
+    pub(crate) fn open(&self, key: &str) -> CancellationToken {
         let token = CancellationToken::new();
         let mut sessions = self.0.lock().expect("the lent sessions' lock is never poisoned");
         sessions.entry(key.to_owned()).or_default().push(token.clone());
         token
     }
 
-    /// Forgets the session of `token`, which ended.
-    fn ended(&self, key: &str, token: &CancellationToken) {
+    /// Forgets the session or call of `token`, which ended.
+    pub(crate) fn ended(&self, key: &str, token: &CancellationToken) {
         token.cancel();
         let mut sessions = self.0.lock().expect("the lent sessions' lock is never poisoned");
         if let Some(open) = sessions.get_mut(key) {
@@ -157,12 +159,10 @@ impl Services {
         Ok(rows.into_iter().map(|row| row.id).collect())
     }
 
-    /// Closes the sessions borrowed with `keys`, and cancels the video jobs
-    /// they asked for.
+    /// Closes the sessions borrowed with `keys`, and ends their media calls.
     pub(crate) fn end_lending(&self, keys: &[String]) {
         for key in keys {
             self.lent.revoke(key);
-            self.lent_jobs.revoke(key);
         }
     }
 
@@ -283,10 +283,7 @@ impl Shard {
             catalog,
             limits: limits
                 .into_iter()
-                .map(|(model, limits)| ModelLimits {
-                    model,
-                    limits: limits.into(),
-                })
+                .map(|(model, limits)| ModelLimits { model, limits })
                 .collect(),
         })
     }

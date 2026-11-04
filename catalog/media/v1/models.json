@@ -1356,7 +1356,10 @@
         ],
         "firstFrame": true,
         "lastFrame": true,
-        "audio": true
+        "audio": true,
+        "edits": true,
+        "extends": true,
+        "maxSourceSeconds": 10
       },
       "sources": [
         "https://ai.google.dev/gemini-api/docs/models/gemini-omni-flash",
@@ -1374,7 +1377,14 @@
           },
           {
             "unit": "millionOutputTokens",
+            "modality": "video",
             "amount": 17.5,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "modality": "text",
+            "amount": 9.0,
             "currency": "usd"
           }
         ],

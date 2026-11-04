@@ -43,7 +43,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use demi_backend_database::usage::{UsageRow, merge_windows};
+use bytes::Bytes;
+use demi_backend_database::usage::{MadeVideoCall, UsageRow, merge_windows};
 use demi_backend_providers::vault::entries::Vault;
 use demi_plugin_host::VideoJob;
 use demi_provider_registry::store::StoreError;
@@ -55,19 +56,22 @@ use demi_host_interface::{JobCaller, PortError};
 use demi_plugin_interface::{
     AskedVideo, AudioAsk, AudioFacts, AudioFileFormat, AudioOption, AudioVoices, MadeAudio, PcmShape, VoiceInfo,
     CustomSizeRule, EntryStatus, ImageAsk, ImageFacts, MadeImage, MadeVideo, MediaListing, MediaModel,
-    MediaPrice, MediaRefusal, MediaUnlisted, ModelEntry, PortFailure, PortRefusal, PriceRate, Unable, VideoAsk,
-    VideoFacts, VideoStep,
+    MediaPrice, MediaRefusal, MediaUnlisted, ModelEntry, PortFailure, PortRefusal, PriceRate, SentSource, Unable,
+    VideoAsk, VideoChange, VideoFacts, VideoStep,
 };
 use demi_provider_common::credentials::AuthReason;
 use demi_provider_common::audio::{self, AudioFormatAsk, AudioRequest};
 use demi_provider_common::images::{Aspect, ImageRequest, InputImage};
-use demi_provider_common::media::{MediaFailure, MediaModelInfo, MediaVendor};
+use demi_provider_common::media::{MediaAnswer, MediaFailure, MediaModelInfo, MediaVendor, unreadable};
 use demi_provider_common::media_catalog::{self, AudioOutput, Catalog, Currency, Modality, PriceUnit, Voices};
-use demi_provider_common::videos::{Done, JobRef, JobState, VideoOption, VideoRequest};
+use demi_provider_common::videos::{
+    Change, Done, DoneVideo, JobRef, JobState, JobStep, SourceVideo, VideoOption, VideoRequest, VideoSource,
+};
 use demi_shared_types::{AudioKind, MediaKind, Model, QuotaWindow, Rotation, Timestamp, TurnId, VendorTrace, mp4};
-use demi_web_api_protocol::ids::{ConversationId, CredentialId};
+use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId};
 use demi_web_api_protocol::providers::EntryMediaModel;
 use futures_util::StreamExt as _;
+use sha2::{Digest as _, Sha256};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
@@ -530,6 +534,9 @@ fn described(
         last_frame: video.last_frame,
         max_reference_images: video.max_reference_images,
         audio: video.audio,
+        edits: video.edits,
+        extends: video.extends,
+        max_source_seconds: video.max_source_seconds,
     });
     let audio = (kind == MediaKind::Audio).then(|| {
         let known = catalog.audio(model);
@@ -649,6 +656,7 @@ fn modality_name(modality: Modality) -> Option<&'static str> {
     Some(match modality {
         Modality::Image => "image",
         Modality::Text => "text",
+        Modality::Video => "video",
         Modality::Other => return None,
     })
 }
@@ -700,6 +708,10 @@ pub(crate) async fn make_image(
 /// image, and answers the job the vendor took with its steps: each change of its
 /// state, then its video.
 ///
+/// A video to change that the user's call made, as its digest finds in the
+/// ledger, goes first to that call's entry, which continues its job where the
+/// vendor keeps it.
+///
 /// The steps, dropped before the video, stop the waiting, cancel the job where
 /// the vendor can and write the call's cancelled row.
 pub(crate) async fn make_video(
@@ -723,6 +735,27 @@ pub(crate) async fn make_video(
         resolution: ask.resolution,
         audio: ask.audio,
         seed: ask.seed,
+        source: None,
+    };
+    let source = match ask.source {
+        Some(source) => {
+            let bytes = source.bytes.into_bytes();
+            let digest = hex::encode(Sha256::digest(&bytes));
+            let made = match shard.services().control.made_video(shard.user().clone(), digest).await {
+                Ok(made) => made,
+                // The file is sent instead, as for a video no call made.
+                Err(error) => {
+                    tracing::warn!(event = "media.made_video_unread", error = %error, "the call that made a video to change was not read");
+                    None
+                }
+            };
+            let change = match source.change {
+                VideoChange::Edit => Change::Edit,
+                VideoChange::Extend => Change::Extend,
+            };
+            Some(SourceFile { change, asked: source.change, bytes, made })
+        }
+        None => None,
     };
     let call = Call {
         shard,
@@ -732,7 +765,7 @@ pub(crate) async fn make_video(
         model: ask.model,
         provider: ask.provider,
     };
-    let asking = VideoCall { request };
+    let asking = VideoCall { request, source };
     tokio::select! {
         asked = call.make(&asking) => asked,
         () = cancel.cancelled() => Err(PortError::Ended("the call was stopped".into()).into()),
@@ -899,8 +932,9 @@ impl Call<'_> {
                 }
                 vec![offering[position.expect("an entry that can is offered")]]
             }
-            // The entries ready first, then those that show used up, the
-            // soonest to reset first: only a vendor refuses.
+            // The entries ready first, the one the call prefers among them
+            // first of all, then those that show used up, the soonest to
+            // reset first: only a vendor refuses.
             None => {
                 let mut used_up: Vec<(&Route, Option<Timestamp>)> = offering
                     .iter()
@@ -911,13 +945,16 @@ impl Call<'_> {
                     })
                     .collect();
                 used_up.sort_by_key(|(_, until)| (until.is_none(), *until));
-                offering
+                let mut ready: Vec<&Route> = offering
                     .iter()
                     .zip(&standings)
                     .filter(|(_, standing)| **standing == Standing::Ready)
                     .map(|(route, _)| *route)
-                    .chain(used_up.into_iter().map(|(route, _)| route))
-                    .collect()
+                    .collect();
+                if let Some(preferred) = asking.preferred() {
+                    ready.sort_by_key(|route| route.entry.id != *preferred);
+                }
+                ready.into_iter().chain(used_up.into_iter().map(|(route, _)| route)).collect()
             }
         };
         let mut spent: Option<PortFailure> = None;
@@ -993,6 +1030,12 @@ trait Asking {
     /// is sent; most calls have nothing to check.
     fn check(&self, _making: &Making<'_>, _maker: &MakerOf) -> Result<(), MediaRefusal> {
         Ok(())
+    }
+
+    /// The entry the call goes to first among those ready, without
+    /// `--provider`; none for the order of Settings.
+    fn preferred(&self) -> Option<&ProviderId> {
+        None
     }
 
     /// Sends the call's request as `making.name` to `maker`, on `account`
@@ -1183,10 +1226,37 @@ impl Asking for VoicesCall {
 /// A video's ask, which starts its job.
 struct VideoCall {
     request: VideoRequest,
+    source: Option<SourceFile>,
+}
+
+/// The video an edit or an extension changes, and the call that made it
+/// when one of the user's did.
+struct SourceFile {
+    change: Change,
+    asked: VideoChange,
+    bytes: Bytes,
+    made: Option<MadeVideoCall>,
 }
 
 impl Asking for VideoCall {
     type Made = (AskedVideo, VideoJob);
+
+    /// A change the entry's request has no field for fails before
+    /// anything is sent.
+    fn check(&self, making: &Making<'_>, maker: &MakerOf) -> Result<(), MediaRefusal> {
+        let videos = maker.videos().expect("a video call's maker makes videos");
+        match &self.source {
+            Some(source) if !videos.changes().contains(&source.change) => {
+                Err(MediaRefusal::NoChange { model: making.name.clone(), change: source.asked })
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// The entry of the call that made the video to change.
+    fn preferred(&self) -> Option<&ProviderId> {
+        self.source.as_ref()?.made.as_ref().map(|made| &made.provider)
+    }
 
     async fn send(
         &self,
@@ -1197,17 +1267,47 @@ impl Asking for VideoCall {
     ) -> Result<(AskedVideo, VideoJob), MediaFailure> {
         let videos = maker.videos().expect("a video call's maker makes videos");
         let (mut row, span) = making.open_row("video", account);
-        let request = VideoRequest { model: making.name.clone(), ..self.request.clone() };
+        let mut request = VideoRequest { model: making.name.clone(), ..self.request.clone() };
+        // A video the entry's own job made, as the model it is asked of,
+        // continues that job where the vendor keeps it; any other is sent.
+        let kept = self.source.as_ref().and_then(|source| source.made.as_ref()).filter(|made| {
+            videos.continues_jobs() && made.provider == making.route.entry.id && made.model == making.name
+        });
+        let mut sent = self.source.as_ref().map(|source| {
+            let (video, sent) = match kept {
+                Some(made) => (SourceVideo::Job(made.job.clone()), SentSource::Job { job: made.job.clone() }),
+                None => (SourceVideo::File(source.bytes.clone()), SentSource::File),
+            };
+            request.source = Some(VideoSource { change: source.change, video });
+            sent
+        });
         let http = making.http();
+        let every = making.shard.services().media_tuning.video_reads_every;
         // The job's bound counts from its ask, the ask's own wait
         // included.
         let asked_at = tokio::time::Instant::now();
-        let answer = videos
-            .ask(&http, making.catalog, request.clone())
-            .instrument(span.clone())
-            .await;
-        row.observe(&answer.observed);
-        let job = match answer.result {
+        let start =
+            |request: VideoRequest| Steps::start(making.shard, maker.clone(), http.clone(), making.catalog.clone(), request, every, &span);
+        let mut steps = start(request.clone());
+        let mut first = steps.receiver.recv().instrument(span.clone()).await;
+        // A job the vendor no longer keeps: the file goes instead.
+        if let (Some(source), Some(SentSource::Job { job })) = (&self.source, &sent)
+            && matches!(&first, Some(answer) if matches!(answer.result, Err(MediaFailure::SourceGone { .. })))
+        {
+            if let Some(answer) = &first {
+                row.observe(&answer.observed);
+            }
+            span.in_scope(|| tracing::info!(event = "media_job.source_gone", job = %job, "the vendor no longer keeps the job of a video to change"));
+            sent = Some(SentSource::FileInstead { job: job.clone() });
+            request.source = Some(VideoSource { change: source.change, video: SourceVideo::File(source.bytes.clone()) });
+            steps = start(request.clone());
+            first = steps.receiver.recv().instrument(span.clone()).await;
+        }
+        if let Some(answer) = &first {
+            row.observe(&answer.observed);
+        }
+        let asked = asked_job(first);
+        let job = match asked {
             Ok(job) => job,
             Err(failure) => {
                 row.row().outcome = failure.outcome();
@@ -1227,6 +1327,7 @@ impl Asking for VideoCall {
             account: label.clone(),
             shape: videos.shape_name(),
             unsent: videos.unsent(making.catalog, &request).into_iter().map(plugin_option).collect(),
+            source: sent,
         };
         let tuning = making.shard.services().media_tuning;
         let job = Job {
@@ -1241,7 +1342,7 @@ impl Asking for VideoCall {
             row,
             span,
             last: None,
-            every: tuning.video_reads_every,
+            steps,
             bound: tuning.video_bound,
             deadline: asked_at + tuning.video_bound,
         };
@@ -1267,8 +1368,66 @@ fn plugin_option(option: VideoOption) -> demi_plugin_interface::VideoOption {
     }
 }
 
-/// A video's job once the vendor took it: its state read every `every`, each
-/// change told, then its video downloaded, all within `bound` of the ask.
+/// The job a run's first step names. A vendor that fails the request before
+/// it names a job, as Google refuses an input within its stream, is told in
+/// its words.
+fn asked_job(first: Option<MediaAnswer<JobStep>>) -> Result<String, MediaFailure> {
+    let Some(answer) = first else {
+        return Err(unreadable("it answered nothing".to_owned()));
+    };
+    match answer.result? {
+        JobStep::Asked(job) => Ok(job),
+        JobStep::State(JobState::Failed { message, trace }) => Err(MediaFailure::Refused { message, code: None, trace }),
+        JobStep::State(_) => Err(unreadable("its first answer named no job".to_owned())),
+    }
+}
+
+/// The steps of a vendor's job, which a task of the shard's reads from the
+/// maker's [`VideoMaker::run`] as they come; dropped, it stops the task,
+/// and so the reads or the vendor's stream.
+///
+/// [`VideoMaker::run`]: demi_provider_common::videos::VideoMaker::run
+struct Steps {
+    receiver: tokio::sync::mpsc::UnboundedReceiver<MediaAnswer<JobStep>>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl Steps {
+    fn start(
+        shard: &Shard,
+        maker: MakerOf,
+        http: demi_provider_common::ProviderHttp,
+        catalog: Arc<Catalog>,
+        request: VideoRequest,
+        every: Duration,
+        span: &tracing::Span,
+    ) -> Self {
+        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+        // The vendor's requests are the call's, under its span.
+        let task = shard.tasks().spawn_local(
+            async move {
+                let videos = maker.videos().expect("a video's job is a video maker's");
+                let mut steps = videos.run(&http, &catalog, request, every);
+                while let Some(step) = steps.next().await {
+                    if sender.send(step).is_err() {
+                        return;
+                    }
+                }
+            }
+            .instrument(span.clone()),
+        );
+        Self { receiver, task }
+    }
+}
+
+impl Drop for Steps {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+/// A video's job once the vendor took it: each change of its state told, then
+/// its video downloaded, all within `bound` of the ask.
 ///
 /// It ends with its row written once, after the wait its bound covers. Dropped
 /// before, it cancels the job where the vendor can and writes the cancelled row.
@@ -1288,7 +1447,7 @@ struct Job {
     span: tracing::Span,
     /// The state told last.
     last: Option<VideoStep>,
-    every: Duration,
+    steps: Steps,
     bound: Duration,
     deadline: tokio::time::Instant,
 }
@@ -1331,20 +1490,20 @@ impl Job {
     }
 
     async fn wait(&mut self) -> Waited {
-        let videos = self.maker.videos().expect("a video's job is a video maker's");
         loop {
-            tokio::time::sleep(self.every).await;
-            let job = JobRef { id: &self.id, model: &self.model, catalog: &self.catalog };
-            let answer = videos.state(&self.http, job).await;
+            let Some(answer) = self.steps.receiver.recv().await else {
+                return self.failed(unreadable("its answer ended before the video".to_owned()));
+            };
             self.row.observe(&answer.observed);
             let state = match answer.result {
-                Ok(state) => state,
+                Ok(JobStep::State(state)) => state,
+                Ok(JobStep::Asked(_)) => continue,
                 Err(failure) => return self.failed(failure),
             };
             let step = match state {
                 JobState::Queued => VideoStep::Queued,
                 JobState::Running { progress } => VideoStep::Running { progress },
-                JobState::Done(done) => return self.download(&done).await,
+                JobState::Done(done) => return self.download(done).await,
                 JobState::Failed { message, trace } => {
                     let result = Err(refused(MediaRefusal::JobFailed { vendor: self.vendor.clone(), message, trace }));
                     return Waited::Ended { outcome: "failed".to_owned(), result };
@@ -1361,24 +1520,30 @@ impl Job {
         }
     }
 
-    /// The finished job's video. The cost the vendor reported goes on the
-    /// row at once, so a download that then fails, a stopped call or one
-    /// past its bound still records what was paid; the seconds once the
-    /// file is read.
-    async fn download(&mut self, done: &Done) -> Waited {
+    /// The finished job's video, downloaded unless the vendor sent it. The
+    /// cost the vendor reported goes on the row at once, so a download that
+    /// then fails, a stopped call or one past its bound still records what
+    /// was paid; the seconds once the file is read.
+    async fn download(&mut self, done: Done) -> Waited {
         let row = self.row.row();
         row.cost = done.cost;
         row.usage = done.usage;
-        let videos = self.maker.videos().expect("a video's job is a video maker's");
-        let answer = videos.download(&self.http, done).await;
-        self.row.observe(&answer.observed);
-        let bytes = match answer.result {
-            Ok(bytes) => bytes,
-            Err(failure) => return self.failed(failure),
+        let bytes = match done.video {
+            DoneVideo::Sent(bytes) => bytes,
+            DoneVideo::At(url) => {
+                let videos = self.maker.videos().expect("a video's job is a video maker's");
+                let answer = videos.download(&self.http, &url).await;
+                self.row.observe(&answer.observed);
+                match answer.result {
+                    Ok(bytes) => bytes,
+                    Err(failure) => return self.failed(failure),
+                }
+            }
         };
         // A file this does not read is the plugin's to refuse; its row
         // keeps no seconds.
         self.row.row().media_seconds = mp4::read(&bytes).ok().map(|facts| facts.seconds);
+        self.row.row().media_digest = Some(hex::encode(Sha256::digest(&bytes)));
         let video = MadeVideo {
             bytes: bytes.into(),
             cost: done.cost,
@@ -1508,6 +1673,7 @@ impl Making<'_> {
             started_at: now,
             ended_at: now,
             media_seconds: None,
+            media_digest: None,
             cost: None,
             // A medium's tokens have no catalog price: the vendor's own
             // cost prices the call (`crates/backend-database/src/usage.rs`),
@@ -1646,6 +1812,9 @@ fn vendor_refusal(failure: MediaFailure, vendor: String, account: Option<String>
         MediaFailure::Shape { takes, trace, .. } => MediaRefusal::Shape { vendor, takes, trace },
         MediaFailure::Unanswered { cause, trace, .. } => MediaRefusal::Unanswered { vendor, cause, trace },
         MediaFailure::UsageLimit { retry_at, trace } => MediaRefusal::UsedUp { vendor, resets_at: retry_at, trace },
+        MediaFailure::SourceGone { trace } => {
+            MediaRefusal::Refused { vendor, message: "it no longer keeps the job of the video to change".to_owned(), trace }
+        }
     }
 }
 

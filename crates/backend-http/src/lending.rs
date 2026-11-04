@@ -7,7 +7,6 @@
 //!   request of another wire version is answered 409 with this server's,
 //!   and one whose key does not lend, 401.
 
-use std::rc::Rc;
 use std::sync::Arc;
 
 use axum::Json;
@@ -20,15 +19,15 @@ use axum_extra::headers::Authorization;
 use axum_extra::headers::authorization::Bearer;
 use demi_backend_user_shard::provider_sharing::Borrowing;
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::shard::Shard;
-use demi_provider_relay::wire::media::WireMediaFailure;
+use demi_backend_user_shard::shard::lent_media::Unlent;
+use demi_provider_common::media::channel::Call;
+use demi_provider_relay::wire::media::{Frames, KEEP_ALIVE, MAKES_NONE, frame, keep_alive};
 use demi_provider_relay::wire::{
-    ClientMessage, OtherVersion, MESSAGE_BYTES, SERVER_HEADER, TURNED_OFF, VERSION, VERSION_HEADER,
+    ClientMessage, MESSAGE_BYTES, OtherVersion, SERVER_HEADER, TURNED_OFF, VERSION_HEADER, decoded, encoded, version,
 };
 use demi_shared_types::MediaKind;
 use demi_web_api_protocol::providers::{NewShareKey, ShareKeys};
 use futures_util::{SinkExt as _, StreamExt as _, future};
-use serde::de::DeserializeOwned;
 
 use super::AppState;
 use super::body::read_within;
@@ -72,8 +71,8 @@ async fn borrowing(
     bearer: Option<TypedHeader<Authorization<Bearer>>>,
 ) -> Result<Borrowing, Response> {
     let named = |name: &str| headers.get(name).and_then(|value| value.to_str().ok());
-    if named(VERSION_HEADER) != Some(VERSION.to_string().as_str()) {
-        return Err((StatusCode::CONFLICT, Json(OtherVersion { version: VERSION })).into_response());
+    if named(VERSION_HEADER) != Some(version()) {
+        return Err((StatusCode::CONFLICT, Json(OtherVersion { version: version().to_owned() })).into_response());
     }
     let refused = || StatusCode::UNAUTHORIZED.into_response();
     let Some(TypedHeader(Authorization(bearer))) = bearer else {
@@ -138,26 +137,22 @@ pub(super) async fn provider(
     }
 }
 
-/// What a media call of the borrower `borrowing` answers, run by `call` on
-/// the shard of its key's maker: the call's answer, or its failure with
-/// HTTP 422.
-async fn media_call<F, Fut, T>(state: &AppState, borrowing: Borrowing, call: F) -> Response
-where
-    F: FnOnce(Rc<Shard>, Borrowing) -> Fut + Send + 'static,
-    Fut: Future<Output = Result<T, WireMediaFailure>> + 'static,
-    T: IntoResponse + Send + 'static,
-{
-    let user = borrowing.key.created_by.clone();
-    match state.shards.of(&user).call(move |shard, _| call(shard, borrowing)).await {
-        Ok(Ok(made)) => made.into_response(),
-        Ok(Err(failure)) => (StatusCode::UNPROCESSABLE_ENTITY, Json(failure)).into_response(),
-        Err(unavailable) => ApiError::from(unavailable).into_response(),
-    }
-}
-
-/// The JSON body of a media call, at most [`MESSAGE_BYTES`]: an image's
-/// edit and a video's frames carry their images.
-async fn media_body<T: DeserializeOwned>(state: &AppState, request: Request) -> Result<T, Response> {
+/// `POST /api/relay/media/{kind}`: one call of the lent entry's maker of the
+/// kind, its body one frame, answered with its replies' frames as they come
+/// and an empty one every [`KEEP_ALIVE`] meanwhile
+/// (`crates/provider-relay/src/wire/media.rs`). The borrower's going drops
+/// the call.
+pub(super) async fn media(
+    State(state): State<AppState>,
+    Path(kind): Path<MediaKind>,
+    headers: HeaderMap,
+    bearer: Option<TypedHeader<Authorization<Bearer>>>,
+    request: Request,
+) -> Response {
+    let borrowing = match lending(&state.services, &headers, bearer).await {
+        Ok(borrowing) => borrowing,
+        Err(response) => return response,
+    };
     let too_large = || {
         ApiError::new(
             StatusCode::PAYLOAD_TOO_LARGE,
@@ -165,164 +160,55 @@ async fn media_body<T: DeserializeOwned>(state: &AppState, request: Request) -> 
             format!("The request body is over its {MESSAGE_BYTES}-byte limit"),
         )
     };
-    let bytes = read_within(request, state, MESSAGE_BYTES, too_large).await.map_err(IntoResponse::into_response)?;
-    serde_json::from_slice(&bytes).map_err(|error| ApiError::invalid_body(error.to_string()).into_response())
-}
-
-/// `GET /api/relay/media/makers/{kind}`: the lent entry's maker of the kind.
-pub(super) async fn media_maker(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    bearer: Option<TypedHeader<Authorization<Bearer>>>,
-    Path(kind): Path<MediaKind>,
-) -> Response {
-    let borrowing = match lending(&state.services, &headers, bearer).await {
-        Ok(borrowing) => borrowing,
-        Err(response) => return response,
+    let body = match read_within(request, &state, MESSAGE_BYTES + 4, too_large).await {
+        Ok(body) => body,
+        Err(error) => return error.into_response(),
     };
-    media_call(&state, borrowing, move |shard, borrowing| async move {
-        shard.lent_maker(borrowing, kind).await.map(Json)
-    })
-    .await
-}
-
-/// `POST /api/relay/media/image`.
-pub(super) async fn media_image(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    bearer: Option<TypedHeader<Authorization<Bearer>>>,
-    request: Request,
-) -> Response {
-    let borrowing = match lending(&state.services, &headers, bearer).await {
-        Ok(borrowing) => borrowing,
-        Err(response) => return response,
+    let mut frames = Frames::default();
+    frames.push(&body);
+    let call = match frames.next() {
+        Ok(Some(message)) if !frames.is_partial() => decoded::<Call>(&message),
+        _ => None,
     };
-    let asked = match media_body(&state, request).await {
-        Ok(asked) => asked,
-        Err(response) => return response,
+    let Some(call) = call else {
+        return ApiError::invalid_body("The body is no call of a maker".to_owned()).into_response();
     };
-    media_call(&state, borrowing, move |shard, borrowing| async move {
-        shard.lent_image(borrowing, asked).await.map(Json)
-    })
-    .await
-}
-
-/// `POST /api/relay/media/audio`.
-pub(super) async fn media_audio(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    bearer: Option<TypedHeader<Authorization<Bearer>>>,
-    request: Request,
-) -> Response {
-    let borrowing = match lending(&state.services, &headers, bearer).await {
-        Ok(borrowing) => borrowing,
-        Err(response) => return response,
+    let user = borrowing.key.created_by.clone();
+    let taken = state
+        .shards
+        .of(&user)
+        .call(move |shard, _| async move { shard.lent_media(borrowing, kind, call).await })
+        .await;
+    let mut replies = match taken {
+        Ok(Ok(replies)) => replies,
+        Ok(Err(Unlent::MakesNone)) => return StatusCode::from_u16(MAKES_NONE).expect("410 is a status").into_response(),
+        // As for a key refused before the call.
+        Ok(Err(Unlent::Revoked)) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(unavailable) => return ApiError::from(unavailable).into_response(),
     };
-    let asked = match media_body(&state, request).await {
-        Ok(asked) => asked,
-        Err(response) => return response,
+    let frames = async_stream::stream! {
+        let mut quiet = tokio::time::interval(KEEP_ALIVE);
+        quiet.tick().await;
+        loop {
+            tokio::select! {
+                reply = replies.recv() => match reply.as_ref().and_then(frame) {
+                    Some(frame) => {
+                        yield Ok::<_, std::convert::Infallible>(frame);
+                        quiet.reset();
+                    }
+                    // The call ended, or sent what does not cross, which
+                    // ends it too.
+                    None => return,
+                },
+                _ = quiet.tick() => yield Ok(keep_alive()),
+            }
+        }
     };
-    media_call(&state, borrowing, move |shard, borrowing| async move {
-        shard.lent_audio(borrowing, asked).await.map(Json)
-    })
-    .await
-}
-
-/// `POST /api/relay/media/audio/voices`.
-pub(super) async fn media_voices(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    bearer: Option<TypedHeader<Authorization<Bearer>>>,
-    request: Request,
-) -> Response {
-    let borrowing = match lending(&state.services, &headers, bearer).await {
-        Ok(borrowing) => borrowing,
-        Err(response) => return response,
-    };
-    let asked = match media_body(&state, request).await {
-        Ok(asked) => asked,
-        Err(response) => return response,
-    };
-    media_call(&state, borrowing, move |shard, borrowing| async move {
-        shard.lent_voices(borrowing, asked).await.map(Json)
-    })
-    .await
-}
-
-/// `POST /api/relay/media/video`.
-pub(super) async fn media_video(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    bearer: Option<TypedHeader<Authorization<Bearer>>>,
-    request: Request,
-) -> Response {
-    let borrowing = match lending(&state.services, &headers, bearer).await {
-        Ok(borrowing) => borrowing,
-        Err(response) => return response,
-    };
-    let asked = match media_body(&state, request).await {
-        Ok(asked) => asked,
-        Err(response) => return response,
-    };
-    media_call(&state, borrowing, move |shard, borrowing| async move {
-        shard.lent_video(borrowing, asked).await.map(Json)
-    })
-    .await
-}
-
-/// `GET /api/relay/media/video/{job}`: answered while the provider is
-/// turned off too, as cancel is, so a job started before it was turned off
-/// is not lost.
-pub(super) async fn media_video_state(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    bearer: Option<TypedHeader<Authorization<Bearer>>>,
-    Path(job): Path<String>,
-) -> Response {
-    let borrowing = match borrowing(&state.services, &headers, bearer).await {
-        Ok(borrowing) => borrowing,
-        Err(response) => return response,
-    };
-    media_call(&state, borrowing, move |shard, borrowing| async move {
-        shard.lent_video_state(borrowing, job).await.map(Json)
-    })
-    .await
-}
-
-/// `GET /api/relay/media/video/{job}/file`: the finished job's video, its
-/// bytes, answered as its state is.
-pub(super) async fn media_video_file(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    bearer: Option<TypedHeader<Authorization<Bearer>>>,
-    Path(job): Path<String>,
-) -> Response {
-    let borrowing = match borrowing(&state.services, &headers, bearer).await {
-        Ok(borrowing) => borrowing,
-        Err(response) => return response,
-    };
-    media_call(&state, borrowing, move |shard, borrowing| async move {
-        let video = shard.lent_video_file(borrowing, job).await?;
-        Ok(([(axum::http::header::CONTENT_TYPE, "application/octet-stream")], video))
-    })
-    .await
-}
-
-/// `DELETE /api/relay/media/video/{job}`.
-pub(super) async fn media_video_cancel(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    bearer: Option<TypedHeader<Authorization<Bearer>>>,
-    Path(job): Path<String>,
-) -> Response {
-    let borrowing = match borrowing(&state.services, &headers, bearer).await {
-        Ok(borrowing) => borrowing,
-        Err(response) => return response,
-    };
-    media_call(&state, borrowing, move |shard, borrowing| async move {
-        shard.lent_video_cancel(&borrowing, &job).map(|()| StatusCode::NO_CONTENT)
-    })
-    .await
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/octet-stream")],
+        axum::body::Body::from_stream(frames),
+    )
+        .into_response()
 }
 
 /// `WS /api/relay/socket`: one borrowed session, which the key's maker's
@@ -347,15 +233,15 @@ pub(super) async fn socket(
             let incoming = stream
                 .scan((), |(), frame| {
                     future::ready(match frame {
-                        Ok(Message::Text(text)) => serde_json::from_str::<ClientMessage>(&text).ok().map(Some),
+                        Ok(Message::Binary(bytes)) => decoded::<ClientMessage>(&bytes).map(Some),
                         Ok(Message::Ping(_) | Message::Pong(_)) => Some(None),
-                        Ok(Message::Binary(_) | Message::Close(_)) | Err(_) => None,
+                        Ok(Message::Text(_) | Message::Close(_)) | Err(_) => None,
                     })
                 })
                 .filter_map(future::ready);
+            // A message that does not cross closes the socket.
             let outgoing = sink.with(|message| {
-                let text = serde_json::to_string(&message).expect("a relay message serializes");
-                future::ready(Ok::<_, axum::Error>(Message::Text(text.into())))
+                future::ready(encoded(&message).map(Message::Binary).ok_or_else(|| axum::Error::new("a relay message does not cross")))
             });
             let user = borrowing.key.created_by.clone();
             // A closing shard takes no session: the socket drops.

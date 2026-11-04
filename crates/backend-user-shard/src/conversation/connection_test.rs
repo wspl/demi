@@ -191,5 +191,6 @@ fn failure_words(failure: &MediaFailure) -> String {
         MediaFailure::KeyRefused { message, .. } | MediaFailure::Refused { message, .. } => message.clone(),
         MediaFailure::Shape { takes, .. } => format!("It takes only {}", takes.join(", ")),
         MediaFailure::Unanswered { cause, .. } => cause.clone(),
+        MediaFailure::SourceGone { .. } => "It no longer keeps the job of the video".to_owned(),
     }
 }

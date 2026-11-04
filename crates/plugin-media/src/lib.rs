@@ -52,6 +52,6 @@ mod input;
 mod models;
 mod words;
 
-pub use input::{MAX_IMAGE_BYTES, decode_args, fits, parse_aspect, prompt, read_images, required_model};
+pub use input::{MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, decode_args, fits, parse_aspect, prompt, read_images, read_video, required_model};
 pub use models::{ListedModel, ModelsOutput, models};
 pub use words::{listed, refusal_words, refused};

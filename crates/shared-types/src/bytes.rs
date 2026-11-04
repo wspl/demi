@@ -1,4 +1,4 @@
-//! Bytes in JSON: a base64 string.
+//! Bytes in JSON as a base64 string, and in a binary format as bytes.
 
 use std::{borrow::Cow, fmt, ops::Deref};
 
@@ -7,7 +7,8 @@ use bytes::Bytes;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
 /// Bytes that travel in JSON as a base64 string (RFC 4648, the standard
-/// alphabet with padding). Cloning shares the bytes.
+/// alphabet with padding), and in a format that is not human-readable, such
+/// as MessagePack, as its bytes. Cloning shares the bytes.
 #[derive(Clone, PartialEq, Eq, Hash, Default)]
 pub struct B64Bytes(Bytes);
 
@@ -73,16 +74,32 @@ impl fmt::Debug for B64Bytes {
 
 impl Serialize for B64Bytes {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if !serializer.is_human_readable() {
+            return self.0.serialize(serializer);
+        }
         serializer.serialize_str(&STANDARD.encode(&self.0))
     }
 }
 
 impl<'de> Deserialize<'de> for B64Bytes {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if !deserializer.is_human_readable() {
+            return Bytes::deserialize(deserializer).map(Self);
+        }
         let text = Cow::<'de, str>::deserialize(deserializer)?;
         let bytes = STANDARD
             .decode(text.as_bytes())
             .map_err(|error| de::Error::custom(format_args!("invalid base64: {error}")))?;
         Ok(Self(bytes.into()))
+    }
+}
+
+impl schemars::JsonSchema for B64Bytes {
+    fn schema_name() -> Cow<'static, str> {
+        "B64Bytes".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({ "type": "string", "contentEncoding": "base64" })
     }
 }
