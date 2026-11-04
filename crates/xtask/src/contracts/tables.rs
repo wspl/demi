@@ -208,6 +208,31 @@ pub fn module(header: &str) -> String {
             "How long a direct channel's watch stays silent before its heartbeat.",
             u64::try_from(direct::WATCH_HEARTBEAT.as_millis()).expect("a timeout fits"),
         ),
+        (
+            "MEASURE_PROBES",
+            "The probes a measurement of a direct path and its relay sends on each.",
+            count(direct::MEASURE_PROBES),
+        ),
+        (
+            "PROBE_EVERY_MS",
+            "The time between a measurement's probes.",
+            u64::try_from(direct::PROBE_EVERY.as_millis()).expect("a time fits"),
+        ),
+        (
+            "PROBE_LOST_MS",
+            "How long a probe may take before it counts as lost.",
+            u64::try_from(direct::PROBE_LOST.as_millis()).expect("a time fits"),
+        ),
+        (
+            "WORSE_LOST_PROBES",
+            "The most probes the direct path may lose and be no worse than the relay.",
+            count(direct::WORSE_LOST_PROBES),
+        ),
+        (
+            "WORSE_LATENCY_MS",
+            "How much slower than the relay's the direct path's latency may be.",
+            u64::try_from(direct::WORSE_LATENCY.as_millis()).expect("a time fits"),
+        ),
     ] {
         source.push('\n');
         push_doc(&mut source, Some(description), 0);

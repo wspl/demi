@@ -9,6 +9,7 @@
 //!
 //! Whether a device is online is its runner connection's, not a record's.
 
+use demi_runner_protocol::pairs::PairRoute;
 use demi_runner_protocol::wire::{AutostartUnavailable, HostArtifact, OperatingSystem, RunnerPlatform};
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::devices::{DeviceKind, DeviceLogo, DeviceRoute};
@@ -107,13 +108,22 @@ impl DeviceRecord {
         self.user == *user && self.machine != Some(ManagedMachine::ClaudeCode)
     }
 
-    /// Whether its runner and `other`'s may talk directly: neither is a
-    /// Cloud, which runs beside the backend, and neither's route is Relay
-    /// Only (`crates/runner-direct/src/pairs.rs`).
-    pub fn may_talk_directly(&self, other: &DeviceRecord) -> bool {
-        [self, other]
+    /// How its runner and `other`'s may talk (`crates/runner-direct/src/pairs.rs`):
+    /// through the relay only when either is a Cloud, which runs beside the
+    /// backend, or Relay Only; directly unmeasured when either prefers P2P;
+    /// otherwise directly once a measurement finds it no worse.
+    pub fn pair_route(&self, other: &DeviceRecord) -> PairRoute {
+        let both = [self, other];
+        if both
             .iter()
-            .all(|device| device.kind == DeviceKind::User && device.route != DeviceRoute::Server)
+            .any(|device| device.kind != DeviceKind::User || device.route == DeviceRoute::Server)
+        {
+            PairRoute::Relay
+        } else if both.iter().any(|device| device.route == DeviceRoute::Direct) {
+            PairRoute::Direct
+        } else {
+            PairRoute::Automatic
+        }
     }
 }
 

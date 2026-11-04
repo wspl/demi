@@ -12,7 +12,7 @@
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade, close_code};
 use axum::response::Response;
 use demi_runner_protocol::wire::{
-    self, PIPE_IDLE, PIPE_SESSION_MESSAGE_BYTES, PipeMove, PipeSink, Read, STREAM_PIPE_MESSAGE_BYTES,
+    self, PIPE_IDLE, PIPE_SESSION_MESSAGE_BYTES, PipeMove, Read, STREAM_PIPE_MESSAGE_BYTES,
     close_reason,
 };
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -82,16 +82,15 @@ async fn relay(socket: WebSocket, source: DeviceSource) {
     let tell = async {
         let mut told = None;
         loop {
-            let device = sink.borrow_and_update().clone();
-            if let Some(device) = device
-                && told.as_ref() != Some(&device)
+            let named = sink.borrow_and_update().clone();
+            if let Some(named) = named
+                && told.as_ref() != Some(&named)
             {
-                let text = serde_json::to_string(&PipeSink { sink: device.clone() })
-                    .expect("a pipe's sink encodes");
+                let text = serde_json::to_string(&named).expect("a pipe's sink encodes");
                 if to_runner.send(Message::Text(text.into())).await.is_err() {
                     return;
                 }
-                told = Some(device);
+                told = Some(named);
             }
             if sink.changed().await.is_err() {
                 return;

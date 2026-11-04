@@ -10,15 +10,19 @@
 //!   becomes the pair's peer ([`Pairing::answers`], [`Pairing::adopt`]).
 //! - A pipe channel the other runner opens waits here for the pipe's reader,
 //!   for as long as a peer takes to connect, and closes when none takes it.
+//! - A peer this runner measures probes the relay through the backend
+//!   (`pair_ping`), whose answers come back here by the peer's id
+//!   (`pair_pong`).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use bytes::Bytes;
+use demi_runner_direct::measure::{self, ProbedPath};
 use demi_runner_direct::{Dial, Direct, PairChannel, PairPeer, Pairs, PathGuard, PeerLink, Received};
 use demi_runner_process::pipes::{Carried, PairPlace, PipeChannel, PipePairs};
 use demi_runner_protocol::direct::{CONNECT_TIMEOUT, DialRefusal, StunUrl};
-use demi_runner_protocol::pairs::{PairHeader, PairReason};
+use demi_runner_protocol::pairs::{PairHeader, PairReason, PairRoute};
 use demi_runner_protocol::wire::{self, Inbound, Outbound};
 use futures_util::future::BoxFuture;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -47,6 +51,60 @@ impl Replies {
             // The connection that asked may have gone.
             let _ = waiting.send(reply);
         }
+    }
+}
+
+/// The answers to this runner's probes of the relay, by the peer each
+/// measures.
+#[derive(Clone, Default)]
+pub(crate) struct Pongs(Arc<Mutex<HashMap<String, mpsc::UnboundedSender<u32>>>>);
+
+impl Pongs {
+    /// The answers of peer `peer`'s relay probes from now on, until the
+    /// listening is dropped.
+    fn listen(&self, peer: &str) -> Listening {
+        let (answers, answered) = mpsc::unbounded_channel();
+        self.0.lock().expect("the pongs are whole").insert(peer.to_owned(), answers);
+        Listening {
+            pongs: self.clone(),
+            peer: peer.to_owned(),
+            answers: answered,
+        }
+    }
+
+    fn answer(&self, peer: &str, id: u32) {
+        if let Some(answers) = self.0.lock().expect("the pongs are whole").get(peer) {
+            // A measurement that ended meanwhile takes no more.
+            let _ = answers.send(id);
+        }
+    }
+}
+
+/// The answers to one peer's relay probes, which stop when it is dropped.
+struct Listening {
+    pongs: Pongs,
+    peer: String,
+    answers: mpsc::UnboundedReceiver<u32>,
+}
+
+impl Drop for Listening {
+    fn drop(&mut self) {
+        self.pongs.0.lock().expect("the pongs are whole").remove(&self.peer);
+    }
+}
+
+/// The relay as the path a measurement probes: each probe goes to the
+/// other runner of peer `peer` through the backend.
+struct RelayProbes {
+    backend: Backend,
+    peer: String,
+}
+
+impl ProbedPath for RelayProbes {
+    fn send(&self, id: u32) {
+        // A connection that ended answers nothing, which the relay's
+        // figures then lack.
+        self.backend.send(&Outbound::PairPing { peer: self.peer.clone(), id });
     }
 }
 
@@ -164,6 +222,7 @@ pub struct Pairing {
     pub(crate) backend: Backend,
     inbound: InboundPipes,
     direct: Direct,
+    pongs: Pongs,
 }
 
 impl Pairing {
@@ -181,12 +240,14 @@ impl Pairing {
         let replies = Replies::default();
         let backend = Backend { control, closed };
         let (stun, stunned) = watch::channel(Vec::new());
+        let pongs = Pongs::default();
         let pairs = Pairs::new(
             RunnerDial {
                 direct: direct.clone(),
                 backend: backend.clone(),
                 replies: replies.clone(),
                 stun: stunned,
+                pongs: pongs.clone(),
             },
             own,
         );
@@ -197,6 +258,7 @@ impl Pairing {
             backend,
             inbound,
             direct,
+            pongs,
         })
     }
 
@@ -216,13 +278,16 @@ impl Pairing {
 
     /// Takes the peer `peer`, which this runner answered for the runner of
     /// `device`, as the pair's.
-    pub fn adopt(&self, device: &str, peer: String, link: PeerLink) {
+    pub fn adopt(&self, device: &str, route: PairRoute, peer: String, link: PeerLink) {
         self.pairs.adopt(
             device,
+            route,
             RunnerPeer {
                 link,
                 peer,
                 direct: self.direct.clone(),
+                backend: self.backend.clone(),
+                pongs: self.pongs.clone(),
             },
         );
     }
@@ -234,6 +299,10 @@ impl Pairing {
             Inbound::DirectDialed { ref id, .. } | Inbound::DirectDialRefused { ref id, .. } => {
                 let id = id.clone();
                 self.replies.answer(&id, message);
+                Ok(())
+            }
+            Inbound::PairPong { peer, id } => {
+                self.pongs.answer(&peer, id);
                 Ok(())
             }
             other => Err(other),
@@ -248,12 +317,10 @@ impl Drop for Pairing {
 }
 
 impl PipePairs for Pairing {
-    fn relay(&self, device: String) -> BoxFuture<'static, Box<dyn PairPlace>> {
+    fn relay(&self, device: String, route: PairRoute) -> BoxFuture<'static, Box<dyn PairPlace>> {
         let pairs = self.pairs.clone();
         Box::pin(async move {
-            // A pipe's two ends are runners the backend lets talk directly
-            // once it names the sink to the source.
-            let guard = pairs.relay(&device, true).await;
+            let guard = pairs.relay(&device, route).await;
             Box::new(RunnerPlace(Arc::new(Place {
                 pairs,
                 guard,
@@ -370,6 +437,7 @@ pub(crate) struct RunnerDial {
     backend: Backend,
     replies: Replies,
     stun: watch::Receiver<Vec<StunUrl>>,
+    pongs: Pongs,
 }
 
 /// A peer with another runner, whichever offered it.
@@ -378,6 +446,8 @@ pub(crate) struct RunnerPeer {
     link: PeerLink,
     peer: String,
     direct: Direct,
+    backend: Backend,
+    pongs: Pongs,
 }
 
 impl PairPeer for RunnerPeer {
@@ -405,6 +475,39 @@ impl PairPeer for RunnerPeer {
     fn close(&self) {
         self.direct.close(&self.peer);
     }
+
+    fn measure(&self) -> BoxFuture<'static, bool> {
+        let link = self.link.clone();
+        let relay = RelayProbes {
+            backend: self.backend.clone(),
+            peer: self.peer.clone(),
+        };
+        let mut relay_answers = self.pongs.listen(&self.peer);
+        Box::pin(async move {
+            let (direct, mut direct_answers) = link.probes();
+            let (direct, relay) = measure::measure(&direct, &mut direct_answers, &relay, &mut relay_answers.answers).await;
+            let slower = measure::direct_worse(direct, relay);
+            tracing::info!(
+                event = "direct_path.measured",
+                direct_lost = direct.lost,
+                direct_ms = direct.latency.map(|latency| latency.as_millis() as u64),
+                relay_ms = relay.latency.map(|latency| latency.as_millis() as u64),
+                slower,
+                "a pair's peer was measured against the relay"
+            );
+            slower
+        })
+    }
+
+    fn tell(&self, slower: bool) -> BoxFuture<'static, ()> {
+        let link = self.link.clone();
+        Box::pin(async move { link.tell(slower).await })
+    }
+
+    fn verdict(&self) -> BoxFuture<'static, Option<bool>> {
+        let link = self.link.clone();
+        Box::pin(async move { link.verdict().await })
+    }
 }
 
 impl Dial for RunnerDial {
@@ -415,6 +518,7 @@ impl Dial for RunnerDial {
         let backend = self.backend.clone();
         let replies = self.replies.clone();
         let stun = self.stun.borrow().clone();
+        let pongs = self.pongs.clone();
         Box::pin(async move {
             let peer = uuid::Uuid::new_v4().simple().to_string();
             let dialing = direct
@@ -478,7 +582,13 @@ impl Dial for RunnerDial {
                 told.send(&Outbound::DirectClosed { peer: ending });
             });
             match link.connected().await {
-                Ok(()) => Ok(RunnerPeer { link, peer, direct }),
+                Ok(()) => Ok(RunnerPeer {
+                    link,
+                    peer,
+                    direct,
+                    backend,
+                    pongs,
+                }),
                 Err(reason) => {
                     direct.close(&peer);
                     Err(reason)

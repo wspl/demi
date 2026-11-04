@@ -70,6 +70,7 @@ use demi_backend_page_sync::Part;
 use demi_runner_client::{DirectAnswer, ForwardEvent, Link, PeerEvent};
 use demi_runner_protocol::direct::{CONNECT_TIMEOUT, DialRefusal, Introduced, OfferRefusal};
 use demi_runner_protocol::forward::{DEADLINE, Forward, ForwardRunState};
+use demi_runner_protocol::pairs::PairRoute;
 use demi_web_api_protocol::ids::{DeviceId, PortForwardId};
 use demi_web_api_protocol::port_forwards::{PortForwardDto, PortForwardPatch};
 use tokio_util::sync::CancellationToken;
@@ -269,9 +270,9 @@ impl Shard {
                     return None;
                 }
                 let peer = if listens { connect } else { &record.listen_device };
-                let direct = match (find(&record.listen_device), find(connect)) {
-                    (Some(listen), Some(connect)) => listen.may_talk_directly(connect),
-                    _ => false,
+                let route = match (find(&record.listen_device), find(connect)) {
+                    (Some(listen), Some(connect)) => listen.pair_route(connect),
+                    _ => PairRoute::Relay,
                 };
                 Some(Forward {
                     id: record.id.to_string(),
@@ -279,7 +280,7 @@ impl Shard {
                     connect: connects.then(|| record.connect_address.to_string()),
                     peer: peer.to_string(),
                     peer_online: self.devices().connected(peer),
-                    direct,
+                    route,
                 })
             })
             .collect()
@@ -385,11 +386,12 @@ impl Shard {
         // The relay's connection moves to the pair's direct channel once it
         // is up, as the forward's own connections open on it.
         let find = |id: &DeviceId| devices.iter().find(|record| record.id == *id);
-        if let (Some(one), Some(two)) = (find(&device), find(&connect))
-            && one.may_talk_directly(two)
-        {
-            up.may_go_direct();
-            down.may_go_direct();
+        if let (Some(one), Some(two)) = (find(&device), find(&connect)) {
+            let route = one.pair_route(two);
+            if route != PairRoute::Relay {
+                up.may_go_direct(route);
+                down.may_go_direct(route);
+            }
         }
         other.forward_connect(record.id.as_str(), up.wire_ref(), down.wire_ref());
         link.forward_opened(id, Ok((down.wire_ref(), up.wire_ref())));
@@ -410,7 +412,7 @@ impl Shard {
             refuse(DialRefusal::Unavailable, "No such Host");
             return;
         };
-        let allowed = match (self.services().control.port_forwards(self.user().clone()).await, self.host_records().await) {
+        let route = match (self.services().control.port_forwards(self.user().clone()).await, self.host_records().await) {
             (Ok(records), Ok(devices)) => {
                 let find = |id: &DeviceId| devices.iter().find(|device| device.id == *id);
                 // Either runner opens the pair's peer, for a forward between
@@ -423,15 +425,14 @@ impl Shard {
                 let linked = between(&device, &other)
                     || between(&other, &device)
                     || self.pipes().link_direct(device.as_str(), other.as_str());
-                let direct = match (find(&device), find(&other)) {
-                    (Some(one), Some(two)) => one.may_talk_directly(two),
-                    _ => false,
-                };
-                linked && direct
+                match (find(&device), find(&other)) {
+                    (Some(one), Some(two)) if linked => one.pair_route(two),
+                    _ => PairRoute::Relay,
+                }
             }
-            _ => false,
+            _ => PairRoute::Relay,
         };
-        if !allowed {
+        if route == PairRoute::Relay {
             refuse(DialRefusal::Unavailable, "The two Hosts do not talk directly");
             return;
         }
@@ -461,6 +462,7 @@ impl Shard {
         let answering_said = answering.direct_peer(&peer);
         let introduced = Introduced::Runner {
             device: device.to_string(),
+            route,
         };
         let offer = answering.direct_offer(&peer, sdp, introduced, self.services().stun.clone());
         match tokio::time::timeout(ANSWER_TIMEOUT, offer).await {
@@ -516,14 +518,18 @@ async fn relay_candidates(
             () = closed.cancelled() => break,
             () = offering.ended() => break,
             () = answering.ended() => break,
+            // A probe of the relay goes to the other runner as a page's
+            // does, and its answer back to the runner that measures.
             said = offering_said.recv() => match said {
                 Some(PeerEvent::Candidate(candidate)) => answering.direct_candidate(peer, candidate),
-                Some(PeerEvent::Pong(_)) => {}
+                Some(PeerEvent::Ping(id)) => answering.direct_ping(peer, id),
+                Some(PeerEvent::Pong(id)) => answering.pair_pong(peer, id),
                 None => break,
             },
             said = answering_said.recv() => match said {
                 Some(PeerEvent::Candidate(candidate)) => offering.direct_candidate(peer, candidate),
-                Some(PeerEvent::Pong(_)) => {}
+                Some(PeerEvent::Ping(id)) => offering.direct_ping(peer, id),
+                Some(PeerEvent::Pong(id)) => offering.pair_pong(peer, id),
                 None => break,
             },
         }

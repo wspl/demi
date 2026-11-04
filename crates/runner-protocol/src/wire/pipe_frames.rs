@@ -167,11 +167,12 @@ pub struct PipeMove {
 
 /// What the backend tells a stream pipe's source in a text message on its
 /// WebSocket: the device its sink is, once the sink is a runner the source's
-/// may talk directly with.
+/// may talk directly with, and how the two may.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PipeSink {
     pub sink: String,
+    pub route: crate::pairs::PairRoute,
 }
 
 /// A moved frame's map.

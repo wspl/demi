@@ -493,8 +493,10 @@ pub struct HttpRequest {
 pub enum PeerEvent {
     /// A candidate it found after its answer.
     Candidate(String),
-    /// Its answer to the page's relay probe.
+    /// Its answer to the page's relay probe, or the other runner's.
     Pong(u32),
+    /// Its probe of the relay to the other runner of a pair's peer.
+    Ping(u32),
 }
 
 /// What a runner said to a page's offer (`crates/runner-direct/src/lib.rs`).
@@ -1220,6 +1222,15 @@ impl Link {
         });
     }
 
+    /// The other runner's answer to this runner's probe `id` of the relay,
+    /// for peer `peer`.
+    pub fn pair_pong(&self, peer: &str, id: u32) {
+        self.post(&Inbound::PairPong {
+            peer: peer.to_owned(),
+            id,
+        });
+    }
+
     /// A candidate the page of peer `peer` found after its offer.
     pub fn direct_candidate(&self, peer: &str, candidate: String) {
         self.post(&Inbound::DirectCandidate {
@@ -1618,6 +1629,7 @@ impl Link {
                 self.tell_peer(&peer, PeerEvent::Candidate(candidate));
             }
             Outbound::DirectPong { peer, id } => self.tell_peer(&peer, PeerEvent::Pong(id)),
+            Outbound::PairPing { peer, id } => self.tell_peer(&peer, PeerEvent::Ping(id)),
             Outbound::DirectDial {
                 id,
                 peer,

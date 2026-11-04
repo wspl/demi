@@ -50,7 +50,8 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_runner_protocol::wire::{self, PipePath, PipeRef};
+use demi_runner_protocol::pairs::PairRoute;
+use demi_runner_protocol::wire::{self, PipePath, PipeRef, PipeSink};
 use futures_util::{Stream, StreamExt, stream::BoxStream};
 use tokio::{
     sync::{mpsc, watch},
@@ -98,12 +99,11 @@ struct Slot {
     /// the call bounds.
     arrival: Option<Duration>,
     receiver: Option<mpsc::Receiver<Piece>>,
-    /// Whether its two ends' runners may talk directly, once both are
-    /// devices.
-    direct: bool,
-    /// The sink's device the source's stream pipe is told, once the pipe
-    /// may move to the direct channel.
-    sink_told: Arc<watch::Sender<Option<String>>>,
+    /// How its two ends' runners may talk, once both are devices.
+    route: PairRoute,
+    /// The sink's device the source's stream pipe is told, with the route,
+    /// once the pipe may move to the direct channel.
+    sink_told: Arc<watch::Sender<Option<PipeSink>>>,
     /// Whether the pipe outlives its device's connection, as a call's does.
     survives: bool,
     /// Whether its device reads it over a WebSocket that resumes.
@@ -341,7 +341,7 @@ impl Pipes {
                 upload: Arc::default(),
                 sender: Some(sender),
                 receiver: Some(receiver),
-                direct: false,
+                route: PairRoute::Relay,
                 sink_told: Arc::new(watch::Sender::new(None)),
                 core: core.clone(),
                 deadline,
@@ -477,7 +477,7 @@ impl Pipes {
         let one = End::Device(one.into());
         let other = End::Device(other.into());
         self.0.slots.borrow().values().any(|slot| {
-            slot.direct
+            slot.route != PairRoute::Relay
                 && slot.core.is_open()
                 && ((slot.source == one && slot.sink == other) || (slot.source == other && slot.sink == one))
         })
@@ -619,10 +619,13 @@ impl Slot {
     /// talk directly.
     fn tell_sink(&mut self) {
         if let (End::Device(source), End::Device(sink)) = (&self.source, &self.sink)
-            && self.direct
+            && self.route != PairRoute::Relay
             && source != sink
         {
-            self.sink_told.send_replace(Some(sink.clone()));
+            self.sink_told.send_replace(Some(PipeSink {
+                sink: sink.clone(),
+                route: self.route,
+            }));
         }
     }
 
@@ -787,12 +790,12 @@ impl Pipe {
         })
     }
 
-    /// The pipe's two ends, devices whose runners may talk directly, may
-    /// move its bytes to their direct channel: the minter knows the
-    /// devices, and the policy that lets them.
-    pub fn may_go_direct(&self) {
+    /// The pipe's two ends, devices whose runners may talk directly as
+    /// `route` says, may move its bytes to their direct channel: the minter
+    /// knows the devices, and the policy that lets them.
+    pub fn may_go_direct(&self, route: PairRoute) {
         let _ = self.pipes.with_slot(&self.id, |slot| {
-            slot.direct = true;
+            slot.route = route;
             slot.tell_sink();
             Ok(())
         });
@@ -1200,13 +1203,13 @@ impl Drop for DeviceChunk {
 pub struct DeviceSource {
     writer: PipeWriter,
     device: Arc<str>,
-    sink: watch::Receiver<Option<String>>,
+    sink: watch::Receiver<Option<PipeSink>>,
 }
 
 impl DeviceSource {
     /// The sink's device, once the pipe may move to the two runners' direct
     /// channel; the edge tells the source.
-    pub fn sink(&self) -> watch::Receiver<Option<String>> {
+    pub fn sink(&self) -> watch::Receiver<Option<PipeSink>> {
         self.sink.clone()
     }
 

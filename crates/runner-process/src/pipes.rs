@@ -279,7 +279,7 @@ impl PipeClient {
             connected = connecting => connected?,
         };
         let (sender, mut receiver) = socket.split();
-        let (sinks, mut sink) = watch::channel(None::<String>);
+        let (sinks, mut sink) = watch::channel(None::<wire::PipeSink>);
         let sending = Sending {
             socket: sender,
             pipe: pipe.id.clone(),
@@ -310,7 +310,7 @@ impl PipeClient {
                     }
                     Message::Text(text) => {
                         if let Ok(named) = serde_json::from_str::<wire::PipeSink>(text.as_str()) {
-                            sinks.send_replace(Some(named.sink));
+                            sinks.send_replace(Some(named));
                         }
                     }
                     _ => {}
@@ -426,8 +426,8 @@ struct Sending<'a, W> {
     socket: W,
     pipe: String,
     pairs: moves::CurrentPairs,
-    /// The pipe's sink, once the backend names it.
-    sink: &'a mut watch::Receiver<Option<String>>,
+    /// The pipe's sink and how the two may talk, once the backend names it.
+    sink: &'a mut watch::Receiver<Option<wire::PipeSink>>,
     /// Where each way the bytes go is said.
     path: Option<watch::Sender<PipePath>>,
 }
@@ -547,7 +547,7 @@ where
                     let sink = self.sink.borrow_and_update().clone();
                     let pairs = self.pairs.borrow().clone();
                     if let (Some(sink), Some(pairs)) = (sink, pairs) {
-                        placing = Some(pairs.relay(sink));
+                        placing = Some(pairs.relay(sink.sink, sink.route));
                     }
                 }
                 Heard::Pairs => {
@@ -561,7 +561,7 @@ where
                     let sink = self.sink.borrow().clone();
                     let pairs = self.pairs.borrow_and_update().clone();
                     if let (Some(sink), Some(pairs)) = (sink, pairs) {
-                        placing = Some(pairs.relay(sink));
+                        placing = Some(pairs.relay(sink.sink, sink.route));
                     }
                 }
                 Heard::Placed(placed) => {

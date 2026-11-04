@@ -868,9 +868,17 @@ pub enum Inbound {
         #[garde(length(min = 1, max = crate::direct::CANDIDATE_CHARS))]
         candidate: String,
     },
-    /// A page's probe of the relay path (`packages/web/src/direct/measure.ts`): the runner answers `direct_pong` with the same `id` at once,
-    /// whether or not it holds the peer.
+    /// A page's probe of the relay path (`packages/web/src/direct/measure.ts`), or the other runner's of a
+    /// pair (`pair_ping`): the runner answers `direct_pong` with the same `id` at once, whether or not it
+    /// holds the peer.
     DirectPing {
+        #[garde(length(min = 1))]
+        peer: String,
+        #[garde(skip)]
+        id: u32,
+    },
+    /// The other runner's answer to this runner's `pair_ping` of the relay path.
+    PairPong {
         #[garde(length(min = 1))]
         peer: String,
         #[garde(skip)]
@@ -1064,6 +1072,7 @@ impl Inbound {
             | Self::DirectOffer { .. }
             | Self::DirectCandidate { .. }
             | Self::DirectPing { .. }
+            | Self::PairPong { .. }
             | Self::DirectClose { .. }
             | Self::DirectDialed { .. }
             | Self::DirectDialRefused { .. }
@@ -1569,6 +1578,16 @@ pub enum Outbound {
         device: String,
         #[garde(length(min = 1))]
         sdp: String,
+    },
+    /// This runner's probe of the relay path to the other runner of peer
+    /// `peer`, which the backend introduced (`crates/runner-direct/src/measure.rs`):
+    /// the backend gives it the other runner as `direct_ping`, and its
+    /// `direct_pong` back as `pair_pong`.
+    PairPing {
+        #[garde(length(min = 1))]
+        peer: String,
+        #[garde(skip)]
+        id: u32,
     },
     /// Peer `peer`, which the backend introduced to another runner, ended:
     /// the other runner closes its side.
@@ -2656,6 +2675,7 @@ impl Outbound {
             | Self::DirectAnswer { .. }
             | Self::DirectCandidate { .. }
             | Self::DirectPong { .. }
+            | Self::PairPing { .. }
             | Self::DirectRefused { .. }
             | Self::DirectStream { .. }
             | Self::DirectStreamWatched { .. }

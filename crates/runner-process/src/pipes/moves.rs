@@ -26,6 +26,7 @@ use std::collections::VecDeque;
 use std::io;
 
 use bytes::Bytes;
+use demi_runner_protocol::pairs::PairRoute;
 use demi_runner_protocol::wire::PipePath;
 use futures_util::future::BoxFuture;
 use futures_util::stream::BoxStream;
@@ -36,9 +37,10 @@ use tokio::sync::watch;
 /// (`crates/runner-direct/src/pairs.rs`).
 pub trait PipePairs: Send + Sync + 'static {
     /// A pipe's place among the connections of this runner's pair with the
-    /// runner of `device`, which starts on the relay. It keeps the pair's
-    /// peer up, and has a failed one tried again, while it lives.
-    fn relay(&self, device: String) -> BoxFuture<'static, Box<dyn PairPlace>>;
+    /// runner of `device`, which starts on the relay and may move as
+    /// `route` lets it. It keeps the pair's peer up, and has a failed one
+    /// tried again, while it lives.
+    fn relay(&self, device: String, route: PairRoute) -> BoxFuture<'static, Box<dyn PairPlace>>;
     /// The channel the runner of `device` opens for pipe `pipe`'s bytes from
     /// `at` on, whose sink this runner is, once it arrives; none once this
     /// runner's pairs ended. A channel from an earlier move, which its source

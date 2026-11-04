@@ -1,21 +1,13 @@
 /**
  * Measuring a device's two paths: one measurement sends 20 probes on each path, 100 ms apart, and
  * counts one not answered within 2 seconds as lost; its figures decide
- * Automatic's choice until the next one.
+ * Automatic's choice until the next one. A pair of runners measures its peer
+ * with the same figures (`crates/runner-direct/src/measure.rs`), which the
+ * runner protocol defines.
  */
+import { MEASURE_PROBES, PROBE_EVERY_MS, PROBE_LOST_MS, WORSE_LATENCY_MS, WORSE_LOST_PROBES } from '@demicodes/protocol'
 import type { PathFigures } from '@demicodes/web-ui/devices/direct'
 import { nextPingId } from '@demicodes/web-ui/transport/liveness'
-
-/** The probes a measurement sends on each path. */
-export const MEASURE_PROBES = 20
-/** The time between a measurement's probes. */
-export const PROBE_EVERY_MS = 100
-/** How long a probe may take before it counts as lost. */
-export const PROBE_LOST_MS = 2000
-/** The most of the peer's probes a measurement may lose with the direct path no worse. */
-export const WORSE_LOST_PROBES = 1
-/** How much slower than the relay the direct path may be. */
-export const WORSE_LATENCY_MS = 20
 
 /** One path a measurement probes: how a probe goes, and who hears the answers. */
 export interface ProbedPath {
