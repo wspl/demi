@@ -22,6 +22,24 @@
 //! - A pair whose runners may not talk directly, a Cloud's or one whose route
 //!   is Relay Only, always takes the relay.
 //!
+//! # A peer is measured before it carries
+//!
+//! A connected peer is not always the better path: across networks it may run
+//! over a lossy link, such as one a VPN tunnel carries, where the relay's TCP
+//! does well. So a peer that connects carries nothing until the runner whose
+//! device id sorts first, the one whose offer stands in a glare, gave its
+//! verdict:
+//!
+//! - On the pair's Automatic route it measures the peer against the relay
+//!   (`crate::measure`); on Prefer P2P it takes the peer unmeasured.
+//! - It tells the other runner on a channel of the peer
+//!   ([`PairHeader::Measured`]), and waits until that runner heard it.
+//! - A peer found slower closes, and the pair tries again on the schedule of a
+//!   failed one, with the reason [`PairReason::Slower`]; the other runner,
+//!   which heard the verdict, does the same. Neither opened a channel on it.
+//! - The other runner waits for the verdict as long as a peer takes to
+//!   connect, and closes a peer that sent none.
+//!
 //! # One peer, offered from either side
 //!
 //! The other runner offers a peer of its own when its connections need one
@@ -42,8 +60,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use demi_runner_protocol::direct::MAX_CHANNELS;
-use demi_runner_protocol::pairs::{PEER_IDLE, PairHeader, PairReason, RETRY_WAITS};
+use demi_runner_protocol::direct::{CONNECT_TIMEOUT, MAX_CHANNELS};
+use demi_runner_protocol::pairs::{PEER_IDLE, PairHeader, PairReason, PairRoute, RETRY_WAITS};
 use futures_util::future::BoxFuture;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinSet;
@@ -73,6 +91,14 @@ pub trait PairPeer: Clone + Send + Sync + 'static {
     fn carries(&self) -> bool;
     /// Closes the peer.
     fn close(&self);
+    /// Measures the connected peer against the relay: whether it is slower.
+    fn measure(&self) -> BoxFuture<'static, bool>;
+    /// Tells the other runner this runner's verdict, and resolves once it
+    /// heard it or gave up.
+    fn tell(&self, slower: bool) -> BoxFuture<'static, ()>;
+    /// The other runner's verdict, once it sent one; none when the peer
+    /// ended first.
+    fn verdict(&self) -> BoxFuture<'static, Option<bool>>;
 }
 
 /// The path a connection took as it opened, with its reservation, which
@@ -131,7 +157,7 @@ pub struct Pairs<D: Dial> {
 /// What a reservation says of itself.
 pub(crate) enum Command {
     /// It asks for a path; the answer is a peer when it goes direct.
-    Path { device: String, id: u64, allowed: bool },
+    Path { device: String, id: u64, route: PairRoute },
     /// It waits on the relay for a channel of the pair's peer.
     Wait { device: String, id: u64 },
     /// Its direct channel did not open, or went: it is on the relay now.
@@ -151,9 +177,11 @@ enum Event<P> {
         device: String,
         answer: oneshot::Sender<bool>,
     },
-    /// The peer this runner answered for the runner of `device`.
+    /// The peer this runner answered for the runner of `device`, on the
+    /// pair's route the backend said with the offer.
     Adopted {
         device: String,
+        route: PairRoute,
         peer: P,
     },
     Dialed {
@@ -166,6 +194,13 @@ enum Event<P> {
         generation: u64,
         reason: Option<PairReason>,
     },
+    /// The verdict on the peer of `generation`: whether it is slower than
+    /// the relay, none when none came.
+    Measured {
+        device: String,
+        generation: u64,
+        verdict: Option<bool>,
+    },
 }
 
 /// Where a pair's peer is.
@@ -173,7 +208,19 @@ enum PeerState<P> {
     None,
     /// A peer is on its way: this runner's offer, or one it answered.
     Dialing { generation: u64, own: bool },
+    /// The peer connected, and carries nothing until its verdict.
+    Measuring { peer: P, generation: u64, own: bool },
     Connected { peer: P, generation: u64, own: bool },
+}
+
+impl<P> PeerState<P> {
+    /// The peer, once it connected.
+    fn peer(&self) -> Option<&P> {
+        match self {
+            Self::Measuring { peer, .. } | Self::Connected { peer, .. } => Some(peer),
+            Self::None | Self::Dialing { .. } => None,
+        }
+    }
 }
 
 struct Pair<P> {
@@ -188,8 +235,8 @@ struct Pair<P> {
     failures: usize,
     /// When the next attempt is due, while the pair is on the relay.
     retry_at: Option<Instant>,
-    /// Whether the pair may talk directly, as its last ask said.
-    allowed: bool,
+    /// How the pair may talk, as its last ask said.
+    route: PairRoute,
 }
 
 impl<P> Pair<P> {
@@ -201,12 +248,17 @@ impl<P> Pair<P> {
             idle_at: None,
             failures: 0,
             retry_at: None,
-            allowed: false,
+            route: PairRoute::Relay,
         }
     }
 
     fn direct(&self) -> usize {
         self.open.values().filter(|direct| **direct).count()
+    }
+
+    /// Whether the pair may talk directly at all.
+    fn allowed(&self) -> bool {
+        self.route != PairRoute::Relay
     }
 }
 
@@ -240,8 +292,9 @@ impl<D: Dial> Pairs<D> {
     }
 
     /// A reservation with the runner of `device`, counted at once, and the
-    /// pair's peer when `allowed` and the peer is connected and has room.
-    async fn reserve(&self, device: &str, allowed: bool) -> (PathGuard, Option<D::Peer>) {
+    /// pair's peer when `route` lets it and the peer is connected and has
+    /// room.
+    async fn reserve(&self, device: &str, route: PairRoute) -> (PathGuard, Option<D::Peer>) {
         let id = self.next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let guard = PathGuard {
             device: device.to_owned(),
@@ -256,7 +309,7 @@ impl<D: Dial> Pairs<D> {
             .send(Command::Path {
                 device: device.to_owned(),
                 id,
-                allowed,
+                route,
             })
             .is_ok()
             && self.commands.send(Event::Answer { id, answer }).is_ok();
@@ -265,11 +318,11 @@ impl<D: Dial> Pairs<D> {
     }
 
     /// The path a new connection with the runner of `device` takes, carrying
-    /// what `header` says: direct when `allowed` and the pair's peer is
-    /// connected and has room. The connection counts from the ask on, so a
-    /// caller that goes while it waits leaves nothing counted.
-    pub async fn path(&self, device: &str, header: PairHeader, allowed: bool) -> Opened<D> {
-        let (guard, peer) = self.reserve(device, allowed).await;
+    /// what `header` says: direct when `route` lets it and the pair's peer
+    /// is connected and has room. The connection counts from the ask on, so
+    /// a caller that goes while it waits leaves nothing counted.
+    pub async fn path(&self, device: &str, header: PairHeader, route: PairRoute) -> Opened<D> {
+        let (guard, peer) = self.reserve(device, route).await;
         let Some(peer) = peer else {
             return Path::Relay(guard);
         };
@@ -285,8 +338,8 @@ impl<D: Dial> Pairs<D> {
     /// A connection with the runner of `device` that starts on the relay:
     /// its reservation, which keeps the pair's peer up and has a failed one
     /// tried again, and with which it waits for a channel ([`Pairs::direct`]).
-    pub async fn relay(&self, device: &str, allowed: bool) -> PathGuard {
-        let (guard, peer) = self.reserve(device, allowed).await;
+    pub async fn relay(&self, device: &str, route: PairRoute) -> PathGuard {
+        let (guard, peer) = self.reserve(device, route).await;
         if peer.is_some() {
             // The answer counted it direct; it opens nothing yet.
             guard.relayed();
@@ -339,10 +392,11 @@ impl<D: Dial> Pairs<D> {
 
     /// Takes `peer`, which this runner answered for the runner of `device`,
     /// as the pair's peer once it connects, in place of any other.
-    pub fn adopt(&self, device: &str, peer: D::Peer) {
+    pub fn adopt(&self, device: &str, route: PairRoute, peer: D::Peer) {
         // Pairs that ended take nothing; the peer closes with the connection.
         let _ = self.commands.send(Event::Adopted {
             device: device.to_owned(),
+            route,
             peer,
         });
     }
@@ -399,7 +453,7 @@ impl<D: Dial> Serving<D> {
             self.handle(event);
         }
         for pair in self.pairs.values() {
-            if let PeerState::Connected { peer, .. } = &pair.peer {
+            if let Some(peer) = pair.peer.peer() {
                 peer.close();
             }
         }
@@ -473,7 +527,7 @@ impl<D: Dial> Serving<D> {
                 };
                 if pair.retry_at.is_some() && matches!(pair.peer, PeerState::None) {
                     pair.retry_at = Some(Instant::now());
-                    if !pair.open.is_empty() && pair.allowed {
+                    if !pair.open.is_empty() && pair.allowed() {
                         self.start_dial(&device);
                     }
                 }
@@ -484,9 +538,12 @@ impl<D: Dial> Serving<D> {
                 // The side that asked may have gone.
                 let _ = answer.send(!refuses);
             }
-            Event::Adopted { device, peer } => {
+            Event::Adopted { device, route, peer } => {
                 let sorts_first = self.sorts_first(&device);
                 let pair = self.pairs.entry(device.clone()).or_insert_with(Pair::new);
+                // A pair whose side answers without asking knows its route
+                // only from the offer.
+                pair.route = route;
                 // Its own offer went out since it answered: the other runner
                 // takes that one.
                 if sorts_first && Self::offered_own(&pair.peer) {
@@ -495,9 +552,8 @@ impl<D: Dial> Serving<D> {
                 }
                 self.generation += 1;
                 let generation = self.generation;
-                if let PeerState::Connected { peer: replaced, .. } =
-                    std::mem::replace(&mut pair.peer, PeerState::Dialing { generation, own: false })
-                {
+                let replaced = std::mem::replace(&mut pair.peer, PeerState::Dialing { generation, own: false });
+                if let Some(replaced) = replaced.peer() {
                     replaced.close();
                 }
                 let connected = peer.connected();
@@ -533,26 +589,43 @@ impl<D: Dial> Serving<D> {
                 }
                 match result {
                     Ok(peer) => {
-                        pair.failures = 0;
-                        pair.retry_at = None;
-                        if pair.open.is_empty() {
-                            pair.idle_at = Some(Instant::now() + PEER_IDLE);
-                        }
                         let own = matches!(pair.peer, PeerState::Dialing { own: true, .. });
-                        let ended = peer.ended();
-                        pair.peer = PeerState::Connected { peer, generation, own };
+                        let measures = self.own.get().is_some_and(|own| own.as_str() < device.as_str());
+                        let route = pair.route;
+                        pair.peer = PeerState::Measuring {
+                            peer: peer.clone(),
+                            generation,
+                            own,
+                        };
                         let sender = self.sender.clone();
                         self.dials.spawn(async move {
-                            let reason = ended.await;
+                            let verdict = if measures {
+                                // A peer that ends while it is measured lost
+                                // its probes for that, not for being slower.
+                                let slower = match route {
+                                    PairRoute::Automatic => tokio::select! {
+                                        slower = peer.measure() => Some(slower),
+                                        _ = peer.ended() => None,
+                                    },
+                                    _ => Some(false),
+                                };
+                                if let Some(slower) = slower {
+                                    peer.tell(slower).await;
+                                }
+                                slower
+                            } else {
+                                tokio::time::timeout(CONNECT_TIMEOUT, peer.verdict())
+                                    .await
+                                    .ok()
+                                    .flatten()
+                            };
                             // Pairs that ended hear nothing.
-                            let _ = sender.send(Event::PeerEnded {
+                            let _ = sender.send(Event::Measured {
                                 device,
                                 generation,
-                                reason,
+                                verdict,
                             });
                         });
-                        self.set_reason(None);
-                        self.give_channels();
                     }
                     Err(reason) => {
                         pair.peer = PeerState::None;
@@ -589,11 +662,55 @@ impl<D: Dial> Serving<D> {
                 // schedule; one whose peer closed, at once.
                 if let Some(pair) = self.pairs.get(&device)
                     && !pair.open.is_empty()
-                    && pair.allowed
+                    && pair.allowed()
                     && pair.retry_at.is_none()
                 {
                     self.start_dial(&device);
                 }
+            }
+            Event::Measured {
+                device,
+                generation,
+                verdict,
+            } => {
+                let Some(pair) = self.pairs.get_mut(&device) else {
+                    return;
+                };
+                let current = matches!(&pair.peer, PeerState::Measuring { generation: now, .. } if *now == generation);
+                if !current {
+                    return;
+                }
+                let PeerState::Measuring { peer, own, .. } = std::mem::replace(&mut pair.peer, PeerState::None) else {
+                    return;
+                };
+                if verdict != Some(false) {
+                    // No channel opened on it: the pair's connections are on
+                    // the relay, where they stay.
+                    peer.close();
+                    Self::failed(pair);
+                    let reason = if verdict == Some(true) { PairReason::Slower } else { PairReason::Dropped };
+                    self.set_reason(Some((device, reason)));
+                    return;
+                }
+                pair.failures = 0;
+                pair.retry_at = None;
+                if pair.open.is_empty() {
+                    pair.idle_at = Some(Instant::now() + PEER_IDLE);
+                }
+                let ended = peer.ended();
+                pair.peer = PeerState::Connected { peer, generation, own };
+                let sender = self.sender.clone();
+                self.dials.spawn(async move {
+                    let reason = ended.await;
+                    // Pairs that ended hear nothing.
+                    let _ = sender.send(Event::PeerEnded {
+                        device,
+                        generation,
+                        reason,
+                    });
+                });
+                self.set_reason(None);
+                self.give_channels();
             }
         }
     }
@@ -604,10 +721,11 @@ impl<D: Dial> Serving<D> {
     /// none left, the peer closes a minute later.
     fn reservation(&mut self, command: Command) {
         match command {
-            Command::Path { device, id, allowed } => {
+            Command::Path { device, id, route } => {
                 let pair = self.pairs.entry(device.clone()).or_insert_with(Pair::new);
                 pair.idle_at = None;
-                pair.allowed = allowed;
+                pair.route = route;
+                let allowed = pair.allowed();
                 let peer = match &pair.peer {
                     PeerState::Connected { peer, .. } if allowed && pair.direct() < MAX_CHANNELS => Some(peer.clone()),
                     _ => None,
@@ -658,7 +776,7 @@ impl<D: Dial> Serving<D> {
             let PeerState::Connected { peer, .. } = &pair.peer else {
                 continue;
             };
-            if !pair.allowed {
+            if !pair.allowed() {
                 continue;
             }
             let mut index = 0;
@@ -686,7 +804,12 @@ impl<D: Dial> Serving<D> {
 
     /// Whether the pair's peer is this runner's own offer.
     fn offered_own(peer: &PeerState<D::Peer>) -> bool {
-        matches!(peer, PeerState::Dialing { own: true, .. } | PeerState::Connected { own: true, .. })
+        matches!(
+            peer,
+            PeerState::Dialing { own: true, .. }
+                | PeerState::Measuring { own: true, .. }
+                | PeerState::Connected { own: true, .. }
+        )
     }
 
     /// A pair whose attempt failed waits for its next.

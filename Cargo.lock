@@ -2099,6 +2099,7 @@ dependencies = [
  "demi-runner-client",
  "demi-runner-protocol",
  "demi-shared-artifacts",
+ "demi-shared-lanes",
  "demi-shared-types",
  "demi-web-api-protocol",
  "futures-util",
@@ -3345,6 +3346,7 @@ dependencies = [
  "demi-command-sdk",
  "demi-runner-protocol",
  "demi-shared-artifacts",
+ "demi-shared-lanes",
  "futures-util",
  "libc",
  "mach2",
@@ -3526,6 +3528,13 @@ dependencies = [
  "tracing",
  "windows 0.62.2",
  "yuv",
+]
+
+[[package]]
+name = "demi-shared-lanes"
+version = "0.1.65"
+dependencies = [
+ "bytes",
 ]
 
 [[package]]
@@ -12143,6 +12152,7 @@ dependencies = [
  "demi-provider-registry",
  "demi-runner-protocol",
  "demi-shared-artifacts",
+ "demi-shared-lanes",
  "demi-shared-types",
  "demi-web-api-protocol",
  "flate2",

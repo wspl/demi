@@ -107,6 +107,7 @@ mod addresses;
 mod channel;
 mod forward;
 mod gathering;
+pub mod measure;
 mod operation;
 mod pair_channel;
 mod pairs;
@@ -114,7 +115,7 @@ mod peer;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use demi_runner_protocol::direct::{Introduced, MAX_PEERS, OfferRefusal, StunUrl};
+use demi_runner_protocol::direct::{CONNECT_TIMEOUT, Introduced, MAX_PEERS, OfferRefusal, StunUrl};
 use demi_runner_protocol::pairs::{PairHeader, PairReason};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinSet;
@@ -130,7 +131,7 @@ pub use operation::{
 pub use pairs::{Dial, Opened, PairPeer, Pairs, Path, PathGuard};
 pub use peer::PeerStatus;
 
-use peer::{Behaviour, LocalOpen, OfferError, Peer, Remote, Signals};
+use peer::{Behaviour, LocalOpen, OfferError, Peer, Probing, Remote, Signals};
 
 /// The runner's hold on its peers. Dropping it ends the driver, and with it
 /// every peer.
@@ -174,6 +175,29 @@ pub struct PeerLink {
     status: watch::Receiver<PeerStatus>,
     /// The channels open on the peer now, whichever side opened them.
     channels: Arc<std::sync::atomic::AtomicUsize>,
+    probing: mpsc::UnboundedSender<Probing>,
+    verdict: watch::Receiver<Option<bool>>,
+}
+
+/// The peer's probe channel as the path a measurement probes
+/// ([`measure::ProbedPath`]), whose answers come on the receiver
+/// [`PeerLink::probes`] gives with it.
+pub struct DirectProbes {
+    probing: mpsc::UnboundedSender<Probing>,
+}
+
+impl measure::ProbedPath for DirectProbes {
+    fn send(&self, id: u32) {
+        let probe = serde_json::to_vec(&ProbeMessage { id }).expect("a probe serializes");
+        // A peer that ended answers nothing, which counts as lost.
+        let _ = self.probing.send(Probing::Send(probe));
+    }
+}
+
+/// A probe and its answer on the probe channel, as a page sends one.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ProbeMessage {
+    id: u32,
 }
 
 impl PeerLink {
@@ -214,6 +238,47 @@ impl PeerLink {
             // A peer whose loop is gone ended with it.
             _ => None,
         }
+    }
+
+    /// The peer's probe channel for this side's measurement, and the ids
+    /// its probes come back with; while the receiver lives, the probe
+    /// channel's messages come to it instead of going back.
+    pub fn probes(&self) -> (DirectProbes, mpsc::UnboundedReceiver<u32>) {
+        let (raw, mut heard) = mpsc::unbounded_channel::<Vec<u8>>();
+        let (ids, answered) = mpsc::unbounded_channel();
+        // A peer that ended answers nothing, which counts as lost.
+        let _ = self.probing.send(Probing::Listen(raw));
+        tokio::spawn(async move {
+            while let Some(message) = heard.recv().await {
+                if let Ok(ProbeMessage { id }) = serde_json::from_slice(&message)
+                    && ids.send(id).is_err()
+                {
+                    return;
+                }
+            }
+        });
+        (DirectProbes { probing: self.probing.clone() }, answered)
+    }
+
+    /// The other runner's verdict on the peer once it sent one, whether the
+    /// peer is slower than the relay; none when the peer ended first.
+    pub async fn verdict(&self) -> Option<bool> {
+        let mut verdict = self.verdict.clone();
+        let mut status = self.status.clone();
+        tokio::select! {
+            said = verdict.wait_for(Option::is_some) => said.ok().and_then(|said| *said),
+            _ = status.wait_for(|status| matches!(status, PeerStatus::Ended(_))) => None,
+        }
+    }
+
+    /// Tells the other runner this side's verdict on the peer, and waits
+    /// until it heard it, at most as long as a peer takes to connect.
+    pub async fn tell(&self, slower: bool) {
+        let Some(channel) = self.open(&PairHeader::Measured { slower }).await else {
+            return;
+        };
+        // The other runner closes the channel once it read the verdict.
+        let _ = tokio::time::timeout(CONNECT_TIMEOUT, channel.gone()).await;
     }
 
     /// Opens a channel that carries what `header` says; none once the peer
@@ -413,7 +478,7 @@ impl DirectDriver {
                                 introduction: Arc::new(page),
                                 live,
                             },
-                            Introduced::Runner { device } => Behaviour::Runner {
+                            Introduced::Runner { device, .. } => Behaviour::Runner {
                                 operations: self.operations.clone(),
                                 device,
                             },
@@ -515,6 +580,8 @@ impl DirectDriver {
         let (local, opened) = mpsc::unbounded_channel();
         let (status, watching) = watch::channel(PeerStatus::Connecting);
         let channels = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (probing, probes) = mpsc::unbounded_channel();
+        let (verdict, verdicts) = watch::channel(None);
         served.insert(
             peer.clone(),
             Served {
@@ -529,6 +596,8 @@ impl DirectDriver {
             local: opened,
             status,
             channels: channels.clone(),
+            probing: probes,
+            verdict,
         };
         tasks.spawn(async move {
             made.serve(cancel, signals).await;
@@ -538,6 +607,8 @@ impl DirectDriver {
             local,
             status: watching,
             channels,
+            probing,
+            verdict: verdicts,
         };
         (candidates, link)
     }

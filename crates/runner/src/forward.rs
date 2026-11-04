@@ -533,7 +533,7 @@ impl Accepting {
         let header = PairHeader::Forward {
             forward: forward.id.clone(),
         };
-        match self.pairs.path(&forward.peer, header, forward.direct).await {
+        match self.pairs.path(&forward.peer, header, forward.route).await {
             Path::Direct(channel, _reserved) => {
                 let _counted = Counted::new(self, true);
                 channel.splice(tcp).await;

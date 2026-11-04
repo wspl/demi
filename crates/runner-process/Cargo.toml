@@ -16,6 +16,7 @@ demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
 demi-runner-protocol = { path = "../runner-protocol" }
+demi-shared-lanes = { path = "../shared-lanes" }
 bytes.workspace = true
 futures-util.workspace = true
 # The line counts of a change, the diff gix's blob diff is.
@@ -30,7 +31,7 @@ serde_json.workspace = true
 tempfile = "3"
 tokio.workspace = true
 tokio-util.workspace = true
-# Stream pipes, which the runner sends over a WebSocket (`crates/runner-host/src/lib.rs`).
+# The pipe connection, whose lanes carry stream pipes, and a call's output (`src/pipes.rs`).
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 tracing.workspace = true
 

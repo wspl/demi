@@ -9,7 +9,7 @@ use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::pairs::PairReason;
+use crate::pairs::{PairReason, PairRoute};
 
 /// How long a forwarded connection's target has to accept it, and its two
 /// relay pipes to both open, before the connection is closed as a refused
@@ -42,10 +42,9 @@ pub struct Forward {
     /// Whether that device's runner is connected now.
     #[garde(skip)]
     pub peer_online: bool,
-    /// Whether the two runners may talk directly: neither is a Cloud and
-    /// neither device's route is Relay Only.
+    /// How the two runners may talk, from their devices' routes.
     #[garde(skip)]
-    pub direct: bool,
+    pub route: PairRoute,
 }
 
 /// What the Listen On runner announces of a forward as it changes.

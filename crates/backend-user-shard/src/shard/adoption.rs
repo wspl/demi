@@ -264,6 +264,7 @@ impl Shard {
         session.begin(instance, None);
         let claimed = Inbound::Claimed {
             device_token: token,
+            device_id: device.id.to_string(),
             device_name: device.name.clone(),
             session: session.number(),
         };

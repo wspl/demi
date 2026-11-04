@@ -154,6 +154,21 @@ pub(crate) struct Signals {
     pub(crate) status: watch::Sender<PeerStatus>,
     /// How many channels the peer has open, for the runner's pairs.
     pub(crate) channels: Arc<std::sync::atomic::AtomicUsize>,
+    /// The probes this side sends on the probe channel, and who hears their
+    /// answers.
+    pub(crate) probing: mpsc::UnboundedReceiver<Probing>,
+    /// The verdict of the other runner's measurement, once it sent one.
+    pub(crate) verdict: watch::Sender<Option<bool>>,
+}
+
+/// What this side of a pair's peer does on its probe channel, as the runner
+/// that measures the peer (`crates/runner-direct/src/measure.rs`).
+pub(crate) enum Probing {
+    /// What the probe channel carries goes to `answers` from now on,
+    /// instead of back; once `answers` is dropped, it goes back again.
+    Listen(mpsc::UnboundedSender<Vec<u8>>),
+    /// Sends one probe; one the queue cannot take now is lost.
+    Send(Vec<u8>),
 }
 
 /// Why no peer was made.
@@ -294,10 +309,13 @@ impl Peer {
             mut local,
             status,
             channels,
+            mut probing,
+            verdict,
         } = signals;
         let crossing = !stun.is_empty();
         let mut remote_open = true;
         let mut local_open = true;
+        let mut probing_open = true;
         // The servers' addresses, resolved beside the peer's start; the
         // requests go once they are known.
         let (resolved, mut resolving) = tokio::sync::oneshot::channel();
@@ -318,6 +336,8 @@ impl Peer {
         let mut served = Served {
             channels: HashMap::new(),
             probes: HashSet::new(),
+            probe_answers: None,
+            verdict,
             tasks: JoinSet::new(),
             behaviour,
             connected: false,
@@ -386,6 +406,23 @@ impl Peer {
                     Some(said) => Wake::Remote(said),
                     None => {
                         remote_open = false;
+                        continue;
+                    }
+                },
+                probe = probing.recv(), if probing_open => match probe {
+                    Some(Probing::Listen(answers)) => {
+                        served.probe_answers = Some(answers);
+                        continue;
+                    }
+                    Some(Probing::Send(probe)) => {
+                        let channel = served.probes.iter().next().and_then(|id| rtc.channel(*id));
+                        if let Some(mut channel) = channel {
+                            let _ = channel.write(false, &probe);
+                        }
+                        Wake::Timeout
+                    }
+                    None => {
+                        probing_open = false;
                         continue;
                     }
                 },
@@ -628,8 +665,13 @@ async fn read(socket: Arc<UdpSocket>, datagrams: mpsc::Sender<Datagram>) {
 /// A peer's channels and the work they carry.
 struct Served {
     channels: HashMap<ChannelId, Channel>,
-    /// The page's probe channels, which echo what they carry.
+    /// The probe channels, a page's or a pair's, which echo what they carry
+    /// unless this side measures.
     probes: HashSet<ChannelId>,
+    /// Where the probe channels' messages go while this side measures.
+    probe_answers: Option<mpsc::UnboundedSender<Vec<u8>>>,
+    /// The other runner's verdict on the pair's peer.
+    verdict: watch::Sender<Option<bool>>,
     /// Each channel's work, which aborts with the peer.
     tasks: JoinSet<()>,
     behaviour: Behaviour,
@@ -738,6 +780,13 @@ impl Served {
                 }
             }
             Event::ChannelData(data) if self.probes.contains(&data.id) => {
+                // The answers to this side's own probes.
+                if let Some(answers) = &self.probe_answers {
+                    if answers.send(data.data.clone()).is_ok() {
+                        return true;
+                    }
+                    self.probe_answers = None;
+                }
                 if let Some(mut probe) = rtc.channel(data.id) {
                     // A probe the queue cannot take now is lost, as an
                     // unanswered probe is; the page counts it so.
@@ -889,6 +938,13 @@ impl Served {
                     }
                     PairHeader::Pipe { pipe, at } => {
                         operations.pipe(device.clone(), pipe, at, opened);
+                    }
+                    // The verdict is all it carries; its close tells the
+                    // other runner it arrived.
+                    PairHeader::Measured { slower } => {
+                        self.verdict.send_replace(Some(slower));
+                        channel.phase = Phase::Closing;
+                        return;
                     }
                 }
                 channel.run(Kind::Pair, input, output, true);

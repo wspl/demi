@@ -7,13 +7,14 @@ import { t } from './locales/text'
 
 /**
  * Why a forward's connections go through the relay after a direct path
- * between its two runners failed: the direct channel's own reasons
- * (`crates/runner-protocol/src/forward.rs`).
+ * between its two runners failed, or measured slower: the direct channel's
+ * own reasons (`crates/runner-protocol/src/forward.rs`).
  */
 export type ForwardPairReason =
   | { kind: 'unreachable' }
   | { kind: 'network'; side: 'browser' | 'device' }
   | { kind: 'busy' }
+  | { kind: 'slower' }
   | { kind: 'dropped' }
   | { kind: 'notOffered' }
 

@@ -27,7 +27,7 @@ const forwards = ref<SettingsPortForward[]>([
   { id: 'f1', name: 'ollama', listenDevice: 'cloud', listenPort: 11434, connectDevice: 'mac', connectAddress: 'localhost:11434', enabled: true, state: { kind: 'listening', direct: 0, relay: 2, reason: { kind: 'unreachable' } } },
   { id: 'f2', name: 'vite', listenDevice: 'mac', listenPort: 5173, connectDevice: 'cloud', connectAddress: 'localhost:5173', enabled: true, state: { kind: 'listening', direct: 0, relay: 0 } },
   { id: 'f3', name: 'postgres', listenDevice: 'cloud', listenPort: 5432, connectDevice: 'mac', connectAddress: '127.0.0.1:5432', enabled: true, state: { kind: 'portInUse' } },
-  { id: 'f4', name: 'builds', listenDevice: 'mac', listenPort: 9000, connectDevice: 'build', connectAddress: 'localhost:9000', enabled: true, state: { kind: 'listening', direct: 0, relay: 0 } },
+  { id: 'f4', name: 'builds', listenDevice: 'mac', listenPort: 9000, connectDevice: 'build', connectAddress: 'localhost:9000', enabled: true, state: { kind: 'listening', direct: 0, relay: 1, reason: { kind: 'slower' } } },
   { id: 'f5', name: 'grafana', listenDevice: 'mac', listenPort: 3000, connectDevice: 'cloud', connectAddress: 'localhost:3000', enabled: false, state: null },
 ])
 const shown = ref<string | null>(null)

@@ -134,7 +134,7 @@ pub fn module(header: &str) -> String {
     .expect("writing to a string");
 
     {
-        use demi_web_api_protocol::connection as connection;
+        use demi_shared_lanes as connection;
         for (name, description, value) in [
             ("CONNECTION_FRAME", "A page connection frame's kind: JSON of the connection's own message.", connection::CONNECTION_FRAME),
             ("OPEN_FRAME", "A page connection frame's kind: a lane's open.", connection::OPEN_FRAME),
@@ -155,8 +155,8 @@ pub fn module(header: &str) -> String {
     for (name, description, value) in [
         (
             "LANE_PIECE_BYTES",
-            "The most bytes of a lane's message one data piece carries (`crates/web-api-protocol/src/connection.rs`).",
-            count(demi_web_api_protocol::connection::LANE_PIECE_BYTES),
+            "The most bytes of a lane's message one data piece carries (`crates/shared-lanes/src/lib.rs`).",
+            count(demi_shared_lanes::LANE_PIECE_BYTES),
         ),
         (
             "LANE_CREDIT",
@@ -207,6 +207,31 @@ pub fn module(header: &str) -> String {
             "DIRECT_WATCH_HEARTBEAT_MS",
             "How long a direct channel's watch stays silent before its heartbeat.",
             u64::try_from(direct::WATCH_HEARTBEAT.as_millis()).expect("a timeout fits"),
+        ),
+        (
+            "MEASURE_PROBES",
+            "The probes a measurement of a direct path and its relay sends on each.",
+            count(direct::MEASURE_PROBES),
+        ),
+        (
+            "PROBE_EVERY_MS",
+            "The time between a measurement's probes.",
+            u64::try_from(direct::PROBE_EVERY.as_millis()).expect("a time fits"),
+        ),
+        (
+            "PROBE_LOST_MS",
+            "How long a probe may take before it counts as lost.",
+            u64::try_from(direct::PROBE_LOST.as_millis()).expect("a time fits"),
+        ),
+        (
+            "WORSE_LOST_PROBES",
+            "The most probes the direct path may lose and be no worse than the relay.",
+            count(direct::WORSE_LOST_PROBES),
+        ),
+        (
+            "WORSE_LATENCY_MS",
+            "How much slower than the relay's the direct path's latency may be.",
+            u64::try_from(direct::WORSE_LATENCY.as_millis()).expect("a time fits"),
         ),
     ] {
         source.push('\n');

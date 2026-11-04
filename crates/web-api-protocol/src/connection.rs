@@ -5,30 +5,10 @@
 //! synchronization channel, a conversation's lane, a file watch, a device's
 //! signaling or a user stream. Each lane's messages are its protocol's, as
 //! they would be on a WebSocket of its own; the connection only numbers,
-//! cuts and paces them.
-//!
-//! Every message of the connection is one binary WebSocket message, a frame:
-//!
-//! ```text
-//! byte 0  kind
-//!   0  connection   JSON: PageConnectionMessage or BackendConnectionMessage
-//!   1  open         u32 lane, JSON LaneTarget                  page -> backend
-//!   2  opened       u32 lane                                   backend -> page
-//!   3  refused      u32 lane, JSON LaneRefusal                 backend -> page
-//!   4  data         u32 lane, u8 flags, a piece of a message   both ways
-//!                   flags: bit 0 binary, bit 1 more pieces follow
-//!   5  close        u32 lane, u16 code, UTF-8 reason           both ways
-//!   6  credit       u32 lane, u16 messages                     backend -> page
-//! ```
-//!
-//! Numbers are big-endian. The page numbers its lanes from 1 in each
-//! connection and never uses a number twice in it, so a message of a lane
-//! that has closed is dropped instead of reaching a lane opened after it.
-//!
-//! A lane's messages may follow its `open` at once, as a stream's data
-//! follows its headers in HTTP/2: the backend holds them, within the lane's
-//! credit, until it answers the open, hands them to the lane's owner first
-//! once it opens, and drops them if it refuses it.
+//! cuts and paces them, in the frames of `crates/shared-lanes/src/lib.rs`,
+//! whose JSON is this module's: the connection's own messages are
+//! [`PageConnectionMessage`] and [`BackendConnectionMessage`], an open names
+//! a [`LaneTarget`], and a refusal is a [`LaneRefusal`].
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -37,30 +17,6 @@ use crate::error::ErrorBody;
 
 /// The path of the page connection under `/api`.
 pub const CONNECT_ROUTE: &str = "/connect";
-
-/// A frame's kind: JSON of the connection's own message.
-pub const CONNECTION_FRAME: u8 = 0;
-/// A frame's kind: a lane's open.
-pub const OPEN_FRAME: u8 = 1;
-/// A frame's kind: the backend's word that a lane opened.
-pub const OPENED_FRAME: u8 = 2;
-/// A frame's kind: the backend's refusal of a lane's open.
-pub const REFUSED_FRAME: u8 = 3;
-/// A frame's kind: a piece of a lane's message.
-pub const DATA_FRAME: u8 = 4;
-/// A frame's kind: a lane's close.
-pub const CLOSE_FRAME: u8 = 5;
-/// A frame's kind: the backend's credit for a lane's next messages.
-pub const CREDIT_FRAME: u8 = 6;
-
-/// A data piece's flag: the message is binary, not UTF-8 text.
-pub const BINARY_FLAG: u8 = 1;
-/// A data piece's flag: more pieces of the message follow.
-pub const MORE_FLAG: u8 = 2;
-
-/// The most bytes of a message a data piece carries, so that a large message
-/// of one lane holds another's back by no more than one piece.
-pub const LANE_PIECE_BYTES: usize = 16 * 1024;
 
 /// How many of a lane's messages the page may send that the lane's owner has
 /// not taken: the backend reads the connection on for the other lanes while

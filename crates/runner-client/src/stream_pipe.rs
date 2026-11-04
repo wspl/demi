@@ -1,8 +1,9 @@
 //! A stream pipe's source end (`crates/runner-protocol/src/wire/pipe_frames.rs`): the runner
 //! sends the bytes of a network or resident stream's output in binary
-//! messages of a WebSocket, which the backend's pipe route accepted, and ends
-//! the pipe with a normal close frame, or fails it with one that carries the
-//! error. The route and the test fixture's edge both relay through here.
+//! messages of a lane of its pipe connection, which the backend's pipe
+//! connection opened (`crates/runner-protocol/src/wire/pipe_connection.rs`),
+//! and ends the pipe with a normal close, or fails it with one that carries
+//! the error.
 //!
 //! A call's standard output goes the other way, over a WebSocket that resumes:
 //! [`accept_call_sink`] writes the pipe to the runner in the messages of a
@@ -11,11 +12,9 @@
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade, close_code};
 use axum::response::Response;
-use demi_runner_protocol::wire::{
-    self, PIPE_IDLE, PIPE_SESSION_MESSAGE_BYTES, PipeMove, PipeSink, Read, STREAM_PIPE_MESSAGE_BYTES,
-    close_reason,
-};
-use futures_util::{SinkExt as _, StreamExt as _};
+use bytes::Bytes;
+use demi_runner_protocol::wire::{self, PIPE_IDLE, PIPE_SESSION_MESSAGE_BYTES, PipeMove, Read, close_reason};
+use futures_util::{SinkExt as _, Stream, StreamExt as _};
 use std::{sync::Arc, time::Duration};
 
 use crate::{DeviceSource, SinkSession, SourceMessage};
@@ -24,74 +23,77 @@ use crate::{DeviceSource, SinkSession, SourceMessage};
 /// WebSocket opened.
 const OPENING: Duration = Duration::from_secs(15);
 
-/// Takes the upgrade of `source`'s stream pipe: its binary messages are the
-/// bytes, forwarded as the sink takes them, and its text messages its moves
-/// ([`PipeMove`]). A pipe that may move to the direct channel tells the runner
-/// its sink's device in a text message ([`PipeSink`]).
-///
-/// - The runner's normal close frame ends the pipe.
-/// - Any other close, or a connection lost without one, fails the pipe.
-///
-/// The backend's close frame is the pipe's outcome, which comes early when the
-/// sink stops taking bytes or the pipe fails while the runner still sends:
-/// normal once the sink drained it, an error with why it failed. An upgrade
-/// that never completes drops the source, which fails the pipe.
-pub fn accept_stream_pipe(upgrade: WebSocketUpgrade, source: DeviceSource) -> Response {
-    upgrade
-        .max_message_size(STREAM_PIPE_MESSAGE_BYTES)
-        .max_frame_size(STREAM_PIPE_MESSAGE_BYTES)
-        .on_upgrade(move |socket| relay(socket, source))
+/// What a stream pipe's source said on its lane.
+#[derive(Debug)]
+pub enum FromSource {
+    Binary(Bytes),
+    Text(String),
+    Close { code: u16, reason: String },
 }
 
-async fn relay(socket: WebSocket, source: DeviceSource) {
-    let (mut to_runner, from_runner) = socket.split();
+/// What the backend says to a stream pipe's source on its lane.
+#[derive(Debug)]
+pub enum ToSource {
+    Text(String),
+    Close { code: u16, reason: String },
+}
+
+/// Relays `source`'s stream pipe from its lane: `from_runner`'s binary
+/// messages are the bytes, forwarded as the sink takes them, and its text
+/// messages its moves ([`PipeMove`]). A pipe that may move to the direct
+/// channel tells the runner its sink's device in a text message
+/// ([`PipeSink`]), through `to_runner`.
+///
+/// - The runner's normal close ends the pipe.
+/// - Any other close, or a lane that ends without one, as its connection
+///   does, fails the pipe.
+///
+/// The backend's close is the pipe's outcome, which comes early when the sink
+/// stops taking bytes or the pipe fails while the runner still sends: normal
+/// once the sink drained it, an error with why it failed. `to_runner` answers
+/// whether the runner may still hear.
+pub async fn relay_stream_pipe<R, T>(source: DeviceSource, from_runner: R, mut to_runner: T)
+where
+    R: Stream<Item = FromSource> + Unpin,
+    T: FnMut(ToSource) -> bool,
+{
     let mut sink = source.sink();
     let body = futures_util::stream::unfold(Some(from_runner), |reader| async move {
         let mut reader = reader?;
-        loop {
-            let failure = match reader.next().await {
-                Some(Ok(Message::Binary(bytes))) => {
-                    return Some((Ok(SourceMessage::Bytes(bytes)), Some(reader)));
+        let failure = match reader.next().await {
+            Some(FromSource::Binary(bytes)) => {
+                return Some((Ok(SourceMessage::Bytes(bytes)), Some(reader)));
+            }
+            Some(FromSource::Text(text)) => match serde_json::from_str::<PipeMove>(&text) {
+                Ok(PipeMove { to, at }) => {
+                    return Some((Ok(SourceMessage::Moved { to, at }), Some(reader)));
                 }
-                Some(Ok(Message::Text(text))) => match serde_json::from_str::<PipeMove>(&text) {
-                    Ok(PipeMove { to, at }) => {
-                        return Some((Ok(SourceMessage::Moved { to, at }), Some(reader)));
-                    }
-                    Err(error) => format!("a stream pipe's text message is no move: {error}"),
-                },
-                Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
-                Some(Ok(Message::Close(None))) => return None,
-                Some(Ok(Message::Close(Some(frame)))) if frame.code == close_code::NORMAL => {
-                    return None;
-                }
-                // The runner's own failure, in its words.
-                Some(Ok(Message::Close(Some(frame)))) if frame.code == close_code::ERROR => {
-                    frame.reason.to_string()
-                }
-                Some(Ok(Message::Close(Some(frame)))) => {
-                    format!("the runner closed the stream pipe ({}): {}", frame.code, frame.reason)
-                }
-                Some(Err(error)) => error.to_string(),
-                None => "the stream pipe's connection ended without a close frame".to_owned(),
-            };
-            return Some((Err(failure), None));
-        }
+                Err(error) => format!("a stream pipe's text message is no move: {error}"),
+            },
+            Some(FromSource::Close { code, .. }) if code == close_code::NORMAL => return None,
+            // The runner's own failure, in its words.
+            Some(FromSource::Close { code, reason }) if code == close_code::ERROR => reason,
+            Some(FromSource::Close { code, reason }) => {
+                format!("the runner closed the stream pipe ({code}): {reason}")
+            }
+            None => "the stream pipe's connection ended without a close".to_owned(),
+        };
+        Some((Err(failure), None))
     });
     // The sink's device goes to the runner as soon as the pipe knows it, while
     // the bytes flow.
     let tell = async {
         let mut told = None;
         loop {
-            let device = sink.borrow_and_update().clone();
-            if let Some(device) = device
-                && told.as_ref() != Some(&device)
+            let named = sink.borrow_and_update().clone();
+            if let Some(named) = named
+                && told.as_ref() != Some(&named)
             {
-                let text = serde_json::to_string(&PipeSink { sink: device.clone() })
-                    .expect("a pipe's sink encodes");
-                if to_runner.send(Message::Text(text.into())).await.is_err() {
+                let text = serde_json::to_string(&named).expect("a pipe's sink encodes");
+                if !to_runner(ToSource::Text(text)) {
                     return;
                 }
-                told = Some(device);
+                told = Some(named);
             }
             if sink.changed().await.is_err() {
                 return;
@@ -104,23 +106,19 @@ async fn relay(socket: WebSocket, source: DeviceSource) {
         outcome = &mut pumped => outcome,
         () = tell => pumped.await,
     };
-    let frame = match outcome {
-        Ok(()) => CloseFrame {
+    let close = match outcome {
+        Ok(()) => ToSource::Close {
             code: close_code::NORMAL,
             reason: "drained".into(),
         },
-        Err(failure) => CloseFrame {
+        Err(failure) => ToSource::Close {
             code: close_code::ERROR,
-            reason: close_reason(failure.reason()).into(),
+            reason: close_reason(failure.reason()).to_owned(),
         },
     };
     // A runner that went meanwhile hears nothing, and its pipe has ended
-    // either way. After the runner's own close the WebSocket refuses this
-    // frame: it answers the runner's close itself, with the runner's code,
-    // once the sink is closed, which flushes that answer; without it the
-    // runner sees its connection end with no closing handshake.
-    let _sent = to_runner.send(Message::Close(Some(frame))).await;
-    let _closed = to_runner.close().await;
+    // either way.
+    to_runner(close);
 }
 
 /// Takes the upgrade of a call's standard output: the runner reads it over this

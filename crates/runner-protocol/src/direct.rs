@@ -46,6 +46,19 @@ pub const WATCH_HEARTBEAT: Duration = Duration::from_secs(30);
 /// on which the runner sends back each message as it arrives.
 pub const PROBE_LABEL: &str = "probe";
 
+/// The probes a measurement of a direct path and its relay sends on each,
+/// a page's (`packages/web/src/direct/measure.ts`) and a pair of runners'
+/// (`crates/runner-direct/src/measure.rs`) alike.
+pub const MEASURE_PROBES: usize = 20;
+/// The time between a measurement's probes.
+pub const PROBE_EVERY: Duration = Duration::from_millis(100);
+/// How long a probe may take before it counts as lost.
+pub const PROBE_LOST: Duration = Duration::from_secs(2);
+/// The most probes the direct path may lose and be no worse than the relay.
+pub const WORSE_LOST_PROBES: usize = 1;
+/// How much slower than the relay's the direct path's latency may be.
+pub const WORSE_LATENCY: Duration = Duration::from_millis(20);
+
 /// The most STUN servers a backend names: a browser's ICE agent asks each one.
 pub const MAX_STUN_URLS: usize = 8;
 /// The most characters of a candidate a page or a runner trickles: a decoded
@@ -189,7 +202,7 @@ pub struct Introduction {
 
 /// Whom the backend introduces to a runner: a page of the device's owner,
 /// with what the runner needs of the user, or another runner of the owner's,
-/// by its device, for a port forward between the two
+/// by its device, for a port forward or a pipe between the two
 /// (`crates/runner-direct/src/pairs.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(
@@ -212,6 +225,11 @@ pub enum Introduced {
     Runner {
         #[garde(length(min = 1))]
         device: String,
+        /// The pair's route, which the answering runner may not have heard
+        /// otherwise: only a forward's listening end and a pipe's source
+        /// ask for a path.
+        #[garde(skip)]
+        route: crate::pairs::PairRoute,
     },
 }
 

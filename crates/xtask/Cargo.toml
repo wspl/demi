@@ -24,6 +24,7 @@ demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
 demi-shared-types = { path = "../shared-types" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
+demi-shared-lanes = { path = "../shared-lanes" }
 clap = { version = "4", features = ["derive", "env"] }
 flate2 = "1"
 # Copies the built web app into a server release.

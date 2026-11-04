@@ -12,7 +12,7 @@
 //!   media), sent as the body of `PUT /api/pipes/:id`.
 //! - A stream pipe: bytes that must arrive as they are written (a resident
 //!   stream's output, a job's input and output passed on while it runs), sent
-//!   over a WebSocket at the same path.
+//!   over a lane of the runner's pipe connection (`pipe_connection`).
 //!
 //! The difference is a TLS edge in front of the backend such as Cloudflare's.
 //! It holds a request's body until it ends or passes about 2 MB, but passes
@@ -49,7 +49,7 @@
 //! - Only the end frame ends the pipe. A body that stops without one is a
 //!   broken pipe, never an ordinary end.
 //! - Idle frames keep the response alive and never reach the reader.
-//! - A stream pipe's WebSocket pings after the same idle time.
+//! - The pipe connection pings after the same idle time.
 //!
 //! # A pipe that resumes
 //!
@@ -74,7 +74,7 @@
 //! long as it lasts and carry its start, its end, its failure and its moves:
 //!
 //! - The backend tells the source its sink's device in a [`PipeSink`] text
-//!   message on the source's WebSocket.
+//!   message on the source's lane.
 //! - The source says each move in a [`PipeMove`] text message, after the last
 //!   byte it sent the old way.
 //! - The sink reads each move as a [`PipeFrame::Moved`] frame, which names the
@@ -92,7 +92,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
 
 /// How long a pipe's writer goes without a frame before it sends an idle
-/// one, and a stream pipe's WebSocket without a message before a ping.
+/// one, and the pipe connection without a message before a ping.
 pub const PIPE_IDLE: Duration = Duration::from_secs(30);
 /// The most bytes of one data frame; a writer splits larger chunks, so a
 /// reader holds one frame at a time.
@@ -156,8 +156,8 @@ pub enum PipePath {
     Direct,
 }
 
-/// A stream pipe's source's move, in a text message on its WebSocket: its
-/// bytes from `at` on go over `to`.
+/// A stream pipe's source's move, in a text message on its lane: its bytes
+/// from `at` on go over `to`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PipeMove {
@@ -166,12 +166,13 @@ pub struct PipeMove {
 }
 
 /// What the backend tells a stream pipe's source in a text message on its
-/// WebSocket: the device its sink is, once the sink is a runner the source's
-/// may talk directly with.
+/// lane: the device its sink is, once the sink is a runner the source's may
+/// talk directly with, and how the two may.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PipeSink {
     pub sink: String,
+    pub route: crate::pairs::PairRoute,
 }
 
 /// A moved frame's map.

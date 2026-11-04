@@ -242,6 +242,8 @@ impl Signaling {
                     let message = match event {
                         Some(PeerEvent::Candidate(candidate)) => DirectMessage::Candidate { peer, candidate },
                         Some(PeerEvent::Pong(id)) => DirectMessage::Pong { id },
+                        // A page's peer has no other runner to probe.
+                        Some(PeerEvent::Ping(_)) => continue,
                         // The runner's connection ended, which the link's
                         // end says next.
                         None => {

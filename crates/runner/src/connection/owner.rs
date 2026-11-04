@@ -377,6 +377,8 @@ impl Owner<'_> {
     /// have lost of the jobs not released: their media's announcements and
     /// the exits of those that ended.
     async fn online(&mut self) -> io::Result<()> {
+        // The device token is known by now, a just paired runner's too.
+        self.registered.pipes.connect_lanes();
         let announcements = self.kept.connected(self.live.clone(), self.output.clone());
         for announcement in announcements {
             self.output
@@ -463,9 +465,13 @@ impl Owner<'_> {
             }
             Inbound::Claimed {
                 device_token,
+                device_id,
                 device_name,
                 ..
             } if management.phase() != Phase::Online => {
+                // The connection goes on paired, with no hello to name the
+                // device: the pairs settle a glare by it (`crate::pairs`).
+                let _ = self.own.set(device_id);
                 registered.token.send_replace(Some(device_token.clone()));
                 let state = registered.state.clone();
                 self.work.spawn(async move {
@@ -805,11 +811,11 @@ impl Owner<'_> {
                     // this runner's own peer with it stands
                     // (`crates/runner-direct/src/pairs.rs`).
                     let runner = match &introduction {
-                        demi_runner_protocol::direct::Introduced::Runner { device } => Some(device.clone()),
+                        demi_runner_protocol::direct::Introduced::Runner { device, route } => Some((device.clone(), *route)),
                         demi_runner_protocol::direct::Introduced::Page { .. } => None,
                     };
                     let answers = match (&runner, &pairing) {
-                        (Some(device), Some(pairing)) => pairing.answers(device).await,
+                        (Some((device, _)), Some(pairing)) => pairing.answers(device).await,
                         _ => true,
                     };
                     let answered = if answers {
@@ -824,8 +830,8 @@ impl Owner<'_> {
                     // after it follow until the peer ends.
                     let (reply, mut candidates) = match answered {
                         Ok(answered) => {
-                            if let (Some(device), Some(pairing)) = (&runner, &pairing) {
-                                pairing.adopt(device, peer.clone(), answered.link);
+                            if let (Some((device, route)), Some(pairing)) = (&runner, &pairing) {
+                                pairing.adopt(device, *route, peer.clone(), answered.link);
                             }
                             (
                                 wire::Outbound::DirectAnswer { id, sdp: answered.sdp },
@@ -878,9 +884,10 @@ impl Owner<'_> {
                     let _ = forwarding.handle(message);
                 }
             }
-            Inbound::DirectDialed { .. } | Inbound::DirectDialRefused { .. } => {
+            Inbound::DirectDialed { .. } | Inbound::DirectDialRefused { .. } | Inbound::PairPong { .. } => {
                 if let Some(pairing) = &self.pairing {
-                    // Each of these answers an offer of this runner's.
+                    // Each of these answers an offer or a probe of this
+                    // runner's.
                     let _ = pairing.handle(message);
                 }
             }

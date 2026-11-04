@@ -6,13 +6,15 @@
 //!   in chunks that resume (`uploads`); a small one whose source cannot go
 //!   again, such as a search's results, as one `PUT` body ([`PipeClient::put`]).
 //! - A stream pipe, whose bytes must arrive as they are written, goes over a
-//!   WebSocket at the same path, since a TLS edge in front of the backend may
-//!   hold a request's body until it ends
-//!   (`crates/runner-protocol/src/wire/pipe_frames.rs`).
+//!   lane of the runner's one pipe connection, a WebSocket, since a TLS edge
+//!   in front of the backend may hold a request's body until it ends
+//!   (`crates/runner-protocol/src/wire/pipe_frames.rs`), and a WebSocket of
+//!   its own would cost each pipe a handshake (`lanes`).
 //! - A stream pipe between this runner and another it may talk directly with
-//!   moves its bytes to the pair's direct channel and back, while its
-//!   WebSocket carries its start, its end and its moves (`moves`).
+//!   moves its bytes to the pair's direct channel and back, while its lane
+//!   carries its start, its end and its moves (`moves`).
 
+mod lanes;
 mod moves;
 mod resumed;
 mod uploads;
@@ -23,14 +25,13 @@ pub use uploads::{UPLOADS_AT_ONCE, UploadBody, causes};
 use bytes::Bytes;
 use crate::backend::Backend;
 use demi_runner_protocol::{values::DeviceToken, wire::{self, PipePath}};
-use futures_util::{SinkExt, Stream, StreamExt, stream::BoxStream};
+use futures_util::{Stream, StreamExt, stream::BoxStream};
 use std::{io, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::tungstenite::{
-    self, Message,
-    client::IntoClientRequest,
+    self,
     http::{HeaderValue, header::AUTHORIZATION},
-    protocol::{CloseFrame, WebSocketConfig, frame::coding::CloseCode},
+    protocol::frame::coding::CloseCode,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -64,8 +65,8 @@ pub struct PipeClient {
     /// keeps their bytes as served (`crates/shared-artifacts/src/download.rs`).
     downloads: reqwest::Client,
     origin: reqwest::Url,
-    /// How long a connection may take to open, a stream pipe's WebSocket
-    /// handshake included.
+    /// How long a connection may take to open, the pipe connection's
+    /// WebSocket handshake included.
     connect_timeout: Duration,
     /// The registration's device token, which a claim can change.
     token: watch::Receiver<Option<DeviceToken>>,
@@ -75,6 +76,8 @@ pub struct PipeClient {
     pairs: Arc<watch::Sender<Option<Arc<dyn PipePairs>>>>,
     /// The runner's uploads, which take turns (`uploads`).
     uploads: Arc<uploads::Uploads>,
+    /// The pipe connection, whose lanes carry the stream pipes (`lanes`).
+    lanes: Arc<lanes::Lanes>,
 }
 
 impl PipeClient {
@@ -113,6 +116,7 @@ impl PipeClient {
             .map_err(io::Error::other)?;
         let downloads = demi_shared_artifacts::download_client_through(|builder| backend.http(builder))
             .map_err(io::Error::other)?;
+        let lanes = Arc::new(lanes::Lanes::new(backend, &origin, token.clone(), connect_timeout)?);
         Ok(Self {
             backend: backend.clone(),
             http,
@@ -122,7 +126,14 @@ impl PipeClient {
             token,
             pairs: Arc::new(watch::Sender::new(None)),
             uploads: Arc::default(),
+            lanes,
         })
+    }
+
+    /// Opens the pipe connection unless it is open, as the runner's link
+    /// comes online, so the first stream pipe waits for no handshake.
+    pub fn connect_lanes(&self) {
+        self.lanes.warm();
     }
 
     /// The pairs of the runner's connection to the backend from now on; none
@@ -247,39 +258,12 @@ impl PipeClient {
     where
         S: Stream<Item = io::Result<Bytes>> + Send + 'static,
     {
-        let mut url = self.url(&pipe.url)?;
-        let scheme = if url.scheme() == "https" { "wss" } else { "ws" };
-        url.set_scheme(scheme)
-            .map_err(|_| io::Error::other("invalid WebSocket scheme"))?;
-        let mut request = url.as_str().into_client_request().map_err(io::Error::other)?;
-        let authorization = HeaderValue::from_str(&format!("Bearer {}", self.token()?.expose()))
-            .map_err(io::Error::other)?;
-        request.headers_mut().insert(AUTHORIZATION, authorization);
-        let config = WebSocketConfig::default()
-            .max_message_size(Some(wire::STREAM_PIPE_MESSAGE_BYTES))
-            .max_frame_size(Some(wire::STREAM_PIPE_MESSAGE_BYTES));
-        // Out of open files, the connection waits for one (`crates/command-sdk/src/descriptors.rs`).
-        let connecting = reconnecting(|| async {
-            let connecting = demi_command_sdk::descriptors::retry(cancel, || async {
-                self.backend
-                    .websocket(request.clone(), config)
-                    .await
-                    .map_err(|error| match error {
-                        // A refused handshake reached the backend.
-                        tungstenite::Error::Http(_) => Attempt::Refused(socket_error(error)),
-                        error => Attempt::Lost(socket_error(error)),
-                    })
-            });
-            tokio::time::timeout(self.connect_timeout, connecting)
-                .await
-                .unwrap_or_else(|_| Err(Attempt::Lost(io::Error::new(io::ErrorKind::TimedOut, "stream pipe did not open"))))
-        });
-        let (socket, _) = tokio::select! {
+        let target = wire::PipeLaneTarget::StreamPipe { pipe: pipe.id.clone() };
+        let (sender, mut receiver) = tokio::select! {
             _ = cancel.cancelled() => return Err(cancelled()),
-            connected = connecting => connected?,
+            opened = self.lanes.open(&target) => opened?,
         };
-        let (sender, mut receiver) = socket.split();
-        let (sinks, mut sink) = watch::channel(None::<String>);
+        let (sinks, mut sink) = watch::channel(None::<wire::PipeSink>);
         let sending = Sending {
             socket: sender,
             pipe: pipe.id.clone(),
@@ -288,38 +272,26 @@ impl PipeClient {
             path,
         }
         .run(body);
-        // The backend's close frame, which says how the pipe ended, and its
-        // word of the pipe's sink.
+        // The backend's close, which says how the pipe ended, and its word of
+        // the pipe's sink.
         let closed = async {
-            while let Some(message) = receiver.next().await {
-                match message.map_err(socket_error)? {
-                    Message::Close(frame) => {
-                        return match frame {
-                            None => Ok(()),
-                            Some(frame) if frame.code == CloseCode::Normal => Ok(()),
+            loop {
+                match receiver.recv().await? {
+                    lanes::Heard::Closed { code, reason } => {
+                        return match CloseCode::from(code) {
+                            CloseCode::Normal => Ok(()),
                             // Why the pipe failed, in the backend's words.
-                            Some(frame) if frame.code == CloseCode::Error => {
-                                Err(io::Error::other(frame.reason.to_string()))
-                            }
-                            Some(frame) => Err(io::Error::other(format!(
-                                "pipe failed ({}): {}",
-                                u16::from(frame.code),
-                                frame.reason
-                            ))),
+                            CloseCode::Error => Err(io::Error::other(reason)),
+                            _ => Err(io::Error::other(format!("pipe failed ({code}): {reason}"))),
                         };
                     }
-                    Message::Text(text) => {
-                        if let Ok(named) = serde_json::from_str::<wire::PipeSink>(text.as_str()) {
-                            sinks.send_replace(Some(named.sink));
+                    lanes::Heard::Text(text) => {
+                        if let Ok(named) = serde_json::from_str::<wire::PipeSink>(&text) {
+                            sinks.send_replace(Some(named));
                         }
                     }
-                    _ => {}
                 }
             }
-            Err(io::Error::new(
-                io::ErrorKind::ConnectionAborted,
-                "stream pipe closed without a close frame",
-            ))
         };
         tokio::pin!(closed);
         tokio::select! {
@@ -420,14 +392,14 @@ impl PipeClient {
     }
 }
 
-/// A stream pipe's source as it sends: on its WebSocket, or on the direct
-/// channel of its pair with its sink's runner (`moves`).
-struct Sending<'a, W> {
-    socket: W,
+/// A stream pipe's source as it sends: on its lane, or on the direct channel
+/// of its pair with its sink's runner (`moves`).
+struct Sending<'a> {
+    socket: lanes::LaneSender,
     pipe: String,
     pairs: moves::CurrentPairs,
-    /// The pipe's sink, once the backend names it.
-    sink: &'a mut watch::Receiver<Option<String>>,
+    /// The pipe's sink and how the two may talk, once the backend names it.
+    sink: &'a mut watch::Receiver<Option<wire::PipeSink>>,
     /// Where each way the bytes go is said.
     path: Option<watch::Sender<PipePath>>,
 }
@@ -438,10 +410,7 @@ enum Way {
     Direct(moves::DirectSource),
 }
 
-impl<W> Sending<'_, W>
-where
-    W: futures_util::Sink<Message, Error = tungstenite::Error> + Unpin,
-{
+impl Sending<'_> {
     /// Sends `body` to its end, and the end; or its failure.
     async fn run<S>(mut self, body: S) -> io::Result<()>
     where
@@ -459,7 +428,6 @@ where
         let mut pairs_live = true;
         // Whether the client may still change the pairs.
         let mut pairs_watched = true;
-        let mut quiet_since = tokio::time::Instant::now();
         // Whether the backend may still name the sink.
         let mut naming = true;
         // A channel that went is not opened again at once: the pair's peer
@@ -474,9 +442,7 @@ where
                 Ready(bool),
                 Granted(Result<(), moves::LeftChannel>),
                 Pairs,
-                Quiet,
             }
-            let quiet_at = quiet_since + wire::PIPE_IDLE;
             if let (Way::Relay, Some(place), None, true) = (&way, &place, &readying, pairs_live) {
                 let ready = place.ready();
                 let after = direct_after;
@@ -511,34 +477,25 @@ where
                         }
                         Heard::Pairs
                     }
-                    () = tokio::time::sleep_until(quiet_at) => Heard::Quiet,
                 }
             };
             match heard {
                 Heard::Chunk(None) => break,
                 Heard::Chunk(Some(Err(error))) => {
-                    let frame = CloseFrame {
-                        code: CloseCode::Error,
-                        reason: wire::close_reason(&error.to_string()).into(),
-                    };
                     // The pipe fails either way; a close that does not go
                     // out fails it as a lost connection.
-                    let _closed = self.socket.send(Message::Close(Some(frame))).await;
+                    let _closed = self.socket.close(u16::from(CloseCode::Error), &error.to_string());
                     return Err(error);
                 }
                 Heard::Chunk(Some(Ok(bytes))) => {
                     sent += bytes.len() as u64;
                     match &mut way {
-                        Way::Relay => {
-                            self.binary(bytes).await?;
-                            quiet_since = tokio::time::Instant::now();
-                        }
+                        Way::Relay => self.binary(bytes).await?,
                         Way::Direct(source) => {
                             if let Err(left) = source.send(bytes).await {
                                 self.relay(left, place.as_deref()).await?;
                                 way = Way::Relay;
-                                quiet_since = tokio::time::Instant::now();
-                                direct_after = quiet_since + RECONNECT_PAUSE;
+                                direct_after = tokio::time::Instant::now() + RECONNECT_PAUSE;
                             }
                         }
                     }
@@ -547,7 +504,7 @@ where
                     let sink = self.sink.borrow_and_update().clone();
                     let pairs = self.pairs.borrow().clone();
                     if let (Some(sink), Some(pairs)) = (sink, pairs) {
-                        placing = Some(pairs.relay(sink));
+                        placing = Some(pairs.relay(sink.sink, sink.route));
                     }
                 }
                 Heard::Pairs => {
@@ -561,7 +518,7 @@ where
                     let sink = self.sink.borrow().clone();
                     let pairs = self.pairs.borrow_and_update().clone();
                     if let (Some(sink), Some(pairs)) = (sink, pairs) {
-                        placing = Some(pairs.relay(sink));
+                        placing = Some(pairs.relay(sink.sink, sink.route));
                     }
                 }
                 Heard::Placed(placed) => {
@@ -583,7 +540,6 @@ where
                     match opened {
                         Some(channel) => {
                             self.moved(PipePath::Direct, sent).await?;
-                            quiet_since = tokio::time::Instant::now();
                             way = Way::Direct(moves::DirectSource::new(channel, sent));
                         }
                         // The pipe stays on the relay, and waits for another.
@@ -594,21 +550,7 @@ where
                 Heard::Granted(Err(left)) => {
                     self.relay(left, place.as_deref()).await?;
                     way = Way::Relay;
-                    quiet_since = tokio::time::Instant::now();
-                    direct_after = quiet_since + RECONNECT_PAUSE;
-                }
-                Heard::Quiet => {
-                    // A ping after 30 s without a message keeps the socket
-                    // through an edge that ends a silent connection, as a
-                    // still page's live view is
-                    // (`crates/runner-protocol/src/wire/pipe_frames.rs`).
-                    if tokio::time::Instant::now() >= quiet_at {
-                        self.socket
-                            .send(Message::Ping(Bytes::new()))
-                            .await
-                            .map_err(socket_error)?;
-                        quiet_since = tokio::time::Instant::now();
-                    }
+                    direct_after = tokio::time::Instant::now() + RECONNECT_PAUSE;
                 }
             }
         }
@@ -618,33 +560,20 @@ where
             let left = source.finish().await;
             self.relay(left, place.as_deref()).await?;
         }
-        let frame = CloseFrame {
-            code: CloseCode::Normal,
-            reason: "".into(),
-        };
-        self.socket
-            .send(Message::Close(Some(frame)))
-            .await
-            .map_err(socket_error)
+        self.socket.close(u16::from(CloseCode::Normal), "")
     }
 
     async fn binary(&mut self, bytes: Bytes) -> io::Result<()> {
         for start in (0..bytes.len()).step_by(wire::STREAM_PIPE_MESSAGE_BYTES) {
             let end = (start + wire::STREAM_PIPE_MESSAGE_BYTES).min(bytes.len());
-            self.socket
-                .send(Message::Binary(bytes.slice(start..end)))
-                .await
-                .map_err(socket_error)?;
+            self.socket.binary(bytes.slice(start..end)).await?;
         }
         Ok(())
     }
 
     async fn moved(&mut self, to: PipePath, at: u64) -> io::Result<()> {
         let message = serde_json::to_string(&wire::PipeMove { to, at }).expect("a move serializes");
-        self.socket
-            .send(Message::Text(message.into()))
-            .await
-            .map_err(socket_error)?;
+        self.socket.text(message).await?;
         if let Some(path) = &self.path {
             path.send_replace(to);
         }
@@ -782,7 +711,7 @@ where
     }
 }
 
-/// A stream pipe's WebSocket failure as an IO error: the system's own when
+/// The pipe connection's WebSocket failure as an IO error: the system's own when
 /// there is one, so running out of open files shows as such, and a refused
 /// handshake as [`refused`] says.
 fn socket_error(error: tungstenite::Error) -> io::Error {

@@ -106,6 +106,7 @@
 mod encoding;
 mod kept;
 mod messages;
+mod pipe_connection;
 mod pipe_frames;
 mod replies;
 mod session;
@@ -126,6 +127,7 @@ pub use messages::{
     StreamArtifactOwner, WriteExists,
 };
 pub use demi_shared_types::{HostLogLine, LogLevel, LogLine, LogOrigin, ReadAt, is_event_name};
+pub use pipe_connection::{PIPE_CONNECTION_ROUTE, PIPE_LANE_CREDIT, PipeLaneRefusal, PipeLaneTarget};
 pub use pipe_frames::{
     CALL_OUTPUT_ROUTE, PIPE_DATA_BYTES, PIPE_IDLE, PIPE_SESSION_MESSAGE_BYTES, UPLOAD_CHUNK_BYTES, UPLOAD_COMPLETE,
     UPLOAD_OFFSET, PipeEnd, PipeFrame, PipeMove, PipePath, PipeSink, moved_frame, PipeFrameDecoder,
@@ -187,7 +189,7 @@ pub const JOB_LIVE_INTERVAL: Duration = Duration::from_millis(250);
 /// first [`JOB_VIEW_BYTES`] and its newest [`JOB_VIEW_BYTES`], at most, for
 /// the same reason as [`JOB_LIVE_INTERVAL`].
 pub const JOB_GROWTH_INTERVAL: Duration = Duration::from_secs(2);
-/// The most bytes of one binary message of a stream pipe's WebSocket
+/// The most bytes of one binary message of a stream pipe's lane
 /// (`crates/runner-host/src/lib.rs`): the runner splits larger writes, so a
 /// reader holds one message at a time and a ping is not stuck behind a large
 /// one.

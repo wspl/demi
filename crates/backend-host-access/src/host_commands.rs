@@ -52,6 +52,7 @@ use std::future::Future;
 use std::rc::{Rc, Weak};
 
 use demi_backend_database::permissions::DEVICES;
+use demi_runner_protocol::pairs::PairRoute;
 use demi_backend_database::conversation_index::{
     AttachedHostRecord, ExecutionTarget, RecordChange,
 };
@@ -373,11 +374,13 @@ impl HostNames {
             .unwrap_or_else(|| id.to_string())
     }
 
-    /// Whether the runners of Hosts `one` and `other` may talk directly; not
-    /// when either is gone.
-    fn may_talk_directly(&self, one: &str, other: &str) -> bool {
+    /// How the runners of Hosts `one` and `other` may talk; through the
+    /// relay only when either is gone.
+    fn pair_route(&self, one: &str, other: &str) -> PairRoute {
         let find = |id: &str| self.0.iter().find(|device| device.id.as_str() == id);
-        find(one).zip(find(other)).is_some_and(|(one, other)| one.may_talk_directly(other))
+        find(one)
+            .zip(find(other))
+            .map_or(PairRoute::Relay, |(one, other)| one.pair_route(other))
     }
 }
 
@@ -944,10 +947,11 @@ async fn run_on_host(
     // their direct channel once it is up.
     if invocation.host != device {
         let names = host_names(shard).await.map_err(|error| error.to_string())?;
-        if names.may_talk_directly(&invocation.host, device) {
-            stdout.may_go_direct();
+        let route = names.pair_route(&invocation.host, device);
+        if route != PairRoute::Relay {
+            stdout.may_go_direct(route);
             if let Some(stdin) = &stdin {
-                stdin.may_go_direct();
+                stdin.may_go_direct(route);
             }
         }
     }

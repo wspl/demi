@@ -38,6 +38,9 @@ pub enum PairReason {
     Network { side: PairSide },
     /// The runner that answers keeps as many peers as it may.
     Busy,
+    /// The peer connected, and its measurement found it worse than the
+    /// relay (`crates/runner-direct/src/measure.rs`).
+    Slower,
     /// A connected peer failed.
     Dropped,
     /// Crossing networks is off and no local pair answered.
@@ -72,6 +75,31 @@ pub enum PairHeader {
         #[garde(skip)]
         at: u64,
     },
+    /// The verdict of the runner that measured the pair's peer, the one
+    /// whose device id sorts first: the other runner uses the peer only
+    /// once it hears `slower: false`, and the measuring one closes it on
+    /// `true` (`crates/runner-direct/src/pairs.rs`).
+    Measured {
+        #[garde(skip)]
+        slower: bool,
+    },
+}
+
+/// How a pair of runners may talk, from their two devices' routes: the
+/// backend says it with each forward and each pipe between them, and with
+/// each offer of a peer one runner makes the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum PairRoute {
+    /// Through the relay only: an end is a Cloud, which runs beside the
+    /// backend, or a device whose route is Relay Only.
+    Relay,
+    /// Directly once the peer's measurement finds it no worse than the
+    /// relay, which carries the pair meanwhile.
+    Automatic,
+    /// Directly once the peer connects, unmeasured: a device's route is
+    /// Prefer P2P.
+    Direct,
 }
 
 /// A credit on a channel that grants it (`crates/runner-direct/src/channel.rs`):
