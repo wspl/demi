@@ -8,7 +8,7 @@
 use semver::Version;
 
 /// The repository whose GitHub releases are Demi's.
-pub const REPOSITORY: &str = "wspl/demi";
+pub const REPOSITORY: &str = "demi-sh/demi";
 
 /// Which releases count as the newest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

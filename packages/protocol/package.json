@@ -30,9 +30,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wspl/demi.git",
+    "url": "git+https://github.com/demi-sh/demi.git",
     "directory": "packages/protocol"
   },
-  "homepage": "https://github.com/wspl/demi/tree/main/packages/protocol#readme",
-  "bugs": "https://github.com/wspl/demi/issues"
+  "homepage": "https://github.com/demi-sh/demi/tree/main/packages/protocol#readme",
+  "bugs": "https://github.com/demi-sh/demi/issues"
 }

@@ -16,11 +16,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wspl/demi.git",
+    "url": "git+https://github.com/demi-sh/demi.git",
     "directory": "packages/web-ui"
   },
-  "homepage": "https://github.com/wspl/demi/tree/main/packages/web-ui#readme",
-  "bugs": "https://github.com/wspl/demi/issues",
+  "homepage": "https://github.com/demi-sh/demi/tree/main/packages/web-ui#readme",
+  "bugs": "https://github.com/demi-sh/demi/issues",
   "scripts": {
     "typecheck": "bun ../../scripts/typecheck-vue.ts tsconfig.json"
   },

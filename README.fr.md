@@ -12,8 +12,8 @@
 
 <p align="center">
   <a href="#licence"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20Demi%20License-blue"></a>
-  <a href="https://github.com/wspl/demi/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/wspl/demi"></a>
-  <a href="https://github.com/wspl/demi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/wspl/demi/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/demi-sh/demi/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/demi-sh/demi"></a>
+  <a href="https://github.com/demi-sh/demi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/demi-sh/demi/actions/workflows/ci.yml/badge.svg"></a>
 </p>
 
 <p align="center">
@@ -68,7 +68,7 @@ curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 Ou donnez ce prompt à un agent de programmation comme Claude Code ou Codex :
 
 ```text
-Installe Demi sur mon serveur en suivant https://raw.githubusercontent.com/wspl/demi/main/docs/delivery/install-with-an-agent.md
+Installe Demi sur mon serveur en suivant https://raw.githubusercontent.com/demi-sh/demi/main/docs/delivery/install-with-an-agent.md
 ```
 
 Le programme d’installation pose quelques questions et configure Demi. Une fois

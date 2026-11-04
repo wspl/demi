@@ -38,7 +38,7 @@ use crate::conditional::{self, Answer, Failure, Validators};
 
 /// The repository the catalog is downloaded from, and the file of the
 /// schema version this backend reads, under a branch.
-const REPOSITORY: &str = "https://raw.githubusercontent.com/wspl/demi";
+const REPOSITORY: &str = "https://raw.githubusercontent.com/demi-sh/demi";
 const FILE: [&str; 4] = ["catalog", "media", "v1", "models.json"];
 
 /// How often the file is downloaded again after the start.

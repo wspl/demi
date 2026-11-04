@@ -12,7 +12,7 @@
 # for what is missing; without one, as an agent runs it, it prints its
 # guide.
 set -eu
-repository=wspl/demi
+repository=demi-sh/demi
 fail() {
   echo "install.sh: $1" >&2
   exit 1

@@ -1,5 +1,5 @@
 // Where the page's links lead, and the install command with what it needs.
-export const REPOSITORY = 'https://github.com/wspl/demi'
+export const REPOSITORY = 'https://github.com/demi-sh/demi'
 export const DOCS = `${REPOSITORY}/blob/main/docs/delivery/installation.md`
 export const LICENSE = `${REPOSITORY}#license`
 export const INSTALL_COMMAND = 'curl -fsSL https://demi.sh/install.sh | sudo bash'

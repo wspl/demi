@@ -2,7 +2,7 @@
 
 You are an AI agent, and the user asked you to install Demi, a self-hosted AI
 agent on the web, on their Linux server. Follow these steps. The
-[installation guide](https://github.com/wspl/demi/blob/main/docs/delivery/installation.md)
+[installation guide](https://github.com/demi-sh/demi/blob/main/docs/delivery/installation.md)
 has every detail they leave out.
 
 Demi is installed when `https://<domain>` opens Demi's setup page and the
@@ -31,7 +31,7 @@ Ask only what you cannot find out yourself:
 On the server, check each of these, and tell the user what fails:
 
 - Linux with systemd, on a
-  [supported distribution](https://github.com/wspl/demi/blob/main/docs/delivery/installation.md#distributions)
+  [supported distribution](https://github.com/demi-sh/demi/blob/main/docs/delivery/installation.md#distributions)
   (`/etc/os-release`).
 - No Demi yet: `/opt/demi/current` does not exist. If it does, Demi is
   installed, and `sudo demi-server upgrade` moves it to a newer release.
@@ -47,7 +47,7 @@ on:
 - Cloudflare's proxy: Demi listens on `0.0.0.0:80`.
 - A proxy or a tunnel on the server: Demi listens on `127.0.0.1:3271`.
 
-[HTTPS](https://github.com/wspl/demi/blob/main/docs/delivery/installation.md#https)
+[HTTPS](https://github.com/demi-sh/demi/blob/main/docs/delivery/installation.md#https)
 says how to set up each one.
 
 ## 4. Install
