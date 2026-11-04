@@ -277,6 +277,7 @@
   "notices": {
     "hostOffline": "{name} 已离线。",
     "moveHost": "移到其他主机…",
+    "hostOfflineLastSeen": "{name} 已离线，上次在线 {time}。",
     "pluginsChanged": "插件已更改"
   },
   "composer": {

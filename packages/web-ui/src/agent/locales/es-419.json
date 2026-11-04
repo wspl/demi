@@ -277,6 +277,7 @@
   "notices": {
     "hostOffline": "{name} está sin conexión.",
     "moveHost": "Mover a otro host…",
+    "hostOfflineLastSeen": "{name} está sin conexión. Última conexión: {time}.",
     "pluginsChanged": "Los plugins cambiaron"
   },
   "composer": {

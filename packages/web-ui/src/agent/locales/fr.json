@@ -277,6 +277,7 @@
   "notices": {
     "hostOffline": "{name} est hors ligne.",
     "moveHost": "Déplacer vers un autre hôte…",
+    "hostOfflineLastSeen": "{name} est hors ligne. Vu pour la dernière fois {time}.",
     "pluginsChanged": "Les plug-ins ont changé"
   },
   "composer": {

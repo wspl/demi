@@ -277,6 +277,7 @@
   "notices": {
     "hostOffline": "{name} はオフラインです。",
     "moveHost": "別のホストに移動…",
+    "hostOfflineLastSeen": "{name} はオフラインです。最終確認：{time}。",
     "pluginsChanged": "プラグインが変更されました"
   },
   "composer": {
