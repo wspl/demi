@@ -12,8 +12,8 @@
 
 <p align="center">
   <a href="#许可证"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20Demi%20License-blue"></a>
-  <a href="https://github.com/wspl/demi/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/wspl/demi"></a>
-  <a href="https://github.com/wspl/demi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/wspl/demi/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/demi-sh/demi/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/demi-sh/demi"></a>
+  <a href="https://github.com/demi-sh/demi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/demi-sh/demi/actions/workflows/ci.yml/badge.svg"></a>
 </p>
 
 <p align="center">
@@ -57,7 +57,7 @@ curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 也可以把这句话发给 Claude Code、Codex 等编程 agent，让它帮你安装：
 
 ```text
-按照 https://raw.githubusercontent.com/wspl/demi/main/docs/delivery/install-with-an-agent.md 在我的服务器上安装 Demi
+按照 https://raw.githubusercontent.com/demi-sh/demi/main/docs/delivery/install-with-an-agent.md 在我的服务器上安装 Demi
 ```
 
 安装程序会问几个问题，然后完成安装。安装完成后：

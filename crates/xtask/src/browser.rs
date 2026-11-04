@@ -68,7 +68,7 @@ const ARCHIVES: &str = "https://storage.googleapis.com/";
 /// Where the Chrome runtime's releases are, each in a directory named by its
 /// number
 /// (`crates/plugin-browser/command-chrome/src/driver/installation.rs`).
-const RUNTIME: &str = "https://github.com/wspl/demi-chrome-runtime/releases/download";
+const RUNTIME: &str = "https://github.com/demi-sh/demi-chrome-runtime/releases/download";
 /// The runtime's fonts' archive, which every Linux target shares.
 const RUNTIME_FONTS: &str = "fonts.tar.zst";
 /// The pinned record, which `BrowserRelease::pinned` reads.

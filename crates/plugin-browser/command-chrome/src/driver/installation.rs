@@ -22,7 +22,7 @@
 //! - Chrome finds the runtime through its own environment alone (`launch`). Set
 //!   for the runner or a shell, its libraries would load into the Host's own
 //!   programs.
-//! - The runtime is built and published by `wspl/demi-chrome-runtime`, whose
+//! - The runtime is built and published by `demi-sh/demi-chrome-runtime`, whose
 //!   releases carry the licenses and the source packages the libraries' LGPL
 //!   and MPL terms require.
 

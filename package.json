@@ -47,10 +47,10 @@
   "license": "(Apache-2.0 AND LicenseRef-Demi-License)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wspl/demi.git"
+    "url": "git+https://github.com/demi-sh/demi.git"
   },
-  "homepage": "https://github.com/wspl/demi#readme",
-  "bugs": "https://github.com/wspl/demi/issues",
+  "homepage": "https://github.com/demi-sh/demi#readme",
+  "bugs": "https://github.com/demi-sh/demi/issues",
   "overrides": {
     "@codemirror/autocomplete": "6.20.1",
     "@codemirror/commands": "6.10.3",

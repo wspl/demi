@@ -12,8 +12,8 @@
 
 <p align="center">
   <a href="#라이선스"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20Demi%20License-blue"></a>
-  <a href="https://github.com/wspl/demi/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/wspl/demi"></a>
-  <a href="https://github.com/wspl/demi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/wspl/demi/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/demi-sh/demi/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/demi-sh/demi"></a>
+  <a href="https://github.com/demi-sh/demi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/demi-sh/demi/actions/workflows/ci.yml/badge.svg"></a>
 </p>
 
 <p align="center">
@@ -57,7 +57,7 @@ curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 Claude Code나 Codex 같은 코딩 에이전트에게 다음 프롬프트로 설치를 맡길 수도 있습니다:
 
 ```text
-https://raw.githubusercontent.com/wspl/demi/main/docs/delivery/install-with-an-agent.md 을 따라 내 서버에 Demi를 설치해 줘
+https://raw.githubusercontent.com/demi-sh/demi/main/docs/delivery/install-with-an-agent.md 을 따라 내 서버에 Demi를 설치해 줘
 ```
 
 설치 프로그램이 몇 가지를 물어본 뒤 Demi를 설정합니다. 설치가 끝나면:
