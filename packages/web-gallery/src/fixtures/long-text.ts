@@ -37,11 +37,12 @@ export async function retry<T>(run: () => Promise<T>, attempts = 3): Promise<T> 
 [sync] connected; replaying from revision 18342
 \`\`\``
 
-// A table with a cell broken in two lines by `<br>`.
+// A table whose last column explains at length, which wraps to fit the
+// column, and a cell broken in two lines by `<br>`.
 const explained = `| Setting | Values | What it does |
 | --- | --- | --- |
-| \`heartbeat\` | \`15s\` by default<br>\`5s\` on mobile networks | How often the client pings |
-| \`maxBackoff\` | \`30s\` | The longest wait between attempts |`
+| \`heartbeat\` | \`15s\` by default<br>\`5s\` on mobile networks | How often the client sends a ping. A shorter interval notices a dead connection sooner, but wakes the radio more often, which costs a phone its battery. |
+| \`maxBackoff\` | \`30s\` | The longest wait between reconnect attempts, so a server that was down for a while is not flooded the moment it comes back. |`
 
 // A table far wider than the column, which scrolls on its own.
 const wide = `| Region | Endpoint | p50 | p95 | p99 | Reconnects / h | Late pongs / h | Last incident | Notes |

@@ -2250,34 +2250,26 @@ html[data-theme="light"] .file-pill {
   border-radius: 4px;
 }
 
-/* A table stands in its own scroller (`markdown/table.ts`) at its natural
-   width: a short cell keeps to one line, a long one wraps at a readable
-   measure, and a table wider than the text scrolls sideways. A scroller, not
-   the table, scrolls, so it takes the overlay scrollbar a div can hold. */
+/* A table stands in its own scroller (`markdown/table.ts`) at the text's
+   width: its cells wrap to fit, and only a table whose columns cannot fit
+   even wrapped, at their least width, scrolls sideways. A scroller, not the
+   table, scrolls, so it takes the overlay scrollbar a div can hold. */
 .markdown-body .table-scroll {
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
 }
 
-/* A table spans at least the text's width, with rules between its rows only, inside
-   a square frame.
-
-   - A wider one keeps its natural width and scrolls: each column is at least 6rem
-     and a cell at most 24em, where a long cell wraps at a readable measure rather
-     than squeezing to its minimum.
-   - While the reply streams its columns hold their widths (`is-streaming`), so they
-     do not jump as rows arrive. Once it ends they fit their content. */
+/* A table spans the text's width, with rules between its rows only, inside a
+   square frame, as Open WebUI's does: a column takes room as its content
+   asks, and a long cell wraps, so every column shows without scrolling, as
+   its rows stream in too. A column is at least 6rem, so a table of many
+   columns on a phone scrolls rather than squeezing each to a word. */
 .markdown-body table {
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   border: 1px solid color-mix(in srgb, var(--color-overlay) 10%, transparent);
-}
-
-.markdown-body.is-streaming table {
-  table-layout: fixed;
 }
 
 /* Math in messages and documents is KaTeX's HTML, laid out by KaTeX's
@@ -2335,7 +2327,6 @@ html[data-theme="light"] .file-pill {
 .markdown-body th,
 .markdown-body td {
   min-width: 6rem;
-  max-width: 24em;
   padding: 0.4375em 0.75em;
   vertical-align: top;
 }
@@ -2795,16 +2786,14 @@ html[data-theme="light"] .file-pill {
 /* A document's table fits the document's width, as on GitHub: its columns
    share the width, a long cell wrapping, so a comparison of eight products
    reads at a glance; only a table whose cells cannot wrap that narrow
-   scrolls, and a small one is as wide as its content. A reply's table keeps
-   its readable measure instead. */
+   scrolls, and a small one is as wide as its content. A reply's table spans
+   the text instead, its columns at least 6rem. */
 .markdown-document table {
   width: auto;
-  min-width: 0;
 }
 
 .markdown-document :is(th, td) {
   min-width: 0;
-  max-width: none;
 }
 
 /* GitHub's alerts (`markdown/document.ts`): a quote marked as a note, a tip,
