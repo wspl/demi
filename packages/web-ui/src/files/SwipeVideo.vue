@@ -4,6 +4,7 @@ import { useElementSize } from '@vueuse/core'
 import MediaPreview from './MediaPreview.vue'
 import { swipeAxis, type StepReach, type SwipeAxis } from './swipe-step'
 import { useSwipeLayer } from './swipe-layer'
+import { focusByPage } from '../ui/focus-by-page'
 
 /**
  * A video the media viewer shows, in Demi's player (`VideoPlayer`), which a
@@ -16,6 +17,8 @@ import { useSwipeLayer } from './swipe-layer'
  *   as dragging the playhead: only a finger that moves on the video's picture
  *   becomes a swipe.
  * - Where it is `dismissible`, a tap beside the video asks to close it.
+ * - A press beside the video gives the player the focus, as one on the
+ *   picture does, so Space and the arrow keys work it.
  *
  * A mouse never swipes it.
  */
@@ -80,6 +83,12 @@ function onPress(event: PointerEvent): void {
   }
   if (swipe.leaving())
     return
+  // Keeping a press beside the video from the page keeps its focus from the player too, which takes it here.
+  if (!onVideo) {
+    const player = frame.value?.querySelector<HTMLElement>('[data-video-player]')
+    if (player)
+      focusByPage(player, { preventScroll: true })
+  }
   spoiled = false
   swipe.hold()
   const { pointerId } = event
