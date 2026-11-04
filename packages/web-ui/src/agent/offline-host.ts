@@ -4,11 +4,13 @@ import type { HostDeviceOption, HostMenuHost } from '../hosts/types'
 
 /**
  * The conversation's offline primary Host, as its card above the composer
- * shows it: its name, how to start its runner again, and what Move to Another
- * Host… lists.
+ * shows it: its name, since when it is offline, how to start its runner again,
+ * and what Move to Another Host… lists.
  */
 export interface OfflineHost {
   name: string
+  /** When its runner was last connected, an ISO timestamp; none for a device whose runner never connected. */
+  seen?: string
   start: DeviceStart
   /** The offline device, as Run On checks it. */
   primaryHost: HostMenuHost

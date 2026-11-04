@@ -218,10 +218,12 @@ const offlineHost = keptComputed<OfflineHost | null>(() => {
   if (primary.kind !== 'device' || primary.state !== 'offline') {
     return null
   }
-  const start = resources.deviceById(primary.deviceId)?.start
+  const device = resources.deviceById(primary.deviceId)
+  const start = device?.start
   return start
     ? {
         name: primary.name,
+        seen: device.seen,
         start,
         primaryHost: primaryHostOf(primary),
         devices: hostDeviceOptions(resources.devices),

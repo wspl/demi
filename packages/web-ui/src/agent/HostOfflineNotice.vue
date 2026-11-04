@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import Menu from '../ui/Menu.vue'
@@ -8,6 +8,7 @@ import { appOverlayStore } from '../overlay/appOverlay'
 import DeviceStartHint from '../devices/DeviceStartHint.vue'
 import type { DeviceStart } from '../devices/installation'
 import HostChoices from '../hosts/HostChoices.vue'
+import RelativeTime from '../ui/RelativeTime.vue'
 import { MOVE_LOCK_REASON, type MoveLock } from '../hosts/move-question'
 import type { HostChoice, HostDeviceOption, HostMenuHost } from '../hosts/types'
 
@@ -17,6 +18,9 @@ import type { HostChoice, HostDeviceOption, HostMenuHost } from '../hosts/types'
  *
  * It is offered above the composer, with:
  *
+ * - how long ago its runner was last connected, as Settings › Devices says
+ *   it, so the user tells a device that dropped a moment ago from one that has
+ *   been away for days
  * - how to start the runner again
  * - Move to Another Host…, which lists Run On's online Hosts once the
  *   conversation's work is idle. Choosing one is the host's to carry out, as
@@ -29,8 +33,10 @@ import type { HostChoice, HostDeviceOption, HostMenuHost } from '../hosts/types'
  * on one line, the sentence wraps and the button moves under it, at its leading
  * edge, as iOS's inline notices keep their text whole.
  */
-defineProps<{
+const props = defineProps<{
   name: string
+  /** When its runner was last connected; none for one that never connected. */
+  seen?: string
   start: DeviceStart
   /** The offline device, checked in Run On. */
   primaryHost: HostMenuHost
@@ -44,6 +50,21 @@ defineProps<{
 const emit = defineEmits<{
   move: [host: HostChoice]
 }>()
+
+/** Where the device's name and the time stand in the sentence, which splits at them. */
+const NAME = '\u0000'
+const TIME = '\u0001'
+
+/**
+ * The sentence as the language words it, in its words, the name and the time,
+ * so that only the name gives up its width when the row is too narrow, and the
+ * time is always read.
+ */
+const sentence = computed(() =>
+  (props.seen
+    ? t('notices.hostOfflineLastSeen', { name: NAME, time: TIME })
+    : t('notices.hostOffline', { name: NAME })
+  ).split(/(\u0000|\u0001)/).filter((part) => part !== ''))
 
 const open = ref(false)
 
@@ -59,7 +80,14 @@ function choose(host: HostChoice): void {
     role="status"
   >
     <div class="host-offline-notice-row flex items-center gap-2 pl-3">
-      <span class="host-offline-notice-sentence min-w-0 flex-1 truncate">{{ t('notices.hostOffline', { name }) }}</span>
+      <span class="host-offline-notice-sentence flex min-w-0 flex-1 items-baseline">
+        <template v-for="(part, index) in sentence" :key="index">
+          <span v-if="part === NAME" class="host-offline-notice-name min-w-0 truncate">{{ name }}</span>
+          <!-- The card is a status; the time ticking each minute is not news to announce again. -->
+          <span v-else-if="part === TIME && seen" class="shrink-0 whitespace-pre-wrap" aria-live="off"><RelativeTime :timestamp="seen" /></span>
+          <span v-else class="shrink-0 whitespace-pre-wrap">{{ part }}</span>
+        </template>
+      </span>
       <span class="host-offline-notice-move">
         <Dropdown
           v-model:open="open"
@@ -124,11 +152,17 @@ function choose(host: HostChoice): void {
     padding-block: var(--host-offline-row-pad);
   }
 
+  /* The sentence is text that wraps, its name too, never a row of parts. */
   .host-offline-notice-sentence {
+    display: block;
     flex: 1 1 auto;
+    padding-block: calc((var(--spacing-hit-sm) - 1lh) / 2);
+  }
+
+  .host-offline-notice-name {
     overflow: visible;
     white-space: normal;
-    padding-block: calc((var(--spacing-hit-sm) - 1lh) / 2);
+    overflow-wrap: anywhere;
   }
 }
 </style>

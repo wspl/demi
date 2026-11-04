@@ -1159,11 +1159,15 @@ const offlineMenuDevices: HostDeviceOption[] = shownAmong([
   { id: 'old', name: 'Old Laptop', state: 'offline', mark: GALLERY_MARKS.debian },
   { id: 'build', name: 'build-box', state: 'offline', mark: GALLERY_MARKS.ubuntu },
 ])
+/** When the offline specimens' runners were last connected. */
+const sevenMinutesAgo = new Date(Date.now() - 7 * 60_000).toISOString()
+const threeDaysAgo = new Date(Date.now() - 3 * 24 * 3_600_000).toISOString()
 /** A dock specimen's primary Host while it is offline: the card names it, and offers the others. */
 function dockOfflineHost(name: string): OfflineHost {
   const id = offlineMenuDevices.find((device) => device.name === name)?.id ?? 'old'
   return {
     name,
+    seen: sevenMinutesAgo,
     start: demoDeviceStart('macos'),
     primaryHost: { id, name, kind: 'device', state: 'offline', mark: offlineMenuDevices.find((device) => device.id === id)?.mark ?? null },
     devices: offlineMenuDevices.map((device) => device.id === id ? { ...device, state: 'offline' } : device),
@@ -1622,12 +1626,13 @@ onBeforeUnmount(() => {
             />
           </GallerySpecimen>
           <GallerySpecimen
-            variant="primary Host offline · how to start its runner again, with Copy · Move to Another Host… lists Run On’s online Hosts and moves it · on a phone a long device name wraps and the button moves under it"
+            variant="primary Host offline · since when, as Last seen 7 minutes ago · how to start its runner again, with Copy · Move to Another Host… lists Run On’s online Hosts and moves it · on a phone a long device name wraps and the button moves under it"
             wide
           >
             <GalleryComposer
               :offline-host="{
                 name: 'Alex-MacBook-Pro.local',
+                seen: sevenMinutesAgo,
                 start: demoDeviceStart('macos'),
                 primaryHost: { id: 'old', name: 'Alex-MacBook-Pro.local', kind: 'device', state: 'offline', mark: GALLERY_MARKS.mac },
                 devices: offlineMenuDevices,
@@ -1635,12 +1640,13 @@ onBeforeUnmount(() => {
             />
           </GallerySpecimen>
           <GallerySpecimen
-            variant="primary Host offline in a conversation with messages · Move to Another Host… asks first"
+            variant="primary Host offline in a conversation with messages, for days · Move to Another Host… asks first"
             wide
           >
             <GalleryComposer
               :offline-host="{
                 name: 'Old Laptop',
+                seen: threeDaysAgo,
                 start: demoDeviceStart('macos'),
                 primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline', mark: GALLERY_MARKS.debian },
                 devices: offlineMenuDevices,
@@ -1649,7 +1655,7 @@ onBeforeUnmount(() => {
             />
           </GallerySpecimen>
           <GallerySpecimen
-            variant="primary Host offline, in a project · a device opens its directory picker first"
+            variant="primary Host offline, in a project, whose runner never connected · a device opens its directory picker first"
             wide
           >
             <GalleryComposer

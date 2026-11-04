@@ -65,12 +65,16 @@ const errorDevices: HostDeviceOption[] = shownAmong([
 ])
 
 /** The primary Host's card above the dock's chips, while it is an offline device. */
+/** When an offline specimen's runner was last connected: once, so its card ticks on as time passes. */
+const OFFLINE_SEEN = new Date(Date.now() - 7 * 60_000).toISOString()
+
 function offlineCard(primary: HostMenuHost | undefined): OfflineHost | null {
   if (primary?.kind !== 'device' || primary.state === 'online') {
     return null
   }
   return {
     name: primary.name,
+    seen: OFFLINE_SEEN,
     start: demoDeviceStart('macos'),
     primaryHost: primary,
     devices: errorDevices.map((device) => device.id === primary.id ? { ...device, state: 'offline' } : device),

@@ -277,6 +277,7 @@
   "notices": {
     "hostOffline": "{name} 호스트가 오프라인입니다.",
     "moveHost": "다른 호스트로 이동…",
+    "hostOfflineLastSeen": "{name} 호스트가 오프라인입니다. 마지막 접속: {time}.",
     "pluginsChanged": "플러그인 변경됨"
   },
   "composer": {
