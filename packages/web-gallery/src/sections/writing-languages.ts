@@ -219,6 +219,9 @@ const SIMPLIFIED: LanguageWriting = {
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', '全部关闭', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
     ['Suggested replies', '建议回复', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
+    ['Mute / Unmute', '静音 / 取消静音', 'QuickTime Player, YouTube'],
+    ['Playback Speed', '播放速度', 'QuickTime Player, YouTube'],
+    ['Exit Full Screen', '退出全屏幕', 'Apple’s View menu, as Enter Full Screen'],
   ],
 }
 
@@ -404,6 +407,9 @@ const TRADITIONAL: LanguageWriting = {
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', '全部關閉', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
     ['Suggested replies', '建議回覆', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
+    ['Mute / Unmute', '靜音 / 取消靜音', 'QuickTime Player, YouTube'],
+    ['Playback Speed', '播放速度', 'QuickTime Player, YouTube'],
+    ['Exit Full Screen', '結束全螢幕', 'Apple Taiwan’s View menu, as Enter Full Screen'],
   ],
 }
 
@@ -589,6 +595,9 @@ const JAPANESE: LanguageWriting = {
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', 'すべて閉じる', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
     ['Suggested replies', '返信の候補', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
+    ['Mute / Unmute', '消音 / 消音を解除', 'QuickTime Player'],
+    ['Playback Speed', '再生速度', 'QuickTime Player, YouTube'],
+    ['Exit Full Screen', 'フルスクリーンを解除', 'Apple’s View menu, as Enter Full Screen'],
   ],
 }
 
@@ -781,6 +790,9 @@ const KOREAN: LanguageWriting = {
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', '모두 닫기', 'VS Code’s tab menu, which Demi’s Close Others and Close to the Right already follow; ChatGPT, Claude and Codex have no tab menu'],
     ['Suggested replies', '추천 답장', 'Gmail’s Suggested Replies, the same feature; plain words that say what the pills under an answer are'],
+    ['Mute / Unmute', '음소거 / 음소거 해제', 'QuickTime Player, YouTube'],
+    ['Playback Speed', '재생 속도', 'YouTube'],
+    ['Exit Full Screen', '전체 화면 종료', 'Apple’s View menu, as Enter Full Screen'],
   ],
 }
 
@@ -980,6 +992,9 @@ const GERMAN: LanguageWriting = {
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', 'Alle schließen', 'VS Code’s tab menu'],
     ['Suggested replies', 'Antwortvorschläge', 'Gmail’s Antwortvorschläge, the same feature'],
+    ['Mute / Unmute', 'Ton aus / Ton ein', 'QuickTime Player'],
+    ['Playback Speed', 'Wiedergabegeschwindigkeit', 'YouTube'],
+    ['Exit Full Screen', 'Vollbildmodus beenden', 'macOS’s View menu, as Enter Full Screen'],
   ],
 }
 const SPANISH: LanguageWriting = {
@@ -1178,6 +1193,9 @@ const SPANISH: LanguageWriting = {
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', 'Cerrar todas', 'VS Code’s tab menu'],
     ['Suggested replies', 'Respuestas sugeridas', 'Gmail’s Respuestas sugeridas, the same feature'],
+    ['Mute / Unmute', 'Silenciar / Activar sonido', 'YouTube'],
+    ['Playback Speed', 'Velocidad de reproducción', 'YouTube'],
+    ['Exit Full Screen', 'Salir de pantalla completa', 'Apple’s Mac help, as Enter Full Screen'],
   ],
 }
 const FRENCH: LanguageWriting = {
@@ -1376,6 +1394,9 @@ const FRENCH: LanguageWriting = {
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', 'Tout fermer', 'VS Code’s tab menu'],
     ['Suggested replies', 'Réponses suggérées', 'Gmail’s Réponses suggérées, the same feature'],
+    ['Mute / Unmute', 'Couper le son / Réactiver le son', 'YouTube'],
+    ['Playback Speed', 'Vitesse de lecture', 'QuickTime Player, YouTube'],
+    ['Exit Full Screen', 'Quitter le plein écran', 'As Enter Full Screen; Apple’s Mac help says Quitter le mode plein écran'],
   ],
 }
 const PORTUGUESE: LanguageWriting = {
@@ -1574,6 +1595,9 @@ const PORTUGUESE: LanguageWriting = {
     ['Canary', 'Canary', 'Chrome, Edge; kept in English, as theirs is'],
     ['Close All', 'Fechar tudo', 'VS Code’s tab menu'],
     ['Suggested replies', 'Respostas sugeridas', 'Gmail’s Respostas sugeridas, the same feature'],
+    ['Mute / Unmute', 'Silenciar / Ativar som', 'YouTube'],
+    ['Playback Speed', 'Velocidade de reprodução', 'YouTube'],
+    ['Exit Full Screen', 'Sair da tela cheia', 'As Enter Full Screen'],
   ],
 }
 

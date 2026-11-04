@@ -77,13 +77,13 @@ const ARROW_STEPS: Partial<Record<string, -1 | 1>> = { ArrowLeft: -1, ArrowUp: -
  * The step an arrow key asks of a viewer that shows a medium: to the one before
  * for Left and Up, to the one after for Right and Down, as macOS's Quick Look
  * steps; none for another key, a key with a modifier, one a control took
- * already, or one a video's player keeps.
+ * already, or one in a video's player (`VideoPlayer`), which keeps them.
  */
 export function arrowStep(event: KeyboardEvent): -1 | 1 | null {
   const step = ARROW_STEPS[event.key]
   if (step === undefined || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
     return null
-  return event.target instanceof HTMLVideoElement ? null : step
+  return event.target instanceof Element && event.target.closest('[data-video-player]') ? null : step
 }
 
 /** What tells a medium from another: its address, or a Host image's file, whatever version shows. */

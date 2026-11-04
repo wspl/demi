@@ -22,7 +22,7 @@ import type { PixelSize } from './thumbnail'
  *
  * - An image opens fitted to it, and zooms and moves as in an image viewer
  *   (`ImagePreview`).
- * - A video plays at once in the web browser's player, and closing the viewer
+ * - A video plays at once in Demi's player (`VideoPlayer`), and closing the viewer
  *   stops it.
  * - The title bar names the medium and gives its pixel size, and an image's
  *   zoom, *1280 × 720 · 150%*.

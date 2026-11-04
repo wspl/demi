@@ -4,12 +4,13 @@ import { useElementSize } from '@vueuse/core'
 import { fillScale } from './image-zoom'
 import type { PixelSize } from './thumbnail'
 import { dropSource } from './preview'
+import VideoPlayer from './VideoPlayer.vue'
 
 /**
- * A video or audio file in the web browser's own player, which plays at once
- * when `autoplay` says so, as a video opened large does. Leaving the page
- * stops it. A video shows as large as the space lets it, enlarged when it is
- * smaller, as a picture opens (`ImagePreview`).
+ * A video in Demi's own player (`VideoPlayer`), or an audio file in the web
+ * browser's, which plays at once when `autoplay` says so, as a video opened
+ * large does. Leaving the page stops it. A video shows as large as the space
+ * lets it, enlarged when it is smaller, as a picture opens (`ImagePreview`).
  *
  * While `hidden` it never plays: a player that is playing pauses, and one
  * mounted or given another address meanwhile does not start. Shown again, it
@@ -27,7 +28,10 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ size: [width: number, height: number]; failed: [] }>()
 
-const media = ref<HTMLMediaElement | null>(null)
+const player = ref<InstanceType<typeof VideoPlayer> | null>(null)
+const audio = ref<HTMLAudioElement | null>(null)
+/** The element that plays, the video's or the audio's. */
+const media = computed<HTMLMediaElement | null>(() => (props.kind === 'video' ? player.value?.media ?? null : audio.value))
 /** The space the player is shown in. */
 const room = ref<HTMLElement | null>(null)
 const { width: roomWidth, height: roomHeight } = useElementSize(room)
@@ -40,7 +44,7 @@ watch(() => props.src, () => {
  * The player's box: the video as large as the space lets it, as a picture is
  * fitted (`fillScale`), and the player no larger than the video, so its
  * controls stay on it and what lies beside it stays the stage's. Until the
- * size is known the player keeps its own size.
+ * size is known the player fills the space unseen.
  */
 const videoBox = computed(() => {
   const size = videoSize.value
@@ -56,38 +60,33 @@ watch([media, () => props.src, () => props.hidden], ([element, , hidden]) => {
     element.pause()
 }, { flush: 'post' })
 
-function metadata(): void {
-  const element = media.value
-  if (element instanceof HTMLVideoElement) {
-    videoSize.value = { width: element.videoWidth, height: element.videoHeight }
-    emit('size', element.videoWidth, element.videoHeight)
-  }
+function metadata(video: HTMLVideoElement): void {
+  videoSize.value = { width: video.videoWidth, height: video.videoHeight }
+  emit('size', video.videoWidth, video.videoHeight)
 }
 
 onBeforeUnmount(() => {
-  if (media.value)
-    dropSource(media.value)
+  if (audio.value)
+    dropSource(audio.value)
 })
 </script>
 
 <template>
   <div ref="room" class="flex h-full min-h-0 w-full items-center justify-center" :class="{ 'p-4': !flush }">
-    <video
+    <VideoPlayer
       v-if="kind === 'video'"
-      ref="media"
+      ref="player"
       :src="src"
-      :aria-label="name"
-      controls
+      :name="name"
       :autoplay="autoplay && !hidden"
-      preload="metadata"
-      class="max-h-full max-w-full"
+      :class="videoBox ? 'shrink-0' : 'invisible size-full'"
       :style="videoBox"
       @loadedmetadata="metadata"
       @error="emit('failed')"
     />
     <audio
       v-else
-      ref="media"
+      ref="audio"
       :src="src"
       :aria-label="name"
       controls

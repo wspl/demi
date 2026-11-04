@@ -219,10 +219,15 @@
       "caution": "注意"
     }
   },
-  "audioPlayer": {
+  "player": {
     "play": "播放 {name}",
     "pause": "暫停 {name}",
-    "seek": "{name} 的播放位置"
+    "seek": "{name} 的播放位置",
+    "mute": "靜音",
+    "unmute": "取消靜音",
+    "speed": "播放速度",
+    "enterFullScreen": "進入全螢幕",
+    "exitFullScreen": "結束全螢幕"
   },
   "media": {
     "previous": "上一個",

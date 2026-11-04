@@ -219,10 +219,15 @@
       "caution": "注意"
     }
   },
-  "audioPlayer": {
+  "player": {
     "play": "{name} を再生",
     "pause": "{name} を一時停止",
-    "seek": "{name} の再生位置"
+    "seek": "{name} の再生位置",
+    "mute": "消音",
+    "unmute": "消音を解除",
+    "speed": "再生速度",
+    "enterFullScreen": "フルスクリーンにする",
+    "exitFullScreen": "フルスクリーンを解除"
   },
   "media": {
     "previous": "前へ",

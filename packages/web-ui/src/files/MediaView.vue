@@ -36,7 +36,7 @@ import { t } from './locales/text'
  *   keys. In a phone's overlay a pull down or a tap beside the medium closes
  *   it.
  * - A picture zooms and pans as in the viewer's window (`ImagePreview`); a
- *   video plays in the web browser's player, and pauses while another tab
+ *   video plays in Demi's player (`VideoPlayer`), and pauses while another tab
  *   shows.
  */
 const props = defineProps<{

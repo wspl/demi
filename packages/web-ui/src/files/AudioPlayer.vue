@@ -2,6 +2,7 @@
 import { Pause, Play } from '@lucide/vue'
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { ICON_PX } from '../ui/icon-metrics'
+import { clock } from './clock'
 import { t } from './locales/text'
 import { dropSource } from './preview'
 import { waveformOf } from './waveform'
@@ -49,11 +50,6 @@ const heights = computed(() => Array.from({ length: BARS }, (_, i) => Math.max(0
 /** How much of it has played, 0 to 1. */
 const played = computed(() => (length.value ? Math.min(1, current.value / length.value) : 0))
 const clipId = useId()
-
-/** `0:04`, `12:30`: whole seconds in minutes and seconds, as a player shows them. */
-function clock(whole: number): string {
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`
-}
 
 /** The time it shows: the time played once it started, its length before. */
 const time = computed(() => {
@@ -124,7 +120,7 @@ onBeforeUnmount(() => {
     <button
       type="button"
       class="flex size-9 shrink-0 cursor-default items-center justify-center rounded-full bg-accent-fill text-white"
-      :aria-label="playing ? t('audioPlayer.pause', { name: props.name }) : t('audioPlayer.play', { name: props.name })"
+      :aria-label="playing ? t('player.pause', { name: props.name }) : t('player.play', { name: props.name })"
       @click="toggle"
     >
       <Pause v-if="playing" :size="ICON_PX.in28" fill="currentColor" aria-hidden="true" />
@@ -157,7 +153,7 @@ onBeforeUnmount(() => {
           step="any"
           :value="current"
           :disabled="length === null"
-          :aria-label="t('audioPlayer.seek', { name: props.name })"
+          :aria-label="t('player.seek', { name: props.name })"
           class="audio-seek absolute inset-0 size-full cursor-default opacity-0"
           @input="seek"
         >

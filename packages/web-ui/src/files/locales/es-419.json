@@ -219,10 +219,15 @@
       "caution": "Precaución"
     }
   },
-  "audioPlayer": {
+  "player": {
     "play": "Reproducir {name}",
     "pause": "Pausar {name}",
-    "seek": "Posición en {name}"
+    "seek": "Posición en {name}",
+    "mute": "Silenciar",
+    "unmute": "Activar sonido",
+    "speed": "Velocidad de reproducción",
+    "enterFullScreen": "Activar pantalla completa",
+    "exitFullScreen": "Salir de pantalla completa"
   },
   "media": {
     "previous": "Anterior",

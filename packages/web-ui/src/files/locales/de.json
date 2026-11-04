@@ -219,10 +219,15 @@
       "caution": "Vorsicht"
     }
   },
-  "audioPlayer": {
+  "player": {
     "play": "{name} abspielen",
     "pause": "{name} pausieren",
-    "seek": "Position in {name}"
+    "seek": "Position in {name}",
+    "mute": "Ton aus",
+    "unmute": "Ton ein",
+    "speed": "Wiedergabegeschwindigkeit",
+    "enterFullScreen": "Vollbildmodus aktivieren",
+    "exitFullScreen": "Vollbildmodus beenden"
   },
   "media": {
     "previous": "Zurück",

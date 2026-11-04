@@ -12,8 +12,8 @@ import type { StepReach } from './swipe-step'
 /**
  * One medium shown large, as the viewer's window and the work panel's Media tab
  * show it: an image fitted to the space, which zooms and pans as in an image
- * viewer (`ImagePreview`), or a video that plays at once in the web browser's
- * player while `open`, and never while not (`SwipeVideo`). A finger swipes either
+ * viewer (`ImagePreview`), or a video that plays at once in Demi's player
+ * while `open`, and never while not (`SwipeVideo`). A finger swipes either
  * the same way where `steps` and `dismissible` say so. A Host image shows its file at
  * the version the page keeps while `open`, and says so when the file is not
  * there.
