@@ -93,12 +93,13 @@ pub enum Inbound {
     ClaimPending {
         claim_token: String,
     },
-    /// The runner was paired: its device token, the name the user sees, and
-    /// the number of the session it begins, which the runner's next hello
-    /// resumes, as it does for a `hello_ok`'s.
+    /// The runner was paired: its device token, its device's id and the name
+    /// the user sees, and the number of the session it begins, which the
+    /// runner's next hello resumes, as it does for a `hello_ok`'s.
     Claimed {
         #[garde(skip)]
         device_token: DeviceToken,
+        device_id: String,
         device_name: String,
         session: u64,
     },

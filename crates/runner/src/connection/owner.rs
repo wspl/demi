@@ -463,9 +463,13 @@ impl Owner<'_> {
             }
             Inbound::Claimed {
                 device_token,
+                device_id,
                 device_name,
                 ..
             } if management.phase() != Phase::Online => {
+                // The connection goes on paired, with no hello to name the
+                // device: the pairs settle a glare by it (`crate::pairs`).
+                let _ = self.own.set(device_id);
                 registered.token.send_replace(Some(device_token.clone()));
                 let state = registered.state.clone();
                 self.work.spawn(async move {
