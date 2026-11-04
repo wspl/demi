@@ -37,6 +37,12 @@ export async function retry<T>(run: () => Promise<T>, attempts = 3): Promise<T> 
 [sync] connected; replaying from revision 18342
 \`\`\``
 
+// A table with a cell broken in two lines by `<br>`.
+const explained = `| Setting | Values | What it does |
+| --- | --- | --- |
+| \`heartbeat\` | \`15s\` by default<br>\`5s\` on mobile networks | How often the client pings |
+| \`maxBackoff\` | \`30s\` | The longest wait between attempts |`
+
 // A table far wider than the column, which scrolls on its own.
 const wide = `| Region | Endpoint | p50 | p95 | p99 | Reconnects / h | Late pongs / h | Last incident | Notes |
 | --- | --- | --: | --: | --: | --: | --: | --- | --- |
@@ -78,6 +84,8 @@ ${code}
 | Laptop wakes from sleep | Frozen for up to 2 min | Recovers in about 1 s |
 | Wi-Fi switches networks | Frozen until the next write fails | Recovers on the next missed pong |
 | Server restarts | Recovers on close | Unchanged |
+
+${explained}
 
 ${wide}
 
@@ -125,6 +133,8 @@ ${code}
 | Wi-Fi 切换网络 | 卡到下一次写入失败为止 | 下一次 pong 迟到时恢复 |
 | 服务器重启 | 收到关闭事件后恢复 | 不变 |
 
+${explained}
+
 ${wide}
 
 - [x] 检测迟到的 pong 并重连
@@ -170,6 +180,8 @@ ${code}
 | スリープからの復帰 | 最大 2 分間固まる | 約 1 秒で回復 |
 | Wi-Fi のネットワーク切り替え | 次の書き込みが失敗するまで固まる | 次の pong の遅れで回復 |
 | サーバーの再起動 | 切断イベントで回復 | 変わらず |
+
+${explained}
 
 ${wide}
 
@@ -217,6 +229,8 @@ ${code}
 | Wi-Fi 네트워크 전환 | 다음 쓰기가 실패할 때까지 멈춤 | 다음 pong 지연 시 복구 |
 | 서버 재시작 | 종료 이벤트로 복구 | 변화 없음 |
 
+${explained}
+
 ${wide}
 
 - [x] 늦은 pong을 감지하고 다시 연결하기
@@ -260,6 +274,8 @@ ${code}
 | Ноутбук выходит из сна | Зависание до 2 минут | Восстановление примерно за 1 с |
 | Wi-Fi переключает сеть | Зависание до сбоя следующей записи | Восстановление при следующем опоздании pong |
 | Перезапуск сервера | Восстановление по закрытию | Без изменений |
+
+${explained}
 
 ${wide}
 
@@ -305,6 +321,8 @@ ${code}
 | WLAN wechselt das Netz | Eingefroren, bis der nächste Schreibvorgang scheitert | Erholt sich beim nächsten verspäteten Pong |
 | Serverneustart | Erholt sich beim Schließen | Unverändert |
 
+${explained}
+
 ${wide}
 
 - [x] Verspätetes Pong erkennen und neu verbinden
@@ -348,6 +366,8 @@ ${code}
 | Máy thức dậy sau khi ngủ | Đơ tới 2 phút | Phục hồi trong khoảng 1 giây |
 | Wi-Fi chuyển mạng | Đơ cho đến khi lần ghi tiếp theo thất bại | Phục hồi ở lần pong trễ tiếp theo |
 | Máy chủ khởi động lại | Phục hồi khi đóng | Không đổi |
+
+${explained}
 
 ${wide}
 
