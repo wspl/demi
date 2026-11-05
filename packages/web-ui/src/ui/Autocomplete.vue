@@ -151,7 +151,7 @@ function onKeydown(event: KeyboardEvent): void {
 const menuStyle = computed(() => ({
   width: `${frameWidth.value}px`,
   maxWidth: 'none',
-  maxHeight: `min(${(props.visibleRows ?? 8) * (rowHeight.value + 1) + MENU_PADDING_PX}px, var(--overlay-available-height, 50vh))`,
+  maxHeight: `min(${(props.visibleRows ?? 8) * (rowHeight.value + 1) + MENU_PADDING_PX}px, var(--overlay-available-height, calc(100dvh - 2rem)))`,
 }))
 
 defineExpose({

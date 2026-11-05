@@ -164,7 +164,7 @@ function iconFor(entry: FileBrowserEntry) {
 const menuStyle = computed(() => ({
   width: `${frameWidth.value}px`,
   maxWidth: 'none',
-  maxHeight: `min(${VISIBLE_ROWS * (rowHeight.value + 1) + MENU_PADDING_PX}px, var(--overlay-available-height, 50vh))`,
+  maxHeight: `min(${VISIBLE_ROWS * (rowHeight.value + 1) + MENU_PADDING_PX}px, var(--overlay-available-height, calc(100dvh - 2rem)))`,
 }))
 
 defineExpose({

@@ -82,7 +82,7 @@ function move(): unknown {
               <span class="min-w-0 truncate">{{ chosen ? conversationTitle(chosen.title) : '' }}</span>
             </template>
             <template #content="{ close }">
-              <Menu class="max-h-72">
+              <Menu>
                 <MenuItem
                   v-for="conversation in conversations"
                   :key="conversation.id"
