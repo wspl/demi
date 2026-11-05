@@ -18,7 +18,7 @@ type LoadState = 'loading' | 'ready' | 'failed'
 const state = ref<LoadState>('loading')
 const saving = ref(true)
 /** The archived row, which Delete removes until the page reloads. */
-const archivedRows = ref([{ id: 'archived', title: 'Example conversation' }])
+const archivedRows = ref([{ id: 'archived', title: 'Example conversation', updatedAt: '2026-09-02T18:12:00Z', project: null }])
 const options: readonly SegmentedOption<LoadState>[] = [
   { value: 'loading', label: 'First Load' },
   { value: 'ready', label: 'Cached Content' },
@@ -96,6 +96,7 @@ const selected = ref<string | null>('loading-provider')
           :operations="saving ? { 'loading-provider': { kind: 'saving' } } : {}"
           :overlay-store="appOverlayStore"
           :save-model="async () => {}"
+          :add-models="async () => {}"
           @refresh="state = 'loading'"
           @retry-vendors="state = 'loading'"
         />
@@ -108,6 +109,7 @@ const selected = ref<string | null>('loading-provider')
         :overlay-store="appOverlayStore"
         @open="productWould('Open the Conversation Read-Only')"
         @restore="archivedRows = []; productWould('Open the Restored Conversation')"
+        @restore-checked="archivedRows = []"
         @delete="archivedRows = []"
         @retry="state = 'loading'"
       />

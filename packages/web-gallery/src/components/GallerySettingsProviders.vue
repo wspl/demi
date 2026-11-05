@@ -423,16 +423,28 @@ async function saveModel(
     await slow()
     mock.models = mock.models.map((m) => (m.id === original.id ? { ...m, ...draft, enabled: m.enabled } : m))
   } else {
-    if (mock.modelSource === 'catalog') {
-      mock.models = mock.models.filter((m) => m.id !== draft.id)
-    }
-    mock.modelSource = 'manual'
-    // As the backend answers: an audio model of an entry whose audio shape
-    // is OpenAI Speech makes speech, which its row names.
-    const kinds = draft.kind === 'audio' && p.media.audio.shape === 'openai-speech' ? { kinds: ['speech' as const] } : {}
-    mock.models = [...mock.models, { ...draft, tools: true, enabled: original?.enabled ?? true, ...kinds }]
+    add(mock, [draft], original?.enabled ?? true)
   }
   settle(p)
+}
+
+/** As the product's store adds several models: one write of the whole list. */
+async function addModels(p: SettingsProviderEntry, drafts: SettingsModelDraft[]) {
+  add(p as MockProvider, drafts, true)
+  settle(p)
+}
+
+function add(mock: MockProvider, drafts: SettingsModelDraft[], enabled: boolean) {
+  const ids = new Set(drafts.map((draft) => draft.id))
+  if (mock.modelSource === 'catalog') {
+    mock.models = mock.models.filter((m) => !ids.has(m.id))
+  }
+  mock.modelSource = 'manual'
+  // As the backend answers: an audio model of an entry whose audio shape
+  // is OpenAI Speech makes speech, which its row names.
+  const kinds = (draft: SettingsModelDraft) =>
+    draft.kind === 'audio' && mock.media.audio.shape === 'openai-speech' ? { kinds: ['speech' as const] } : {}
+  mock.models = [...mock.models, ...drafts.map((draft) => ({ ...draft, tools: true, enabled, ...kinds(draft) }))]
 }
 
 async function removeModel(p: SettingsProviderEntry, m: SettingsProviderModel) {
@@ -643,6 +655,7 @@ function closeLogin() {
     @multi-account-warned="multiAccountWarned = true"
     @remove-account="removeAccount"
     :save-model="saveModel"
+    :add-models="addModels"
     :search-models="searchModels"
     @remove-model="removeModel"
   />

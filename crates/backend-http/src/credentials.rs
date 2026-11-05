@@ -1,11 +1,12 @@
-//! The caller's credentials, which only their owner lists, creates and
-//! deletes.
+//! The caller's credentials, which only their owner lists, creates, changes
+//! and deletes.
 //!
 //! - Each route acts in the caller's shard.
 //! - A change reaches the caller's pages as the `credentials` part, which
 //!   carries a visible field's value and never a secret one's. No route
 //!   answers a secret's value: only an agent reads it, on its Host.
-//! - A credential is created and deleted, never changed.
+//! - A change writes values, a secret one's included, and answers none of a
+//!   secret's.
 //! - Each refusal is in words for the user, which the page shows as they are.
 
 use axum::Json;
@@ -14,7 +15,7 @@ use axum::http::StatusCode;
 use demi_backend_database::credentials::CredentialRefusal;
 use demi_backend_user_shard::shard::credentials::CredentialError;
 use demi_web_api_protocol::credentials::{
-    CredentialAnswer, CredentialList, NewCredential, refusal,
+    CredentialAnswer, CredentialList, CredentialPatch, NewCredential, refusal,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::UserCredentialId;
@@ -25,6 +26,12 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 
 impl Worded for NewCredential {
+    fn refusal(report: &garde::Report) -> String {
+        refusal(report)
+    }
+}
+
+impl Worded for CredentialPatch {
     fn refusal(report: &garde::Report) -> String {
         refusal(report)
     }
@@ -56,6 +63,23 @@ pub(super) async fn create(
         .await?
         .map_err(refused)?;
     Ok((StatusCode::CREATED, Json(CredentialAnswer { credential })))
+}
+
+/// `PATCH /credentials/:id`: answers the credential as it now is.
+pub(super) async fn change(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    WordedBody(patch): WordedBody<CredentialPatch>,
+) -> Result<Json<CredentialAnswer>, ApiError> {
+    let id = credential_id(id)?;
+    let credential = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.change_credential(id, patch).await })
+        .await?
+        .map_err(refused)?;
+    Ok(Json(CredentialAnswer { credential }))
 }
 
 /// `DELETE /credentials/:id`.

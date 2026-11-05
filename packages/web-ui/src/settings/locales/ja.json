@@ -99,6 +99,11 @@
   "archived": {
     "title": "アーカイブ済み",
     "description": "サイドバーから外したチャット。",
+    "count": "{count} 件のチャット",
+    "select": "選択",
+    "selectAll": "すべてを選択",
+    "selectLabel": "「{title}」を選択",
+    "selected": "{count} 件を選択中",
     "search": "アーカイブ済みを検索",
     "searchLabel": "アーカイブ済みのチャットを検索",
     "loading": "アーカイブ済みのチャットを読み込んでいます…",
@@ -139,6 +144,23 @@
     "add": "転送を追加",
     "loading": "ポート転送を読み込み中…",
     "none": "ポート転送はありません",
+    "select": "選択",
+    "selectAll": "すべてを選択",
+    "selectLabel": "「{name}」を選択",
+    "selected": "{count} 件を選択中",
+    "actions": "操作",
+    "turnOn": "オンにする",
+    "turnOff": "オフにする",
+    "delete": "削除…",
+    "deleteTitle": "{count} 件の転送を削除しますか？",
+    "deleteBody": "待ち受けを停止し、開いている接続は終了します。",
+    "deleteFailed": "転送を削除できませんでした",
+    "choose": "選択…",
+    "nameOf": "「{name}」の名前",
+    "portOf": "「{name}」のポート",
+    "listenOnOf": "「{name}」の待ち受けホスト",
+    "connectToOf": "「{name}」の接続先ホスト",
+    "addressOf": "「{name}」のアドレス",
     "unknownHost": "不明なホスト",
     "state": {
       "off": "オフ",
@@ -250,7 +272,11 @@
     "signOutLabel": "「{name}」をサインアウト",
     "signOutTitle": "「{name}」をサインアウトしますか？",
     "signOutAction": "サインアウト",
-    "signOutBody": "開いているページはサインインページに戻ります。チャットはサーバーに残ります。"
+    "signOutBody": "開いているページはサインインページに戻ります。チャットはサーバーに残ります。",
+    "signOutOthers": "ほかのブラウザーをサインアウト…",
+    "noOthers": "ほかにサインイン中のブラウザーはありません。",
+    "signOutOthersTitle": "ほかの {count} 台のブラウザーをサインアウトしますか？",
+    "signOutOthersBody": "開いているページはサインインページに戻ります。このブラウザーはサインインしたままで、チャットはサーバーに残ります。"
   },
   "instructions": {
     "title": "指示",
@@ -398,6 +424,7 @@
       "keywords": "アップデート,更新,バージョン,リリース,canary,beta,ベータ"
     }
   },
+  "andMore": "{names}、ほか {count} 件",
   "changeEmail": {
     "title": "メールアドレスを変更",
     "formHint": "今後は新しいアドレスでサインインします。",
@@ -421,11 +448,6 @@
     "confirm": "新しいパスワードの確認",
     "unchanged": "現在のパスワードと同じです。",
     "done": "パスワードを変更しました"
-  },
-  "changeRole": {
-    "title": "ロールを変更",
-    "current": "{name} のロールは{role}です。",
-    "role": "ロール"
   },
   "cloudStorage": {
     "title": "クラウドストレージ",
@@ -454,7 +476,34 @@
   "users": {
     "title": "ユーザー",
     "description": "このサーバーにサインインできるすべての人。",
-    "accounts": "アカウント",
+    "general": "一般設定",
+    "accountsCount": "アカウント · {count}",
+    "search": "検索",
+    "searchLabel": "ユーザーを検索",
+    "noMatch": "「{query}」に一致するアカウントはありません。",
+    "role": "ロール",
+    "cloudStorage": "クラウドストレージ",
+    "cloudStorageDescription": "このユーザーのクラウドのディスク。",
+    "storageSizes": "{system} GB · {home} GB",
+    "signIn": "サインイン",
+    "signInCode": "サインインコード",
+    "signInCodeDescription": "パスワードなしで新しいデバイスにサインインさせます。",
+    "showCode": "コードを表示…",
+    "password": "パスワード",
+    "passwordDescription": "新しいパスワードを作成します。セッションはそのまま残ります。",
+    "resetShort": "リセット…",
+    "sessions": "セッション",
+    "sessionsDescription": "すべてのデバイスで、このユーザーのセッションをすべて終了します。",
+    "disableAccount": "アカウントを無効化",
+    "disableDescription": "サインインできなくなります。このユーザーのものは何も削除されません。",
+    "disableShort": "無効化…",
+    "enableAccount": "アカウントを有効化",
+    "enableDescription": "再びサインインできるようになります。",
+    "enable": "有効化",
+    "roleChange": {
+      "title": "「{name}」のロールを{role}に変更しますか？",
+      "action": "ロールを変更"
+    },
     "sharing": {
       "group": "モデルプロバイダー",
       "label": "プロバイダー",
@@ -480,16 +529,8 @@
     "choosesPassword": "パスワード未設定",
     "lastActive": "最終アクセス",
     "neverSignedIn": "まだサインインしていません",
-    "actions": "操作",
-    "actionsFor": "「{name}」の操作",
     "action": {
-      "resetPassword": "パスワードをリセット…",
-      "changeRole": "ロールを変更…",
-      "cloudStorage": "クラウドストレージ…",
-      "signInCode": "サインインコード…",
-      "signOutEverywhere": "すべての場所でサインアウト…",
-      "disable": "アカウントを無効化…",
-      "enable": "アカウントを有効化"
+      "signOutEverywhere": "すべての場所でサインアウト…"
     },
     "confirm": {
       "add": "アカウントを追加するには、本人確認が必要です。",
@@ -514,7 +555,7 @@
       "title": "「{name}」のアカウントを無効化しますか？",
       "action": "アカウントを無効化",
       "body": "「{name}」はすべての場所でサインアウトされ、サインインできなくなります。クラウドは停止し、デバイスは切断されます。",
-      "note": "何も削除されません。「アカウントを有効化」でアクセスを元に戻せます。"
+      "note": "何も削除されません。「有効化」でアクセスを元に戻せます。"
     }
   },
   "cloudNetwork": {
@@ -554,37 +595,70 @@
   },
   "credentials": {
     "title": "認証情報",
-    "yours": "保存済みの認証情報",
-    "new": "新しい認証情報…",
-    "secret": "シークレット",
-    "visible": "表示",
-    "keptUntil": "保持期限",
-    "always": "常に",
-    "lastUsed": "最終使用",
-    "never": "未使用",
-    "delete": "削除…",
-    "deleteLabel": "「{name}」を削除",
-    "none": "認証情報はありません",
-    "saveFailed": "認証情報を保存できませんでした",
-    "deleteFailed": "認証情報を削除できませんでした",
-    "deleteTitle": "「{name}」を削除しますか？",
-    "deleteBody": "エージェントはどのチャットでもこの認証情報を読み取れなくなります。この操作は取り消せません。"
-  },
-  "credentialDialog": {
+    "count": "{count} 件の認証情報",
+    "matches": "{count} 件中 {shown} 件",
+    "selected": "{count} 件を選択中",
+    "sortBy": "並べ替え",
+    "sorts": {
+      "name": "名前",
+      "recent": "最近使った順",
+      "stale": "使っていない順",
+      "added": "追加日"
+    },
+    "groups": {
+      "today": "今日",
+      "week": "今週",
+      "month": "今月",
+      "year": "今年の初め",
+      "older": "それ以前",
+      "never": "未使用"
+    },
     "new": "新しい認証情報",
+    "newName": "新しい認証情報",
+    "newNameNumbered": "新しい認証情報 ({n})",
+    "password": "パスワード",
+    "search": "検索",
+    "searchLabel": "認証情報を検索",
+    "noMatch": "「{query}」に一致する認証情報はありません。",
+    "none": "認証情報はありません",
+    "noneSelected": "認証情報が選択されていません",
+    "several": "{count} 件の認証情報を選択中",
+    "select": "選択",
+    "deleteShort": "削除",
+    "deleteSeveral": "{count} 件の認証情報を削除…",
     "name": "名前",
+    "nameMissing": "名前を入力してください。",
     "note": "メモ",
-    "notePlaceholder": "エージェントが必要とする理由",
+    "noteDescription": "エージェントが何のために読むか。",
     "fields": "項目",
     "addField": "項目を追加",
-    "labelPlaceholder": "API キー",
-    "labelOf": "項目 {n} のラベル",
-    "needsField": "認証情報には 1 つ以上の項目が必要です。",
-    "deleteField": "項目を削除",
-    "actions": "操作",
-    "fieldActions": "項目 {n} の操作",
-    "valueOf": "項目 {n} の値",
-    "create": "認証情報を作成"
+    "visibleField": "表示される項目",
+    "secretField": "シークレット項目",
+    "fieldName": "項目 {n}",
+    "fieldLabel": "項目名",
+    "labelMissing": "項目の名前を入力してください。",
+    "secret": "シークレット",
+    "missing": "未入力",
+    "removeField": "項目を削除",
+    "removeFieldLabel": "「{label}」を削除",
+    "kept": "保持期間",
+    "keeps": {
+      "1h": "1 時間",
+      "1d": "1 日",
+      "30d": "30 日",
+      "always": "削除するまで"
+    },
+    "keptUntil": "{date} まで",
+    "lastUsed": "最終使用",
+    "never": "未使用",
+    "added": "追加日",
+    "delete": "削除…",
+    "deleteLabel": "「{name}」を削除",
+    "deleteTitle": "「{name}」を削除しますか？",
+    "deleteSeveralTitle": "{count} 件の認証情報を削除しますか？",
+    "deleteBody": "削除した認証情報は、どのチャットでもエージェントが読み取れなくなります。この操作は取り消せません。",
+    "saveFailed": "認証情報を保存できませんでした",
+    "deleteFailed": "認証情報を削除できませんでした"
   },
   "credentialFields": {
     "required": "必須"
@@ -878,7 +952,8 @@
     "adding": "追加中…",
     "list": "モデル",
     "search": "検索",
-    "custom": "カスタム"
+    "custom": "カスタム",
+    "several": "{count} 件のモデルを追加"
   },
   "modelDialog": {
     "edit": "モデルを編集",

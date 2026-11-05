@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
@@ -19,6 +19,8 @@ import type { SettingsSession, SettingsSessionHost } from './types'
  * - The administrator is marked on a browser their sign-in code signed in.
  * - Sign Out… beside another browser asks first, then ends that session at once, its
  *   open pages included. This browser's own ends with Sign Out below.
+ * - Sign Out Other Browsers… asks once, then ends every session but this one; it is
+ *   disabled while no other browser is signed in, so the group's header keeps its look.
  */
 const props = defineProps<{
   host: SettingsSessionHost
@@ -27,6 +29,20 @@ const props = defineProps<{
 
 const ending = ref<SettingsSession | null>(null)
 const confirmOpen = ref(false)
+const othersOpen = ref(false)
+const others = computed(() => props.host.sessions.filter((session) => !session.current))
+const OTHERS = { action: 'signOut', target: 'sessions:others' }
+
+/** Sign Out Other Browsers confirmed: ends each other session, then closes the question. */
+async function signOutOthers(): Promise<void> {
+  try {
+    for (const session of others.value) {
+      await props.host.signOut(session.id)
+    }
+  } finally {
+    othersOpen.value = false
+  }
+}
 
 function askSignOut(session: SettingsSession): void {
   ending.value = session
@@ -56,6 +72,15 @@ async function signOut(): Promise<void> {
 
 <template>
   <SettingsGroup :title="t('sessions.title')">
+    <template #actions>
+      <Button
+        size="sm"
+        :disabled="!others.length"
+        :disabled-reason="t('sessions.noOthers')"
+        :operation="OTHERS"
+        @click="othersOpen = true"
+      >{{ t('sessions.signOutOthers') }}</Button>
+    </template>
     <SettingsRow v-for="session in host.sessions" :key="session.id" :label="session.name">
       <template v-if="session.current" #tags>
         <Tag>{{ t('sessions.thisBrowser') }}</Tag>
@@ -92,5 +117,16 @@ async function signOut(): Promise<void> {
     @confirm="signOut"
   >
     <p>{{ t('sessions.signOutBody') }}</p>
+  </ConfirmDialog>
+  <ConfirmDialog
+    :is-open="othersOpen"
+    :overlay-store="overlayStore"
+    :title="t('sessions.signOutOthersTitle', { count: others.length }, others.length)"
+    :action="t('sessions.signOutAction')"
+    :operation="OTHERS"
+    @close="othersOpen = false"
+    @confirm="signOutOthers"
+  >
+    <p>{{ t('sessions.signOutOthersBody') }}</p>
   </ConfirmDialog>
 </template>

@@ -27,7 +27,6 @@ import {
 import GallerySettingsProviders from '../components/GallerySettingsProviders.vue'
 import { createSettingsState, gallerySessions, incompleteProviders, mockProviders } from '../fixtures/settings'
 import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
-import { slow } from '../fixtures/slow'
 import { PLUGIN_PAGES } from '../generated/pages'
 import { providePageHost, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { useGalleryView } from '../gallery-views'
@@ -37,16 +36,10 @@ import { createUsersState } from '../fixtures/users'
 import GallerySubagents from '../components/GallerySubagents.vue'
 import GalleryAgent from '../components/GalleryAgent.vue'
 import { createSmallModelState } from '../fixtures/small-model'
-import CredentialDialog from '@demicodes/web-ui/settings/CredentialDialog.vue'
-import type { SettingsCredentialDraft } from '@demicodes/web-ui/settings/types'
 import { createCredentialState } from '../fixtures/credentials'
-import SubagentProfileDialog from '@demicodes/web-ui/settings/SubagentProfileDialog.vue'
-import type { SettingsSubagentDraft } from '@demicodes/web-ui/settings/types'
-import { createSubagentState, demoSubagentProfiles } from '../fixtures/subagent-profiles'
+import { createSubagentState } from '../fixtures/subagent-profiles'
 import { productWould } from '../product-would'
 import { t as webSearchText } from '@demicodes/plugin-web/locales/text'
-import { demoProviders } from '../fixtures/catalog'
-import { composerModels } from '../fixtures/context-limits'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import type { SettingsSessionHost } from '@demicodes/web-ui/settings/types'
@@ -267,47 +260,9 @@ const subagentsOff = createSubagentState(false)
 const smallModelGone = createSmallModelState({ providerId: 'anthropic', modelId: 'claude-haiku-3', thinkingEffort: null })
 const smallModelSameProvider = createSmallModelState(null, true)
 
-/** A profile pinned in its editor, which closes from its buttons and opens again from Open. */
-function pinnedEditor(id: string | null) {
-  const profile = demoSubagentProfiles().find((candidate) => candidate.id === id)
-  const draft: SettingsSubagentDraft = profile
-    ? {
-        name: profile.name,
-        description: profile.description,
-        model: profile.model,
-        contextLimit: profile.contextLimit,
-        instructions: profile.instructions,
-        canSpawn: profile.canSpawn,
-      }
-    : { name: '', description: '', model: null, contextLimit: null, instructions: null, canSpawn: true }
-  return { open: ref(true), draft }
-}
-/** The Credentials section without a credential: its list says how one comes. */
+/** The Credentials section without a credential. */
 const noCredentials = createCredentialState([])
 
-/** New Credential pinned open, which closes from its buttons and opens again from Open. */
-const newCredentialEditor = { open: ref(true) }
-
-async function savedCredential(draft: SettingsCredentialDraft) {
-  await slow()
-  newCredentialEditor.open.value = false
-  productWould(`The product would save the credential ${draft.name}`)
-}
-
-const inheritEditor = pinnedEditor(null)
-const ownEditor = pinnedEditor('explore')
-const contextEditor = pinnedEditor('scout')
-
-async function saved(editor: ReturnType<typeof pinnedEditor>, draft: SettingsSubagentDraft) {
-  await slow()
-  editor.open.value = false
-  productWould(`The product would save the profile ${draft.name}`)
-}
-
-function deleted(editor: ReturnType<typeof pinnedEditor>) {
-  editor.open.value = false
-  productWould(`The product would delete the profile ${editor.draft.name}`)
-}
 
 </script>
 
@@ -384,7 +339,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Users"
-        note="Settings › Users as the master sees it, as an admin sees it, and at a phone’s width. The master alone has Model Providers above the accounts: Providers switches between Each User’s Own and Shared after a question that says what users lose and keep, and a toast says what the product would do (the narrow one starts shared). Every control acts on its own specimen: Add User… adds a row (alex@example.com is taken, and the new row comes with its password and QR code in its last step; Lena and Joe show the new-account and disabled looks), Change Role… moves a user to admin, Cloud Storage… changes the account’s sizes (Bo has a 64 GB home), Reset Password… marks the account as still to choose its password, the first of those needing a confirmation asks for a password (any but wrong confirms), and Disable Account… and Sign Out Everywhere… toast what the product would do to the account’s sessions. As the admin, Ana, there is no Change Role…, the master’s row and the other admin’s have no menu, and her own has Cloud Storage… alone."
+                note="Settings › Users as the master sees it, as an admin sees it, and at a phone’s width: a rail of the accounts, searched by name and email, beside the one selected; on the phone an entry opens in the rail’s place. The master’s rail starts with General Settings, which switches providers between Each User’s Own and Shared after a question that says what users lose and keep, and a toast says what the product would do (the narrow one starts shared). Every row acts on its own specimen: a role chosen asks first, then moves the account; Cloud storage changes the account’s disks (Bo has a 64 GB home); Show Code… and Reset… show a sign-in code and a new password, the first of those in five minutes asking for a password (any but wrong confirms); Sign Out Everywhere… and Disable… toast what the product would do to the account’s sessions, and Enable gives a disabled account back. The rail’s + adds an account (alex@example.com is taken) and ends on its password and QR code; Lena and Joe show the new-account and disabled looks. As the admin, Ana, the master’s account and the other admin’s show their facts alone, and her own offers Cloud storage alone."
       >
         <GallerySpecimen variant="Master" wide>
           <div class="@container w-full max-w-2xl rounded-xl border border-line bg-surface-dialog p-6">
@@ -581,107 +536,33 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Subagents · Off"
-        note="Subagents turned off: no agent spawns, the profiles stay and can still be edited. The disabled archivist’s model is gone too, and the scout’s effort is no longer offered."
+        note="Subagents turned off: no agent spawns, and the profiles stay, muted, and can still be edited. The rail holds General Settings, with the switch and the limits, then the profiles; a profile opens beside it and saves each field as it is left. New Profile creates one at once and opens it, its description missing. ⌘-click and Shift-click select several profiles, which the detail names and deletes together. The disabled archivist’s model is gone, so its entry carries a yellow dot, and the scout’s effort is no longer offered."
       >
-        <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
+        <div class="h-[36rem] max-w-4xl rounded-xl border border-line bg-surface p-6">
           <GallerySubagents :state="subagentsOff" />
         </div>
       </GallerySection>
 
       <GallerySection
         title="Credentials"
-        note="The user’s credentials, each a row of three lines: its name, its note on one line cut with an ellipsis (the GitHub token’s is too long), and its visible fields with Kept until and Last used. A secret field shows nothing: the Linear sign-in shows its user name and nothing of its password. Delete… asks first, then removes the row; New Credential… adds one. A credential is not edited. Every write waits a beat, and a name another credential has is refused."
+        note="About two hundred credentials in a wide rail beside the one selected. The rail searches names, notes and visible values; Sort By orders it by name, use or addition, under letter or age headings that stay at the top while the list scrolls. An entry’s second line is its first visible value, else its note. ⌘-click and Shift-click select several, which the detail deletes together; on a phone, Select does. New Credential creates one at once, with a missing password, and opens it. Every field saves as it is left: a field’s name is edited in place, a secret takes a new value and never shows it, and a field emptied is missing again. A name another credential has is refused under Name. Every write waits a beat."
       >
-        <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
+        <div class="h-[36rem] max-w-4xl rounded-xl border border-line bg-surface p-6">
           <GalleryCredentials :state="full.credentials" />
         </div>
       </GallerySection>
 
       <GallerySection
         title="Credentials · Empty"
-        note="No credential yet: the list says how one comes. New Credential adds one to this list."
+        note="No credential yet. New Credential creates one and opens it."
       >
-        <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
+        <div class="h-80 max-w-4xl rounded-xl border border-line bg-surface p-6">
           <GalleryCredentials :state="noCredentials" />
         </div>
       </GallerySection>
 
-      <GallerySection
-        title="Credential Editor · New"
-        note="A new credential: one empty secret field, kept always, so nothing says when it goes. Every input starts and ends at the same edges. A field’s name is made from its label and shown under it. Create Credential stays off until the name, the labels and the values are filled; a problem shows under its input once the input is left. Add Field adds a row, up to ten; a row’s ⋯ menu makes it secret or visible and deletes it, except the last."
-      >
-        <GalleryOverlayWell size="tall">
-          <Button v-if="!newCredentialEditor.open.value" size="md" @click="newCredentialEditor.open.value = true">Open</Button>
-          <CredentialDialog
-            :is-open="newCredentialEditor.open.value"
-            :overlay-store="appOverlayStore"
-            @close="newCredentialEditor.open.value = false"
-            @save="savedCredential($event)"
-          />
-        </GalleryOverlayWell>
-      </GallerySection>
 
-      <GallerySection
-        title="Profile Editor · Inherits"
-        note="A new profile: the parent’s model and no instructions of its own, its children may spawn. Create Profile stays off until the name and the description are filled. The model menu is the composer’s, with Parent’s Model at its top."
-      >
-        <GalleryOverlayWell size="tall">
-          <Button v-if="!inheritEditor.open.value" size="md" @click="inheritEditor.open.value = true">Open</Button>
-          <SubagentProfileDialog
-            :is-open="inheritEditor.open.value"
-            :overlay-store="appOverlayStore"
-            mode="create"
-            :profile="inheritEditor.draft"
-            :providers="demoProviders"
-            :models="composerModels"
-            :catalog-models="composerModels"
-            @close="inheritEditor.open.value = false"
-            @save="saved(inheritEditor, $event)"
-          />
-        </GalleryOverlayWell>
-      </GallerySection>
 
-      <GallerySection
-        title="Profile Editor · Own Instructions, Another Provider’s Model"
-        note="The explore profile: GPT-5 of OpenAI with Fast, while the conversations run on Anthropic, instructions added to Demi’s own, and no spawning."
-      >
-        <GalleryOverlayWell size="tall">
-          <Button v-if="!ownEditor.open.value" size="md" @click="ownEditor.open.value = true">Open</Button>
-          <SubagentProfileDialog
-            :is-open="ownEditor.open.value"
-            :overlay-store="appOverlayStore"
-            mode="edit"
-            :profile="ownEditor.draft"
-            :providers="demoProviders"
-            :models="composerModels"
-            :catalog-models="composerModels"
-            @close="ownEditor.open.value = false"
-            @save="saved(ownEditor, $event)"
-            @delete="deleted(ownEditor)"
-          />
-        </GalleryOverlayWell>
-      </GallerySection>
-
-      <GallerySection
-        title="Profile Editor · Own Context"
-        note="The scout profile on Claude Opus, whose 1M window offers a choice: its subagents use 500K while the user’s conversations on Opus keep their own limit. Default names the window that limit gives; the Context row leaves with Parent’s Model or a model under 500K."
-      >
-        <GalleryOverlayWell size="tall">
-          <Button v-if="!contextEditor.open.value" size="md" @click="contextEditor.open.value = true">Open</Button>
-          <SubagentProfileDialog
-            :is-open="contextEditor.open.value"
-            :overlay-store="appOverlayStore"
-            mode="edit"
-            :profile="contextEditor.draft"
-            :providers="demoProviders"
-            :models="composerModels"
-            :catalog-models="composerModels"
-            @close="contextEditor.open.value = false"
-            @save="saved(contextEditor, $event)"
-            @delete="deleted(contextEditor)"
-          />
-        </GalleryOverlayWell>
-      </GallerySection>
 
       <GallerySection
         title="Full · Narrow"

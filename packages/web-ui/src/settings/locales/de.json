@@ -99,6 +99,11 @@
   "archived": {
     "title": "Archiviert",
     "description": "Aus der Seitenleiste entfernte Chats.",
+    "count": "{count} Chat | {count} Chats",
+    "select": "Auswählen",
+    "selectAll": "Alle auswählen",
+    "selectLabel": "{title} auswählen",
+    "selected": "{count} ausgewählt",
     "search": "Archiv durchsuchen",
     "searchLabel": "Archivierte Chats durchsuchen",
     "loading": "Archivierte Chats werden geladen …",
@@ -139,6 +144,23 @@
     "add": "Weiterleitung hinzufügen",
     "loading": "Portweiterleitungen werden geladen …",
     "none": "Keine Portweiterleitungen",
+    "select": "Auswählen",
+    "selectAll": "Alle auswählen",
+    "selectLabel": "{name} auswählen",
+    "selected": "{count} ausgewählt",
+    "actions": "Aktionen",
+    "turnOn": "Einschalten",
+    "turnOff": "Ausschalten",
+    "delete": "Löschen …",
+    "deleteTitle": "{count} Weiterleitung löschen? | {count} Weiterleitungen löschen?",
+    "deleteBody": "Sie hört auf zu lauschen, und ihre offenen Verbindungen enden. | Sie hören auf zu lauschen, und ihre offenen Verbindungen enden.",
+    "deleteFailed": "Weiterleitungen konnten nicht gelöscht werden",
+    "choose": "Auswählen …",
+    "nameOf": "Name von {name}",
+    "portOf": "Port von {name}",
+    "listenOnOf": "Lausch-Host von {name}",
+    "connectToOf": "Ziel-Host von {name}",
+    "addressOf": "Adresse von {name}",
     "unknownHost": "Unbekannter Host",
     "state": {
       "off": "Aus",
@@ -250,7 +272,11 @@
     "signOutLabel": "{name} abmelden",
     "signOutTitle": "{name} abmelden?",
     "signOutAction": "Abmelden",
-    "signOutBody": "Seine geöffneten Seiten kehren zur Anmeldeseite zurück. Chats bleiben auf dem Server."
+    "signOutBody": "Seine geöffneten Seiten kehren zur Anmeldeseite zurück. Chats bleiben auf dem Server.",
+    "signOutOthers": "Andere Browser abmelden …",
+    "noOthers": "Kein anderer Browser ist angemeldet.",
+    "signOutOthersTitle": "{count} anderen Browser abmelden? | {count} andere Browser abmelden?",
+    "signOutOthersBody": "Ihre geöffneten Seiten kehren zur Anmeldeseite zurück. Dieser Browser bleibt angemeldet, und Chats bleiben auf dem Server."
   },
   "instructions": {
     "title": "Anweisungen",
@@ -398,6 +424,7 @@
       "keywords": "Update,Upgrade,Version,Release,Canary,Beta,Aktualisierung"
     }
   },
+  "andMore": "{names} und {count} weitere",
   "changeEmail": {
     "title": "E-Mail-Adresse ändern",
     "formHint": "Du meldest dich ab jetzt mit der neuen Adresse an.",
@@ -421,11 +448,6 @@
     "confirm": "Neues Passwort bestätigen",
     "unchanged": "Das ist dein aktuelles Passwort.",
     "done": "Passwort geändert"
-  },
-  "changeRole": {
-    "title": "Rolle ändern",
-    "current": "Die Rolle von {name} ist {role}.",
-    "role": "Rolle"
   },
   "cloudStorage": {
     "title": "Cloud-Speicher",
@@ -454,7 +476,34 @@
   "users": {
     "title": "Benutzer",
     "description": "Alle, die sich an diesem Server anmelden können.",
-    "accounts": "Konten",
+    "general": "Allgemeine Einstellungen",
+    "accountsCount": "Konten · {count}",
+    "search": "Suchen",
+    "searchLabel": "Benutzer durchsuchen",
+    "noMatch": "Kein Konto passt zu „{query}“.",
+    "role": "Rolle",
+    "cloudStorage": "Cloud-Speicher",
+    "cloudStorageDescription": "Die Festplatten ihrer Cloud.",
+    "storageSizes": "{system} GB · {home} GB",
+    "signIn": "Anmeldung",
+    "signInCode": "Anmeldecode",
+    "signInCodeDescription": "Meldet sie ohne Passwort auf einem neuen Gerät an.",
+    "showCode": "Code anzeigen …",
+    "password": "Passwort",
+    "passwordDescription": "Erstellt ein neues Passwort; ihre Sitzungen bleiben bestehen.",
+    "resetShort": "Zurücksetzen …",
+    "sessions": "Sitzungen",
+    "sessionsDescription": "Beendet jede ihrer Sitzungen auf jedem Gerät.",
+    "disableAccount": "Konto deaktivieren",
+    "disableDescription": "Sie können sich nicht mehr anmelden; nichts von ihnen wird entfernt.",
+    "disableShort": "Deaktivieren …",
+    "enableAccount": "Konto aktivieren",
+    "enableDescription": "Sie können sich wieder anmelden.",
+    "enable": "Aktivieren",
+    "roleChange": {
+      "title": "Rolle von {name} zu {role} ändern?",
+      "action": "Rolle ändern"
+    },
     "sharing": {
       "group": "Modellanbieter",
       "label": "Anbieter",
@@ -480,16 +529,8 @@
     "choosesPassword": "Hat noch kein Passwort gewählt",
     "lastActive": "Zuletzt aktiv",
     "neverSignedIn": "Noch nicht angemeldet",
-    "actions": "Aktionen",
-    "actionsFor": "Aktionen für {name}",
     "action": {
-      "resetPassword": "Passwort zurücksetzen …",
-      "changeRole": "Rolle ändern …",
-      "cloudStorage": "Cloud-Speicher …",
-      "signInCode": "Anmeldecode …",
-      "signOutEverywhere": "Überall abmelden …",
-      "disable": "Konto deaktivieren …",
-      "enable": "Konto aktivieren"
+      "signOutEverywhere": "Überall abmelden …"
     },
     "confirm": {
       "add": "Bestätige deine Identität, um ein Konto hinzuzufügen.",
@@ -514,7 +555,7 @@
       "title": "Konto von {name} deaktivieren?",
       "action": "Konto deaktivieren",
       "body": "{name} wird überall abgemeldet und kann sich nicht anmelden. Die Cloud stoppt, und die Geräte werden getrennt.",
-      "note": "Nichts wird entfernt. „Konto aktivieren“ stellt den Zugang wieder her."
+      "note": "Nichts wird entfernt. „Aktivieren“ stellt den Zugang wieder her."
     }
   },
   "cloudNetwork": {
@@ -526,7 +567,7 @@
     "addresses": "Adressen",
     "addressesDescription": "Clouds erreichen jede aufgeführte Adresse oder jedes Netzwerk: auf allen Ports oder nur auf dem dahinter angegebenen Port.",
     "add": "Adresse hinzufügen",
-    "placeholder": "Füge eine Adresse hinzu, etwa 10.20.0.0/16 oder 10.20.0.7:22",
+    "placeholder": "Füge Adressen hinzu, etwa 10.20.0.0/16 oder 10.20.0.7:22",
     "remove": "Entfernen",
     "empty": "Noch keine Adressen.",
     "problems": {
@@ -554,37 +595,70 @@
   },
   "credentials": {
     "title": "Zugangsdaten",
-    "yours": "Deine Zugangsdaten",
-    "new": "Neue Zugangsdaten …",
-    "secret": "Geheim",
-    "visible": "Sichtbar",
-    "keptUntil": "Behalten bis",
-    "always": "Immer",
-    "lastUsed": "Zuletzt verwendet",
-    "never": "Nie",
-    "delete": "Löschen …",
-    "deleteLabel": "{name} löschen",
-    "none": "Keine Zugangsdaten",
-    "saveFailed": "Zugangsdaten konnten nicht gespeichert werden",
-    "deleteFailed": "Zugangsdaten konnten nicht gelöscht werden",
-    "deleteTitle": "„{name}“ löschen?",
-    "deleteBody": "Agenten können sie in keinem Chat mehr lesen. Dies kann nicht widerrufen werden."
-  },
-  "credentialDialog": {
+    "count": "1 Zugangsdatensatz | {count} Zugangsdatensätze",
+    "matches": "{shown} von {count}",
+    "selected": "{count} ausgewählt",
+    "sortBy": "Sortieren nach",
+    "sorts": {
+      "name": "Name",
+      "recent": "Zuletzt verwendet",
+      "stale": "Am längsten nicht verwendet",
+      "added": "Hinzugefügt am"
+    },
+    "groups": {
+      "today": "Heute",
+      "week": "Diese Woche",
+      "month": "Diesen Monat",
+      "year": "Früher in diesem Jahr",
+      "older": "Älter",
+      "never": "Nie verwendet"
+    },
     "new": "Neue Zugangsdaten",
+    "newName": "Neue Zugangsdaten",
+    "newNameNumbered": "Neue Zugangsdaten ({n})",
+    "password": "Passwort",
+    "search": "Suchen",
+    "searchLabel": "Zugangsdaten durchsuchen",
+    "noMatch": "Keine Zugangsdaten passen zu „{query}“.",
+    "none": "Keine Zugangsdaten",
+    "noneSelected": "Keine Zugangsdaten ausgewählt",
+    "several": "{count} Zugangsdatensätze ausgewählt",
+    "select": "Auswählen",
+    "deleteShort": "Löschen",
+    "deleteSeveral": "{count} Zugangsdatensätze löschen …",
     "name": "Name",
+    "nameMissing": "Gib einen Namen ein.",
     "note": "Notiz",
-    "notePlaceholder": "Warum ein Agent sie braucht",
+    "noteDescription": "Wofür Agenten sie lesen.",
     "fields": "Felder",
     "addField": "Feld hinzufügen",
-    "labelPlaceholder": "API-Schlüssel",
-    "labelOf": "Bezeichnung von Feld {n}",
-    "needsField": "Zugangsdaten brauchen ein Feld.",
-    "deleteField": "Feld löschen",
-    "actions": "Aktionen",
-    "fieldActions": "Aktionen für Feld {n}",
-    "valueOf": "Wert von Feld {n}",
-    "create": "Zugangsdaten erstellen"
+    "visibleField": "Sichtbares Feld",
+    "secretField": "Geheimes Feld",
+    "fieldName": "Feld {n}",
+    "fieldLabel": "Feldname",
+    "labelMissing": "Gib einen Namen für das Feld ein.",
+    "secret": "Geheim",
+    "missing": "Fehlt",
+    "removeField": "Feld entfernen",
+    "removeFieldLabel": "{label} entfernen",
+    "kept": "Behalten",
+    "keeps": {
+      "1h": "1 Stunde",
+      "1d": "1 Tag",
+      "30d": "30 Tage",
+      "always": "Bis du sie entfernst"
+    },
+    "keptUntil": "Bis {date}",
+    "lastUsed": "Zuletzt verwendet",
+    "never": "Nie",
+    "added": "Hinzugefügt",
+    "delete": "Löschen …",
+    "deleteLabel": "{name} löschen",
+    "deleteTitle": "„{name}“ löschen?",
+    "deleteSeveralTitle": "{count} Zugangsdatensätze löschen?",
+    "deleteBody": "Agenten können sie in keinem Chat mehr lesen. Dies kann nicht widerrufen werden. | Agenten können sie in keinem Chat mehr lesen. Dies kann nicht widerrufen werden.",
+    "saveFailed": "Zugangsdaten konnten nicht gespeichert werden",
+    "deleteFailed": "Zugangsdaten konnten nicht gelöscht werden"
   },
   "credentialFields": {
     "required": "Erforderlich"
@@ -878,7 +952,8 @@
     "adding": "Wird hinzugefügt …",
     "list": "Modelle",
     "search": "Suchen",
-    "custom": "Eigenes"
+    "custom": "Eigenes",
+    "several": "{count} Modelle hinzufügen"
   },
   "modelDialog": {
     "edit": "Modell bearbeiten",

@@ -99,6 +99,11 @@
   "archived": {
     "title": "보관됨",
     "description": "사이드바에서 제거한 대화입니다.",
+    "count": "대화 {count}개",
+    "select": "선택",
+    "selectAll": "모두 선택",
+    "selectLabel": "“{title}” 선택",
+    "selected": "{count}개 선택됨",
     "search": "보관된 항목 검색",
     "searchLabel": "보관된 대화 검색",
     "loading": "보관된 대화를 불러오는 중…",
@@ -139,6 +144,23 @@
     "add": "전달 추가",
     "loading": "포트 전달 불러오는 중…",
     "none": "포트 전달 없음",
+    "select": "선택",
+    "selectAll": "모두 선택",
+    "selectLabel": "“{name}” 선택",
+    "selected": "{count}개 선택됨",
+    "actions": "작업",
+    "turnOn": "켜기",
+    "turnOff": "끄기",
+    "delete": "삭제…",
+    "deleteTitle": "전달 {count}개를 삭제하시겠습니까?",
+    "deleteBody": "수신을 멈추고 열린 연결이 종료됩니다.",
+    "deleteFailed": "전달을 삭제할 수 없음",
+    "choose": "선택…",
+    "nameOf": "“{name}”의 이름",
+    "portOf": "“{name}”의 포트",
+    "listenOnOf": "“{name}”의 수신 호스트",
+    "connectToOf": "“{name}”의 연결 대상 호스트",
+    "addressOf": "“{name}”의 주소",
     "unknownHost": "알 수 없는 호스트",
     "state": {
       "off": "끔",
@@ -250,7 +272,11 @@
     "signOutLabel": "“{name}” 로그아웃",
     "signOutTitle": "“{name}” 브라우저를 로그아웃하시겠습니까?",
     "signOutAction": "로그아웃",
-    "signOutBody": "열려 있는 페이지는 로그인 페이지로 돌아갑니다. 대화는 서버에 남습니다."
+    "signOutBody": "열려 있는 페이지는 로그인 페이지로 돌아갑니다. 대화는 서버에 남습니다.",
+    "signOutOthers": "다른 브라우저 로그아웃…",
+    "noOthers": "로그인한 다른 브라우저가 없습니다.",
+    "signOutOthersTitle": "다른 브라우저 {count}개를 로그아웃하시겠습니까?",
+    "signOutOthersBody": "열려 있는 페이지는 로그인 페이지로 돌아갑니다. 이 브라우저는 로그인 상태를 유지하며, 대화는 서버에 남습니다."
   },
   "instructions": {
     "title": "지침",
@@ -398,6 +424,7 @@
       "keywords": "업데이트,업그레이드,버전,릴리스,canary,beta,베타"
     }
   },
+  "andMore": "{names} 외 {count}개",
   "changeEmail": {
     "title": "이메일 변경",
     "formHint": "앞으로 새 주소로 로그인합니다.",
@@ -421,11 +448,6 @@
     "confirm": "새 비밀번호 확인",
     "unchanged": "현재 비밀번호와 같습니다.",
     "done": "비밀번호가 변경되었습니다"
-  },
-  "changeRole": {
-    "title": "역할 변경",
-    "current": "{name}의 역할은 {role}입니다.",
-    "role": "역할"
   },
   "cloudStorage": {
     "title": "클라우드 저장 공간",
@@ -454,7 +476,34 @@
   "users": {
     "title": "사용자",
     "description": "이 서버에 로그인할 수 있는 모든 사람입니다.",
-    "accounts": "계정",
+    "general": "일반 설정",
+    "accountsCount": "계정 · {count}",
+    "search": "검색",
+    "searchLabel": "사용자 검색",
+    "noMatch": "“{query}”와(과) 일치하는 계정이 없습니다.",
+    "role": "역할",
+    "cloudStorage": "클라우드 저장 공간",
+    "cloudStorageDescription": "이 사용자의 클라우드 디스크입니다.",
+    "storageSizes": "{system}GB · {home}GB",
+    "signIn": "로그인",
+    "signInCode": "로그인 코드",
+    "signInCodeDescription": "비밀번호 없이 새 기기에서 로그인하게 합니다.",
+    "showCode": "코드 보기…",
+    "password": "비밀번호",
+    "passwordDescription": "새 비밀번호를 만듭니다. 세션은 유지됩니다.",
+    "resetShort": "재설정…",
+    "sessions": "세션",
+    "sessionsDescription": "모든 기기에서 이 사용자의 모든 세션을 종료합니다.",
+    "disableAccount": "계정 비활성화",
+    "disableDescription": "더 이상 로그인할 수 없으며, 이 사용자의 항목은 삭제되지 않습니다.",
+    "disableShort": "비활성화…",
+    "enableAccount": "계정 활성화",
+    "enableDescription": "다시 로그인할 수 있습니다.",
+    "enable": "활성화",
+    "roleChange": {
+      "title": "{name}님의 역할을 {role}(으)로 변경하시겠습니까?",
+      "action": "역할 변경"
+    },
     "sharing": {
       "group": "모델 제공업체",
       "label": "제공업체",
@@ -480,16 +529,8 @@
     "choosesPassword": "비밀번호 미설정",
     "lastActive": "마지막 활동",
     "neverSignedIn": "아직 로그인하지 않음",
-    "actions": "작업",
-    "actionsFor": "“{name}”에 대한 작업",
     "action": {
-      "resetPassword": "비밀번호 재설정…",
-      "changeRole": "역할 변경…",
-      "cloudStorage": "클라우드 저장 공간…",
-      "signInCode": "로그인 코드…",
-      "signOutEverywhere": "모든 곳에서 로그아웃…",
-      "disable": "계정 비활성화…",
-      "enable": "계정 활성화"
+      "signOutEverywhere": "모든 곳에서 로그아웃…"
     },
     "confirm": {
       "add": "계정을 추가하려면 본인 확인이 필요합니다.",
@@ -514,7 +555,7 @@
       "title": "{name}님의 계정을 비활성화하시겠습니까?",
       "action": "계정 비활성화",
       "body": "{name}님은 모든 곳에서 로그아웃되며 로그인할 수 없습니다. 클라우드가 중지되고 기기 연결이 끊어집니다.",
-      "note": "삭제되는 항목은 없습니다. “계정 활성화”를 선택하면 다시 사용할 수 있습니다."
+      "note": "삭제되는 항목은 없습니다. “활성화”를 선택하면 다시 사용할 수 있습니다."
     }
   },
   "cloudNetwork": {
@@ -554,37 +595,70 @@
   },
   "credentials": {
     "title": "자격 증명",
-    "yours": "내 자격 증명",
-    "new": "새 자격 증명…",
-    "secret": "비밀 값",
-    "visible": "표시됨",
-    "keptUntil": "저장 기간",
-    "always": "항상",
-    "lastUsed": "마지막 사용",
-    "never": "안 함",
-    "delete": "삭제…",
-    "deleteLabel": "“{name}” 삭제",
-    "none": "자격 증명 없음",
-    "saveFailed": "자격 증명을 저장할 수 없습니다",
-    "deleteFailed": "자격 증명을 삭제할 수 없습니다",
-    "deleteTitle": "“{name}” 자격 증명을 삭제하시겠습니까?",
-    "deleteBody": "에이전트가 더 이상 어떤 대화에서도 이 자격 증명을 읽을 수 없습니다. 이 작업은 되돌릴 수 없습니다."
-  },
-  "credentialDialog": {
+    "count": "자격 증명 {count}개",
+    "matches": "{count}개 중 {shown}개",
+    "selected": "{count}개 선택됨",
+    "sortBy": "정렬 기준",
+    "sorts": {
+      "name": "이름",
+      "recent": "최근 사용",
+      "stale": "가장 오래전 사용",
+      "added": "추가한 날짜"
+    },
+    "groups": {
+      "today": "오늘",
+      "week": "이번 주",
+      "month": "이번 달",
+      "year": "올해 초",
+      "older": "이전",
+      "never": "사용한 적 없음"
+    },
     "new": "새 자격 증명",
+    "newName": "새 자격 증명",
+    "newNameNumbered": "새 자격 증명 ({n})",
+    "password": "비밀번호",
+    "search": "검색",
+    "searchLabel": "자격 증명 검색",
+    "noMatch": "“{query}”와(과) 일치하는 자격 증명이 없습니다.",
+    "none": "자격 증명 없음",
+    "noneSelected": "선택한 자격 증명 없음",
+    "several": "자격 증명 {count}개 선택됨",
+    "select": "선택",
+    "deleteShort": "삭제",
+    "deleteSeveral": "자격 증명 {count}개 삭제…",
     "name": "이름",
+    "nameMissing": "이름을 입력하십시오.",
     "note": "메모",
-    "notePlaceholder": "에이전트가 이 자격 증명이 필요한 이유",
+    "noteDescription": "에이전트가 무엇을 위해 읽는지 적습니다.",
     "fields": "필드",
     "addField": "필드 추가",
-    "labelPlaceholder": "API 키",
-    "labelOf": "필드 {n}의 레이블",
-    "needsField": "자격 증명에는 필드가 하나 이상 필요합니다.",
-    "deleteField": "필드 삭제",
-    "actions": "작업",
-    "fieldActions": "필드 {n} 작업",
-    "valueOf": "필드 {n}의 값",
-    "create": "자격 증명 만들기"
+    "visibleField": "표시 필드",
+    "secretField": "비밀 필드",
+    "fieldName": "필드 {n}",
+    "fieldLabel": "필드 이름",
+    "labelMissing": "필드 이름을 입력하십시오.",
+    "secret": "비밀 값",
+    "missing": "없음",
+    "removeField": "필드 제거",
+    "removeFieldLabel": "“{label}” 제거",
+    "kept": "저장 기간",
+    "keeps": {
+      "1h": "1시간",
+      "1d": "1일",
+      "30d": "30일",
+      "always": "직접 제거할 때까지"
+    },
+    "keptUntil": "{date}까지",
+    "lastUsed": "마지막 사용",
+    "never": "안 함",
+    "added": "추가한 날짜",
+    "delete": "삭제…",
+    "deleteLabel": "“{name}” 삭제",
+    "deleteTitle": "“{name}” 자격 증명을 삭제하시겠습니까?",
+    "deleteSeveralTitle": "자격 증명 {count}개를 삭제하시겠습니까?",
+    "deleteBody": "삭제한 자격 증명은 어떤 대화에서도 에이전트가 읽을 수 없습니다. 이 작업은 되돌릴 수 없습니다.",
+    "saveFailed": "자격 증명을 저장할 수 없습니다",
+    "deleteFailed": "자격 증명을 삭제할 수 없습니다"
   },
   "credentialFields": {
     "required": "필수"
@@ -878,7 +952,8 @@
     "adding": "추가 중…",
     "list": "모델",
     "search": "검색",
-    "custom": "사용자 지정"
+    "custom": "사용자 지정",
+    "several": "모델 {count}개 추가"
   },
   "modelDialog": {
     "edit": "모델 편집",

@@ -10,13 +10,6 @@ const product = useProduct()
 const address = useSettingsAddress()
 const settings = usePortForwardSettings()
 
-/** Add Forward: the new forward's page opens once it exists. */
-async function add(): Promise<void> {
-  const id = await settings.add()
-  if (id)
-    await address.show('portForwards', id)
-}
-
 /** The forward whose page the address opens. */
 const shown = computed(() => (address.section.value === 'portForwards' ? address.detail.value : null))
 // A page of a forward that went, removed here or elsewhere, gives way to the list.
@@ -36,7 +29,7 @@ watch(
     :shown="shown"
     :load="product.listLoad('port_forwards')"
     :overlay-store="appOverlayStore"
-    :on-add="add"
+    :on-add="settings.add"
     :on-change="settings.change"
     :on-try-again="settings.tryAgain"
     :on-remove="settings.remove"

@@ -265,9 +265,9 @@ function switchPlugin(id: string, enabled: boolean) {
   }
 }
 
-/** A restored or deleted conversation leaves the archived list, as the product's does. */
-function restoreArchived(id: string) {
-  s.value.archived = s.value.archived.filter((entry) => entry.id !== id)
+/** Restored or deleted conversations leave the archived list, as the product's do. */
+function dropArchived(ids: string[]) {
+  s.value.archived = s.value.archived.filter((entry) => !ids.includes(entry.id))
 }
 
 /** The paired devices, whose controls act on them as the product's do. */
@@ -373,8 +373,9 @@ function resetShortcuts() {
     :conversations="s.archived"
     :overlay-store="appOverlayStore"
     @open="productWould('Open the Conversation Read-Only')"
-    @restore="restoreArchived"
-    @delete="restoreArchived"
+    @restore="(id) => { dropArchived([id]); productWould('Open the Restored Conversation') }"
+    @restore-checked="dropArchived"
+    @delete="dropArchived"
   />
 
   <SettingsDevices

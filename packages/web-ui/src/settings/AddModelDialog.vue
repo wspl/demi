@@ -22,6 +22,10 @@ import { formatTokens } from '../ui/token-count'
  * vendor and context window. Choosing a row adds the model at once, filled from
  * the match, or with the typed text as its id and name for *Custom*. The host
  * then opens it in Edit Model, the dialog every model opens.
+ *
+ * Several IDs, pasted from a server's model list or typed apart by commas or
+ * spaces, make *Custom* add them all at once, each with its ID as its name; the
+ * dialog then closes without opening any of them.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -42,9 +46,32 @@ const emit = defineEmits<{
   close: []
   /** The model chosen, to add as it is. */
   add: [model: SettingsModelDraft]
+  /** Several custom models typed or pasted at once, to add as they are. */
+  addSeveral: [models: SettingsModelDraft[]]
 }>()
 
 const text = ref('')
+const field = ref<{ show(): void } | null>(null)
+
+/** The IDs the field holds, split at lines, spaces and commas. */
+const ids = computed(() => [...new Set(text.value.split(/[\s,]+/).filter(Boolean))])
+
+/** A paste of several lines keeps each line an ID, which a single-line field would join. */
+function paste(event: ClipboardEvent): void {
+  const lines = (event.clipboardData?.getData('text') ?? '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  if (lines.length < 2) {
+    return
+  }
+  event.preventDefault()
+  text.value = lines.join(', ')
+  // The paste it replaced would have opened the list; this one does it itself.
+  field.value?.show()
+}
+
+function customDraft(id: string): SettingsModelDraft {
+  return { id, name: id, contextWindow: null, outputLimit: null, efforts: [], extensions: [], fastTier: null }
+}
+
 // Each opening starts with the same text, empty in the product.
 watch(
   () => props.isOpen,
@@ -77,16 +104,11 @@ function choose(choice: Choice): void {
     emit('add', { ...choice.match.model, efforts: [...choice.match.model.efforts] })
     return
   }
-  const typed = text.value.trim()
-  emit('add', {
-    id: typed,
-    name: typed,
-    contextWindow: null,
-    outputLimit: null,
-    efforts: [],
-    extensions: [],
-    fastTier: null,
-  })
+  if (ids.value.length > 1) {
+    emit('addSeveral', ids.value.map(customDraft))
+    return
+  }
+  emit('add', customDraft(text.value.trim()))
 }
 </script>
 
@@ -108,6 +130,7 @@ function choose(choice: Choice): void {
             ><IndeterminateSpinner :size="12" /> {{ t('addModel.adding') }}</span
           >
           <Autocomplete
+            ref="field"
             v-model="text"
             :items="choices"
             :item-key="choiceKey"
@@ -117,10 +140,11 @@ function choose(choice: Choice): void {
             :disabled="adding"
             class="w-80 max-w-full"
             @choose="choose"
+            @paste="paste"
           >
             <template #item="{ item }">
               <span v-if="item.kind === 'custom'" class="flex min-w-0 flex-1 items-center gap-2">
-                <span class="shrink-0">{{ t('addModel.custom') }}</span>
+                <span class="shrink-0">{{ ids.length > 1 ? t('addModel.several', { count: ids.length }) : t('addModel.custom') }}</span>
                 <span class="min-w-0 flex-1 truncate text-fg-subtle">{{ text.trim() }}</span>
               </span>
               <span v-else class="flex min-w-0 flex-1 items-center gap-2">

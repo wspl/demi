@@ -98,6 +98,30 @@ export function forwardState(forward: SettingsPortForward, hosts: readonly Forwa
 }
 
 /**
+ * How a forward fares, for its dot: off; failed, its port taken; waiting,
+ * its Connect To missing or a Host offline; carrying connections; or idle,
+ * listening with none or starting.
+ */
+export type ForwardTone = 'off' | 'failed' | 'waiting' | 'carrying' | 'idle'
+
+export function forwardTone(forward: SettingsPortForward, hosts: readonly ForwardHost[]): ForwardTone {
+  if (!forward.enabled) {
+    return 'off'
+  }
+  const away = [forward.listenDevice, forward.connectDevice].some(
+    (id) => id === null || hosts.find((host) => host.id === id)?.state !== 'online',
+  )
+  if (away) {
+    return 'waiting'
+  }
+  const state = forward.state
+  if (state?.kind === 'portInUse') {
+    return 'failed'
+  }
+  return state?.kind === 'listening' && state.direct + state.relay > 0 ? 'carrying' : 'idle'
+}
+
+/**
  * Why the forward's connections go through the relay, in the direct
  * channel's words; null while nothing failed or the forward does not listen.
  */

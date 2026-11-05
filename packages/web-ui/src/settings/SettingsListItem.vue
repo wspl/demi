@@ -10,12 +10,21 @@ import type { SentenceText } from '../ui/ui-text'
 
 /**
  * One entry in a SettingsSplit list: its mark (the `leading` slot), the name,
- * and a dot when its state matters. The selected entry reads as chosen only
- * beside its detail: a narrow split shows the list alone, to open from.
+ * a second line when the list needs one to tell its entries apart, and a dot
+ * when its state matters. The selected entry reads as chosen only beside its
+ * detail: a narrow split shows the list alone, to open from.
+ *
+ * `select` carries the click, whose ⌘ and Shift a list that selects several
+ * reads. On a phone, which has neither, such a list turns on `checking`: each
+ * entry shows a checkbox, checked while it is selected, and a tap toggles it.
  */
 defineProps<{
   label: string
+  /** The second line, cut with an ellipsis; an entry without one keeps the line's room. */
+  detail?: string
   selected?: boolean
+  /** The list is choosing several on a phone: the entry shows whether it is chosen. */
+  checking?: boolean
   /** A dot on the mark's corner. Omit it when there is nothing to say. */
   badge?: 'success' | 'warning' | 'danger' | 'attention'
   /** What the dot means, said when the pointer is over the mark. */
@@ -32,7 +41,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  select: []
+  select: [event: MouseEvent]
   remove: []
 }>()
 
@@ -44,16 +53,19 @@ const phone = usePhone()
     role="button"
     :aria-pressed="selected"
     tabindex="0"
-    class="group flex h-8 cursor-default select-none items-center gap-2 rounded-md px-1 phone:h-row phone:gap-3 transition-colors duration-200 ease-out"
+    class="group flex cursor-default select-none items-center gap-2 rounded-md phone:gap-3 transition-colors duration-200 ease-out"
     :class="[
-      selected ? 'hover:bg-hover wide:bg-active' : 'hover:bg-hover',
+      detail === undefined ? 'h-8 px-1 phone:h-row' : 'h-11 px-2 phone:h-14',
+      selected && checking ? 'bg-active' : selected ? 'hover:bg-hover wide:bg-active' : 'hover:bg-hover',
       muted ? 'opacity-60' : '',
     ]"
-    @click="emit('select')"
+    @click="emit('select', $event)"
     @keydown="pressOnKey"
     @keyup="pressOnKey"
   >
+    <span v-if="checking" class="checkbox-mark shrink-0" :data-state="selected ? 'checked' : 'unchecked'" aria-hidden="true" />
     <Tooltip
+      v-if="$slots.leading"
       tag="span"
       class="relative flex shrink-0 items-center"
       :content="badgeLabel ?? ''"
@@ -71,12 +83,16 @@ const phone = usePhone()
         }"
       />
     </Tooltip>
-    <span class="flex min-w-0 flex-1 flex-col leading-4">
+    <span class="flex min-w-0 flex-1 flex-col" :class="detail === undefined ? 'leading-4' : ''">
       <TruncatedText
         class="text-setting"
-        :class="selected ? 'text-fg wide:text-fg-emphasis' : 'text-fg'"
+        :class="[
+          detail === undefined ? '' : 'leading-5',
+          selected ? 'text-fg wide:text-fg-emphasis' : detail === undefined ? 'text-fg' : 'text-fg-emphasis',
+        ]"
         :text="label"
       />
+      <TruncatedText v-if="detail !== undefined" class="text-detail leading-4 text-fg-subtle" :text="detail" />
     </span>
     <span
       v-if="removable && !phone"

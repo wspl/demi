@@ -160,6 +160,11 @@ export function formatDate(date: string): string {
     .format(new Date(`${date}T00:00:00Z`))
 }
 
+/** A timestamp's day, without its year when it is `now`'s year: "Sep 2", "Sep 2, 2025". */
+export function formatShortDay(timestamp: string, now: Date = new Date()): string {
+  return day(new Date(timestamp), now)
+}
+
 /** A day in full: "October 7, 2026". */
 export function formatDay(timestamp: string): string {
   return intl(new Date(timestamp), { month: 'long', day: 'numeric', year: 'numeric' })

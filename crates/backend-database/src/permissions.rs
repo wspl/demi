@@ -199,6 +199,8 @@ pub enum CredentialRead {
     NoCredential,
     /// The credential has no field of that name, but these.
     NoField(Vec<CredentialField>),
+    /// The field has no value yet: the user fills it in Settings.
+    Missing,
 }
 
 /// A decided request whose message the backend still holds, with the owner
@@ -516,11 +518,9 @@ impl ControlService {
                 return Ok(CredentialRead::NoField(stored.fields));
             }
             let mut values = values_of(&transaction, &stored, &*seal)?;
-            let value = values.remove(&field).ok_or_else(|| StorageError::Corrupt {
-                table: credentials::TABLE,
-                column: "sealed",
-                reason: format!("the credential \u{201c}{name}\u{201d} holds no value of its field \u{201c}{field}\u{201d}"),
-            })?;
+            let Some(value) = values.remove(&field) else {
+                return Ok(CredentialRead::Missing);
+            };
             transaction.execute(
                 "UPDATE user_credentials SET last_used_at = ?2 WHERE id = ?1",
                 params![stored.id.as_str(), now.as_millisecond()],

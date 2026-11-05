@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { t as uiText } from '../locales/text'
 import { t } from './locales/text'
-import { computed, ref } from 'vue'
-import { Ellipsis, HardDrive, KeyRound, LogIn, LogOut, UserCheck, UserCog, UserX } from '@lucide/vue'
-import type { Component } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { Plus, Search, Settings2 } from '@lucide/vue'
 import { accountDisplayName } from '../auth/account-display'
 import HandoffDialog from '../auth/HandoffDialog.vue'
 import { signInCodeWording, userReadyWording, type HandoffHost, type HandoffWording } from '../auth/handoff'
@@ -16,52 +15,58 @@ import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
-import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tag from '../ui/Tag.vue'
+import TextInput from '../ui/TextInput.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import { ICON_PX } from '../ui/icon-metrics'
 import AddUserDialog from './AddUserDialog.vue'
-import ChangeUserRoleDialog from './ChangeUserRoleDialog.vue'
 import CloudStorageDialog from './CloudStorageDialog.vue'
 import FirstPasswordCard from './FirstPasswordCard.vue'
 import SettingsGroup from './SettingsGroup.vue'
+import SettingsListItem from './SettingsListItem.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
+import SettingsSplit from './SettingsSplit.vue'
 import type { SettingsCloudStorage, SettingsNewUser, SettingsUser, SettingsUsersHost, UserAddOutcome } from './types'
-import { roleLabel, assignableRoles, userActions, type UserAction } from './users'
+import { roleDescription, roleLabel, assignableRoles, userActions, type UserAction } from './users'
 
 /**
  * Settings › Users, which only the master and admins see, as macOS's Users &
- * Groups or a GitHub organization's People.
+ * Groups or a GitHub organization's People: a rail of the accounts beside the
+ * one selected.
  *
- * One row per account:
+ * - An entry is the account's avatar and name; a disabled one is muted. The
+ *   rail searches names and emails.
+ * - The detail shows the account's email, its role and when it was last
+ *   active, then, as rows, what the user may do to it: change its role or its
+ *   Cloud's disks, show a sign-in code, reset its password, sign it out
+ *   everywhere, and disable or enable it. A peer or a higher role shows its
+ *   facts alone; the user's own account offers its Cloud's disks alone.
+ * - *Disabled* marks a disabled account, *Hasn’t Chosen a Password* one still
+ *   to choose its own (new, or reset by an administrator) and *You* the
+ *   user's own.
  *
- * - It shows its nickname and email, its role and when it was last active.
- * - *Disabled* marks a disabled account, *Hasn’t Chosen a Password* one still to
- *   choose its own (new, or reset by an administrator) and *You* the user's own.
- * - A row's ··· menu offers what the user may do to that account and is absent
- *   where they may do nothing (a peer or a higher role). On their own row it
- *   offers Cloud Storage… alone.
- *
- * The menu's actions:
+ * The actions:
  *
  * - Add User… asks the email and the role; the server makes the first password.
  * - Reset Password… asks first and makes another.
  * - Both end on one last step: the password, with Copy and New Password, beside
- *   a sign-in code, which Sign-In Code… shows alone. Those three ask the
+ *   a sign-in code, which Show Code… shows alone. Those three ask the
  *   administrator's own confirmation, as Hand Off to Your Phone does, when the
  *   session has not been verified in the last five minutes.
- * - Change Role…, Cloud Storage…, Sign Out Everywhere… and Disable Account… ask
- *   for one thing or confirm, saying what happens.
- * - Enable Account does not ask, since it only undoes.
+ * - A role chosen, Cloud Storage…, Sign Out Everywhere… and Disable… ask for one
+ *   thing or confirm, saying what happens.
+ * - Enable does not ask, since it only undoes.
  *
  * The host carries each out and says itself a refusal it could not hide.
  *
- * Above the accounts, the master alone chooses whether every user uses their
- * own providers or the master's, as Open WebUI's administrator does in Admin ›
- * Connections. Either change asks first, saying what users lose and keep.
+ * The master alone chooses, under the rail's General Settings, whether every user uses
+ * their own providers or the master's, as Open WebUI's administrator does in
+ * Admin › Connections. Either change asks first, saying what users lose and
+ * keep.
  */
 const props = defineProps<{
   host: SettingsUsersHost
@@ -69,6 +74,34 @@ const props = defineProps<{
 }>()
 
 type Dialog = 'add' | 'reset' | 'role' | 'cloudStorage' | 'signOut' | 'disable' | 'sharing'
+
+/** `general` for the page's own settings; otherwise an account's id. */
+const shown = ref<string>(props.host.sharing ? 'general' : props.host.viewerId)
+/** A narrow page shows the detail in the rail's place once an entry opens it. */
+const detailOpen = ref(false)
+const query = ref('')
+
+const shownUser = computed(() => props.host.users.find((user) => user.id === shown.value) ?? null)
+const found = computed(() => {
+  const wanted = query.value.trim().toLowerCase()
+  return wanted
+    ? props.host.users.filter((user) => nameOf(user).toLowerCase().includes(wanted) || user.email.toLowerCase().includes(wanted))
+    : props.host.users
+})
+
+watch(
+  () => props.host.users.map((user) => user.id),
+  (ids) => {
+    if (shown.value !== 'general' && !ids.includes(shown.value)) {
+      shown.value = props.host.sharing ? 'general' : props.host.viewerId
+    }
+  },
+)
+
+function select(id: string): void {
+  shown.value = id
+  detailOpen.value = true
+}
 
 type SharingMode = 'shared' | 'isolated'
 
@@ -230,8 +263,20 @@ async function makeAnotherPassword(): Promise<boolean> {
   return true
 }
 
-async function changeRole(role: SettingsNewUser['role']): Promise<void> {
+/** The role a chosen menu item asks to give, kept while its question closes. */
+const askedRole = ref<SettingsNewUser['role']>('user')
+
+function askRole(user: SettingsUser, role: SettingsNewUser['role']): void {
+  if (role === user.role) {
+    return
+  }
+  askedRole.value = role
+  ask('role', user)
+}
+
+async function changeRole(): Promise<void> {
   const user = target.value
+  const role = askedRole.value
   if (user) {
     await carryOut('role', user, () => props.host.setRole(user.id, role))
   }
@@ -280,52 +325,8 @@ function showSignInCode(user: SettingsUser): void {
   readyOpen.value = true
 }
 
-/** Starts an account's action: a dialog that asks first, or, for Enable Account, the work itself, which the row shows. */
-function run(action: UserAction, user: SettingsUser): void | Promise<void> {
-  if (action === 'resetPassword') {
-    ask('reset', user)
-  } else if (action === 'changeRole') {
-    ask('role', user)
-  } else if (action === 'cloudStorage') {
-    ask('cloudStorage', user)
-  } else if (action === 'signInCode') {
-    showSignInCode(user)
-  } else if (action === 'signOutEverywhere') {
-    ask('signOut', user)
-  } else if (action === 'disable') {
-    ask('disable', user)
-  } else {
-    return props.host.setDisabled(user.id, false)
-  }
-}
-
-function actionLabel(action: UserAction): string {
-  switch (action) {
-    case 'resetPassword':
-      return t('users.action.resetPassword')
-    case 'changeRole':
-      return t('users.action.changeRole')
-    case 'cloudStorage':
-      return t('users.action.cloudStorage')
-    case 'signInCode':
-      return t('users.action.signInCode')
-    case 'signOutEverywhere':
-      return t('users.action.signOutEverywhere')
-    case 'disable':
-      return t('users.action.disable')
-    case 'enable':
-      return t('users.action.enable')
-  }
-}
-
-const ACTION_ICONS: Record<UserAction, Component> = {
-  resetPassword: KeyRound,
-  changeRole: UserCog,
-  cloudStorage: HardDrive,
-  signInCode: LogIn,
-  signOutEverywhere: LogOut,
-  disable: UserX,
-  enable: UserCheck,
+function can(user: SettingsUser, action: UserAction): boolean {
+  return actionsOf(user).includes(action)
 }
 
 const targetName = computed(() => (target.value ? nameOf(target.value) : ''))
@@ -336,85 +337,138 @@ function closeDialog(): void {
 </script>
 
 <template>
-  <SettingsPage :title="t('users.title')" :description="t('users.description')">
-    <SettingsGroup v-if="host.sharing" :title="t('users.sharing.group')">
-      <SettingsRow
-        :label="t('users.sharing.label')"
-        :description="host.sharing.subscriptions ? t('users.sharing.description') : t('users.sharing.descriptionApiKeys')"
-      >
-        <Segmented
-          :model-value="host.sharing.mode"
-          size="sm"
-          :options="sharingOptions"
-          :aria-label="t('users.sharing.label')"
-          @update:model-value="askSharing"
-        />
-      </SettingsRow>
-    </SettingsGroup>
-    <SettingsGroup :title="t('users.accounts')">
-      <template #actions>
-        <Button size="sm" @click="openAdd">{{ t('users.add') }}</Button>
+  <SettingsPage wide fill :title="t('users.title')" :description="t('users.description')">
+    <SettingsSplit v-model:detail-open="detailOpen" :detail-title="shownUser ? nameOf(shownUser) : t('users.general')">
+      <template #list>
+        <SettingsListItem v-if="host.sharing" :label="t('users.general')" :selected="shown === 'general'" @select="select('general')">
+          <template #leading>
+            <span class="flex size-6 items-center justify-center rounded-md bg-surface-float text-fg-muted ring-1 ring-line">
+              <Settings2 :size="ICON_PX.in24" />
+            </span>
+          </template>
+        </SettingsListItem>
+        <div class="flex h-8 select-none items-center pl-1" :class="host.sharing ? 'pt-2' : ''">
+          <span class="min-w-0 truncate text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle">
+            {{ t('users.accountsCount', { count: host.users.length }) }}
+          </span>
+          <Tooltip v-if="roles.length" :content="t('users.add')" class="ml-auto">
+            <IconButton :icon="Plus" size="xs" variant="ghost" :aria-label="t('users.add')" @click="openAdd" />
+          </Tooltip>
+        </div>
+        <div class="pb-1 pt-px">
+          <TextInput v-model="query" search size="sm" :placeholder="t('users.search')" :aria-label="t('users.searchLabel')">
+            <template #prefix><Search :size="ICON_PX.in24" /></template>
+          </TextInput>
+        </div>
+        <SettingsListItem
+          v-for="user in found"
+          :key="user.id"
+          :label="nameOf(user)"
+          :selected="shown === user.id"
+          :muted="user.disabled"
+          @select="select(user.id)"
+        >
+          <template #leading><Avatar :account-id="user.id" :name="user.nickname" :email="user.email" :size="24" /></template>
+        </SettingsListItem>
+        <p v-if="!found.length" class="select-none px-1 py-1 text-xs text-fg-subtle">
+          {{ t('users.noMatch', { query: query.trim() }) }}
+        </p>
       </template>
-      <SettingsRow
-        v-for="user in host.users"
-        :key="user.id"
-        :label="nameOf(user)"
-        :muted="user.disabled"
-        :target="userTarget(user)"
-        center-leading
-      >
-        <template #leading>
-          <Avatar :account-id="user.id" :name="user.nickname" :email="user.email" :size="32" />
-        </template>
-        <template v-if="user.id === host.viewerId || user.disabled || user.choosesPassword" #tags>
-          <Tag v-if="user.id === host.viewerId">{{ t('users.you') }}</Tag>
-          <Tag v-if="user.disabled" tone="warning">{{ t('users.disabled') }}</Tag>
-          <Tag v-if="user.choosesPassword">{{ t('users.choosesPassword') }}</Tag>
-        </template>
-        <template #description>
-          <!-- On a narrow page the email has a line of its own, so no separator dangles at a line's end. -->
-          <div class="flex flex-wrap gap-x-1.5">
-            <template v-if="user.nickname.trim()">
-              <span class="basis-full break-all @md:basis-auto">{{ user.email }}</span>
-              <span aria-hidden="true" class="hidden @md:inline">·</span>
-            </template>
-            <span>{{ roleLabel(user.role) }}</span>
-            <span aria-hidden="true">·</span>
-            <span v-if="user.lastActiveAt">{{ t('users.lastActive') }} <RelativeTime :timestamp="user.lastActiveAt" /></span>
-            <span v-else>{{ t('users.neverSignedIn') }}</span>
-          </div>
-        </template>
-        <template v-if="actionsOf(user).length" #accessory>
-          <Dropdown :overlay-store="overlayStore">
-            <template #trigger="{ isOpen }">
-              <Tooltip :content="t('users.actions')">
-                <IconButton
-                  :icon="Ellipsis"
-                  size="sm"
-                  variant="ghost"
-                  :aria-label="t('users.actionsFor', { name: nameOf(user) })"
-                  :pressed="isOpen"
-                />
-              </Tooltip>
-            </template>
-            <template #content>
-              <Menu>
-                <template v-for="action in actionsOf(user)" :key="action">
-                  <MenuDivider v-if="action === 'signOutEverywhere'" />
-                  <MenuItem
-                    :icon="ACTION_ICONS[action]"
-                    :label="actionLabel(action)"
-                    :is-danger="action === 'disable'"
-                    :operation="onUser(action, user)"
-                    @select="run(action, user)"
-                  />
+
+      <template #detail>
+        <div v-if="shown === 'general' && host.sharing" class="flex flex-col gap-6">
+          <SettingsGroup>
+            <SettingsRow
+              :label="t('users.sharing.label')"
+              :description="host.sharing.subscriptions ? t('users.sharing.description') : t('users.sharing.descriptionApiKeys')"
+            >
+              <Segmented
+                :model-value="host.sharing.mode"
+                size="sm"
+                :options="sharingOptions"
+                :aria-label="t('users.sharing.label')"
+                @update:model-value="askSharing"
+              />
+            </SettingsRow>
+          </SettingsGroup>
+        </div>
+
+        <div v-else-if="shownUser" :key="shownUser.id" class="flex flex-col gap-6">
+          <!-- One height for every account, so the rows below stay put from one to the next;
+               the email line is left out where the name already is the email. -->
+          <header class="flex min-h-11 select-none items-center gap-3">
+            <Avatar :account-id="shownUser.id" :name="shownUser.nickname" :email="shownUser.email" :size="32" />
+            <span class="flex min-w-0 flex-col">
+              <span class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium text-fg-emphasis">
+                <span class="min-w-0 truncate">{{ nameOf(shownUser) }}</span>
+                <Tag v-if="shownUser.id === host.viewerId">{{ t('users.you') }}</Tag>
+                <Tag v-if="shownUser.disabled" tone="warning">{{ t('users.disabled') }}</Tag>
+                <Tag v-if="shownUser.choosesPassword">{{ t('users.choosesPassword') }}</Tag>
+              </span>
+              <span v-if="nameOf(shownUser) !== shownUser.email" class="min-w-0 truncate text-detail text-fg-subtle">{{ shownUser.email }}</span>
+            </span>
+          </header>
+          <SettingsGroup>
+            <SettingsRow :label="t('users.role')" :target="userTarget(shownUser)">
+              <Dropdown v-if="can(shownUser, 'changeRole')" :overlay-store="overlayStore" align="end" variant="default" size="sm" :trigger-label="t('users.role')">
+                <template #trigger>{{ roleLabel(shownUser.role) }}</template>
+                <template #content="{ close }">
+                  <Menu>
+                    <MenuItem
+                      v-for="role in roles"
+                      :key="role"
+                      :label="roleLabel(role)"
+                      choice
+                      :is-selected="shownUser!.role === role"
+                      @select="askRole(shownUser!, role); close()"
+                    />
+                  </Menu>
                 </template>
-              </Menu>
-            </template>
-          </Dropdown>
-        </template>
-      </SettingsRow>
-    </SettingsGroup>
+              </Dropdown>
+              <span v-else class="text-setting text-fg-muted">{{ roleLabel(shownUser.role) }}</span>
+            </SettingsRow>
+            <SettingsRow v-if="can(shownUser, 'cloudStorage')" :label="t('users.cloudStorage')" :description="t('users.cloudStorageDescription')">
+              <Button size="sm" @click="ask('cloudStorage', shownUser!)">
+                {{ t('users.storageSizes', { system: shownUser.cloudStorage.systemGb, home: shownUser.cloudStorage.homeGb }) }}
+              </Button>
+            </SettingsRow>
+            <SettingsRow :label="t('users.lastActive')">
+              <span class="text-setting text-fg-muted">
+                <RelativeTime v-if="shownUser.lastActiveAt" :timestamp="shownUser.lastActiveAt" />
+                <template v-else>{{ t('users.neverSignedIn') }}</template>
+              </span>
+            </SettingsRow>
+          </SettingsGroup>
+          <SettingsGroup
+            v-if="can(shownUser, 'signInCode') || can(shownUser, 'resetPassword') || can(shownUser, 'signOutEverywhere')"
+            :title="t('users.signIn')"
+          >
+            <SettingsRow v-if="can(shownUser, 'signInCode')" :label="t('users.signInCode')" :description="t('users.signInCodeDescription')">
+              <Button size="sm" @click="showSignInCode(shownUser!)">{{ t('users.showCode') }}</Button>
+            </SettingsRow>
+            <SettingsRow v-if="can(shownUser, 'resetPassword')" :label="t('users.password')" :description="t('users.passwordDescription')">
+              <Button size="sm" :operation="onUser('resetPassword', shownUser)" @click="ask('reset', shownUser!)">{{ t('users.resetShort') }}</Button>
+            </SettingsRow>
+            <SettingsRow v-if="can(shownUser, 'signOutEverywhere')" :label="t('users.sessions')" :description="t('users.sessionsDescription')">
+              <Button size="sm" :operation="onUser('signOutEverywhere', shownUser)" @click="ask('signOut', shownUser!)">{{ t('users.action.signOutEverywhere') }}</Button>
+            </SettingsRow>
+          </SettingsGroup>
+          <SettingsGroup v-if="can(shownUser, 'disable') || can(shownUser, 'enable')">
+            <SettingsRow
+              :label="can(shownUser, 'enable') ? t('users.enableAccount') : t('users.disableAccount')"
+              :description="can(shownUser, 'enable') ? t('users.enableDescription') : t('users.disableDescription')"
+            >
+              <Button v-if="can(shownUser, 'enable')" size="sm" :operation="onUser('enable', shownUser)" @click="host.setDisabled(shownUser!.id, false)">
+                {{ t('users.enable') }}
+              </Button>
+              <Button v-else size="sm" variant="danger" :operation="onUser('disable', shownUser)" @click="ask('disable', shownUser!)">
+                {{ t('users.disableShort') }}
+              </Button>
+            </SettingsRow>
+          </SettingsGroup>
+        </div>
+      </template>
+    </SettingsSplit>
   </SettingsPage>
   <AddUserDialog
     :is-open="open === 'add'"
@@ -426,16 +480,17 @@ function closeDialog(): void {
     @submit="add"
     @edit="addError = undefined"
   />
-  <ChangeUserRoleDialog
+  <ConfirmDialog
     :is-open="open === 'role'"
     :overlay-store="overlayStore"
-    :name="targetName"
-    :current="target?.role ?? 'user'"
-    :roles="roles"
+    :title="t('users.roleChange.title', { name: targetName, role: roleLabel(askedRole) })"
+    :action="t('users.roleChange.action')"
     :operation="onUser('changeRole', target)"
     @close="closeDialog"
-    @submit="changeRole"
-  />
+    @confirm="changeRole"
+  >
+    <p>{{ roleDescription(askedRole) }}</p>
+  </ConfirmDialog>
   <CloudStorageDialog
     :is-open="open === 'cloudStorage'"
     :overlay-store="overlayStore"

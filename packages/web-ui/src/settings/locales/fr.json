@@ -99,6 +99,11 @@
   "archived": {
     "title": "Archivées",
     "description": "Conversations retirées de la barre latérale.",
+    "count": "{count} conversation | {count} conversations",
+    "select": "Sélectionner",
+    "selectAll": "Tout sélectionner",
+    "selectLabel": "Sélectionner {title}",
+    "selected": "{count} sélectionnées",
     "search": "Rechercher dans les archives",
     "searchLabel": "Rechercher dans les conversations archivées",
     "loading": "Chargement des conversations archivées…",
@@ -139,6 +144,23 @@
     "add": "Ajouter une redirection",
     "loading": "Chargement des redirections de port…",
     "none": "Aucune redirection de port",
+    "select": "Sélectionner",
+    "selectAll": "Tout sélectionner",
+    "selectLabel": "Sélectionner {name}",
+    "selected": "{count} sélectionnées",
+    "actions": "Actions",
+    "turnOn": "Activer",
+    "turnOff": "Désactiver",
+    "delete": "Supprimer…",
+    "deleteTitle": "Supprimer {count} redirection ? | Supprimer {count} redirections ?",
+    "deleteBody": "Elle cesse d’écouter et ses connexions ouvertes se terminent. | Elles cessent d’écouter et leurs connexions ouvertes se terminent.",
+    "deleteFailed": "Impossible de supprimer les redirections",
+    "choose": "Choisir…",
+    "nameOf": "Nom de {name}",
+    "portOf": "Port de {name}",
+    "listenOnOf": "Hôte d’écoute de {name}",
+    "connectToOf": "Hôte de destination de {name}",
+    "addressOf": "Adresse de {name}",
     "unknownHost": "Hôte inconnu",
     "state": {
       "off": "Désactivée",
@@ -250,7 +272,11 @@
     "signOutLabel": "Déconnecter {name}",
     "signOutTitle": "Déconnecter {name} ?",
     "signOutAction": "Déconnecter",
-    "signOutBody": "Ses pages ouvertes reviennent à la page de connexion. Les conversations restent sur le serveur."
+    "signOutBody": "Ses pages ouvertes reviennent à la page de connexion. Les conversations restent sur le serveur.",
+    "signOutOthers": "Déconnecter les autres navigateurs…",
+    "noOthers": "Aucun autre navigateur n’est connecté.",
+    "signOutOthersTitle": "Déconnecter {count} autre navigateur ? | Déconnecter {count} autres navigateurs ?",
+    "signOutOthersBody": "Leurs pages ouvertes reviennent à la page de connexion. Ce navigateur reste connecté, et les conversations restent sur le serveur."
   },
   "instructions": {
     "title": "Instructions",
@@ -398,6 +424,7 @@
       "keywords": "mise à jour,mise à niveau,version,publication,canary,beta"
     }
   },
+  "andMore": "{names} et {count} autres",
   "changeEmail": {
     "title": "Modifier l’adresse e-mail",
     "formHint": "Vous vous connecterez désormais avec la nouvelle adresse.",
@@ -421,11 +448,6 @@
     "confirm": "Confirmer le nouveau mot de passe",
     "unchanged": "C’est votre mot de passe actuel.",
     "done": "Mot de passe modifié"
-  },
-  "changeRole": {
-    "title": "Modifier le rôle",
-    "current": "Le rôle de {name} est {role}.",
-    "role": "Rôle"
   },
   "cloudStorage": {
     "title": "Stockage cloud",
@@ -454,7 +476,34 @@
   "users": {
     "title": "Utilisateurs",
     "description": "Toutes les personnes qui peuvent se connecter à ce serveur.",
-    "accounts": "Comptes",
+    "general": "Paramètres généraux",
+    "accountsCount": "Comptes · {count}",
+    "search": "Rechercher",
+    "searchLabel": "Rechercher des utilisateurs",
+    "noMatch": "Aucun compte ne correspond à « {query} ».",
+    "role": "Rôle",
+    "cloudStorage": "Stockage cloud",
+    "cloudStorageDescription": "Les disques de son cloud.",
+    "storageSizes": "{system} Go · {home} Go",
+    "signIn": "Connexion",
+    "signInCode": "Code de connexion",
+    "signInCodeDescription": "Le connecte sur un nouvel appareil sans mot de passe.",
+    "showCode": "Afficher le code…",
+    "password": "Mot de passe",
+    "passwordDescription": "Crée un nouveau mot de passe ; ses sessions restent ouvertes.",
+    "resetShort": "Réinitialiser…",
+    "sessions": "Sessions",
+    "sessionsDescription": "Ferme toutes ses sessions, sur tous les appareils.",
+    "disableAccount": "Désactiver le compte",
+    "disableDescription": "Il ne peut plus se connecter ; rien de ce qui lui appartient n’est supprimé.",
+    "disableShort": "Désactiver…",
+    "enableAccount": "Activer le compte",
+    "enableDescription": "Il peut de nouveau se connecter.",
+    "enable": "Activer",
+    "roleChange": {
+      "title": "Changer le rôle de {name} en {role} ?",
+      "action": "Modifier le rôle"
+    },
     "sharing": {
       "group": "Fournisseurs de modèles",
       "label": "Fournisseurs",
@@ -480,16 +529,8 @@
     "choosesPassword": "N’a pas choisi de mot de passe",
     "lastActive": "Dernière activité",
     "neverSignedIn": "Pas encore connecté",
-    "actions": "Actions",
-    "actionsFor": "Actions pour {name}",
     "action": {
-      "resetPassword": "Réinitialiser le mot de passe…",
-      "changeRole": "Modifier le rôle…",
-      "cloudStorage": "Stockage cloud…",
-      "signInCode": "Code de connexion…",
-      "signOutEverywhere": "Déconnecter partout…",
-      "disable": "Désactiver le compte…",
-      "enable": "Activer le compte"
+      "signOutEverywhere": "Déconnecter partout…"
     },
     "confirm": {
       "add": "Confirmez votre identité pour ajouter un compte.",
@@ -514,7 +555,7 @@
       "title": "Désactiver le compte de {name} ?",
       "action": "Désactiver le compte",
       "body": "{name} est déconnecté partout et ne peut plus se connecter. Son cloud s’arrête et ses appareils se déconnectent.",
-      "note": "Rien n’est supprimé. Activer le compte rétablit l’accès."
+      "note": "Rien n’est supprimé. Activer rétablit l’accès."
     }
   },
   "cloudNetwork": {
@@ -526,7 +567,7 @@
     "addresses": "Adresses",
     "addressesDescription": "Les clouds atteignent chaque adresse ou réseau de la liste : sur tous les ports, ou seulement sur le port indiqué après.",
     "add": "Ajouter une adresse",
-    "placeholder": "Ajoutez une adresse, comme 10.20.0.0/16 ou 10.20.0.7:22",
+    "placeholder": "Ajoutez des adresses, comme 10.20.0.0/16 ou 10.20.0.7:22",
     "remove": "Supprimer",
     "empty": "Aucune adresse pour l’instant.",
     "problems": {
@@ -554,37 +595,70 @@
   },
   "credentials": {
     "title": "Identifiants",
-    "yours": "Vos identifiants",
-    "new": "Nouvel identifiant…",
-    "secret": "Secret",
-    "visible": "Visible",
-    "keptUntil": "Conservé jusqu’au",
-    "always": "Toujours",
-    "lastUsed": "Dernière utilisation",
-    "never": "Jamais",
-    "delete": "Supprimer…",
-    "deleteLabel": "Supprimer {name}",
-    "none": "Aucun identifiant",
-    "saveFailed": "Impossible d’enregistrer l’identifiant",
-    "deleteFailed": "Impossible de supprimer l’identifiant",
-    "deleteTitle": "Supprimer « {name} » ?",
-    "deleteBody": "Les agents ne peuvent plus le lire dans aucune conversation. Cette action est irréversible."
-  },
-  "credentialDialog": {
+    "count": "1 identifiant | {count} identifiants",
+    "matches": "{shown} sur {count}",
+    "selected": "{count} sélectionnés",
+    "sortBy": "Trier par",
+    "sorts": {
+      "name": "Nom",
+      "recent": "Utilisés récemment",
+      "stale": "Utilisés il y a le plus longtemps",
+      "added": "Date d’ajout"
+    },
+    "groups": {
+      "today": "Aujourd’hui",
+      "week": "Cette semaine",
+      "month": "Ce mois-ci",
+      "year": "Plus tôt cette année",
+      "older": "Plus anciens",
+      "never": "Jamais utilisés"
+    },
     "new": "Nouvel identifiant",
+    "newName": "Nouvel identifiant",
+    "newNameNumbered": "Nouvel identifiant ({n})",
+    "password": "Mot de passe",
+    "search": "Rechercher",
+    "searchLabel": "Rechercher des identifiants",
+    "noMatch": "Aucun identifiant ne correspond à « {query} ».",
+    "none": "Aucun identifiant",
+    "noneSelected": "Aucun identifiant sélectionné",
+    "several": "{count} identifiants sélectionnés",
+    "select": "Sélectionner",
+    "deleteShort": "Supprimer",
+    "deleteSeveral": "Supprimer {count} identifiants…",
     "name": "Nom",
+    "nameMissing": "Saisissez un nom.",
     "note": "Note",
-    "notePlaceholder": "Pourquoi un agent en a besoin",
+    "noteDescription": "Ce pour quoi les agents le lisent.",
     "fields": "Champs",
     "addField": "Ajouter un champ",
-    "labelPlaceholder": "Clé API",
-    "labelOf": "Libellé du champ {n}",
-    "needsField": "Un identifiant nécessite un champ.",
-    "deleteField": "Supprimer le champ",
-    "actions": "Actions",
-    "fieldActions": "Actions pour le champ {n}",
-    "valueOf": "Valeur du champ {n}",
-    "create": "Créer l’identifiant"
+    "visibleField": "Champ visible",
+    "secretField": "Champ secret",
+    "fieldName": "Champ {n}",
+    "fieldLabel": "Nom du champ",
+    "labelMissing": "Saisissez un nom pour le champ.",
+    "secret": "Secret",
+    "missing": "Manquant",
+    "removeField": "Retirer le champ",
+    "removeFieldLabel": "Retirer {label}",
+    "kept": "Conservé",
+    "keeps": {
+      "1h": "Pendant 1 heure",
+      "1d": "Pendant 1 jour",
+      "30d": "Pendant 30 jours",
+      "always": "Jusqu’à ce que vous le retiriez"
+    },
+    "keptUntil": "Jusqu’au {date}",
+    "lastUsed": "Dernière utilisation",
+    "never": "Jamais",
+    "added": "Ajouté le",
+    "delete": "Supprimer…",
+    "deleteLabel": "Supprimer {name}",
+    "deleteTitle": "Supprimer « {name} » ?",
+    "deleteSeveralTitle": "Supprimer {count} identifiants ?",
+    "deleteBody": "Les agents ne peuvent plus le lire dans aucune conversation. Cette action est irréversible. | Les agents ne peuvent plus les lire dans aucune conversation. Cette action est irréversible.",
+    "saveFailed": "Impossible d’enregistrer l’identifiant",
+    "deleteFailed": "Impossible de supprimer l’identifiant"
   },
   "credentialFields": {
     "required": "Obligatoire"
@@ -878,7 +952,8 @@
     "adding": "Ajout…",
     "list": "Modèles",
     "search": "Rechercher",
-    "custom": "Personnalisé"
+    "custom": "Personnalisé",
+    "several": "Ajouter {count} modèles"
   },
   "modelDialog": {
     "edit": "Modifier le modèle",

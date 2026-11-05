@@ -16,6 +16,10 @@ import { ICON_PX, useIconPx } from './icon-metrics'
  * - `ghost` is a quiet inline chip.
  * - `field` is a form control that fills its row and shows a value (an icon and a
  *   name) the way an input shows text.
+ * - `bare` is a field that reads as its text until used, as a cell of an
+ *   editable table does: the value in the field's text color, the chevron right
+ *   after it, and a fill only under the pointer or while open, around what it
+ *   holds.
  *
  * Each is as wide as what it holds unless it is made wider. Then the value stays
  * at the start and the chevron moves to the end, so a stretched button still
@@ -36,7 +40,7 @@ import { ICON_PX, useIconPx } from './icon-metrics'
  *
  * A choice with no icon of its own stays text.
  */
-export type DropdownVariant = 'default' | 'ghost' | 'field'
+export type DropdownVariant = 'default' | 'ghost' | 'field' | 'bare'
 export type DropdownSize = 'sm' | 'md'
 
 withDefaults(defineProps<{
@@ -104,6 +108,31 @@ const icons = useIconPx()
     <ChevronDown
       :size="icons.chip"
       class="ml-auto shrink-0 text-fg-subtle transition-transform duration-200 ease-out"
+      :class="isOpen ? 'rotate-180' : ''"
+    />
+  </span>
+  <span
+    v-else-if="variant === 'bare'"
+    role="button"
+    :aria-label="ariaLabel"
+    :tabindex="disabled ? undefined : 0"
+    @keydown="pressOnKey"
+    @keyup="pressOnKey"
+    class="inline-flex max-w-full min-w-0 cursor-default select-none items-center gap-1.5 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
+    :class="[
+      size === 'sm' ? 'h-6 phone:h-field' : 'h-7',
+      disabled
+        ? 'pointer-events-none cursor-not-allowed opacity-40'
+        : isOpen ? 'bg-active' : 'hover:bg-hover',
+    ]"
+  >
+    <ChoiceIcon v-if="icon || $slots.icon" :indicator="indicator" :indicator-label="indicatorLabel">
+      <slot name="icon"><component :is="icon" :size="ICON_PX.in28" /></slot>
+    </ChoiceIcon>
+    <span class="min-w-0 truncate"><slot /></span>
+    <ChevronDown
+      :size="icons.chip"
+      class="shrink-0 text-fg-subtle transition-transform duration-200 ease-out"
       :class="isOpen ? 'rotate-180' : ''"
     />
   </span>

@@ -15,6 +15,7 @@ const credentials = useCredentialSettings()
       :credentials="credentials.credentials"
       :overlay-store="appOverlayStore"
       :create-credential="credentials.createCredential"
+      :change-credential="credentials.changeCredential"
       :delete-credential="credentials.deleteCredential"
     />
   </AsyncRegion>

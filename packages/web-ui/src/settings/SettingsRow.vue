@@ -62,6 +62,9 @@ import type { SentenceText } from '../ui/ui-text'
  *   the name and its description, as System Settings centers a row's button on
  *   its text. Beside `detail`, which grows the text, they align with the name's
  *   line.
+ * - The `label` slot holds the name where the user edits it in place, such as
+ *   a credential's field: a bare input that reads as the name until used.
+ *   `label` still names the row.
  * - The `problem` slot holds what is wrong with the row's value, such as an
  *   `InlineError`. It takes a line of its own under the row, so the row grows
  *   when it shows and its controls stay where they were.
@@ -163,7 +166,7 @@ const working = provideRowTarget(() => props.target)
           class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 leading-5 phone:leading-[22px]"
           :class="inset ? 'text-setting-small text-fg-body' : 'text-setting text-fg'"
         >
-          <TruncatedText class="max-w-full shrink-0" wrap :text="label" />
+          <slot name="label"><TruncatedText class="max-w-full shrink-0" wrap :text="label" /></slot>
           <div v-if="$slots.tags || statuses?.length" class="flex min-h-5 min-w-0 flex-wrap items-center gap-1">
             <slot name="tags" />
             <Tooltip

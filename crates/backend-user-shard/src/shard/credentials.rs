@@ -1,6 +1,6 @@
 //! The user's credentials in their shard.
 //!
-//! - What Settings › Credentials lists, creates and deletes.
+//! - What Settings › Credentials lists, creates, changes and deletes.
 //! - The sealing of their values by the product's one owner of sealing.
 //! - The expiry of the ones kept for a while: one timer for the user's nearest
 //!   expiry, which each change of the credentials rearms. A removal past due,
@@ -13,12 +13,13 @@ use std::time::Duration;
 
 use demi_backend_database::StorageError;
 use demi_backend_database::credentials::{
-    CredentialRefusal, CredentialSeal, NewCredential as NewRecord, Saved, keep_until,
+    CredentialChange, CredentialRefusal, CredentialSeal, NewCredential as NewRecord, Saved,
+    keep_until,
 };
 use demi_backend_page_sync::Part;
 use demi_backend_providers::vault::seal::{Row, VaultKey};
 use demi_web_api_protocol::credentials::{
-    CredentialDto, CredentialField, NewCredential,
+    CredentialDto, CredentialField, CredentialPatch, NewCredential,
 };
 use demi_web_api_protocol::ids::{UserCredentialId, UserId};
 use tokio::sync::Notify;
@@ -81,7 +82,10 @@ impl Shard {
         let mut fields = Vec::with_capacity(new.fields.len());
         let mut values = std::collections::BTreeMap::new();
         for field in new.fields {
-            values.insert(field.name.clone(), field.value);
+            // An empty value is one not typed yet: the field is missing.
+            if !field.value.is_empty() {
+                values.insert(field.name.clone(), field.value);
+            }
             fields.push(CredentialField {
                 name: field.name,
                 label: field.label,
@@ -97,6 +101,26 @@ impl Shard {
         };
         let saved = control
             .create_user_credential(self.user().clone(), record, self.vault_seal())
+            .await??;
+        Ok(self.saved(saved))
+    }
+
+    /// `PATCH /credentials/:id`.
+    pub async fn change_credential(
+        &self,
+        id: UserCredentialId,
+        patch: CredentialPatch,
+    ) -> Result<CredentialDto, CredentialError> {
+        let control = &self.services().control;
+        let change = CredentialChange {
+            name: patch.name.map(|name| name.into_string()),
+            note: patch.note,
+            fields: patch.fields.map(|fields| fields.0),
+            values: patch.values,
+            keep_until: patch.keep.map(|keep| keep_until(control.now(), keep)).transpose()?,
+        };
+        let saved = control
+            .change_user_credential(self.user().clone(), id, change, self.vault_seal())
             .await??;
         Ok(self.saved(saved))
     }
