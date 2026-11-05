@@ -147,7 +147,7 @@
     "none": "No hay reenvíos de puertos",
     "select": "Seleccionar",
     "selectAll": "Seleccionar todo",
-    "selectLabel": "Seleccionar {name}",
+    "selectLabel": "Seleccionar {forward}",
     "selected": "{count} seleccionados",
     "actions": "Acciones",
     "turnOn": "Activar",
@@ -156,12 +156,10 @@
     "deleteTitle": "¿Eliminar {count} reenvío? | ¿Eliminar {count} reenvíos?",
     "deleteBody": "Deja de escuchar y sus conexiones abiertas terminan. | Dejan de escuchar y sus conexiones abiertas terminan.",
     "deleteFailed": "No se pudieron eliminar los reenvíos",
-    "choose": "Elegir…",
-    "nameOf": "Nombre de {name}",
-    "portOf": "Puerto de {name}",
-    "listenOnOf": "Host de escucha de {name}",
-    "connectToOf": "Host de destino de {name}",
-    "addressOf": "Dirección de {name}",
+    "portOf": "Puerto de {forward}",
+    "listenOnOf": "Host de escucha de {forward}",
+    "connectToOf": "Host de destino de {forward}",
+    "addressOf": "Dirección de {forward}",
     "unknownHost": "Host desconocido",
     "state": {
       "off": "Desactivado",
@@ -175,8 +173,6 @@
       "idle": "Inactivo"
     },
     "page": {
-      "name": "Nombre",
-      "nameProblem": "Escribe un nombre.",
       "on": "Activado",
       "onDescription": "Mientras está activado, funciona siempre que su host de escucha esté en línea.",
       "listenOn": "Escuchar en",
@@ -192,7 +188,7 @@
       "tryAgain": "Reintentar",
       "removeThis": "Eliminar este reenvío",
       "remove": "Eliminar reenvío…",
-      "removeTitle": "¿Eliminar “{name}”?",
+      "removeTitle": "¿Eliminar “{forward}”?",
       "removeBody": "Deja de escuchar y sus conexiones abiertas terminan."
     }
   },

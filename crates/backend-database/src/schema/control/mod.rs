@@ -79,9 +79,10 @@ mod from_0_1_5960;
 mod from_0_1_5979;
 mod from_0_1_5979_reply_block_shares;
 mod from_0_1_5979_subscription_devices;
+mod from_0_1_5979_cloud_isolation;
 mod from_0_1_5979_format_3;
 mod from_0_1_5979_media_jobs;
-mod from_0_1_5979_cloud_isolation;
+mod from_0_1_5979_network_policy;
 
 pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
@@ -374,5 +375,9 @@ pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
         sql: include_str!("from_0_1_5979_cloud_isolation.sql"),
         migration: from_0_1_5979_cloud_isolation::MIGRATION,
+    },
+    Shipped {
+        sql: include_str!("from_0_1_5979_network_policy.sql"),
+        migration: from_0_1_5979_network_policy::MIGRATION,
     },
 ];

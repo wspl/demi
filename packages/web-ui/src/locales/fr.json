@@ -190,7 +190,6 @@
     "invalid_answer_missing": "Saisissez une valeur pour « {field} ».",
     "credential_not_found": "L’identifiant est introuvable.",
     "credential_name_taken": "Un autre identifiant porte ce nom.",
-    "port_forward_name_taken": "Une redirection nommée {name} existe déjà.",
     "port_forward_not_found": "Cette redirection de port n’existe plus.",
     "credential_fields_differ": "Un identifiant portant ce nom a d’autres champs.",
     "passkey_expired": "La demande de clé d’accès a expiré. Réessayez.",

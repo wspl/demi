@@ -22,7 +22,9 @@ import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import {
+  forwardListen,
   forwardReason,
+  forwardRoute,
   forwardState,
   forwardTone,
   type ForwardHost,
@@ -31,7 +33,8 @@ import {
 } from './port-forwards'
 
 /**
- * A port forward's page (`crates/runner-protocol/src/forward.rs`). It shows:
+ * A port forward's page (`crates/runner-protocol/src/forward.rs`), titled by
+ * where it listens. It shows:
  *
  * - its state,
  * - why it goes through the relay when a direct path failed, and
@@ -62,14 +65,6 @@ async function save(field: keyof PortForwardChange, change: PortForwardChange): 
   } catch (error) {
     problems.value = { ...problems.value, [field]: shownError(error).message }
   }
-}
-
-function nameProblem(value: string): SentenceText | null {
-  const name = value.trim()
-  if (!name) {
-    return t('portForwards.page.nameProblem')
-  }
-  return null
 }
 
 function portProblem(value: string): SentenceText | null {
@@ -108,7 +103,7 @@ async function remove(): Promise<void> {
 
 <template>
   <SettingsPage
-    :title="forward.name"
+    :title="forwardListen(forward, hosts)"
     :back="t('portForwards.title')"
     :status-tone="tone"
     @back="emit('back')"
@@ -122,20 +117,6 @@ async function remove(): Promise<void> {
     </template>
 
     <SettingsGroup>
-      <SettingsRow :label="t('portForwards.page.name')">
-        <template v-if="problems.name" #detail>
-          <InlineError :message="problems.name" />
-        </template>
-        <CommitTextInput
-          :model-value="forward.name"
-          :aria-label="t('portForwards.page.name')"
-          :validate="nameProblem"
-          trim
-          class="w-56 max-w-full"
-          @problem="problems.name = $event ?? undefined"
-          @commit="save('name', { name: $event.trim() })"
-        />
-      </SettingsRow>
       <SettingsRow :label="t('portForwards.page.on')" :description="t('portForwards.page.onDescription')">
         <Switch
           :model-value="forward.enabled"
@@ -253,7 +234,7 @@ async function remove(): Promise<void> {
     <ConfirmDialog
       :is-open="removeOpen"
       :overlay-store="overlayStore"
-      :title="t('portForwards.page.removeTitle', { name: forward.name })"
+      :title="t('portForwards.page.removeTitle', { forward: forwardRoute(forward, hosts) })"
       :action="uiText('common.remove')"
       :operation="removing"
       :on-confirm="remove"

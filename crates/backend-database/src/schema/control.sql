@@ -272,21 +272,18 @@ CREATE TABLE directory_worktrees (
 ) STRICT;
 CREATE INDEX directory_worktrees_path ON directory_worktrees (device_id, worktree_path);
 
--- Each user's port forwards (port-forwarding.md): a name unique among the
--- user's, the Listen On device and its port there, the Connect To device,
--- none until the user chooses one, and the `host:port` it connects to, and
--- whether the forward is on.
+-- Each user's port forwards: the Listen On device and its port there, the
+-- Connect To device, none until the user chooses one, and the `host:port`
+-- it connects to, and whether the forward is on.
 CREATE TABLE port_forwards (
   id                TEXT PRIMARY KEY,
   user_id           TEXT NOT NULL REFERENCES users (id),
-  name              TEXT NOT NULL,
   listen_device_id  TEXT NOT NULL REFERENCES devices (id),
   listen_port       INTEGER NOT NULL CHECK (listen_port BETWEEN 1 AND 65535),
   connect_device_id TEXT REFERENCES devices (id),
   connect_address   TEXT NOT NULL,
   enabled           INTEGER NOT NULL CHECK (enabled IN (0, 1)),
-  created_at        INTEGER NOT NULL,
-  UNIQUE (user_id, name)
+  created_at        INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX port_forwards_of_user ON port_forwards (user_id, created_at);
 

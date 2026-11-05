@@ -190,7 +190,6 @@
     "invalid_answer_missing": "Escribe un valor para “{field}”.",
     "credential_not_found": "No se encontró la credencial.",
     "credential_name_taken": "Otra credencial tiene este nombre.",
-    "port_forward_name_taken": "Ya existe un reenvío llamado {name}.",
     "port_forward_not_found": "Este reenvío de puerto ya no existe.",
     "credential_fields_differ": "Una credencial con este nombre tiene otros campos.",
     "passkey_expired": "La solicitud de llave de acceso venció. Vuelve a intentarlo.",

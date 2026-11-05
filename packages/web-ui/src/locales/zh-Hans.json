@@ -190,7 +190,6 @@
     "invalid_answer_missing": "请为“{field}”输入值。",
     "credential_not_found": "未找到凭据。",
     "credential_name_taken": "另一个凭据已使用此名称。",
-    "port_forward_name_taken": "名为“{name}”的转发已存在。",
     "port_forward_not_found": "此端口转发已不存在。",
     "credential_fields_differ": "同名凭据的字段不同。",
     "passkey_expired": "通行密钥请求已过期。请重试。",

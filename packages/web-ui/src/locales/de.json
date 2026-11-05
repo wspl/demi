@@ -190,7 +190,6 @@
     "invalid_answer_missing": "Gib einen Wert für „{field}“ ein.",
     "credential_not_found": "Die Zugangsdaten wurden nicht gefunden.",
     "credential_name_taken": "Andere Zugangsdaten haben diesen Namen.",
-    "port_forward_name_taken": "Eine Weiterleitung namens {name} existiert bereits.",
     "port_forward_not_found": "Diese Portweiterleitung existiert nicht mehr.",
     "credential_fields_differ": "Zugangsdaten mit diesem Namen haben andere Felder.",
     "passkey_expired": "Die Passkey-Anfrage ist abgelaufen. Versuche es erneut.",

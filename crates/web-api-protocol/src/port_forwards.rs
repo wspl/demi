@@ -1,6 +1,7 @@
 //! The user's port forwards (`crates/backend-user-shard/src/shard/port_forwards.rs`): what Settings › Port
-//! Forwarding and `demi host forward` read and send, and the rules a name
-//! and an address follow wherever they arrive.
+//! Forwarding and `demi host forward` read and send, and the rules an
+//! address follows wherever it arrives. A forward is its route, where it
+//! listens and where it connects; nothing names it.
 
 use demi_runner_protocol::forward::{ADDRESS_CHARS, ForwardRunState};
 use demi_shared_types::{Nullable, Timestamp};
@@ -10,10 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
 
 use crate::ids::{DeviceId, PortForwardId};
-use crate::text::Trimmed;
 
-/// A new forward's name, and the stem of the second's, *Forward (2)*.
-pub const DEFAULT_NAME: &str = "Forward";
 /// The port a new forward listens on, unless another of the user's
 /// forwards on that Host uses it.
 pub const DEFAULT_PORT: u16 = 8080;
@@ -102,7 +100,6 @@ impl JsonSchema for ForwardAddress {
 #[serde(rename_all = "camelCase")]
 pub struct PortForwardDto {
     pub id: PortForwardId,
-    pub name: String,
     pub listen_device: DeviceId,
     pub listen_port: u16,
     /// Null until the user chooses the Host it connects on.
@@ -130,17 +127,13 @@ pub struct PortForwardAnswer {
 }
 
 /// `POST /port-forwards` and `PATCH /port-forwards/:id`: what changes; a
-/// new forward starts from its defaults, *Forward*, on, listening on the
-/// first of the user's Hosts on port 8080 or the next port none of the
-/// user's forwards there uses, connecting to `localhost:11434` on no Host
-/// yet, and takes these over them.
+/// new forward starts from its defaults, on, listening on the first of the
+/// user's Hosts, or on the Cloud for a user who has none yet, on port 8080
+/// or the next port none of the user's forwards there uses, connecting to
+/// `localhost:11434` on no Host yet, and takes these over them.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PortForwardPatch {
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "Trimmed", length(min = 1))]
-    #[garde(inner(length(chars, min = 1)))]
-    pub name: Option<Trimmed>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "DeviceId")]
     #[garde(skip)]
@@ -170,7 +163,6 @@ pub fn refusal(report: &garde::Report) -> String {
     let mut sentences: Vec<String> = Vec::new();
     for (path, error) in report.iter() {
         let sentence = match path.to_string().as_str() {
-            "name" => "Enter a name.".to_owned(),
             "listenPort" | "listen_port" => "Enter a port from 1 to 65535.".to_owned(),
             _ => error.message().to_owned(),
         };
@@ -179,9 +171,4 @@ pub fn refusal(report: &garde::Report) -> String {
         }
     }
     sentences.join(" ")
-}
-
-/// The words that refuse a name another of the user's forwards has.
-pub fn name_taken(name: &str) -> String {
-    format!("A forward named {name} already exists")
 }

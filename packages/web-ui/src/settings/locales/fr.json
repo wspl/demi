@@ -147,7 +147,7 @@
     "none": "Aucune redirection de port",
     "select": "Sélectionner",
     "selectAll": "Tout sélectionner",
-    "selectLabel": "Sélectionner {name}",
+    "selectLabel": "Sélectionner {forward}",
     "selected": "{count} sélectionnées",
     "actions": "Actions",
     "turnOn": "Activer",
@@ -156,12 +156,10 @@
     "deleteTitle": "Supprimer {count} redirection ? | Supprimer {count} redirections ?",
     "deleteBody": "Elle cesse d’écouter et ses connexions ouvertes se terminent. | Elles cessent d’écouter et leurs connexions ouvertes se terminent.",
     "deleteFailed": "Impossible de supprimer les redirections",
-    "choose": "Choisir…",
-    "nameOf": "Nom de {name}",
-    "portOf": "Port de {name}",
-    "listenOnOf": "Hôte d’écoute de {name}",
-    "connectToOf": "Hôte de destination de {name}",
-    "addressOf": "Adresse de {name}",
+    "portOf": "Port de {forward}",
+    "listenOnOf": "Hôte d’écoute de {forward}",
+    "connectToOf": "Hôte de destination de {forward}",
+    "addressOf": "Adresse de {forward}",
     "unknownHost": "Hôte inconnu",
     "state": {
       "off": "Désactivée",
@@ -175,8 +173,6 @@
       "idle": "Inactive"
     },
     "page": {
-      "name": "Nom",
-      "nameProblem": "Saisissez un nom.",
       "on": "Activée",
       "onDescription": "Tant qu’elle est activée, elle fonctionne chaque fois que son hôte d’écoute est en ligne.",
       "listenOn": "Écouter sur",
@@ -192,7 +188,7 @@
       "tryAgain": "Réessayer",
       "removeThis": "Supprimer cette redirection",
       "remove": "Supprimer la redirection…",
-      "removeTitle": "Supprimer « {name} » ?",
+      "removeTitle": "Supprimer « {forward} » ?",
       "removeBody": "Elle cesse d’écouter et ses connexions ouvertes se terminent."
     }
   },

@@ -7,8 +7,8 @@ import { computed, ref, type Ref } from 'vue'
  * - In a rail, a click selects one; ⌘-click (Ctrl-click off a Mac) adds or
  *   drops one; Shift-click selects every entry from the last one clicked, as
  *   Finder's list does.
- * - On a phone, `checking` turns every tap into adding or dropping one, as a
- *   list's Select mode does on iOS.
+ * - In a list whose rows open a page, as on a phone, `checking` turns every
+ *   tap into adding or dropping one, as a list's Select mode does on iOS.
  * - A table or a list with checkboxes toggles through `toggle` and `toggleAll`.
  *
  * `ids` are the entries in the order the list shows them, the only order a

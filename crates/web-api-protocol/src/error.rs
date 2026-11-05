@@ -211,10 +211,8 @@ pub enum ErrorCode {
     CredentialNotFound,
     /// Another of the caller's credentials has the name.
     CredentialNameTaken,
-    /// The caller has no port forward of that id or name.
+    /// The caller has no port forward of that id.
     PortForwardNotFound,
-    /// Another of the caller's port forwards has the name.
-    PortForwardNameTaken,
     /// A credential of the requested name is saved with other fields: its
     /// new values would not fit them.
     CredentialFieldsDiffer,

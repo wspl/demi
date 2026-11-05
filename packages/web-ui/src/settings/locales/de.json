@@ -147,7 +147,7 @@
     "none": "Keine Portweiterleitungen",
     "select": "Auswählen",
     "selectAll": "Alle auswählen",
-    "selectLabel": "{name} auswählen",
+    "selectLabel": "{forward} auswählen",
     "selected": "{count} ausgewählt",
     "actions": "Aktionen",
     "turnOn": "Einschalten",
@@ -156,12 +156,10 @@
     "deleteTitle": "{count} Weiterleitung löschen? | {count} Weiterleitungen löschen?",
     "deleteBody": "Sie hört auf zu lauschen, und ihre offenen Verbindungen enden. | Sie hören auf zu lauschen, und ihre offenen Verbindungen enden.",
     "deleteFailed": "Weiterleitungen konnten nicht gelöscht werden",
-    "choose": "Auswählen …",
-    "nameOf": "Name von {name}",
-    "portOf": "Port von {name}",
-    "listenOnOf": "Lausch-Host von {name}",
-    "connectToOf": "Ziel-Host von {name}",
-    "addressOf": "Adresse von {name}",
+    "portOf": "Port von {forward}",
+    "listenOnOf": "Lausch-Host von {forward}",
+    "connectToOf": "Ziel-Host von {forward}",
+    "addressOf": "Adresse von {forward}",
     "unknownHost": "Unbekannter Host",
     "state": {
       "off": "Aus",
@@ -175,8 +173,6 @@
       "idle": "Inaktiv"
     },
     "page": {
-      "name": "Name",
-      "nameProblem": "Gib einen Namen ein.",
       "on": "Ein",
       "onDescription": "Solange sie aktiv ist, läuft sie, wann immer ihr Lausch-Host online ist.",
       "listenOn": "Lauschen auf",
@@ -192,7 +188,7 @@
       "tryAgain": "Erneut versuchen",
       "removeThis": "Diese Weiterleitung entfernen",
       "remove": "Weiterleitung entfernen …",
-      "removeTitle": "„{name}“ entfernen?",
+      "removeTitle": "„{forward}“ entfernen?",
       "removeBody": "Sie hört auf zu lauschen, und ihre offenen Verbindungen enden."
     }
   },

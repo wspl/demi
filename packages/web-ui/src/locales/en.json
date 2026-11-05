@@ -190,7 +190,6 @@
     "invalid_answer_missing": "Enter a value for “{field}”.",
     "credential_not_found": "The credential wasn’t found.",
     "credential_name_taken": "Another credential has this name.",
-    "port_forward_name_taken": "A forward named {name} already exists.",
     "port_forward_not_found": "This port forward no longer exists.",
     "credential_fields_differ": "A credential with this name has other fields.",
     "passkey_expired": "The passkey request expired. Try again.",
