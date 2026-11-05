@@ -24,7 +24,7 @@ import type { SettingsArchivedConversation } from './types'
  * ```
  * 3 Conversations
  * ☐  Search archived
- * ☐  Draft the onboarding email   ▭ api   Sep 2, 2026 6:12 PM
+ * ☐  Draft the onboarding email   ▭ api   Sep 2, 2026, 6:12 PM
  * ☐  Compare vector databases          [Open] [Restore]   ← under the pointer
  * ```
  *

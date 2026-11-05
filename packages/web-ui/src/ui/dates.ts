@@ -2,7 +2,7 @@ import { pageLanguage } from '../i18n/text'
 import { t } from '../locales/text'
 
 // The interface's dates, times, ages and spans, in the page's language: Intl
-// says each date and time as the language does ("6:12 PM", "下午6:12"), and the
+// says each date and time as the language does ("6:12 PM", "18:12"), and the
 // catalogue words the compact forms Intl has no words for ("2h", "2 小时").
 
 const MINUTE_MS = 60_000
@@ -10,9 +10,43 @@ const HOUR_MS = 60 * MINUTE_MS
 const DAY_MS = 24 * HOUR_MS
 const WEEK_MS = 7 * DAY_MS
 
-/** The moment `timestamp` in Intl's words of `options`. */
+/** The languages that write a short time's hour in two digits, "09:05", by language. */
+const twoDigitHours = new Map<string, boolean>()
+
+/**
+ * Whether `language` writes the hour of a short time in two digits: Simplified
+ * Chinese, German and French write "09:05", English and Japanese "9:05". Intl's
+ * `hour: 'numeric'` writes one digit in every language and `'2-digit'` two in
+ * every one, "09:05 AM" in English, so the choice is read from the language's
+ * own short time.
+ */
+function writesTwoDigitHours(language: string): boolean {
+  let known = twoDigitHours.get(language)
+  if (known === undefined) {
+    const hour = new Intl.DateTimeFormat(language, { timeStyle: 'short' })
+      .formatToParts(new Date(2000, 0, 1, 1, 5))
+      .find((part) => part.type === 'hour')
+    known = hour?.value.length === 2
+    twoDigitHours.set(language, known)
+  }
+  return known
+}
+
+/** `parts` joined, with the hour in two digits where `language` writes it so. */
+function joinParts(parts: Intl.DateTimeFormatPart[], language: string): string {
+  const pad = writesTwoDigitHours(language)
+  return parts.map((part) => pad && part.type === 'hour' ? part.value.padStart(2, '0') : part.value).join('')
+}
+
+/**
+ * The moment `timestamp` in Intl's words of `options`, one format for the
+ * whole of it, so a date and a time join as the language joins them: "Sep 2,
+ * 2026, 6:12 PM", "2026年9月2日 18:12".
+ */
 function intl(timestamp: Date, options: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat(pageLanguage(), options).format(timestamp)
+  const language = pageLanguage()
+  const format = new Intl.DateTimeFormat(language, options)
+  return options.hour === undefined ? format.format(timestamp) : joinParts(format.formatToParts(timestamp), language)
 }
 
 /** A time on the clock: "6:12 PM". */
@@ -170,7 +204,7 @@ export function formatDay(timestamp: string): string {
   return intl(new Date(timestamp), { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
-/** The Modified column and a file's card, one shape for every row: "Sep 2, 2026 6:12 PM"; empty for an unknown time. */
+/** The Modified column and a file's card, one shape for every row: "Sep 2, 2026, 6:12 PM"; empty for an unknown time. */
 export function formatModified(iso: string | undefined): string {
   if (!iso) {
     return ''
@@ -179,7 +213,7 @@ export function formatModified(iso: string | undefined): string {
   if (Number.isNaN(time.getTime())) {
     return ''
   }
-  return `${intl(time, { month: 'short', day: 'numeric', year: 'numeric' })} ${clock(time)}`
+  return intl(time, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 /**
