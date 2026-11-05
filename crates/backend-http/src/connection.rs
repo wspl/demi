@@ -27,6 +27,11 @@
 //!   with a message to send in turn, a user stream's after the others', so a
 //!   large message holds another lane back by one piece at most. Once it has
 //!   written nothing for the heartbeat interval it writes a `heartbeat`.
+//! - A view link's page holds a connection of its own,
+//!   `WS /api/views/:token/connect` (`conversation_views.rs`), whose only lane
+//!   is its conversation's, which watches; it ends as its link expires, with
+//!   `view_expired`, is removed, with `view_removed`, or no longer opens, with
+//!   `view_not_found`.
 //! - The connection ends with its session, as it is signed out or expires,
 //!   with `session_ended`; as the backend shuts down, with
 //!   `backend_closing`; and as the page breaks the protocol, with
@@ -65,7 +70,7 @@ use demi_web_api_protocol::connection::{
     BackendConnectionMessage, LANE_CREDIT, LaneRefusal, LaneTarget, MAX_LANES, PageConnectionMessage,
 };
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use futures_util::future::BoxFuture;
 use futures_util::stream::SplitSink;
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -81,7 +86,8 @@ use super::cookies::SESSION_COOKIE;
 use super::error::ApiError;
 use super::page_client::PageClient;
 use super::request_id;
-use super::{conversations, direct, file_watch, streams, sync};
+use super::view_links::ViewEnd;
+use super::{conversation_views, conversations, direct, file_watch, streams, sync};
 
 /// The most bytes of one message the page sends on the connection: a piece
 /// and its header, or an open and its target, with room to spare.
@@ -157,16 +163,57 @@ pub(super) async fn connect(
         user: session.user,
         expires_at: session.expires_at,
     };
+    Ok(upgraded(upgrade, state, closing, client, Principal::Session(session)))
+}
+
+/// The connection `upgrade` makes, served for `principal` until it ends.
+pub(super) fn upgraded(
+    upgrade: WebSocketUpgrade,
+    state: AppState,
+    closing: CancellationToken,
+    client: PageClient,
+    principal: Principal,
+) -> Response {
     let span = tracing::Span::current();
-    Ok(upgrade
+    upgrade
         .max_message_size(MAX_CONNECTION_MESSAGE_BYTES)
         .max_frame_size(MAX_CONNECTION_MESSAGE_BYTES)
-        .on_upgrade(move |socket| serve(socket, state, closing, client, session).instrument(span)))
+        .on_upgrade(move |socket| serve(socket, state, closing, client, principal).instrument(span))
+}
+
+/// Whom a connection serves, which decides what it may open and when it
+/// ends.
+pub(super) enum Principal {
+    /// A signed-in page.
+    Session(PageSession),
+    /// A view link's page, which watches its conversation alone.
+    View(ViewGrant),
+}
+
+/// What a view link's connection holds of its link.
+pub(super) struct ViewGrant {
+    /// The link's token, by which each open finds the link again.
+    pub(super) token: String,
+    pub(super) conversation: ConversationId,
+    /// The conversation's owner, whose shard serves its lane.
+    pub(super) owner: UserId,
+    /// Resolves as the link ends, with how.
+    pub(super) ended: BoxFuture<'static, Ending>,
+}
+
+impl Principal {
+    /// The user whose work the connection reaches, which its log lines name.
+    fn user(&self) -> &UserId {
+        match self {
+            Self::Session(session) => &session.user.id,
+            Self::View(view) => &view.owner,
+        }
+    }
 }
 
 /// How a connection ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Ending {
+pub(super) enum Ending {
     /// The page closed the connection, or it broke.
     PageGone,
     /// A write to the page failed.
@@ -176,6 +223,8 @@ enum Ending {
     SessionEnded,
     /// The session could not be read at its expiry.
     SessionUnread,
+    /// The view link the connection was opened by ended.
+    View(ViewEnd),
     /// The page broke the protocol in the way this says.
     Protocol(&'static str),
 }
@@ -188,6 +237,7 @@ impl Ending {
             Self::BackendClosing => Some((close_code::AWAY, "backend_closing")),
             Self::SessionEnded => Some((SESSION_ENDED, "session_ended")),
             Self::SessionUnread => Some((close_code::ERROR, "internal_error")),
+            Self::View(end) => Some(end.close()),
             Self::Protocol(_) => Some((close_code::PROTOCOL, "protocol_error")),
         }
     }
@@ -199,6 +249,9 @@ impl Ending {
             Self::BackendClosing => "backend closing",
             Self::SessionEnded => "session ended",
             Self::SessionUnread => "session unread",
+            Self::View(ViewEnd::Expired) => "view expired",
+            Self::View(ViewEnd::Removed) => "view removed",
+            Self::View(ViewEnd::NotFound) => "view not found",
             Self::Protocol(why) => why,
         }
     }
@@ -303,10 +356,27 @@ enum Write {
     Finish { code: u16, reason: &'static str },
 }
 
+/// What a connection's opens are checked against.
+#[derive(Clone)]
+enum Access {
+    /// The session the token names, as it is now.
+    Session(TokenHash),
+    /// A view link's conversation, whose link the token finds again.
+    View {
+        token: String,
+        conversation: ConversationId,
+        owner: UserId,
+    },
+}
+
 /// The reader's state.
 struct Connection {
     state: AppState,
-    session: PageSession,
+    /// What the connection may open, which the opens are checked against;
+    /// its end is the serving loop's.
+    access: Access,
+    /// The user whose work it reaches, which its log lines name.
+    user: UserId,
     client: PageClient,
     lanes: HashMap<u32, Slot>,
     /// The number of the last lane the page opened.
@@ -327,14 +397,15 @@ async fn serve(
     state: AppState,
     closing: CancellationToken,
     client: PageClient,
-    session: PageSession,
+    principal: Principal,
 ) {
     let _counted = Counted::connection();
     let opened_at = Instant::now();
+    let user = principal.user().clone();
     tracing::info!(
         event = "page_connection.opened",
         request_id = %client.request,
-        user = %session.user.id,
+        user = %user,
         page_id = client.page.as_deref(),
         cf_ray = client.ray.as_deref(),
         client = client.client.map(tracing::field::display),
@@ -349,15 +420,40 @@ async fn serve(
     let (answers, mut answered) = mpsc::unbounded_channel();
     let ended = CancellationToken::new();
     let _ended = ended.clone().drop_guard();
-    let watch = state
-        .services
-        .sync
-        .watch_session(&session.user.id, session.token.clone());
-    let expiry = session_expiry(state.services.clone(), session.token.clone(), session.expires_at);
-    tokio::pin!(expiry);
+    let (access, principal_ended) = match principal {
+        Principal::Session(session) => {
+            let watch = state.services.sync.watch_session(&session.user.id, session.token.clone());
+            let expiry = session_expiry(state.services.clone(), session.token.clone(), session.expires_at);
+            let ended: BoxFuture<'static, Ending> = Box::pin(async move {
+                let signed_out = async {
+                    loop {
+                        watch.marked().await;
+                        if watch.take().session_ended {
+                            return Ending::SessionEnded;
+                        }
+                    }
+                };
+                tokio::select! {
+                    ending = signed_out => ending,
+                    ending = expiry => ending,
+                }
+            });
+            (Access::Session(session.token), ended)
+        }
+        Principal::View(view) => (
+            Access::View {
+                token: view.token,
+                conversation: view.conversation,
+                owner: view.owner,
+            },
+            view.ended,
+        ),
+    };
+    let mut principal_ended = principal_ended;
     let mut connection = Connection {
         state,
-        session,
+        access,
+        user,
         client,
         lanes: HashMap::new(),
         last_lane: 0,
@@ -372,12 +468,7 @@ async fn serve(
         tokio::select! {
             biased;
             () = closing.cancelled() => break Ending::BackendClosing,
-            () = watch.marked() => {
-                if watch.take().session_ended {
-                    break Ending::SessionEnded;
-                }
-            }
-            ending = &mut expiry => break ending,
+            ending = &mut principal_ended => break ending,
             _ = &mut writer => break Ending::WriteFailed,
             message = stream.next() => match message {
                 Some(Ok(Message::Binary(bytes))) => {
@@ -422,7 +513,7 @@ async fn serve(
             tracing::$level!(
                 event = "page_connection.ended",
                 request_id = %connection.client.request,
-                user = %connection.session.user.id,
+                user = %connection.user,
                 reason = ending.reason(),
                 close_code,
                 close_reason,
@@ -493,7 +584,7 @@ impl Connection {
             kind.name(),
             self.client.page.as_deref(),
             self.client.ray.as_deref(),
-            &self.session.user.id,
+            &self.user,
         );
         let target = match target {
             _ if self.lanes.len() >= MAX_LANES => Err(ApiError::new(
@@ -514,14 +605,18 @@ impl Connection {
             }
         };
         let state = self.state.clone();
-        let token = self.session.token.clone();
+        let access = self.access.clone();
         let answers = self.answers.clone();
         let connection = self.client.request.clone();
         let task = tokio::spawn(
             request_id::scope(request.clone(), async move {
-                let opened = check_open(&state, &token, target)
-                    .await
-                    .map_err(|error| refusal(error, &request, &connection, lane, kind));
+                let opened = match access {
+                    Access::Session(token) => check_open(&state, &token, target).await,
+                    Access::View { token, conversation, owner } => {
+                        conversation_views::check_open(&state, &token, &conversation, &owner, target).await
+                    }
+                };
+                let opened = opened.map_err(|error| refusal(error, &request, &connection, lane, kind));
                 let span = tracing::Span::current();
                 // A connection that ended takes no answer.
                 let _ = answers.send(Answer {
@@ -572,7 +667,7 @@ impl Connection {
             lane,
             request,
             connection: self.client.request.clone(),
-            user: self.session.user.id.clone(),
+            user: self.user.clone(),
             conversation: opened.conversation,
             device: opened.device,
             stream: opened.stream,

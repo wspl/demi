@@ -36,6 +36,17 @@ pub fn instant(
     decode(table, column, Timestamp::from_millisecond(row.get(column)?))
 }
 
+/// A stored millisecond count as a point in time, or none for null.
+pub fn optional_instant(
+    row: &Row<'_>,
+    table: &'static str,
+    column: &'static str,
+) -> Result<Option<Timestamp>, StorageError> {
+    row.get::<_, Option<i64>>(column)?
+        .map(|millisecond| decode(table, column, Timestamp::from_millisecond(millisecond)))
+        .transpose()
+}
+
 /// A JSON column's text as its type, checked by the type's rules.
 pub fn json<T>(table: &'static str, column: &'static str, text: &str) -> Result<T, StorageError>
 where

@@ -271,6 +271,59 @@ export function workSubagent(): SubagentRecord {
   }
 }
 
+/**
+ * The root agent of a conversation an integration's chat app started, as its
+ * view link page shows it: at work on its turn, its children still running,
+ * or between turns, once they finished.
+ */
+export function conversationViewAgent(phase: 'running' | 'completed'): SubagentRecord {
+  const blocks: Block[] = [
+    user('view-user', ago(140_000), 'Rename the session cookie from sid to session, and check that login and logout still work.'),
+    ...inRun(thinking('view-think', ago(138_000), 'The test and the logout path can be checked apart. I will hand each to an agent and run the tests myself.', ago(136_000))),
+    text(
+      'view-split',
+      ago(135_000),
+      '[Find the cookie assertion](agent:1) looks for the test that still expects `sid`, and [Check the logout path](agent:2) checks that logout clears the renamed cookie.',
+    ),
+    ...inRun(
+      shell(
+        'view-tests',
+        ago(70_000),
+        'Run the auth tests',
+        phase === 'running' ? 'auth.test.ts:\n' : 'auth.test.ts:\n 12 pass\n 0 fail\n',
+        phase === 'running' ? 'executing' : 'completed',
+        'bun test src/auth.test.ts',
+      ),
+    ),
+  ]
+  if (phase === 'completed') {
+    blocks.push(text(
+      'view-reply',
+      ago(20_000),
+      'The cookie is now `session`. The one test that still expected `sid` is fixed, logout clears the new cookie, and the **12** auth tests pass.',
+    ))
+  }
+  return {
+    id: 'view-root',
+    number: 0,
+    onPath: true,
+    parent: 'view-root',
+    name: 'Rename the session cookie',
+    ...runsOn(null, OPUS),
+    phase,
+    sessionPhase: phase === 'running' ? 'running' : 'idle',
+    contextUsage: usageAt(0.18),
+    startedAt: ago(140_000),
+    ...(phase === 'completed' ? { endedAt: ago(20_000) } : {}),
+    failures: {},
+    pendingCalls: [],
+    waitingSince: null,
+    cost: NO_COST,
+    shownAt: null,
+    history: wholeHistory(blocks),
+  }
+}
+
 export function gallerySubagents(): SubagentRecord[] {
   return [
     {

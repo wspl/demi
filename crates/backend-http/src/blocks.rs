@@ -13,6 +13,9 @@
 //!   it. A document's scripts read the address they load from, and the
 //!   share's token there would hand them the whole share; a link reaches
 //!   only its block, and only for a minute ([`LINK_LIFETIME`]).
+//! - `GET /api/views/:token/plugins/:plugin/blocks/:tag/:id`, for a block of
+//!   the conversation a view link shows, as its owner's, through a link of
+//!   the block alone as a share's.
 //!
 //! A document is served as a page and never framed by its parent's own
 //! markup, as a `srcdoc` would be: a framed document of its own keeps its own
@@ -37,7 +40,7 @@ use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use super::html_view;
-use super::shares;
+use super::{conversation_views, shares};
 
 /// `GET /plugins/:plugin/blocks/:tag/:id`.
 pub(super) async fn document(
@@ -72,7 +75,7 @@ pub struct BlockLinks {
 
 /// The block a link reaches.
 struct BlockLink {
-    share: String,
+    from: LinkFrom,
     plugin: String,
     tag: String,
     id: String,
@@ -90,11 +93,27 @@ impl BlockLinks {
     }
 
     /// The block link `name` reaches while it is good.
-    fn reached(&self, name: &str) -> Option<(String, String, String, String)> {
+    fn reached(&self, name: &str) -> Option<(LinkFrom, String, String, String)> {
         let links = self.links.lock().expect("the block links are intact");
         let link = links.get(name).filter(|link| link.made.elapsed() < LINK_LIFETIME)?;
-        Some((link.share.clone(), link.plugin.clone(), link.tag.clone(), link.id.clone()))
+        Some((link.from.clone(), link.plugin.clone(), link.tag.clone(), link.id.clone()))
     }
+}
+
+/// Whose token a block's link was made by.
+#[derive(Clone)]
+enum LinkFrom {
+    Share(String),
+    View(String),
+}
+
+/// A redirect to a new link of the block `plugin`'s `tag` and `id` of `from`.
+fn linked(state: &AppState, from: LinkFrom, plugin: String, tag: String, id: String) -> Response {
+    let link = state.blocks.make(BlockLink { from, plugin, tag, id, made: Instant::now() });
+    let mut response = StatusCode::SEE_OTHER.into_response();
+    let location = HeaderValue::from_str(&format!("/api/blocks/{link}")).expect("a link's name is hexadecimal");
+    response.headers_mut().insert(LOCATION, location);
+    response
 }
 
 /// `GET /shares/:token/plugins/:plugin/blocks/:tag/:id`: on to a link of the
@@ -107,19 +126,31 @@ pub(super) async fn shared_document(
     if let Err(error) = shares::found(&state.services, token.clone()).await {
         return unavailable(error.into_response().status()).await;
     }
-    let link = state.blocks.make(BlockLink { share: token, plugin, tag, id, made: Instant::now() });
-    let mut response = StatusCode::SEE_OTHER.into_response();
-    let location = HeaderValue::from_str(&format!("/api/blocks/{link}")).expect("a link's name is hexadecimal");
-    response.headers_mut().insert(LOCATION, location);
-    response
+    linked(&state, LinkFrom::Share(token), plugin, tag, id)
 }
 
-/// `GET /blocks/:link`: the document of the shared block `link` reaches.
+/// `GET /views/:token/plugins/:plugin/blocks/:tag/:id`: on to a link of the
+/// block alone, for a link to a conversation that opens.
+pub(super) async fn viewed_document(
+    State(state): State<AppState>,
+    Path((token, plugin, tag, id)): Path<(String, String, String, String)>,
+) -> Response {
+    if let Err(error) = conversation_views::viewed(&state, &token).await {
+        return unavailable(error.into_response().status()).await;
+    }
+    linked(&state, LinkFrom::View(token), plugin, tag, id)
+}
+
+/// `GET /blocks/:link`: the document of the block `link` reaches.
 pub(super) async fn linked_document(State(state): State<AppState>, Path(link): Path<String>) -> Response {
-    let Some((token, plugin, tag, id)) = state.blocks.reached(&link) else {
+    let Some((from, plugin, tag, id)) = state.blocks.reached(&link) else {
         return unavailable(StatusCode::NOT_FOUND).await;
     };
-    match shares::block_document(&state, token, plugin, tag, id).await {
+    let document = match from {
+        LinkFrom::Share(token) => shares::block_document(&state, token, plugin, tag, id).await,
+        LinkFrom::View(token) => conversation_views::block_document(&state, &token, plugin, tag, id).await,
+    };
+    match document {
         Ok(document) => served(document).await,
         Err(error) => unavailable(error.into_response().status()).await,
     }

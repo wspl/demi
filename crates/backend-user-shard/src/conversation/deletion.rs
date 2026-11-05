@@ -125,6 +125,8 @@ impl Shard {
             return Ok(false);
         };
         self.mark(Part::Conversation(id.clone()));
+        // The pages open on its view links end, as its links went with it.
+        services.views.remove_conversation(&id);
         // What the shard holds of its schedules stops.
         self.conversation_deleted_schedules(&schedules);
         self.agent().close_tree(&root).await;

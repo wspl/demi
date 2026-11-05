@@ -19,7 +19,7 @@ use rusqlite::{OptionalExtension, Row, params};
 
 use super::StorageError;
 use super::accounts::{ResolvedSession, SessionPolicy, TokenHash};
-use super::columns::{decode, instant};
+use super::columns::{decode, instant, optional_instant};
 use super::control::{ControlService, USER_COLUMNS, later, user_row};
 
 const SESSIONS: &str = "web_sessions";
@@ -162,7 +162,7 @@ impl ControlService {
                         decode(SESSIONS, "id", SessionId::try_from(row.get::<_, String>("session_id")?))?,
                         instant(row, SESSIONS, "expires_at")?,
                         instant(row, SESSIONS, "last_active_at")?,
-                        optional_instant(row, "verified_at")?,
+                        optional_instant(row, SESSIONS, "verified_at")?,
                         user_row(row)?,
                     )),
                     None => None,
@@ -374,10 +374,4 @@ fn session_row(row: &Row<'_>) -> Result<SessionRecord, StorageError> {
         issued_by: row.get("issued_by_name")?,
         notifications: row.get("notifications")?,
     })
-}
-
-fn optional_instant(row: &Row<'_>, column: &'static str) -> Result<Option<Timestamp>, StorageError> {
-    row.get::<_, Option<i64>>(column)?
-        .map(|millisecond| decode(SESSIONS, column, Timestamp::from_millisecond(millisecond)))
-        .transpose()
 }

@@ -126,6 +126,8 @@ const props = defineProps<{
    * cost's Profiles part shows.
    */
   costProfiles?: readonly string[]
+  /** The card is read by someone who cannot act on the context: it has no Compact. */
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -404,6 +406,7 @@ const ringColor = computed(() => {
                 <div v-if="parts.context && !isCompacting" class="flex items-center gap-3 px-3 pt-2 pb-3">
                   <span class="min-w-0 flex-1 truncate tabular-nums text-fg-muted">{{ room === null ? '' : t('context.untilCompaction', { tokens: formatTokens(room) }) }}</span>
                   <Button
+                    v-if="!readOnly"
                     size="sm"
                     :disabled="blockedReason != null"
                     :disabled-reason="blockedReason ?? undefined"

@@ -40,7 +40,7 @@ use demi_web_api_protocol::query::StrictBool;
 use demi_shared_types::{BlockId, CommandId, NodeId, TurnId};
 
 use super::AppState;
-use super::browser_views;
+use super::view_links;
 use super::body::{JsonBody, OptionalJsonBody};
 use super::error::ApiError;
 use super::files::{self, FileHost};
@@ -93,9 +93,14 @@ pub(super) fn routes() -> Router<AppState> {
             )
             .route("/conversations/{conversation}/fs/raw", get(read_file).put(write_file))
             .route("/conversations/{conversation}/fs/search", post(search_files))
-            .route("/conversations/{conversation}/browser/tabs/{tab}/views", post(browser_views::create))
-            .route("/conversations/{conversation}/browser/views", get(browser_views::list))
-            .route("/conversations/{conversation}/browser/views/{view}", delete(browser_views::remove))
+            .route("/conversations/{conversation}/browser/tabs/{tab}/views", post(view_links::create))
+            .route("/conversations/{conversation}/browser/views", get(view_links::list))
+            .route("/conversations/{conversation}/browser/views/{view}", delete(view_links::remove))
+            .route(
+                "/conversations/{conversation}/views",
+                post(view_links::create_conversation).get(view_links::list_conversation),
+            )
+            .route("/conversations/{conversation}/views/{view}", delete(view_links::remove_conversation))
             .route(
                 "/conversations/{conversation}/hosts/{device}/fs",
                 get(list_files_on).post(make_directory_on),

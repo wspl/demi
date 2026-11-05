@@ -193,9 +193,10 @@ export function messageLinkMenu(
   const open = () => link.click()
   if (link.matches('[data-agent-link][role="button"]') && agents) {
     const number = Number(link.getAttribute('data-agent-link'))
+    const stop = agents.stop
     return () => agentMenu(
       { number, running: agents.find(number)?.run?.phase === 'running' },
-      { open, stop: () => agents.stop(number) },
+      { open, stop: stop && (() => stop(number)) },
     )
   }
   if (link.matches('a[data-commit-link]')) {

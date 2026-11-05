@@ -33,7 +33,8 @@ mod auth;
 mod schedules;
 mod blobs;
 mod blocks;
-mod browser_views;
+mod view_links;
+mod conversation_views;
 mod body;
 mod cloud;
 mod connection;
@@ -718,7 +719,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/api/sync", get(sync::legacy))
         .merge(public_shares())
-        .merge(public_views())
+        .merge(public_views(&closing))
         .merge(html_views())
         .route("/api/plugins/{plugin}/files/{name}", get(plugins::file))
         .method_not_allowed_fallback(no_route)
@@ -769,10 +770,29 @@ fn public_shares() -> Router<AppState> {
 /// The public routes of the view links, as a share's are: no session gate,
 /// the token their only key, each answer kept out of indexes, referrers and
 /// caches.
-fn public_views() -> Router<AppState> {
+fn public_views(closing: &CancellationToken) -> Router<AppState> {
     Router::new()
-        .route("/api/views/{token}", get(browser_views::read))
-        .route("/api/views/{token}/stream", get(browser_views::stream))
+        .route("/api/views/{token}", get(view_links::read))
+        .route("/api/views/{token}/stream", get(view_links::stream))
+        .route("/api/views/{token}/conversation", get(conversation_views::detail))
+        .route(
+            "/api/views/{token}/agents/{node}/transcript",
+            get(conversation_views::transcript),
+        )
+        .route(
+            "/api/views/{token}/agents/{node}/blocks/{block}",
+            get(conversation_views::block),
+        )
+        .route("/api/views/{token}/cost/recent", get(conversation_views::recent))
+        .route("/api/views/{token}/blobs/{sha256}", get(conversation_views::blob))
+        .route(
+            "/api/views/{token}/plugins/{plugin}/blocks/{tag}/{id}",
+            get(blocks::viewed_document),
+        )
+        .route(
+            "/api/views/{token}/connect",
+            get(conversation_views::connect).layer(Extension(connection::Closing(closing.clone()))),
+        )
         .layer(middleware::map_response(shares::public_headers))
 }
 

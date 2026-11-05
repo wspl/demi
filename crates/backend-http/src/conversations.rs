@@ -37,7 +37,7 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use super::hosts;
 use super::query::QueryParams;
-use demi_backend_user_shard::conversation::{AgentsError, ForkRefusal};
+use demi_backend_user_shard::conversation::{AgentsError, ForkRefusal, LaneAccess};
 use demi_backend_user_shard::services::Services;
 use demi_backend_user_shard::sync::etag_of;
 
@@ -305,9 +305,17 @@ pub(super) async fn detail(
     Path(id): Path<String>,
 ) -> Result<Json<ConversationDetail>, ApiError> {
     let record = owned(&state.services, &user.id, &id).await?;
-    let detail = state
+    conversation_detail(&state, &user.id, record).await.map(Json)
+}
+
+/// The conversation `record` of `user`'s, with its agents, as [`detail`]
+/// answers it and a view link's page reads it
+/// (`crates/backend-http/src/conversation_views.rs`), each of which checked
+/// whose it is.
+pub(super) async fn conversation_detail(state: &AppState, user: &UserId, record: ConversationRecord) -> Result<ConversationDetail, ApiError> {
+    state
         .shards
-        .of(&user.id)
+        .of(user)
         .call(move |shard, _| async move {
             let id = record.id.clone();
             let conversation = shard.conversation_summary(record.clone()).await?;
@@ -328,8 +336,7 @@ pub(super) async fn detail(
                 entries,
             })
         })
-        .await??;
-    Ok(Json(detail))
+        .await?
 }
 
 /// `GET /conversations/:id/workflows`: the workflows of the conversation's
@@ -441,6 +448,14 @@ pub(super) async fn read(
 /// is not archived, and which the caller's shard serves until it ends.
 pub(super) async fn open_lane(state: &AppState, user: &UserId, id: &str) -> Result<Opened, ApiError> {
     let record = owned(&state.services, user, id).await?;
+    lane_of(state, user, record, LaneAccess::Own)
+}
+
+/// The lane of `user`'s conversation `record`, for `access`, which opens
+/// only for one that is not archived: the conversation's own page's, or a
+/// view link's page's (`crates/backend-http/src/conversation_views.rs`),
+/// each of which checked whose it is.
+pub(super) fn lane_of(state: &AppState, user: &UserId, record: ConversationRecord, access: LaneAccess) -> Result<Opened, ApiError> {
     if record.archived() {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
@@ -458,7 +473,7 @@ pub(super) async fn open_lane(state: &AppState, user: &UserId, id: &str) -> Resu
             // connection closes as the backend does.
             let _ = shards
                 .of(&user)
-                .adopt(move |shard| shard.serve_conversation_lane(record, lane, reader))
+                .adopt(move |shard| shard.serve_conversation_lane(record, lane, reader, access))
                 .await;
         })
     })

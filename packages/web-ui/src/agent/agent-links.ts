@@ -27,9 +27,9 @@ export interface MessageAgents {
   open(number: number): void
   /**
    * Stop Agent in the link's menu: agent `number` and its subtree, while it
-   * runs.
+   * runs. Absent, the menu has no Stop Agent, as a page that only watches.
    */
-  stop(number: number): void
+  stop?: (number: number) => void
 }
 
 /**

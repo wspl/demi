@@ -13,13 +13,18 @@ import { ApiError, apiRequest, readResponse } from '../api/client'
 import { viewLinkSchema } from '../api/generated/web-api'
 import { accountlessPageHost } from '../plugins/accountless-host'
 import { finalEnd, tellParent, type ViewEnd } from './parent'
+import { readViewed } from './conversation'
+import ConversationViewPage from './ConversationViewPage.vue'
+import type { ViewedConversation } from '../api/generated/web-api'
 
 /**
  * A view link's page: the one tab of a conversation's browser the link
- * names, and nothing else (`crates/backend-http/src/browser_views.rs`). It
- * reads the link, shows the tab with the browser's own page, and tells the
- * window that frames it once the tab shows and once the view ended for good:
- * the link expired, was removed or never was, or the tab closed.
+ * names, and nothing else, or the conversation itself, which the page only
+ * watches (`crates/backend-http/src/view_links.rs`). It reads the link, shows
+ * the tab with the browser's own page or the conversation with its own
+ * page's parts, and tells the window that frames it once it shows and once
+ * the view ended for good: the link expired, was removed or never was, or the
+ * tab closed.
  */
 const props = defineProps<{ token: string }>()
 
@@ -27,7 +32,11 @@ providePageHost(accountlessPageHost('A view link’s page', { pages: () => [], b
 const open = viewStreamOf(props.token)
 
 const view = shallowRef<
-  { state: 'loading' } | { state: 'gone' } | { state: 'failed'; error: ShownError } | { state: 'found'; tab: string; readOnly: boolean }
+  | { state: 'loading' }
+  | { state: 'gone' }
+  | { state: 'failed'; error: ShownError }
+  | { state: 'found'; tab: string; readOnly: boolean }
+  | { state: 'watching'; viewed: ViewedConversation; expiresAt: string | null }
 >({ state: 'loading' })
 let reading: AbortController | null = null
 
@@ -38,7 +47,12 @@ async function read(): Promise<void> {
   view.value = { state: 'loading' }
   try {
     const found = await readResponse(await apiRequest(`/views/${encodeURIComponent(props.token)}`, { signal: controller.signal }), viewLinkSchema)
-    view.value = { state: 'found', tab: found.tab, readOnly: found.readOnly }
+    if (found.kind === 'tab') {
+      view.value = { state: 'found', tab: found.tab, readOnly: found.readOnly }
+      return
+    }
+    const viewed = await readViewed(props.token, controller.signal)
+    view.value = { state: 'watching', viewed, expiresAt: found.expiresAt }
   } catch (error) {
     if (controller.signal.aborted) {
       return
@@ -48,6 +62,25 @@ async function read(): Promise<void> {
       return
     }
     view.value = { state: 'failed', error: shownError(error) }
+  }
+}
+
+/**
+ * The conversation's connection could not be made: the link may have gone. A
+ * link that no longer opens ends the page, as removed, or as expired once its
+ * time is past; any other answer leaves the connection to try again.
+ */
+async function lost(): Promise<void> {
+  if (view.value.state !== 'watching') {
+    return
+  }
+  const { expiresAt } = view.value
+  try {
+    await apiRequest(`/views/${encodeURIComponent(props.token)}`)
+  } catch (error) {
+    if (error instanceof ApiError && error.code === 'view_not_found' && view.value.state === 'watching') {
+      end(expiresAt !== null && Date.parse(expiresAt) <= Date.now() ? 'expired' : 'removed')
+    }
   }
 }
 
@@ -81,6 +114,7 @@ onBeforeUnmount(() => reading?.abort())
       :request-id="view.error.requestId"
       :on-retry="read"
     />
+    <ConversationViewPage v-else-if="view.state === 'watching'" :token="token" :viewed="view.viewed" @lost="lost" @retry="read" />
     <!-- The tab tells of its tab's close; this page says it once, as the tab's end. -->
     <PageScope
       v-else

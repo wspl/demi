@@ -253,6 +253,7 @@ pub fn web() -> Vec<Root> {
         receives::<shares::SharedConversation>(),
         receives::<shares::SharedTranscriptPage>(),
         receives::<views::ViewLink>(),
+        receives::<views::ViewedConversation>(),
         receives::<attachments::AttachmentAnswer>(),
         receives::<attachments::AttachmentCheckAnswer>(),
         receives::<attachments::ConversationAttachment>(),

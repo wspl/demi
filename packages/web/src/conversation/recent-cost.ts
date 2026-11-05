@@ -1,7 +1,32 @@
 import { watch } from 'vue'
 import { isAbortError } from '@demicodes/utils'
+import { NO_COST, agentCost, conversationCost, recentOf, type CostShown } from '@demicodes/web-ui/agent/context-cost'
 import type { CostWindow, RecentCost } from '../api/generated/web-api'
 import type { Conversation } from '../state/types'
+
+/**
+ * What the context card of the conversation, `node` null, or of its agent
+ * `node`, shows of their cost: from their agents' metadata, with the cache
+ * chart of the node it shows, and the last hour's and the last day's cost
+ * while a card shows them (`createRecentCostWatch`).
+ */
+export function costShown(conversation: Conversation, node: string | null = null): CostShown | null {
+  const chart = conversation.charts[node ?? conversation.id] ?? null
+  const firstCallAt = conversation.metadata.shown.value?.firstCallAt ?? null
+  const recent = (number: number | null) => {
+    const of = (window: CostWindow) => {
+      const answer = conversation.recent[window]
+      return answer ? recentOf(answer.agents, conversation.subagents, number) : null
+    }
+    return { hour: of('hour'), day: of('day') }
+  }
+  if (node === null) {
+    const other = conversation.metadata.shown.value?.otherCost ?? NO_COST
+    return { cost: conversationCost(conversation.cost, conversation.subagents, other), node: null, chart, recent: recent(null), firstCallAt }
+  }
+  const agent = conversation.subagents.find((each) => each.id === node)
+  return agent ? { cost: agentCost(agent.cost), node, chart, recent: recent(agent.number), firstCallAt } : null
+}
 
 /** How often a watched window is read again with no new call. */
 export const RECENT_COST_READ_MS = 60_000

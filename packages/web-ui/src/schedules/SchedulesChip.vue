@@ -31,6 +31,8 @@ defineProps<{
   schedules: readonly ConversationSchedule[]
   /** The conversation is archived: its schedules wake nothing, and the menu only lists them. */
   archived?: boolean
+  /** The page only watches: the menu lists the schedules and when each wakes. */
+  readOnly?: boolean
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
@@ -86,6 +88,7 @@ watch([open, phone], async ([isOpen, isPhone]) => {
           :schedule="schedule"
           :now="now"
           :archived="archived"
+          :read-only="readOnly"
           @pause="(paused) => emit('pause', schedule.id, paused)"
           @delete="emit('delete', schedule.id)"
         />

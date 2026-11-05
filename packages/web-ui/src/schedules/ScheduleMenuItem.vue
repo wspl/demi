@@ -30,12 +30,16 @@ import { lastWakeReason, triggerWords, wakeWords } from './words'
  * - In an archived conversation, whose schedules wake nothing, every row is
  *   faded, with no time, its switch disabled and no Delete: the menu only lists
  *   them.
+ * - On a page that only watches, a row keeps its time, its switch is disabled
+ *   and it has no Delete.
  */
 const props = defineProps<{
   schedule: ConversationSchedule
   now: Date | number
   /** The conversation is archived. */
   archived?: boolean
+  /** The page only watches. */
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -49,6 +53,8 @@ const trigger = computed(() => triggerWords(props.schedule, props.now))
 const wake = computed(() => (props.archived ? null : wakeWords(props.schedule, props.now)))
 const reason = computed(() => lastWakeReason(props.schedule))
 const { offset, dragging, start, tap } = useSwipeDelete()
+/** Neither Delete nor the switch acts. */
+const locked = computed(() => props.archived || props.readOnly)
 </script>
 
 <template>
@@ -58,15 +64,15 @@ const { offset, dragging, start, tap } = useSwipeDelete()
   -->
   <MenuItem
     choice
-    class="schedule-menu-row group/row relative [--menu-row-h:2.125rem]! [--menu-row-px:0.75rem]! phone:[--menu-row-h:auto]! phone:py-1.5"
-    :class="dragging ? '' : 'transition-transform duration-200 ease-out'"
+    class="group/row relative [--menu-row-h:2.125rem]! [--menu-row-px:0.75rem]! phone:[--menu-row-h:auto]! phone:py-1.5"
+    :class="[dragging ? '' : 'transition-transform duration-200 ease-out', locked ? '' : 'schedule-menu-row']"
     :style="{ transform: `translateX(${offset}px)` }"
     :icon="triggerIcon(schedule.trigger)"
     :value="phone ? undefined : wake ?? undefined"
     :faded="schedule.paused || archived"
     :indicator="reason ? 'warning' : undefined"
     :indicator-label="reason ?? undefined"
-    @touchstart="archived ? undefined : start($event)"
+    @touchstart="locked ? undefined : start($event)"
     @click="tap"
   >
     <span v-if="phone" class="flex min-w-0 flex-1 flex-col gap-0.5 py-0.5">
@@ -91,7 +97,7 @@ const { offset, dragging, start, tap } = useSwipeDelete()
           text, as a sidebar's row actions do: the menu never widens for it.
         -->
         <span
-          v-if="!phone && !archived"
+          v-if="!phone && !locked"
           class="absolute right-full top-1/2 flex -translate-y-1/2 items-center pr-2 pl-4 opacity-0 transition-opacity group-hover/row:opacity-100 has-focus-visible:opacity-100"
           style="background: linear-gradient(to right, transparent, var(--surface-current) 1rem)"
         >
@@ -108,14 +114,14 @@ const { offset, dragging, start, tap } = useSwipeDelete()
         <Switch
           :model-value="!schedule.paused"
           size="sm"
-          :disabled="archived"
+          :disabled="locked"
           :aria-label="schedule.name"
           class="ml-3"
           @update:model-value="(on: boolean) => emit('pause', !on)"
         />
         <!-- The swipe's Delete waits just outside the row's end and comes into view as the row slides. -->
         <button
-          v-if="phone && !archived"
+          v-if="phone && !locked"
           type="button"
           tabindex="-1"
           aria-hidden="true"

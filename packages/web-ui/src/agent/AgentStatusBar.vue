@@ -102,6 +102,13 @@ const props = defineProps<{
    * none.
    */
   cost?: CostShown | null
+  /**
+   * The agent's session stays open between its turns, as the root agent's
+   * does, so the bar keeps its context indicator whatever its state.
+   */
+  sessionOpen?: boolean
+  /** The bar is read by someone who cannot act on the agent: its card has no Compact. */
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -243,8 +250,9 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
         </template>
       </Tooltip>
       <ContextUsageIndicator
-        v-if="isSubagentRunning(run.phase)"
+        v-if="sessionOpen || isSubagentRunning(run.phase)"
         segment
+        :read-only="readOnly"
         class="shrink-0"
         :usage="usage"
         :size-refused="sizeRefused"

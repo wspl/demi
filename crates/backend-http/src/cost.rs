@@ -15,7 +15,7 @@ use super::gate::AuthUser;
 /// The query of `GET /conversations/:id/cost/recent`.
 #[derive(Debug, Deserialize)]
 pub(super) struct RecentQuery {
-    window: CostWindow,
+    pub(super) window: CostWindow,
 }
 
 /// `GET /conversations/:id/cost/recent`.

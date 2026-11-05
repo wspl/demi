@@ -21,7 +21,8 @@ use demi_command_declarations::{NativeOperation, Node};
 use demi_conversation_lane_protocol::{JobModel, JobPhase, TranscriptPatch, Version};
 use demi_host_interface::{PortRequest, PortResponse};
 use demi_shared_types::{
-    Block, BlockId, CloudSizing, CommandEnd, FileExtension, IntegrationCapabilities, NodeId, ProviderErrorDiagnostics, SessionPhase, Timestamp, TurnCause, TurnId,
+    Block, BlockId, CloudSizing, CommandEnd, FileExtension, IntegrationCapabilities, NodeId, Nullable, ProviderErrorDiagnostics, SessionPhase, Timestamp, TurnCause,
+    TurnId,
 };
 use demi_web_api_protocol::cloud::CloudState;
 use demi_web_api_protocol::conversations::{ConversationStatus, TurnOutcome};
@@ -177,10 +178,12 @@ pub struct CloudList {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateBrowserView {
-    /// How many seconds the link opens for.
-    #[schemars(range(min = 1))]
-    #[garde(range(min = 1))]
-    pub expires_in: u64,
+    /// How many seconds the link opens for, at least 1; null for a link that
+    /// opens until it is removed.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u64>")]
+    #[garde(inner(range(min = 1)))]
+    pub expires_in: Option<u64>,
     /// Whether the person only watches: no click, key or paste of theirs
     /// reaches the page, and their window sizes no tab.
     #[garde(skip)]
@@ -196,8 +199,11 @@ pub struct BrowserView {
     pub tab: String,
     pub read_only: bool,
     pub created_at: Timestamp,
-    /// From then the link opens nothing, and a page open on it ends.
-    pub expires_at: Timestamp,
+    /// From then the link opens nothing, and a page open on it ends; null for
+    /// a link that opens until it is removed.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    pub expires_at: Option<Timestamp>,
     /// The page that shows the tab, which may be framed anywhere; only the
     /// answer that made the link carries it, as Demi keeps no copy of its
     /// token.
@@ -211,6 +217,45 @@ pub struct BrowserView {
 #[serde(rename_all = "camelCase")]
 pub struct BrowserViewList {
     pub views: Vec<BrowserView>,
+}
+
+/// `POST /conversations/:conversation/views`: a link to the conversation,
+/// which shows it live to someone who only watches.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateConversationView {
+    /// How many seconds the link opens for, at least 1; null for a link that
+    /// opens until it is removed.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u64>")]
+    #[garde(inner(range(min = 1)))]
+    pub expires_in: Option<u64>,
+}
+
+/// A link to a conversation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationView {
+    pub id: String,
+    pub created_at: Timestamp,
+    /// From then the link opens nothing, and a page open on it ends; null for
+    /// a link that opens until it is removed.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    pub expires_at: Option<Timestamp>,
+    /// The page that shows the conversation, which may be framed anywhere;
+    /// only the answer that made the link carries it, as Demi keeps no copy
+    /// of its token.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+/// `GET /conversations/:conversation/views`: the links to the conversation
+/// that have not expired, the newest first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationViewList {
+    pub views: Vec<ConversationView>,
 }
 
 /// A model a conversation runs on: one of the provider entries and models of

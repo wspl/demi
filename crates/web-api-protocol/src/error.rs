@@ -208,6 +208,9 @@ pub enum ErrorCode {
     /// No view link answers the token, or it expired or was removed: one
     /// answer for each, so it tells nothing of what exists.
     ViewNotFound,
+    /// A view link's page only watches its conversation: the lane takes
+    /// nothing but opening, following and closing.
+    ViewOnly,
     /// The conversation has no undecided permission request of that id:
     /// another page decided it, an Allow of its category did, or a newer
     /// request replaced it.

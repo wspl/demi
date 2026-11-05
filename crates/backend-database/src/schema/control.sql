@@ -757,20 +757,22 @@ CREATE UNIQUE INDEX shares_of_answer ON shares (conversation_id, block_id) WHERE
 CREATE UNIQUE INDEX shares_of_reply_block ON shares (conversation_id, reply_block_tag, reply_block_id)
   WHERE kind = 'reply_block';
 
--- The view links of a conversation's browser, each by the SHA-256 of its
--- token: the one tab it shows, whether it only watches, and when it stops
--- opening.
-CREATE TABLE browser_views (
+-- A conversation's view links, each by the SHA-256 of its token: the one tab
+-- of its browser it shows, or null for the conversation itself, which only
+-- watches; whether it only watches; and when it stops opening, null for
+-- never.
+CREATE TABLE view_links (
   token_hash      TEXT PRIMARY KEY,
   id              TEXT NOT NULL UNIQUE,
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  tab             TEXT NOT NULL,
+  tab             TEXT,
   read_only       INTEGER NOT NULL CHECK (read_only IN (0, 1)),
   created_at      INTEGER NOT NULL,
-  expires_at      INTEGER NOT NULL,
-  CHECK (expires_at > created_at)
+  expires_at      INTEGER,
+  CHECK (expires_at IS NULL OR expires_at > created_at),
+  CHECK (tab IS NOT NULL OR read_only = 1)
 ) STRICT;
-CREATE INDEX browser_views_conversation ON browser_views (conversation_id, expires_at);
+CREATE INDEX view_links_conversation ON view_links (conversation_id, expires_at);
 
 -- A conversation's deletion that has not reached its last step: its record
 -- is gone, and a start finishes what is left (`storage.md` § Deleting a

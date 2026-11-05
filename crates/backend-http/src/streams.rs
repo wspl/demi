@@ -8,7 +8,7 @@
 //!   `StreamWatched`), which decides whether the stream is activity.
 //!
 //! The relay serves any page side: a lane of the page connection, or a view
-//! link's own socket (`browser_views.rs`).
+//! link's own socket (`view_links.rs`).
 
 use std::future::Future;
 
@@ -21,6 +21,7 @@ use demi_web_api_protocol::ids::UserId;
 use super::AppState;
 use super::connection::Opened;
 use super::conversations::owned;
+use super::view_links::ViewEnd;
 use super::error::ApiError;
 use demi_backend_host_access::stream::UserStream;
 use demi_runner_protocol::direct::StreamWatched;
@@ -115,12 +116,8 @@ pub(super) enum End {
     PluginDisabled,
     /// The page closed the lane, or its connection ended.
     PageClosed,
-    /// The view link the page opened the stream by expired.
-    ViewExpired,
-    /// The view link the page opened the stream by was removed.
-    ViewRemoved,
-    /// The view link the page opened the stream by no longer opens.
-    ViewNotFound,
+    /// The view link the page opened the stream by ended.
+    View(ViewEnd),
 }
 
 impl End {
@@ -134,9 +131,10 @@ impl End {
             Self::HostUnreachable => frame(1011, "host_unreachable"),
             Self::Changed => frame(4000, "conversation_changed"),
             Self::PluginDisabled => frame(4001, "plugin_disabled"),
-            Self::ViewExpired => frame(4002, "view_expired"),
-            Self::ViewRemoved => frame(4003, "view_removed"),
-            Self::ViewNotFound => frame(4004, "view_not_found"),
+            Self::View(end) => {
+                let (code, reason) = end.close();
+                frame(code, reason)
+            }
             Self::PageClosed => LaneEnd::Gone,
         }
     }

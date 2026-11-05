@@ -22,7 +22,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use super::StorageError;
-use super::columns::{decode, instant, json, to_json};
+use super::columns::{decode, instant, json, optional_instant, to_json};
 use super::control::ControlService;
 
 pub(crate) const TABLE: &str = "user_credentials";
@@ -556,16 +556,6 @@ pub(crate) fn named(
     Ok(None)
 }
 
-fn optional_instant(
-    row: &Row<'_>,
-    column: &'static str,
-) -> Result<Option<Timestamp>, StorageError> {
-    let millis: Option<i64> = row.get(column)?;
-    millis
-        .map(|millis| decode(TABLE, column, Timestamp::from_millisecond(millis)))
-        .transpose()
-}
-
 fn credential_row(row: &Row<'_>) -> Result<StoredCredential, StorageError> {
     let Fields(fields) = json(TABLE, "fields", &row.get::<_, String>("fields")?)?;
     Ok(StoredCredential {
@@ -574,8 +564,8 @@ fn credential_row(row: &Row<'_>) -> Result<StoredCredential, StorageError> {
         name: row.get("name")?,
         note: row.get("note")?,
         fields,
-        keep_until: optional_instant(row, "keep_until")?,
-        last_used_at: optional_instant(row, "last_used_at")?,
+        keep_until: optional_instant(row, TABLE, "keep_until")?,
+        last_used_at: optional_instant(row, TABLE, "last_used_at")?,
         created_at: instant(row, TABLE, "created_at")?,
         updated_at: instant(row, TABLE, "updated_at")?,
     })

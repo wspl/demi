@@ -69,11 +69,17 @@ const props = withDefaults(
     streamed?: boolean
     /** Whether the panel shows the child's output (Settings › Agent › Output speed); off, it keeps its room. */
     outputSpeed?: boolean
+    /**
+     * The page only watches: no Stop Agent or Stop All, and a child's context
+     * card has no Compact.
+     */
+    readOnly?: boolean
   }>(),
   {
     terminals: () => [],
     streamed: false,
     outputSpeed: true,
+    readOnly: false,
   },
 )
 
@@ -233,7 +239,7 @@ function tabMenu(id: string): () => ContextMenuGroup[] {
       return []
     }
     return [
-      ...agentMenu({ number: agent.number, running: agent.phase === 'running' }, { stop: () => emit('abortAgent', id) }),
+      ...agentMenu({ number: agent.number, running: agent.phase === 'running' }, { stop: props.readOnly ? undefined : () => emit('abortAgent', id) }),
       [{ icon: X, label: t('subagents.closeTab'), disabled: agent.phase === 'running', run: () => closeTab(id) }],
     ]
   }
@@ -255,7 +261,7 @@ function closeTab(id: string): void {
   <SessionOverlay
     :open="open"
     :still-tabs="replacing"
-    :strip-menu="stripMenu"
+    :strip-menu="readOnly ? undefined : stripMenu"
     @close="closePanel"
   >
     <template #tabs>
@@ -310,6 +316,7 @@ function closeTab(id: string): void {
         :bottom-offset="16"
         :persisted-scroll-state="undefined"
         read-only
+        :hide-fork="readOnly"
         :reveal-block-id="reveal?.node === active.id ? reveal.blockId : null"
         @revealed="emit('revealed')"
         @read-before="emit('read', active.id)"
@@ -333,6 +340,7 @@ function closeTab(id: string): void {
         :instructions="context?.instructions ?? []"
         :limits="context?.limits ?? null"
         :cost="agentCost?.(active.id)"
+        :read-only="readOnly"
         @compact="emit('compactAgent', active.id)"
         @open-instruction="emit('openInstruction', $event)"
         @refresh-limits="emit('refreshLimits', active.model.providerId, active.contextUsage?.account ?? null)"

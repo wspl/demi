@@ -177,6 +177,10 @@ fn routes() -> Vec<Route> {
             .refuses(409, "The integration's browser capability is off (`integration_refused`)."),
         json("get", "/conversations/{conversation}/browser/views", "The links to the conversation's browser tabs that have not expired", None, (200, Some(of::<BrowserViewList>))),
         json("delete", "/conversations/{conversation}/browser/views/{view}", "Remove a link; each page open on it ends", None, (204, None)),
+        json("post", "/conversations/{conversation}/views", "A link to the conversation, live and read-only, which any page may frame; only this answer carries its `url`", Some(of::<CreateConversationView>), (201, Some(of::<ConversationView>)))
+            .refuses(400, "`expiresIn` is beyond the times Demi keeps (`integration_refused`)."),
+        json("get", "/conversations/{conversation}/views", "The links to the conversation that have not expired", None, (200, Some(of::<ConversationViewList>))),
+        json("delete", "/conversations/{conversation}/views/{view}", "Remove a link to the conversation; each page open on it ends", None, (204, None)),
         json("get", "/conversations/{conversation}/fs", "A directory's entries on the conversation's Cloud, its working directory without `path`", None, (200, Some(of::<files::Directory>)))
             .query(of::<files::DirectoryQuery>),
         json("post", "/conversations/{conversation}/fs", "Make a directory, with its parents", Some(of::<files::CreateDirectory>), (201, Some(of::<files::CreatedDirectory>))),

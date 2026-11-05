@@ -191,24 +191,37 @@ fn shared_page_policy(token: &str, public: Option<&url::Url>) -> String {
 /// The Content Security Policy of view link `token`'s page.
 ///
 /// As a share's page, it loads the build's own scripts, styles and fonts, and
-/// connects only to its link's routes at `public`: its read under `public`'s
-/// scheme and its socket under `ws` or `wss`, since Chrome admits neither
-/// under the other's source. It frames nothing. Unlike every other page of
-/// Demi, any page may frame it: a product shows the tab where its users are,
-/// and the token is the key, which a page that frames it already holds.
+/// connects, loads images and videos, and frames only its link's routes at
+/// `public`, `<public>/api/views/<token>` and what lies under it: its reads
+/// under `public`'s scheme and its sockets under `ws` or `wss`, since Chrome
+/// admits neither under the other's source. A conversation's page also
+/// frames the links of the reply blocks its routes send it on to, as a
+/// share's does. Unlike every other page of Demi, any page may frame it: a
+/// product shows the tab or the conversation where its users are, and the
+/// token is the key, which a page that frames it already holds.
 fn view_page_policy(token: &str, public: Option<&url::Url>) -> String {
     let encoded = percent_encoding::utf8_percent_encode(token, percent_encoding::NON_ALPHANUMERIC);
-    let connect = public
-        .and_then(|public| public.join(&format!("api/views/{encoded}")).ok())
-        .and_then(|route| {
-            let mut socket = route.join(&format!("{encoded}/stream")).ok()?;
-            socket.set_scheme(if route.scheme() == "https" { "wss" } else { "ws" }).ok()?;
-            Some(format!("{route} {socket}"))
-        })
-        .unwrap_or_else(|| "'none'".to_owned());
+    let route = public.and_then(|public| public.join(&format!("api/views/{encoded}")).ok());
+    let routes = route.as_ref().map(|route| format!("{route} {route}/"));
+    let sockets = route.as_ref().and_then(|route| {
+        let mut socket = route.join(&format!("{encoded}/")).ok()?;
+        socket.set_scheme(if route.scheme() == "https" { "wss" } else { "ws" }).ok()?;
+        Some(socket)
+    });
+    let connect = match (&routes, &sockets) {
+        (Some(routes), Some(sockets)) => format!("{routes} {sockets}"),
+        _ => "'none'".to_owned(),
+    };
+    let media = routes.as_deref().map(|routes| format!("{routes} ")).unwrap_or_default();
+    let blocks = public.and_then(|public| public.join("api/blocks/").ok());
+    let frames = match (&routes, &blocks) {
+        (Some(routes), Some(blocks)) => format!("{routes} {blocks}"),
+        _ => "'none'".to_owned(),
+    };
     format!(
         "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; \
-         img-src data:; connect-src {connect}; base-uri 'none'; form-action 'none'; frame-ancestors *"
+         img-src {media}blob: data:; media-src {media}blob:; frame-src {frames}; connect-src {connect}; \
+         base-uri 'none'; form-action 'none'; frame-ancestors *"
     )
 }
 

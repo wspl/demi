@@ -254,6 +254,7 @@ import GalleryTabStripDrive from '../components/GalleryTabStripDrive.vue'
 import { useGalleryView } from '../gallery-views'
 import GallerySharedPage from '../components/GallerySharedPage.vue'
 import GalleryViewPage from '../components/GalleryViewPage.vue'
+import GalleryConversationViewPage from '../components/GalleryConversationViewPage.vue'
 import { providePageHost } from '@demicodes/web-ui/plugins/page'
 import { galleryPageHost } from '../fixtures/plugins'
 import { WIDGET_PAGES, galleryWidgets, widgetMarkdown } from '../fixtures/widgets'
@@ -3479,6 +3480,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'shared'">
       <GallerySharedPage />
       <GalleryViewPage />
+      <GalleryConversationViewPage />
     </template>
     <template v-if="view === 'windows'">
       <GallerySection

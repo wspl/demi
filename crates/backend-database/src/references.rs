@@ -24,9 +24,9 @@ use std::collections::BTreeSet;
 
 use demi_agent_store::CheckpointState;
 use demi_agent_store::media::{comment_references, content_references};
-use demi_shared_types::{BlobRef, Timestamp};
+use demi_shared_types::{BlobRef, Block, Timestamp};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use super::StorageError;
 use super::columns::{decode, json};
@@ -35,6 +35,7 @@ use super::control::ControlService;
 use super::{conversation_attachments, shares};
 use super::drafts::draft_blobs;
 use super::media_jobs::media_job_blobs;
+use super::records::{Codec, Stored, record_of};
 use super::plugin_values::plugin_blobs;
 
 /// What the control database says about a user's blobs.
@@ -131,6 +132,41 @@ impl ControlService {
         })
         .await
     }
+}
+
+/// Whether the conversation's transcript or its attachments show `blob`: a
+/// block's medium or edit copy, as `block_blobs` lists it, or a file a
+/// message sent or the agent uploaded.
+pub fn conversation_shows_blob(connection: &Connection, blob: &BlobRef) -> Result<bool, StorageError> {
+    let shown: Option<i64> = connection
+        .query_row(
+            "SELECT 1 FROM block_blobs INDEXED BY block_blobs_by_blob WHERE blob = ?1
+             UNION ALL
+             SELECT 1 FROM attachments WHERE blob = ?1
+             LIMIT 1",
+            [blob.as_str()],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(shown.is_some())
+}
+
+/// Whether a text of the conversation's transcript, any agent's, names the
+/// reply block `<tag id="id" />`, as `shares::shows_block` asks of a share.
+pub fn conversation_shows_block(connection: &Connection, tag: &str, id: &str) -> Result<bool, StorageError> {
+    let codec = Codec::new(connection);
+    let mut statement =
+        connection.prepare(&format!("SELECT {} FROM blocks WHERE blocks.type = 'text'", record_of("blocks")))?;
+    let mut rows = statement.query([])?;
+    while let Some(row) = rows.next()? {
+        let stored = Stored::of(row, 0)?;
+        if let Block::Text(text) = codec.block("blocks", &stored)?
+            && shares::named_blocks(&text.text, tag).contains(id)
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Every blob a conversation's database names, read on `connection` in the read

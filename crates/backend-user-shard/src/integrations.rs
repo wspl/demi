@@ -136,7 +136,7 @@ impl Shard {
         if let Some(integration) = &changed
             && !integration.capabilities.browser
         {
-            self.services().views.withdraw(&integration.id);
+            self.services().views.withdraw(&integration.id, true);
         }
         self.mark_integrations();
         Ok(changed)
@@ -823,7 +823,7 @@ impl Shard {
         // No program reaches it from here on.
         control.replace_integration_token(id.clone()).await?;
         self.integration_events.close(id);
-        self.services().views.withdraw(id);
+        self.services().views.withdraw(id, false);
         for kept in control.integration_conversations(integration.id.clone()).await? {
             self.delete_conversation(&kept.conversation).await?;
         }

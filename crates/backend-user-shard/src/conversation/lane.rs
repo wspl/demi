@@ -56,6 +56,14 @@
 //! failure facts are. A reply streams in pieces, so a frame that
 //! completes a tag in the text so far names it, whichever piece it ends in.
 //!
+//! # A lane that watches
+//!
+//! A view link's page opens a lane that only watches (`LaneAccess::Watch`).
+//! It takes `open`, `follow`, `unfollow` and `close`, and answers every other
+//! frame `view_only`, which does nothing. Its `open` holds no draft, and of
+//! the conversation's own values it follows the metadata alone: the draft,
+//! the saved messages, the workflows and the shares are the account's.
+//!
 //! # Frames the lane rewrites
 //!
 //! - An `open` takes the conversation's settings order, so the tree opens with
@@ -150,12 +158,23 @@ enum Handled {
     NotJson,
 }
 
+/// Who a lane serves: the conversation's own page, or a view link's page,
+/// which only watches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaneAccess {
+    Own,
+    Watch,
+}
+
 /// What a frame changes of what the lane follows itself: the conversation's
 /// metadata and its lists, which the agents' connection knows nothing of.
 #[derive(Default)]
 struct OwnFollows {
-    /// The revision of the draft the page holds, when the frame is its `open`.
-    opening: Option<u64>,
+    /// The frame is the lane's `open`.
+    opening: bool,
+    /// The revision of the draft the page holds, which its `open` names; none
+    /// for a lane that follows no draft.
+    draft: Option<u64>,
     follow: Vec<Follow>,
     unfollow: Vec<Followed>,
 }
@@ -211,7 +230,7 @@ impl Shown {
     }
 
     fn apply(&mut self, own: OwnFollows) {
-        if let Some(draft) = own.opening {
+        if let Some(draft) = own.draft {
             self.draft = Some(draft);
         }
         for Follow { value, holds } in own.follow {
@@ -256,6 +275,7 @@ impl Shard {
         conversation: ConversationRecord,
         mut page: Lane,
         mut stream: LaneReader,
+        access: LaneAccess,
     ) {
         // Counted before any wait, so the shard's close waits for this
         // lane; one adopted as the close begins ends at once.
@@ -291,7 +311,7 @@ impl Shard {
                         let replies = match handled {
                             Handled::Replies(replies) => replies,
                             Handled::Following { own, frame } => {
-                                let opening = own.opening.is_some();
+                                let opening = own.opening;
                                 shown.apply(own);
                                 // The values the page follows are compared with
                                 // what it holds before the frame is handled, and
@@ -331,7 +351,7 @@ impl Shard {
                             let connection = &connection;
                             let id = id.clone();
                             handling = Some(Box::pin(async move {
-                                shard.handle_message(&id, connection, text.as_str()).await
+                                shard.handle_message(&id, connection, text.as_str(), access).await
                             }));
                         }
                         Some(LaneMessage::Binary(_)) => break Ending::NotJson,
@@ -579,35 +599,58 @@ impl Shard {
         conversation: &ConversationId,
         connection: &demi_agent_server::Connection<super::ShardHosts>,
         text: &str,
+        access: LaneAccess,
     ) -> Handled {
+        let watching = access == LaneAccess::Watch;
+        // A lane that watches follows the metadata alone of the
+        // conversation's own values.
+        let refused = |value: &Followed| watching && *value != Followed::Metadata;
         match decode_client_frame(text) {
             Ok(ClientFrame::Open { draft, follows }) => {
-                let (own, rest) = OwnFollows::split(follows);
+                let (mut own, rest) = OwnFollows::split(follows);
+                own.retain(|follow| !refused(&follow.value));
+                let draft = if watching { None } else { draft };
                 Handled::Following {
                     own: OwnFollows {
-                        opening: Some(draft.unwrap_or(0)),
+                        opening: true,
+                        draft: (!watching).then(|| draft.unwrap_or(0)),
                         follow: own,
                         unfollow: Vec::new(),
                     },
                     frame: Some(ClientFrame::Open { draft, follows: rest }),
                 }
             }
-            Ok(ClientFrame::Follow(follow)) if is_own(&follow.value) => Handled::Following {
-                own: OwnFollows {
-                    opening: None,
-                    follow: vec![follow],
-                    unfollow: Vec::new(),
-                },
-                frame: None,
-            },
+            Ok(ClientFrame::Follow(follow)) if is_own(&follow.value) => {
+                if refused(&follow.value) {
+                    return Handled::Replies(vec![refusal(ErrorCode::ViewOnly, "A view link's page follows no value of the account's")]);
+                }
+                Handled::Following {
+                    own: OwnFollows {
+                        follow: vec![follow],
+                        ..OwnFollows::default()
+                    },
+                    frame: None,
+                }
+            }
             Ok(ClientFrame::Unfollow { value }) if is_own(&value) => Handled::Following {
                 own: OwnFollows {
-                    opening: None,
-                    follow: Vec::new(),
                     unfollow: vec![value],
+                    ..OwnFollows::default()
                 },
                 frame: None,
             },
+            Ok(frame @ (ClientFrame::Follow(_) | ClientFrame::Unfollow { .. } | ClientFrame::Close {})) => {
+                self.handle_frame(conversation, connection, frame).await
+            }
+            Ok(frame) if watching => {
+                let command = frame.kind();
+                Handled::Replies(vec![refused_frame(
+                    frame,
+                    command,
+                    ErrorCode::ViewOnly,
+                    "A view link's page only watches the conversation".to_owned(),
+                )])
+            }
             Ok(frame) => self.handle_frame(conversation, connection, frame).await,
             Err(FrameError::NotJson(_)) => Handled::NotJson,
             Err(FrameError::Invalid(error)) => Handled::Replies(vec![refusal(

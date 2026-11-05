@@ -19,11 +19,12 @@ export interface MenuAgent {
  * - Its tab in the Agents window offers the same without Open, and adds Close
  *   Tab.
  */
-export function agentMenu(agent: MenuAgent, actions: { open?: () => void; stop: () => void }): ContextMenuGroup[] {
+export function agentMenu(agent: MenuAgent, actions: { open?: () => void; stop?: () => void }): ContextMenuGroup[] {
+  const stop = actions.stop
   return [
     ...(actions.open ? [[{ icon: SquareArrowOutUpRight, label: ui('contextMenu.open'), run: actions.open }]] : []),
     [
-      { icon: CircleStop, label: t('subagents.stopAgent'), disabled: !agent.running, run: actions.stop },
+      ...(stop ? [{ icon: CircleStop, label: t('subagents.stopAgent'), disabled: !agent.running, run: stop }] : []),
       { icon: Copy, label: t('subagents.copyId'), run: () => copyId(String(agent.number)) },
     ],
   ]

@@ -1,11 +1,11 @@
-import { computed, markRaw, reactive, type Raw, ref, toRaw, watch } from 'vue'
+import { computed, reactive, type Raw, ref, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue, deferred, delay, isAbortError, moveBefore } from '@demicodes/utils'
 import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
-import { FIRST_BLOCKS, type ClientComment, type ClientContent, type MessageComment } from '@demicodes/protocol'
+import type { ClientComment, ClientContent, MessageComment } from '@demicodes/protocol'
 import { commentsReplaced, inReadingOrder, type DraftMessage, type MessageFiles, type ReplyCommenting, type ShownComment, type WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
-import { NO_COST, agentCost, conversationCost, recentOf, type CostShown, type CostWindow } from '@demicodes/web-ui/agent/context-cost'
+import { NO_COST } from '@demicodes/web-ui/agent/context-cost'
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { finishedSubagents, runningSubagents } from '@demicodes/web-ui/agent/subagents'
@@ -34,12 +34,12 @@ import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { plainCopy } from '@demicodes/web-ui/infra/plain-copy'
 import { pageLog } from '@demicodes/web-ui/infra/log'
 import { viewAbandoned, viewOpened, viewRead } from '@demicodes/web-ui/infra/view-timing'
-import { Slot, type SlotChange } from '@demicodes/web-ui/infra/slot'
+import type { SlotChange } from '@demicodes/web-ui/infra/slot'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { showRefused, type Refusal, type RefusedAction } from '@demicodes/web-ui/sidebar/refused-toast'
 import { readRecentCost } from '../api/cost'
 import { forkConversation } from '../api/message-fork'
-import { createRecentCostWatch } from './recent-cost'
+import { costShown, createRecentCostWatch } from './recent-cost'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import {
   applyModelChange,
@@ -74,7 +74,7 @@ import { ATTACHMENT_MARK, parseTypedMarkdown, serializeTypedMarkdown } from '@de
 import { createConversationClient } from '@demicodes/web-ui/transport/conversation-lane'
 import { SessionError } from '@demicodes/conversation-client'
 import type { ConversationClient, ConversationClientOptions, ConversationHeld, ConversationReader, HeldTranscript, TranscriptRead } from '@demicodes/web-ui/transport/protocol'
-import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, logReadAnswered, logReadFailed, readResponse, readSizedResponse } from '../api/client'
+import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, logReadAnswered, logReadFailed, readResponse } from '../api/client'
 import { readSaved } from '../api/saved'
 import type { z } from 'zod'
 import { loadDraft } from '../api/drafts'
@@ -88,7 +88,6 @@ import {
   savedListingSchema,
   conversationUpdateSchema,
   transcriptPageSchema,
-  type AttachedHost,
   type ConversationBatch,
   type ConversationDetail,
   type ConversationDraft,
@@ -96,7 +95,6 @@ import {
   type SavedListing,
   type ConversationMetadata,
   type ConversationPatch,
-  type ConversationStatus,
   type ConversationSummary,
   type CreateConversation,
   type DraftFile,
@@ -108,6 +106,7 @@ import {
   type SuggestedReplyUse,
 } from '../api/generated/web-api'
 import type { WorkflowChoice } from '@demicodes/protocol'
+import { followMetadata, listEntry, newConversation, summaryStatus } from './entry'
 import { isEmptyMessage, joinMessageContent, storedMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { startingChoices, startingWorkflow, type RememberedChoices } from '@demicodes/web-ui/agent/starting-choices'
 import type { WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
@@ -121,8 +120,8 @@ import { useSession } from '../auth/session'
 import type { Conversation, PendingSend, ProductAttachment } from '../state/types'
 import type { PendingSubmissionState } from '@demicodes/web-ui/agent/types'
 import { applyConversationEvent, describeAttachments, describeReplyBlocks, takeAgents, updateLiveStatus } from './activity'
-import { composerWriting, createRecordSync, draftFile, editedMessage, newRecord, wholeListed, type Message, type Writing } from './record'
-import { createConversationHistoryReads } from './history'
+import { composerWriting, createRecordSync, draftFile, editedMessage, wholeListed, type Message, type Writing } from './record'
+import { createConversationHistoryReads, readLatestTranscript } from './history'
 import type { SideWriting } from './side-questions'
 import { createConversationCopies } from './offline'
 import { readConversationCopy, readNodeCopy } from '../state/offline'
@@ -377,91 +376,6 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  function summaryStatus(
-    status: ConversationStatus,
-  ): Conversation['status'] {
-    // A turn Demi resumes after a restart runs again without the user.
-    if (status === 'running' || status === 'compacting' || status === 'resuming') {
-      return 'active'
-    }
-    // A turn the process died under is a failure, like a provider's; only the
-    // user's own Stop is an abort.
-    if (status === 'error' || status === 'interrupted') {
-      return 'error'
-    }
-    if (status === 'stopped') {
-      return 'aborted'
-    }
-    return status === 'completed' ? 'done' : 'idle'
-  }
-
-  /** What the sidebar's entry `record` sets on its conversation. */
-  function listEntry(
-    record: Pick<
-      ConversationSummary,
-      | 'id'
-      | 'workspaceId'
-      | 'title'
-      | 'pinned'
-      | 'archived'
-      | 'archivedAt'
-      | 'scheduled'
-      | 'target'
-      | 'worktree'
-      | 'revision'
-      | 'readRevision'
-      | 'unread'
-      | 'unreadPermissionRequests'
-      | 'createdAt'
-      | 'updatedAt'
-    >,
-  ) {
-    return {
-      id: record.id,
-      workspaceId: record.workspaceId,
-      title: record.title,
-      pinned: record.pinned,
-      archived: record.archived,
-      archivedAt: record.archivedAt,
-      scheduled: record.scheduled,
-      target: record.target,
-      projectId:
-        record.target.kind === 'project' ? record.target.projectId : null,
-      worktree: record.worktree ?? undefined,
-      revision: record.revision,
-      readRevision: record.readRevision,
-      unread: record.unread,
-      // The sidebar's mark settles once the request is read, though it still waits.
-      needsYou: record.unreadPermissionRequests > 0,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-    }
-  }
-
-  /**
-   * The conversation shows its metadata as the page holds it now, with the
-   * page's changes over it: the model settings its record holds, whichever
-   * page or device changed them last, its directory, workflow and plugins.
-   * A record without a model leaves the page's own settings, which a send
-   * writes to it. Its hosts come whole with it, under their revision, and
-   * one no newer than the page's changes nothing.
-   */
-  function followMetadata(conversation: Conversation): void {
-    const shown = conversation.metadata.shown.value
-    if (!shown) {
-      return
-    }
-    conversation.cwd = shown.cwd
-    conversation.workflow = shown.workflow
-    conversation.pluginsChanged = shown.pluginsChanged
-    conversation.turnSpeed = shown.turnSpeed
-    conversation.suggestedReplies = shown.suggestedReplies
-    if (shown.model) {
-      conversation.model = { ...shown.model }
-    }
-    conversation.attachedHosts.replace(shown.hosts.hosts, { revisions: { '': shown.hosts.revision } })
-  }
-
   /** Takes `metadata` as a read of the conversation's, as its lane or a read of it brings it, in the backend's run `run`. */
   function takeMetadata(conversation: Conversation, metadata: ConversationMetadata, run = product.snapshot?.run ?? null): void {
     conversation.metadataRun = run
@@ -498,72 +412,6 @@ export const useConversations = defineStore('conversations', () => {
       return conversation.model
     }
     return { ...conversation.model, providerId: pick.providerId, modelId: pick.modelId }
-  }
-
-  /**
-   * A conversation as the sidebar's entry `record` lists it, with what only
-   * the page knows of one without a record: `local`'s model settings,
-   * workflow and directory.
-   */
-  function newConversation(
-    record: Omit<ConversationSummary, 'panel'>,
-    local: { model?: ModelSettings, workflow?: WorkflowChoice, cwd?: string } = {},
-  ): Conversation {
-    return {
-      ...listEntry(record),
-      persistence: 'synced',
-      status: summaryStatus(record.status),
-      metadata: markRaw(new Slot<ConversationMetadata>()),
-      metadataRun: null,
-      agentsHeld: null,
-      cwd: local.cwd ?? '',
-      pluginsChanged: false,
-      turnSpeed: null,
-      suggestedReplies: null,
-      workflows: null,
-      history: EMPTY_TRANSCRIPT,
-      shownAt: null,
-      instructions: [],
-      summaries: {},
-      phase: 'idle',
-      queue: [],
-      pendingSteers: [],
-      starting: null,
-      pendingCalls: [],
-      waitingSince: null,
-      requestOutputs: {},
-      model: local.model ?? initialModelSettings(),
-      workflow: local.workflow ?? { type: 'default' },
-      lastError: null,
-      draft: '',
-      draftShown: 0,
-      comments: [],
-      record: newRecord(),
-      savedWrites: [],
-      files: [],
-      attachmentIds: [],
-      pendingSends: [],
-      delivered: [],
-      removing: [],
-      messageEdit: null,
-      scroll: null,
-      attachedHosts: markRaw(new Slot<AttachedHost[]>([])),
-      attachmentDescriptions: {},
-      replyBlockFacts: {},
-      subagents: [],
-      shownSubagent: null,
-      turnStartedAt: null,
-      sides: [],
-      terminals: [],
-      load: 'loading',
-      pendingAction: null,
-      resuming: false,
-      failures: {},
-      contextUsage: null,
-      cost: NO_COST,
-      charts: {},
-      recent: { hour: null, day: null },
-    }
   }
 
   /**
@@ -1620,14 +1468,9 @@ export const useConversations = defineStore('conversations', () => {
 
   /** The node's latest page with its version; with `first`, its last `FIRST_BLOCKS` alone. */
   async function fetchTranscript(id: string, node: string, signal: AbortSignal, first: boolean): Promise<TranscriptRead> {
-    const query = first ? `latest=true&blocks=${FIRST_BLOCKS}` : 'latest=true'
     const began = performance.now()
     try {
-      const response = await apiRequest(`/conversations/${encodeURIComponent(id)}/agents/${encodeURIComponent(node)}/transcript?${query}`, { signal })
-      const { value: page, bytes } = await readSizedResponse(response, transcriptPageSchema)
-      if (!page.version) {
-        throw new Error('The latest page names no version of its transcript')
-      }
+      const { page, response, bytes } = await readLatestTranscript(`/conversations/${encodeURIComponent(id)}`, node, signal, first)
       viewRead(id, node === id ? null : node)
       logReadAnswered(response, began, {
         read: 'transcript',
@@ -1638,7 +1481,7 @@ export const useConversations = defineStore('conversations', () => {
         revision: page.version.revision,
         epoch: page.version.epoch,
       }, id)
-      return { ...page, version: page.version }
+      return page
     } catch (error) {
       logReadFailed(error, began, { read: 'transcript', node, first }, id)
       throw error
@@ -2339,30 +2182,6 @@ export const useConversations = defineStore('conversations', () => {
       agent.history = copy.transcript
       agent.failures = copy.failures
     }
-  }
-
-  /**
-   * What the context card of the conversation, `node` null, or of its
-   * agent `node`, shows of their cost: from their agents' metadata, with
-   * the cache chart of the node it shows, and the last hour's and the last
-   * day's cost while a card shows them (`watchRecentCost`).
-   */
-  function costShown(conversation: Conversation, node: string | null = null): CostShown | null {
-    const chart = conversation.charts[node ?? conversation.id] ?? null
-    const firstCallAt = conversation.metadata.shown.value?.firstCallAt ?? null
-    const recent = (number: number | null) => {
-      const of = (window: CostWindow) => {
-        const answer = conversation.recent[window]
-        return answer ? recentOf(answer.agents, conversation.subagents, number) : null
-      }
-      return { hour: of('hour'), day: of('day') }
-    }
-    if (node === null) {
-      const other = conversation.metadata.shown.value?.otherCost ?? NO_COST
-      return { cost: conversationCost(conversation.cost, conversation.subagents, other), node: null, chart, recent: recent(null), firstCallAt }
-    }
-    const agent = conversation.subagents.find((each) => each.id === node)
-    return agent ? { cost: agentCost(agent.cost), node, chart, recent: recent(agent.number), firstCallAt } : null
   }
 
   /**

@@ -10,6 +10,8 @@ import { terminalPanelTabs, terminalStatus, type TerminalRecord } from './termin
 
 const props = defineProps<{
   terminals: readonly TerminalRecord[]
+  /** The page only watches: a tab's menu has no End Command. */
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -44,7 +46,7 @@ function terminalOf(id: string): TerminalRecord | undefined {
 /** A tab's menu: end its command, close its tab once the command has ended. */
 function tabMenu(id: string): () => ContextMenuGroup[] {
   return () => [
-    [{ icon: CircleStop, label: t('terminals.endCommand'), disabled: terminalOf(id)?.phase !== 'running' || terminalOf(id)?.stopping === true, run: () => emit('abort', id) }],
+    ...(props.readOnly ? [] : [[{ icon: CircleStop, label: t('terminals.endCommand'), disabled: terminalOf(id)?.phase !== 'running' || terminalOf(id)?.stopping === true, run: () => emit('abort', id) }]]),
     [{ icon: X, label: t('terminals.closeTab'), disabled: terminalOf(id)?.phase === 'running', run: () => closeTab(id) }],
   ]
 }
