@@ -115,7 +115,6 @@ fn refused(error: PortForwardError) -> ApiError {
         PortForwardError::Refused(PortForwardRefusal::NoSuchHost) => {
             ApiError::new(StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound, message)
         }
-        PortForwardError::Refused(PortForwardRefusal::NoHost) => ApiError::invalid_body(message),
         PortForwardError::Storage(error) => error.into(),
     }
 }

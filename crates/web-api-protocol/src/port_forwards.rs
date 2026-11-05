@@ -128,9 +128,9 @@ pub struct PortForwardAnswer {
 
 /// `POST /port-forwards` and `PATCH /port-forwards/:id`: what changes; a
 /// new forward starts from its defaults, on, listening on the first of the
-/// user's Hosts on port 8080 or the next port none of the user's forwards
-/// there uses, connecting to `localhost:11434` on no Host yet, and takes
-/// these over them.
+/// user's Hosts, or on the Cloud for a user who has none yet, on port 8080
+/// or the next port none of the user's forwards there uses, connecting to
+/// `localhost:11434` on no Host yet, and takes these over them.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PortForwardPatch {

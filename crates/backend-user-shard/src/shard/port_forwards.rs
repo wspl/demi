@@ -155,9 +155,13 @@ impl Shard {
 
     /// `POST /port-forwards` and `demi host forward add`: a forward from its
     /// defaults with `patch` over them, listening by default on the first
-    /// of the user's Hosts as the devices list orders them.
+    /// of the user's Hosts as the devices list orders them, or on the
+    /// Cloud, which every user has, for one who has no Host yet.
     pub async fn create_port_forward(&self, patch: PortForwardPatch) -> Result<PortForwardDto, PortForwardError> {
-        let first = self.host_records().await?.into_iter().next().map(|device| device.id);
+        let first = match self.host_records().await?.into_iter().next() {
+            Some(device) => device.id,
+            None => self.cloud_shard().cloud_device().await?.id,
+        };
         let stored = self
             .services()
             .control

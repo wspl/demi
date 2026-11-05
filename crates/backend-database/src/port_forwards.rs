@@ -51,9 +51,6 @@ pub enum PortForwardRefusal {
     /// A device that is not one of the user's Hosts.
     #[error("No such Host")]
     NoSuchHost,
-    /// A new forward with no Listen On given, for a user who has no Host.
-    #[error("Add a device or the Cloud first")]
-    NoHost,
 }
 
 /// What a change answers: the forward as stored, or why it was not.
@@ -135,14 +132,12 @@ impl ControlService {
     pub async fn create_port_forward(
         &self,
         user: UserId,
-        first_host: Option<DeviceId>,
+        first_host: DeviceId,
         change: PortForwardChange,
     ) -> Result<Stored, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            let Some(listen_device) = change.listen_device.clone().or(first_host) else {
-                return Ok(Err(PortForwardRefusal::NoHost));
-            };
+            let listen_device = change.listen_device.clone().unwrap_or(first_host);
             let listen_port = match change.listen_port {
                 Some(port) => port,
                 None => {
