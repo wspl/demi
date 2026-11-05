@@ -41,6 +41,7 @@ import GalleryUpdates from './GalleryUpdates.vue'
 import GalleryCloudNetwork from './GalleryCloudNetwork.vue'
 import GalleryPortForwards from './GalleryPortForwards.vue'
 import { slow } from '../fixtures/slow'
+import { formatDay } from '@demicodes/web-ui/ui/dates'
 import { APP_ICON } from '@demicodes/web-ui/assets/app-icon'
 import GalleryWorkspaces from './GalleryWorkspaces.vue'
 
@@ -252,7 +253,7 @@ function submitPassword(current: string) {
       }
       return
     }
-    s.value.account.passwordChanged = 'just now'
+    s.value.account.passwordChanged = new Date().toISOString()
     passwordPhase.value = { kind: 'done' }
   }, 600)
 }
@@ -315,7 +316,7 @@ function resetShortcuts() {
     account-id="alex"
     :email="s.account.email"
     email-verified
-    :password-changed="s.account.passwordChanged"
+    :password-changed="formatDay(s.account.passwordChanged)"
     :email-phase="emailPhase"
     :password-phase="passwordPhase"
     :passkeys="passkeys"
