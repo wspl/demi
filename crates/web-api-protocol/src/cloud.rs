@@ -5,6 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{DeviceId, OperationId};
+use crate::settings::Isolation;
 
 /// Where the user's Cloud is in its lifecycle
 /// (`crates/backend-cloud/src/lib.rs`): `unallocated` until its first use
@@ -94,6 +95,22 @@ pub struct CloudStatus {
     /// is on, which a reset moves it to
     /// (`crates/machine-manager/src/sandbox/mod.rs`).
     pub newer_image: bool,
+    /// The Cloud's move to the isolation the master chose; none while it is
+    /// on it.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<CloudMoveStatus>")]
+    pub move_status: Option<CloudMoveStatus>,
+}
+
+/// A Cloud's move to the isolation `to`, which the master chose.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum CloudMoveStatus {
+    /// The server copies the Cloud's files; its next start waits for it.
+    Moving { to: Isolation },
+    /// The last move failed, and the Cloud stays where it was until its
+    /// next start tries again.
+    Failed { to: Isolation, message: String },
 }
 
 /// `POST /cloud/reset`: the operation the page names the reset by; a retry

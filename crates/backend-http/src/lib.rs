@@ -447,6 +447,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/settings/cloud-network",
             get(settings::cloud_network).put(settings::set_cloud_network),
         )
+        .route(
+            "/settings/cloud-isolation",
+            get(settings::cloud_isolation).put(settings::set_cloud_isolation),
+        )
         .route("/settings/instructions", get(instructions::read))
         .route("/settings/subagents", get(subagents::read))
         .route(

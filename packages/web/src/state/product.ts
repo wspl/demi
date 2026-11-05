@@ -170,7 +170,7 @@ function partEvent(state: ProductState, part: Part): PartEvent {
     case 'sessions':
       return { type: 'sessions', sessions: known(state.sessions, part) }
     case 'users':
-      return { type: 'users', users: known(state.users, part) }
+      return { type: 'users', ...known(state.users, part) }
     case 'port_forwards':
       return { type: 'port_forwards', portForwards: known(state.portForwards, part) }
     case 'models':
@@ -231,7 +231,7 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
     case 'sessions':
       return { ...state, sessions: event.sessions }
     case 'users':
-      return { ...state, users: event.users }
+      return { ...state, users: { users: event.users, cloudStorageLimits: event.cloudStorageLimits } }
     case 'port_forwards':
       return { ...state, portForwards: event.portForwards }
     case 'models':

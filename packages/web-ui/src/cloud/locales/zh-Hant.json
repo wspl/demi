@@ -14,6 +14,12 @@
     "title": "儲存空間",
     "line": "系統 {system} · 主目錄 {home}"
   },
+  "move": {
+    "moving": "正在移轉到「{isolation}」…",
+    "movingDescription": "檔案移轉完成後，雲端就會啟動。",
+    "failed": "無法移轉到「{isolation}」",
+    "failedDescription": "{message} 下次啟動雲端時會重試。"
+  },
   "reset": {
     "title": "重設雲端環境",
     "body": "停止雲端上的工作，並重設系統套件和設定。你主目錄中的檔案和雲端專案會保留。",

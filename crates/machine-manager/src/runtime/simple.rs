@@ -71,6 +71,7 @@ use demi_runner_protocol::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
 use super::DeviceOp;
 use crate::{
@@ -161,7 +162,34 @@ impl Trees {
     pub fn read(&self, off: &OffLoop, device: &DeviceId) -> io::Result<Option<TreeRecord>> {
         read_json(off, &self.tree(device).record())
     }
+
+    /// The bases the devices' systems are pinned to.
+    pub fn bases(&self, off: &OffLoop) -> io::Result<Vec<BaseVersion>> {
+        let mut bases = Vec::new();
+        for device in self.devices(off)? {
+            bases.extend(self.read(off, &device)?.map(|record| record.base_version));
+        }
+        Ok(bases)
+    }
 }
+
+/// What a new tree is made of.
+pub enum Contents {
+    /// A copy of the base's root as its system, and the base's `/etc/skel`
+    /// as `/home/demi`: a new device's.
+    Base,
+    /// A copy of these directories, the system as a gVisor sandbox saw it
+    /// and the root of its home filesystem: a device that moves here. The
+    /// copy ends early once `stop` is cancelled.
+    Moved {
+        system: PathBuf,
+        home: PathBuf,
+        stop: CancellationToken,
+    },
+}
+
+/// What a filesystem's root holds that is no file of the device's.
+const LOST_AND_FOUND: &str = "lost+found";
 
 /// A device's directories and files.
 #[derive(Debug, Clone)]
@@ -170,16 +198,16 @@ pub struct Tree {
 }
 
 impl Tree {
-    fn record(&self) -> PathBuf {
+    pub fn record(&self) -> PathBuf {
         self.root.join("record.json")
     }
     fn process(&self) -> PathBuf {
         self.root.join("process.json")
     }
-    fn system(&self) -> PathBuf {
+    pub fn system(&self) -> PathBuf {
         self.root.join("system")
     }
-    fn home(&self) -> PathBuf {
+    pub fn home(&self) -> PathBuf {
         self.root.join("home")
     }
     fn shm(&self) -> PathBuf {
@@ -315,7 +343,13 @@ impl Simple {
             }
             let mut taken = BTreeSet::new();
             for entry in fs_err::read_dir(&directory)? {
-                let path = entry?.path().join("record.json");
+                let entry = entry?;
+                // A tree made midway has replaced nothing.
+                if entry.file_name().to_string_lossy().starts_with('.') {
+                    remove_tree(off, &entry.path())?;
+                    continue;
+                }
+                let path = entry.path().join("record.json");
                 if let Some(user) = read_json::<TreeRecord>(off, &path)?.and_then(|record| record.user) {
                     taken.insert(user);
                 }
@@ -358,6 +392,117 @@ impl Simple {
         let user = USERS.clone().find(|user| !taken.contains(user)).ok_or(SimpleError::NoUser)?;
         taken.insert(user);
         Ok(user)
+    }
+
+    /// Makes `device`'s tree of `contents`, its system pinned to `base` by
+    /// the reset `reset`, with a user of its own under root: in a stage
+    /// beside the trees, put in place once whole, so a tree made midway
+    /// replaces nothing and the next start removes it.
+    pub async fn build(
+        &self,
+        device: &DeviceId,
+        base: &BaseVersion,
+        reset: Option<String>,
+        contents: Contents,
+        bases: &Path,
+    ) -> Result<TreeRecord, OpError> {
+        let user = match self.users {
+            true => Some(self.take_user()?),
+            false => None,
+        };
+        let record = TreeRecord {
+            base_version: base.clone(),
+            reset_id: reset,
+            user,
+        };
+        let rootfs = bases.join(base).join("rootfs");
+        let tree = self.tree(device);
+        let stage = Tree {
+            root: self.trees.directory.join(format!(".build-{device}-{}", uuid::Uuid::new_v4())),
+        };
+        let written = record.clone();
+        let built = blocking::run(move |off| -> io::Result<()> {
+            fs_err::create_dir(&stage.root)?;
+            // Root's, so the device's user cannot change the manager's
+            // records in it; the device's user, by its group, passes through
+            // to the directories it owns, and no other device's user does.
+            let mode = match user {
+                Some(user) => {
+                    fs_err::os::unix::fs::chown(&stage.root, None, Some(user))?;
+                    0o710
+                }
+                None => 0o700,
+            };
+            fs_err::set_permissions(&stage.root, std::fs::Permissions::from_mode(mode))?;
+            empty_directory(off, &stage.home(), user, 0o755)?;
+            match &contents {
+                Contents::Base => {
+                    tree::copy(off, &rootfs, &stage.system(), user, None)?;
+                    tree::copy(off, &rootfs.join("etc/skel"), &stage.home().join("demi"), user, None)?;
+                }
+                Contents::Moved { system, home, stop } => {
+                    tree::copy(off, system, &stage.system(), user, Some(stop))?;
+                    for entry in fs_err::read_dir(home)? {
+                        let entry = entry?;
+                        if entry.file_name() != LOST_AND_FOUND {
+                            tree::copy(off, &entry.path(), &stage.home().join(entry.file_name()), user, Some(stop))?;
+                        }
+                    }
+                }
+            }
+            for directory in [stage.system(), stage.home()] {
+                fs_err::set_permissions(&directory, std::fs::Permissions::from_mode(0o755))?;
+            }
+            write_json(off, &stage.record(), &written)?;
+            sync(off, &stage.root)?;
+            // A tree without a record, which only a start that crashed
+            // midway leaves, holds nothing of the device's.
+            remove_tree(off, &tree.root)?;
+            fs_err::rename(&stage.root, &tree.root)?;
+            sync(off, tree.root.parent().expect("a tree lies in the trees' directory"))
+        })
+        .await;
+        if let Err(error) = built {
+            if let Some(user) = user {
+                self.taken.borrow_mut().remove(&user);
+            }
+            let stage = self.trees.directory.clone();
+            let device = device.clone();
+            // The next start removes what stays behind.
+            let _ = blocking::run(move |off| -> io::Result<()> {
+                for entry in fs_err::read_dir(&stage)? {
+                    let entry = entry?;
+                    if entry.file_name().to_string_lossy().starts_with(&format!(".build-{device}-")) {
+                        remove_tree(off, &entry.path())?;
+                    }
+                }
+                Ok(())
+            })
+            .await;
+            return Err(error.into());
+        }
+        Ok(record)
+    }
+
+    /// Removes `device`'s tree, once a move put its storage on another
+    /// runtime, and frees its user: its record first, so a removal cut short
+    /// leaves a tree the next build replaces.
+    pub async fn remove(&self, device: &DeviceId) -> Result<(), OpError> {
+        let tree = self.tree(device);
+        let record = blocking::run(move |off| -> io::Result<Option<TreeRecord>> {
+            let record = read_json::<TreeRecord>(off, &tree.record())?;
+            match fs_err::remove_file(tree.record()) {
+                Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+                _ => {}
+            }
+            remove_tree(off, &tree.root)?;
+            Ok(record)
+        })
+        .await?;
+        if let Some(user) = record.and_then(|record| record.user) {
+            self.taken.borrow_mut().remove(&user);
+        }
+        Ok(())
     }
 
     /// Ends every process of `device` but the manager's own: its user's, or
@@ -627,48 +772,9 @@ impl Device {
         Ok(())
     }
 
-    /// Makes the device's tree: its system a copy of `base`, its home the
-    /// base's `/etc/skel`, and a user of its own under root.
+    /// Makes the device's tree from `base`.
     async fn initialize(&self, base: &BaseVersion) -> Result<TreeRecord, OpError> {
-        let user = match self.simple().users {
-            true => Some(self.simple().take_user()?),
-            false => None,
-        };
-        let rootfs = self.core.bases().join(base).join("rootfs");
-        let tree = self.tree();
-        let record = TreeRecord {
-            base_version: base.clone(),
-            reset_id: None,
-            user,
-        };
-        let written = record.clone();
-        blocking::run(move |off| -> io::Result<()> {
-            remove_tree(off, &tree.root)?;
-            fs_err::create_dir(&tree.root)?;
-            // Root's, so the device's user cannot change the manager's
-            // records in it; the device's user, by its group, passes through
-            // to the directories it owns, and no other device's user does.
-            let mode = match user {
-                Some(user) => {
-                    fs_err::os::unix::fs::chown(&tree.root, None, Some(user))?;
-                    0o710
-                }
-                None => 0o700,
-            };
-            fs_err::set_permissions(&tree.root, std::fs::Permissions::from_mode(mode))?;
-            tree::copy(off, &rootfs, &tree.system(), user)?;
-            empty_directory(off, &tree.home(), user, 0o755)?;
-            tree::copy(off, &rootfs.join("etc/skel"), &tree.home().join("demi"), user)?;
-            for directory in [tree.system(), tree.home()] {
-                fs_err::set_permissions(&directory, std::fs::Permissions::from_mode(0o755))?;
-            }
-            sync(off, &tree.root)?;
-            // Last, so a tree without a record is one recovery may remove.
-            write_json(off, &tree.record(), &written)?;
-            sync(off, &tree.root)
-        })
-        .await?;
-        Ok(record)
+        self.simple().build(&self.device, base, None, Contents::Base, &self.core.bases()).await
     }
 
     /// Starts proot on the device's tree, made first from the configured base
@@ -698,7 +804,7 @@ impl Device {
             move |off| -> io::Result<()> {
                 let opt = within(&tree, PROGRAMS_PATH, user)?;
                 remove_tree(off, &opt)?;
-                tree::copy(off, &programs, &opt, user)?;
+                tree::copy(off, &programs, &opt, user, None)?;
                 // What a gVisor boot makes anew in memory.
                 for (path, mode) in [("/run", 0o755), ("/tmp", 0o1777)] {
                     empty_directory(off, &within(&tree, path, user)?, user, mode)?;
@@ -870,7 +976,7 @@ impl Device {
             // midway leaves the old system or the new one.
             let staged = tree.root.join(format!(".system-{id}"));
             let old = tree.root.join(format!(".old-{id}"));
-            tree::copy(off, &rootfs, &staged, reset.user)?;
+            tree::copy(off, &rootfs, &staged, reset.user, None)?;
             fs_err::set_permissions(&staged, std::fs::Permissions::from_mode(0o755))?;
             fs_err::rename(tree.system(), &old)?;
             fs_err::rename(&staged, tree.system())?;

@@ -6,10 +6,11 @@
 
 use demi_backend_database::StorageError;
 use demi_backend_database::managed::ManagedOperation;
-use demi_machine_manager_protocol::DeviceId;
+use demi_machine_manager_protocol::{DeviceId, Isolation as MachineIsolation, MoveStatus};
 use demi_web_api_protocol::cloud::{
-    CloudDevice, CloudOperation, CloudState, CloudStatus, CloudVolumes,
+    CloudDevice, CloudMoveStatus, CloudOperation, CloudState, CloudStatus, CloudVolumes,
 };
+use demi_web_api_protocol::settings::Isolation;
 
 use crate::CloudShard;
 
@@ -23,6 +24,7 @@ impl dyn CloudShard {
                 error: None,
                 volumes: None,
                 newer_image: false,
+                move_status: None,
             });
         };
         let machine = self.cloud_machine(&device).await?;
@@ -31,11 +33,22 @@ impl dyn CloudShard {
         let image = DeviceId::parse(device.id.as_str())
             .ok()
             .and_then(|id| self.cloud_services().machines.status(&id));
-        let volumes = image.and_then(|image| image.volumes).map(|volumes| CloudVolumes {
+        let volumes = image.as_ref().and_then(|image| image.volumes).map(|volumes| CloudVolumes {
             system_bytes: volumes.system_bytes.get(),
             home_bytes: volumes.home_bytes.get(),
         });
-        let newer_image = image.is_some_and(|image| image.newer_image);
+        let newer_image = image.as_ref().is_some_and(|image| image.newer_image);
+        let move_status = image.and_then(|image| {
+            // The move is to the isolation the Cloud's storage is not on.
+            let to = match image.isolation {
+                MachineIsolation::Simple => Isolation::Gvisor,
+                MachineIsolation::Gvisor => Isolation::Simple,
+            };
+            Some(match image.move_status? {
+                MoveStatus::Moving => CloudMoveStatus::Moving { to },
+                MoveStatus::Failed { message } => CloudMoveStatus::Failed { to, message },
+            })
+        });
         Ok(CloudStatus {
             device: Some(CloudDevice {
                 id: device.id.clone(),
@@ -46,6 +59,7 @@ impl dyn CloudShard {
             error: machine.error.borrow().clone(),
             volumes,
             newer_image,
+            move_status,
         })
     }
 }

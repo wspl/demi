@@ -44,6 +44,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       error: status.error ?? status.operation?.error ?? null,
       volumes: status.volumes,
       newerImage: status.newerImage,
+      moveStatus: status.moveStatus,
       deviceId: device?.id ?? null,
       report: { os: device?.os ?? null, runnerVersion: device?.runnerVersion ?? null },
     }

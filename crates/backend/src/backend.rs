@@ -57,6 +57,7 @@ use demi_runner_protocol::release::{RunnerRelease, UPDATE_RECORD, UpdateRecord};
 use demi_backend_runners::publication::{PublicationError, publish_native};
 use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
+use demi_backend_cloud::isolation as cloud_isolation;
 use demi_backend_cloud::network::{self as cloud_network, stored_private_network};
 use demi_backend_cloud::reset::recover_clouds;
 use demi_backend_database::StorageError;
@@ -93,8 +94,8 @@ pub struct Backend {
     deaths: AbortOnDropHandle<()>,
     /// Marks each device's Cloud status changed for its owner's pages.
     statuses: AbortOnDropHandle<()>,
-    /// Gives the machine manager the private network at each connection.
-    private_network: AbortOnDropHandle<()>,
+    /// Gives the machine manager the Cloud settings at each connection.
+    cloud_settings: AbortOnDropHandle<()>,
     /// Has the users whose search index is reset index their conversations
     /// again (`crates/backend-database/src/search.rs`).
     resets: AbortOnDropHandle<()>,
@@ -188,11 +189,20 @@ const RECOVERY_RETRY: std::time::Duration = std::time::Duration::from_secs(5);
 /// recorded, which the Cloud's next hello settles. A
 /// manager that cannot be reached is asked again until it answers; any other
 /// failure ends the recovery and is logged, as a failed start step is.
-/// Gives the machine manager the private network Clouds reach each time the
-/// backend connects to it: the manager keeps it in memory only, so one that
-/// restarted on its own would otherwise leave every Cloud cut off from it.
-async fn send_private_network(mut connections: tokio::sync::mpsc::Receiver<()>, services: Arc<Services>) {
+/// Gives the machine manager the isolation and the private network the
+/// master chose each time the backend connects to it: the manager keeps
+/// them in memory only, so one that restarted on its own would otherwise
+/// leave every Cloud cut off from the private network and start new ones on
+/// its own choice of isolation.
+async fn send_cloud_settings(mut connections: tokio::sync::mpsc::Receiver<()>, services: Arc<Services>) {
     while connections.recv().await.is_some() {
+        let sent = match services.control.isolation().await {
+            Ok(isolation) => cloud_isolation::apply(&services.cloud, isolation).await.map_err(|error| error.to_string()),
+            Err(error) => Err(error.to_string()),
+        };
+        if let Err(error) = sent {
+            tracing::warn!(event = "cloud_isolation.not_sent", %error, "the machine manager did not get the isolation Clouds run on");
+        }
         let sent = match stored_private_network(&services.control).await {
             Ok(network) => cloud_network::apply(&services.cloud, network).await.map_err(|error| error.to_string()),
             Err(error) => Err(error.to_string()),
@@ -497,7 +507,7 @@ impl Backend {
             services.clone(),
             shards.shards(),
         )));
-        let private_network = AbortOnDropHandle::new(tokio::spawn(send_private_network(
+        let cloud_settings = AbortOnDropHandle::new(tokio::spawn(send_cloud_settings(
             notices.connections,
             services.clone(),
         )));
@@ -619,7 +629,7 @@ impl Backend {
             recovery,
             deaths,
             statuses,
-            private_network,
+            cloud_settings,
             resets,
             usage,
             sampling,
@@ -655,7 +665,7 @@ impl Backend {
         drop(self.recovery);
         drop(self.deaths);
         drop(self.statuses);
-        drop(self.private_network);
+        drop(self.cloud_settings);
         drop(self.resets);
         drop(self.usage);
         drop(self.sampling);

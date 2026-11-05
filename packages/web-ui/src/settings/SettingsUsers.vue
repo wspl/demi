@@ -427,8 +427,12 @@ function closeDialog(): void {
               </Dropdown>
               <span v-else class="text-setting text-fg-muted">{{ roleLabel(shownUser.role) }}</span>
             </SettingsRow>
-            <SettingsRow v-if="can(shownUser, 'cloudStorage')" :label="t('users.cloudStorage')" :description="t('users.cloudStorageDescription')">
-              <Button size="sm" @click="ask('cloudStorage', shownUser!)">
+            <SettingsRow
+              v-if="can(shownUser, 'cloudStorage')"
+              :label="t('users.cloudStorage')"
+              :description="host.cloudStorageLimits ? t('users.cloudStorageDescription') : t('users.cloudStorageUnenforced')"
+            >
+              <Button size="sm" :disabled="!host.cloudStorageLimits" @click="ask('cloudStorage', shownUser!)">
                 {{ t('users.storageSizes', { system: shownUser.cloudStorage.systemGb, home: shownUser.cloudStorage.homeGb }) }}
               </Button>
             </SettingsRow>

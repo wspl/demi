@@ -9,7 +9,7 @@ import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GalleryAbout from '../components/GalleryAbout.vue'
 import GalleryUpdates, { type UpdatesMoment } from '../components/GalleryUpdates.vue'
-import GalleryCloudNetwork, { type CloudNetworkMoment } from '../components/GalleryCloudNetwork.vue'
+import GalleryCloud, { type CloudMoment } from '../components/GalleryCloud.vue'
 import type { NoticesAnswer } from '../fixtures/acknowledgements'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import GallerySettingsRows from '../components/GallerySettingsRows.vue'
@@ -20,7 +20,7 @@ import GalleryWebSearchShowcase from '../components/GalleryWebSearchShowcase.vue
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import {
   settingsSections as productSections,
-  withCloudNetworkSection,
+  withCloudSection,
   withUpdatesSection,
   withUsersSection,
 } from '@demicodes/web-ui/settings/sections'
@@ -73,6 +73,7 @@ const directCloud: CloudState = {
   error: null,
   volumes: { systemBytes: 16 * 1024 ** 3, homeBytes: 16 * 1024 ** 3 },
   newerImage: false,
+  moveStatus: null,
   deviceId: 'cloud',
   report: demoDeviceReport('linux', DEMO_RUNNER_RELEASE),
 }
@@ -200,15 +201,17 @@ const updateMoments = [
   { value: 'checkFailed', label: 'Check Failed' },
 ] as const
 const updateMoment = ref<UpdatesMoment>('available')
-const cloudNetworkMoments = [
+const cloudMoments = [
   { value: 'off', label: 'Off' },
   { value: 'entire', label: 'Entire' },
   { value: 'only', label: 'Only These' },
+  { value: 'simple', label: 'Simple Isolation' },
+  { value: 'noGvisor', label: 'No gVisor' },
   { value: 'managerAway', label: 'Manager Away' },
   { value: 'loading', label: 'Loading' },
   { value: 'loadFailed', label: 'Load Failed' },
 ] as const
-const cloudNetworkMoment = ref<CloudNetworkMoment>('only')
+const cloudMoment = ref<CloudMoment>('only')
 /** The account specimen on a server without mail. */
 const noMail = ref({ name: 'Alex' })
 /** The specimen's signed-in browsers: Sign Out drops one, as the product's list would. */
@@ -228,10 +231,10 @@ providePageHost(
   ),
 )
 // The full mock's user is the master of a server that offers updates, whose
-// rail lists Users, Cloud Network and Updates.
+// rail lists Users, Cloud and Updates.
 const sections = computed(() =>
   withUpdatesSection(
-    withCloudNetworkSection(
+    withCloudSection(
       withUsersSection(
         withPluginSections(productSections(), PLUGIN_PAGES, (plugin) =>
           full.plugins.some((entry) => entry.id === plugin && entry.enabled),
@@ -245,7 +248,8 @@ const sections = computed(() =>
 )
 /** The Users specimens: the master's page, an admin's, and the master's at phone width. */
 const usersAsMaster = createUsersState('alex', { mode: 'isolated', subscriptions: false })
-const usersAsAdmin = createUsersState('ana')
+// Ana's server runs its Clouds on Simple Isolation, which has no storage limits.
+const usersAsAdmin = createUsersState('ana', undefined, false)
 const usersNarrow = createUsersState('alex', { mode: 'shared', subscriptions: false })
 const fullTab = ref<SettingsTab | null>('models')
 const fullNarrowTab = ref<SettingsTab | null>(null)
@@ -339,7 +343,7 @@ const noCredentials = createCredentialState([])
 
       <GallerySection
         title="Users"
-                note="Settings › Users as the master sees it, as an admin sees it, and at a phone’s width: a rail of the accounts, searched by name and email, beside the one selected; on the phone an entry opens in the rail’s place. The master’s rail starts with General Settings, which switches providers between Each User’s Own and Shared after a question that says what users lose and keep, and a toast says what the product would do (the narrow one starts shared). Every row acts on its own specimen: a role chosen asks first, then moves the account; Cloud storage changes the account’s disks (Bo has a 64 GB home); Show Code… and Reset… show a sign-in code and a new password, the first of those in five minutes asking for a password (any but wrong confirms); Sign Out Everywhere… and Disable… toast what the product would do to the account’s sessions, and Enable gives a disabled account back. The rail’s + adds an account (alex@example.com is taken) and ends on its password and QR code; Lena and Joe show the new-account and disabled looks. As the admin, Ana, the master’s account and the other admin’s show their facts alone, and her own offers Cloud storage alone."
+                note="Settings › Users as the master sees it, as an admin sees it, and at a phone’s width: a rail of the accounts, searched by name and email, beside the one selected; on the phone an entry opens in the rail’s place. The master’s rail starts with General Settings, which switches providers between Each User’s Own and Shared after a question that says what users lose and keep, and a toast says what the product would do (the narrow one starts shared). Every row acts on its own specimen: a role chosen asks first, then moves the account; Cloud storage changes the account’s disks (Bo has a 64 GB home); Show Code… and Reset… show a sign-in code and a new password, the first of those in five minutes asking for a password (any but wrong confirms); Sign Out Everywhere… and Disable… toast what the product would do to the account’s sessions, and Enable gives a disabled account back. The rail’s + adds an account (alex@example.com is taken) and ends on its password and QR code; Lena and Joe show the new-account and disabled looks. As the admin, Ana, the master’s account and the other admin’s show their facts alone, and her own offers Cloud storage alone; her server runs its Clouds on Simple Isolation, so Cloud storage is disabled and says why in place of its description."
       >
         <GallerySpecimen variant="Master" wide>
           <div class="@container w-full max-w-2xl rounded-xl border border-line bg-surface-dialog p-6">
@@ -444,17 +448,17 @@ const noCredentials = createCredentialState([])
       </GallerySection>
 
       <GallerySection
-        title="Cloud Network"
-        note="Only for the master, after Users: Private Network Access, whether the server’s Clouds reach the private network the server is on. Off, the default, leaves them the internet alone; Entire Private Network opens 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and 100.64.0.0/10, and its description says a page the Cloud’s browser opens can reach them too; Only These Addresses lists what the master adds, each an IPv4 address or network with an optional port, as plain rows under one bare field, as a provider's models are under their filter: Enter in the field adds what it holds, and each row's button removes it. An address is changed by removing it and adding it again. Another choice keeps the list for when Only These Addresses is chosen again. The stand-in server refuses what the real one does, and the field keeps what was typed with why under it: try 10.20.0.0/33, 10.20.0.7:70000, 127.0.0.1 or 169.254.169.254. With the machine manager away a change is stored and a toast says Clouds get it once the manager is back. The server itself, cloud metadata services and other people’s Clouds are never reachable."
+        title="Cloud"
+        note="Only for the master, after Users. Isolation: Simple Isolation gives each Cloud its own system and files and needs no root, gVisor a sandbox that also stops a program that tries to break out; one the server can't run stays in the menu, disabled, with the server's reason as its tooltip (No gVisor). A choice moves stopped Clouds now and running ones once they stop, which a toast says. Private Network Access, whether the server’s Clouds reach the private network the server is on, applies to gVisor only: on Simple Isolation it stays visible, disabled, and says why in place of its description, its addresses kept (Simple Isolation). Off, the default, leaves them the internet alone; Entire Private Network opens 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and 100.64.0.0/10, and its description says a page the Cloud’s browser opens can reach them too; Only These Addresses lists what the master adds, each an IPv4 address or network with an optional port, as plain rows under one bare field, as a provider's models are under their filter: Enter in the field adds what it holds, and each row's button removes it. An address is changed by removing it and adding it again. Another choice keeps the list for when Only These Addresses is chosen again. The stand-in server refuses what the real one does, and the field keeps what was typed with why under it: try 10.20.0.0/33, 10.20.0.7:70000, 127.0.0.1 or 169.254.169.254. With the machine manager away a change is stored and a toast says Clouds get it once the manager is back. The server itself, cloud metadata services and other people’s Clouds are never reachable."
       >
         <div class="flex w-full max-w-2xl flex-col gap-4">
           <Segmented
-            v-model="cloudNetworkMoment"
-            :options="cloudNetworkMoments"
+            v-model="cloudMoment"
+            :options="cloudMoments"
             size="sm"
           />
           <div class="@container rounded-xl border border-line bg-surface-dialog p-6">
-            <GalleryCloudNetwork :key="cloudNetworkMoment" :moment="cloudNetworkMoment" />
+            <GalleryCloud :key="cloudMoment" :moment="cloudMoment" />
           </div>
         </div>
       </GallerySection>

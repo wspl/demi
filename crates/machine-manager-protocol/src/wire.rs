@@ -7,7 +7,7 @@ use demi_runner_protocol::boot::ManagedBoot;
 use demi_shared_types::LogLine;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::{BaseVersion, MachineImageState, PrivateNetwork, RuntimeState, Volume};
+use crate::{BaseVersion, Isolation, MachineImageState, MoveStatus, PrivateNetwork, RuntimeOffer, RuntimeState, Volume};
 
 /// The longest line either end reads, its newline excluded: a reader holds a
 /// line whole, so an end that never sends a newline would fill memory. The
@@ -17,7 +17,7 @@ pub const MAX_LINE_BYTES: usize = 1 << 20;
 /// The wire's version, which the manager's `hello` names. The backend and
 /// the manager of a deployment run one release, so a change to any message
 /// changes it.
-pub const VERSION: u32 = 7;
+pub const VERSION: u32 = 8;
 
 /// A request: an id the client chooses, which its reply names, and the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -45,6 +45,7 @@ pub enum MachineCall {
     Checkpoint(#[garde(dive)] CheckpointParams),
     Reset(#[garde(dive)] ResetParams),
     SetPrivateNetwork(#[garde(skip)] SetPrivateNetworkParams),
+    SetIsolation(#[garde(skip)] SetIsolationParams),
 }
 
 impl MachineCall {
@@ -60,6 +61,7 @@ impl MachineCall {
             Self::Checkpoint(_) => "checkpoint",
             Self::Reset(_) => "reset",
             Self::SetPrivateNetwork(_) => "set_private_network",
+            Self::SetIsolation(_) => "set_isolation",
         }
     }
 }
@@ -77,6 +79,17 @@ pub struct ReconcileParams {}
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SetPrivateNetworkParams {
     pub private_network: PrivateNetwork,
+}
+
+/// Choose the isolation new devices start on and every device moves to once
+/// it is stopped. The manager keeps it in memory only, and until the backend
+/// names one runs new devices on gVisor where it can and on Simple
+/// Isolation elsewhere, so the backend sends it each time it connects as
+/// well as each time the master changes it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetIsolationParams {
+    pub isolation: Isolation,
 }
 
 /// What a `reconcile` found: the devices whose sandboxes run, by id.
@@ -207,10 +220,12 @@ pub struct ResetParams {
 )]
 pub enum MachineResponse {
     /// The manager's first message on a connection: the wire version it
-    /// speaks.
+    /// speaks, and what it can do with each isolation.
     Hello {
         #[garde(skip)]
         version: u32,
+        #[garde(skip)]
+        runtimes: Vec<RuntimeOffer>,
     },
     /// The operation's result, which the client decodes as the operation's
     /// [`Operation::Output`] once it knows which request this answers.
@@ -256,13 +271,16 @@ pub enum MachineResponse {
 )]
 pub enum ManagerEvent {
     /// A device's stored image, or the base the manager is configured with,
-    /// is as this says: the capacities of its two filesystems, none before
-    /// its first generation, and whether its system is on another base than
-    /// the configured one.
+    /// is as this says: the capacities of its two filesystems, none on
+    /// Simple Isolation, whose files have none, and before its first
+    /// generation; whether its system is on another base than the configured
+    /// one; the isolation its storage is on, and its move to the other.
     CloudStatus {
         device_id: String,
         volumes: Option<Capacity>,
         newer_image: bool,
+        isolation: Isolation,
+        move_status: Option<MoveStatus>,
     },
 }
 
@@ -297,6 +315,7 @@ operations! {
     CheckpointParams => Checkpoint: (),
     ResetParams => Reset: (),
     SetPrivateNetworkParams => SetPrivateNetwork: (),
+    SetIsolationParams => SetIsolation: (),
 }
 
 /// A line that is not a message of this wire.

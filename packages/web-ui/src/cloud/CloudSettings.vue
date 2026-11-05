@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { t as devicesText } from '../devices/locales/text'
+import { t as settingsText } from '../settings/locales/text'
 import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
@@ -60,6 +61,17 @@ const storage = computed(() => {
     ? t('storage.line', { system: formatBytes(volumes.systemBytes), home: formatBytes(volumes.homeBytes) })
     : null
 })
+/** The row of the Cloud's move to the isolation the master chose; none while it is on it. */
+const move = computed(() => {
+  const status = props.cloud.moveStatus
+  if (!status) {
+    return null
+  }
+  const isolation = settingsText(`cloud.isolations.${status.to}`)
+  return status.state === 'moving'
+    ? { label: t('move.moving', { isolation }), description: t('move.movingDescription') }
+    : { label: t('move.failed', { isolation }), description: t('move.failedDescription', { message: status.message }) }
+})
 /** The Cloud's one line, as a device's row has: its system and how this page reaches it. */
 const line = computed(() => {
   const system = props.cloud.report.os?.name
@@ -99,6 +111,11 @@ function reset() {
         >{{ t('environment.reset') }}</Button
       >
     </SettingsRow>
+    <SettingsRow
+      v-if="move"
+      :label="move.label"
+      :description="move.description"
+    />
     <SettingsRow
       v-if="cloud.newerImage"
       :label="t('environment.newerImage')"

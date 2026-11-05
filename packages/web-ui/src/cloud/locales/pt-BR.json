@@ -14,6 +14,12 @@
     "title": "Armazenamento",
     "line": "Sistema {system} · Pessoal {home}"
   },
+  "move": {
+    "moving": "Passando para {isolation}…",
+    "movingDescription": "Sua nuvem será iniciada assim que os arquivos forem movidos.",
+    "failed": "Não foi possível passar para {isolation}",
+    "failedDescription": "{message} O próximo início da sua nuvem tentará de novo."
+  },
   "reset": {
     "title": "Redefinir o ambiente na nuvem",
     "body": "Interrompe as tarefas na nuvem e redefine os pacotes e as configurações do sistema. Seus arquivos pessoais e projetos na nuvem permanecem.",

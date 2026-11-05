@@ -298,10 +298,13 @@ pub enum SyncEvent {
         etag: String,
     },
     /// An account was added, changed, reset, disabled or enabled, signed in,
-    /// or chose its password: every account, as `GET /users` lists them. Only
-    /// the channels of the master and admins carry it.
+    /// or chose its password, or the master chose another isolation: every
+    /// account, as `GET /users` lists them. Only the channels of the master
+    /// and admins carry it.
     Users {
         users: Vec<ListedUser>,
+        #[serde(rename = "cloudStorageLimits")]
+        cloud_storage_limits: bool,
         /// The entity tag of the list's route's answer; empty when it has none.
         etag: String,
     },

@@ -9,26 +9,34 @@ mod device;
 mod errors;
 
 #[cfg(target_os = "linux")]
+pub use device::Placement;
+#[cfg(target_os = "linux")]
 pub use errors::{OpError, Parts};
 #[cfg(target_os = "linux")]
 pub use linux::{Core, Manager};
 
 #[cfg(target_os = "linux")]
 mod linux {
-    use std::{cell::RefCell, collections::HashMap, net::Ipv4Addr, rc::Rc};
+    use std::{
+        cell::RefCell,
+        collections::HashMap,
+        net::Ipv4Addr,
+        rc::{Rc, Weak},
+    };
 
     use demi_machine_manager_protocol::{
-        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeviceId, DrainRecord, HibernateParams, ImageStateParams, LeftRecord, MachineCall, ManagerEvent, Operation, PrivateNetwork, ReconcileParams, Reconciled,
-        ResetParams, RuntimeState, RuntimeStateParams, SandboxMachine, SetPrivateNetworkParams, WakeParams,
+        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeviceId, DrainRecord, HibernateParams, ImageStateParams, Isolation, LeftRecord, MachineCall, ManagerEvent, Operation, PrivateNetwork, ReconcileParams, Reconciled,
+        ResetParams, RuntimeOffer, RuntimeState, RuntimeStateParams, SandboxMachine, SetIsolationParams, SetPrivateNetworkParams, WakeParams,
     };
     use tokio::{
         sync::{mpsc, oneshot},
         task::JoinSet,
     };
+    use tokio_util::task::AbortOnDropHandle;
 
     use super::{
         admission::Admission,
-        device::{DeviceCommand, DeviceWorker},
+        device::{DeviceCommand, DeviceWorker, Mover, Placement},
         errors::{OpError, Parts},
     };
     use crate::{
@@ -39,6 +47,7 @@ mod linux {
         runtime::{
             DeviceOp, DeviceRuntime, Left, Reports, Running,
             gvisor::{self, Gvisor},
+            moves,
             simple::{self, Simple},
         },
         server::MachineService,
@@ -115,6 +124,8 @@ mod linux {
 
     /// The manager: its devices' workers and the admission gate.
     pub struct Manager {
+        /// Itself, for the moves it runs in the background.
+        this: Weak<Manager>,
         core: Rc<Core>,
         base: BaseVersion,
         admission: Admission,
@@ -124,28 +135,36 @@ mod linux {
         changes: mpsc::Sender<DeviceId>,
         /// The private network Clouds reach, as the backend last named it.
         private: RefCell<PrivateNetwork>,
+        placement: Rc<Placement>,
+        /// The moves of the stopped devices to the chosen isolation, one at
+        /// a time; a new choice replaces them.
+        moving: RefCell<Option<AbortOnDropHandle<()>>>,
     }
 
     impl Manager {
-        /// A manager whose new devices start on `base` and whose workers
-        /// report sandbox deaths to `deaths` and each operation's end to
-        /// `changes`.
+        /// A manager whose new devices start on `base`, that offers
+        /// `offers`, and whose workers report sandbox deaths to `deaths` and
+        /// each operation's end to `changes`.
         pub fn new(
             core: Rc<Core>,
             base: BaseVersion,
+            offers: Vec<RuntimeOffer>,
             deaths: mpsc::Sender<DeviceId>,
             changes: mpsc::Sender<DeviceId>,
-        ) -> Self {
-            Self {
+        ) -> Rc<Self> {
+            Rc::new_cyclic(|this| Self {
+                this: this.clone(),
                 core,
                 base,
                 admission: Admission::new(),
                 devices: RefCell::default(),
                 workers: RefCell::default(),
                 private: RefCell::new(PrivateNetwork::Off),
+                placement: Rc::new(Placement::new(offers)),
+                moving: RefCell::default(),
                 deaths,
                 changes,
-            }
+            })
         }
 
         /// Where `device`'s worker and runtime report to the server.
@@ -154,41 +173,55 @@ mod linux {
         }
 
         /// The worker of `device`, started on first use on the runtime its
-        /// storage is on, or for a device without storage the gVisor
-        /// runtime where this manager runs it and Simple Isolation
-        /// elsewhere. A device whose storage is on gVisor where this manager
-        /// cannot run it has no worker.
+        /// storage is on, or for a device without storage the one
+        /// [`Placement::for_new`] names. A device whose storage is on gVisor
+        /// where this manager cannot run it has no worker. A device whose
+        /// storage is on both, which a move cut short leaves, keeps the
+        /// newer.
         async fn worker(&self, device: &DeviceId) -> Result<mpsc::Sender<DeviceCommand>, OpError> {
             if let Some(sender) = self.devices.borrow().get(device) {
                 return Ok(sender.clone());
             }
-            let (storage, id) = (self.core.storage(), device.clone());
-            let (gvisor, simple) = blocking::run(move |off| -> Result<(bool, bool), OpError> {
-                Ok((storage.on_gvisor(off, &id)?, storage.trees.read(off, &id)?.is_some()))
-            })
-            .await?;
+            let mut on = self.storage_of(device).await?;
+            if on == (true, true) {
+                moves::settle(&self.core, device).await?;
+                on = self.storage_of(device).await?;
+            }
             // Another request may have started it meanwhile.
             if let Some(sender) = self.devices.borrow().get(device) {
                 return Ok(sender.clone());
             }
-            let reports = self.reports(device);
-            let runtime = match (&self.core.gvisor, gvisor, simple) {
-                (Err(reason), true, _) => return Err(OpError::GvisorUnavailable(reason.clone())),
-                (Ok(_), true, _) | (Ok(_), false, false) => DeviceRuntime::Gvisor(gvisor::Device::new(
-                    device.clone(),
-                    self.core.clone(),
-                    self.base.clone(),
-                    reports.clone(),
-                )),
-                (_, false, _) => DeviceRuntime::Simple(simple::Device::new(device.clone(), self.core.clone(), self.base.clone())),
+            let isolation = match (&self.core.gvisor, on) {
+                (Err(reason), (true, _)) => return Err(OpError::GvisorUnavailable(reason.clone())),
+                (_, (true, _)) => Isolation::Gvisor,
+                (_, (false, true)) => Isolation::Simple,
+                (_, (false, false)) => self.placement.for_new(),
             };
+            let reports = self.reports(device);
+            let runtime = DeviceRuntime::on(isolation, device.clone(), self.core.clone(), self.base.clone(), reports.clone());
             Ok(self.start(device, runtime, reports))
+        }
+
+        /// Whether `device`'s storage is on gVisor, and whether on Simple
+        /// Isolation.
+        async fn storage_of(&self, device: &DeviceId) -> Result<(bool, bool), OpError> {
+            let (storage, id) = (self.core.storage(), device.clone());
+            blocking::run(move |off| -> Result<(bool, bool), OpError> {
+                Ok((storage.on_gvisor(off, &id)?, storage.trees.read(off, &id)?.is_some()))
+            })
+            .await
         }
 
         /// Starts `device`'s worker on `runtime`.
         fn start(&self, device: &DeviceId, runtime: DeviceRuntime, reports: Reports) -> mpsc::Sender<DeviceCommand> {
             let (sender, inbox) = mpsc::channel(DEVICE_QUEUE);
-            let worker = DeviceWorker::new(runtime, reports);
+            let mover = Mover {
+                device: device.clone(),
+                core: self.core.clone(),
+                base: self.base.clone(),
+                placement: self.placement.clone(),
+            };
+            let worker = DeviceWorker::new(runtime, reports, mover);
             self.workers.borrow_mut().spawn_local(worker.run(inbox));
             self.devices.borrow_mut().insert(device.clone(), sender.clone());
             sender
@@ -226,6 +259,7 @@ mod linux {
         /// without stopping it, and refuses every request still waiting, as
         /// a shutdown does. Answers what the next manager takes over.
         pub async fn leave(&self) -> Result<LeftRecord, OpError> {
+            self.placement.stop();
             let _whole = self.admission.exclusive().await?;
             let workers: Vec<_> = self.devices.borrow().values().cloned().collect();
             let mut left = LeftRecord {
@@ -294,6 +328,65 @@ mod linux {
             })
         }
 
+        /// Chooses the isolation new devices start on, and moves every
+        /// stopped device whose storage is on the other runtime to it, one
+        /// at a time in the background; a running one moves when it stops.
+        /// A failed move to the isolation chosen before is forgotten.
+        pub async fn set_isolation(&self, isolation: Isolation) -> Result<(), OpError> {
+            let forgotten = self.placement.choose(isolation);
+            for device in forgotten {
+                // The server stops listening at shutdown, when no one is left
+                // to tell.
+                let _ = self.changes.send(device).await;
+            }
+            let this = self.this.clone();
+            let moving = tokio::task::spawn_local(async move {
+                let Some(manager) = this.upgrade() else {
+                    return;
+                };
+                if let Err(error) = manager.move_stopped().await {
+                    tracing::error!(event = "cloud_move.list_failed", error = %crate::server::chain(&error), "the Clouds to move could not be listed");
+                }
+            });
+            self.moving.replace(Some(AbortOnDropHandle::new(moving)));
+            Ok(())
+        }
+
+        /// Asks each device whose storage is on the other runtime than the
+        /// chosen isolation to move, waiting for each before the next, so
+        /// one copy runs at a time.
+        async fn move_stopped(&self) -> Result<(), OpError> {
+            let storage = self.core.storage();
+            let devices = blocking::run(move |off| -> Result<Vec<(DeviceId, Isolation)>, OpError> {
+                let mut devices: Vec<(DeviceId, Isolation)> =
+                    storage.images.devices(off)?.into_iter().map(|device| (device, Isolation::Gvisor)).collect();
+                devices.extend(storage.trees.devices(off)?.into_iter().map(|device| (device, Isolation::Simple)));
+                Ok(devices)
+            })
+            .await?;
+            for (device, isolation) in devices {
+                if isolation == self.placement.chosen() {
+                    continue;
+                }
+                let Ok(_admitted) = self.admission.enter().await else {
+                    return Ok(());
+                };
+                let worker = match self.worker(&device).await {
+                    Ok(worker) => worker,
+                    Err(error) => {
+                        tracing::warn!(event = "cloud_move.skipped", host_id = %device, error = %crate::server::chain(&error), "a Cloud to move has no worker");
+                        continue;
+                    }
+                };
+                let (reply, answer) = oneshot::channel();
+                // A worker that stopped moves nothing.
+                if worker.send(DeviceCommand::Settle { reply }).await.is_ok() {
+                    let _ = answer.await;
+                }
+            }
+            Ok(())
+        }
+
         /// Installs the network policy with the private network `private`
         /// and the running sandboxes' slots; under the whole gate, so no
         /// sandbox starts or stops while the table is replaced.
@@ -337,6 +430,7 @@ mod linux {
         /// every device, then refuses every request still waiting, so none
         /// can start a sandbox after the drain.
         pub async fn close(&self) -> Result<(), OpError> {
+            self.placement.stop();
             let _whole = self.admission.exclusive().await?;
             let drained = self.drain().await;
             self.admission.close();
@@ -440,10 +534,16 @@ mod linux {
                     newer_image: state.as_ref().map(|state| &state.base_version)
                         .or(simple.as_ref().map(|record| &record.base_version))
                         .is_some_and(|base| *base != self.base),
+                    isolation: match (&state, &simple) {
+                        (Some(_), _) => Isolation::Gvisor,
+                        (None, Some(_)) => Isolation::Simple,
+                        (None, None) => self.placement.for_new(),
+                    },
                     volumes: state.map(|state| Capacity {
                         system_bytes: state.system_bytes,
                         home_bytes: state.home_bytes,
                     }),
+                    move_status: self.placement.move_status(device),
                 }),
                 Err(error) => {
                     // The backend keeps the status it had.
@@ -475,9 +575,17 @@ mod linux {
             events
         }
 
+        fn runtimes(&self) -> Vec<RuntimeOffer> {
+            self.placement.offers().to_vec()
+        }
+
         async fn handle(&self, call: MachineCall) -> Result<serde_json::Value, OpError> {
             match call {
                 MachineCall::Reconcile(_) => Ok(reply::<ReconcileParams>(self.reconcile().await?)),
+                MachineCall::SetIsolation(params) => {
+                    self.set_isolation(params.isolation).await?;
+                    Ok(reply::<SetIsolationParams>(()))
+                }
                 MachineCall::SetPrivateNetwork(params) => {
                     self.set_private_network(params.private_network).await?;
                     Ok(reply::<SetPrivateNetworkParams>(()))

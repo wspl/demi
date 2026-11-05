@@ -413,8 +413,8 @@
     "users": {
       "keywords": "accounts,people,admin,add user,invite,reset password,role,disable,sign out everywhere"
     },
-    "cloudNetwork": {
-      "keywords": "network,private network,intranet,internal,lan,firewall,proxy,git,tailscale,ip,address,port"
+    "cloud": {
+      "keywords": "network,private network,intranet,internal,lan,firewall,proxy,git,tailscale,ip,address,port,isolation,sandbox,gvisor,security"
     },
     "developer": {
       "keywords": "developer,debug,troubleshooting",
@@ -484,6 +484,7 @@
     "role": "Role",
     "cloudStorage": "Cloud storage",
     "cloudStorageDescription": "The disks of their Cloud.",
+    "cloudStorageUnenforced": "Clouds on Simple Isolation have no storage limits.",
     "storageSizes": "{system} GB · {home} GB",
     "signIn": "Sign-In",
     "signInCode": "Sign-in code",
@@ -558,9 +559,22 @@
       "note": "Nothing is removed. Enable restores access."
     }
   },
-  "cloudNetwork": {
-    "title": "Cloud Network",
-    "description": "Which networks the Clouds on this server reach.",
+  "cloud": {
+    "title": "Cloud",
+    "description": "How the Clouds on this server are isolated and which networks they reach.",
+    "isolation": "Isolation",
+    "isolations": {
+      "simple": "Simple Isolation",
+      "gvisor": "gVisor"
+    },
+    "isolationDescriptions": {
+      "simple": "Each Cloud has its own system and files. This protects against mistakes, not against a program that tries to break out.",
+      "gvisor": "Each Cloud runs in a gVisor sandbox, which also stops a program that tries to break out."
+    },
+    "unavailable": "This server can’t run it: {reason}",
+    "moving": "Stopped Clouds move to {isolation} now, and running ones once they stop. Their files and installed packages move with them.",
+    "isolationFailed": "Couldn’t change isolation",
+    "noPrivateNetwork": "Clouds on Simple Isolation share the server’s network, so this setting doesn’t apply.",
     "access": "Private Network Access",
     "accessDescription": "Clouds reach only the internet by default. If Demi runs on your company’s network, turn this on so Clouds can reach its Git servers, internal services and proxies. The server itself, cloud metadata services and other people’s Clouds stay unreachable.",
     "entireDescription": "Clouds reach every private address, as a computer on your network does, so a web page a Cloud’s browser opens can try to reach your internal services too. The server itself, cloud metadata services and other people’s Clouds stay unreachable.",
@@ -577,8 +591,8 @@
     },
     "pending": "Saved. Clouds get the change once the machine manager is available again.",
     "failed": "Couldn’t change private network access",
-    "loadFailed": "Couldn’t load Cloud Network",
-    "loading": "Loading Cloud Network…",
+    "loadFailed": "Couldn’t load Cloud settings",
+    "loading": "Loading Cloud settings…",
     "accesses": {
       "off": "Off",
       "entire": "Entire Private Network",

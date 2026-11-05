@@ -3,7 +3,6 @@ import {
   credentialDtoSchema,
   credentialListSchema,
   instructionsAnswerSchema,
-  listedUserSchema,
   passkeyListSchema,
   portForwardDtoSchema,
   portForwardListSchema,
@@ -29,7 +28,7 @@ export const heldListsShape = {
   credentials: z.array(credentialDtoSchema).optional(),
   passkeys: passkeyListSchema.optional(),
   sessions: z.array(sessionDtoSchema).optional(),
-  users: z.array(listedUserSchema).optional(),
+  users: usersSchema.optional(),
   portForwards: z.array(portForwardDtoSchema).optional(),
 }
 
@@ -92,7 +91,7 @@ export const LIST_ROUTES = {
   users: route({
     route: '/users',
     schema: usersSchema,
-    event: ({ users }) => ({ type: 'users', users }),
+    event: ({ users, cloudStorageLimits }) => ({ type: 'users', users, cloudStorageLimits }),
   }),
   port_forwards: route({
     route: '/port-forwards',

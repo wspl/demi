@@ -56,6 +56,7 @@ function find(id: string) {
 
 const host = computed<SettingsUsersHost>(() => ({
   users: props.state.users,
+  cloudStorageLimits: props.state.cloudStorageLimits,
   viewerId: props.state.viewerId,
   sharing: props.state.sharing && {
     ...props.state.sharing,

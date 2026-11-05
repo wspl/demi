@@ -157,6 +157,24 @@ impl ImageStore {
         Ok(dropped)
     }
 
+    /// Removes every generation of `device`, once a move put its storage on
+    /// another runtime: `current.json` first, so a removal cut short leaves
+    /// no generation the device reads.
+    pub fn remove(&self, off: &OffLoop, device: &DeviceId) -> Result<(), StoreError> {
+        let directory = self.root.join(device);
+        if !directory.exists() {
+            return Ok(());
+        }
+        match fs_err::remove_file(directory.join("current.json")) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
+            _ => {}
+        }
+        sync(off, &directory)?;
+        remove_tree(off, &directory)?;
+        sync(off, &self.root)?;
+        Ok(())
+    }
+
     /// Imported bases: `<data>/images/bases`.
     pub fn bases(&self) -> PathBuf {
         self.root.join("bases")

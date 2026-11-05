@@ -58,6 +58,31 @@ pub fn ext4(_: &OffLoop, device: &Path, target: &Path) -> io::Result<()> {
     .map_err(|error| failed("mounting", target, error))
 }
 
+/// Mounts the ext4 filesystem on `device` at `target` read-only, without
+/// device files, setuid programs or a replay of its journal: a committed
+/// image, which a move copies from and nothing writes.
+pub fn ext4_read_only(_: &OffLoop, device: &Path, target: &Path) -> io::Result<()> {
+    rustix::mount::mount(
+        device,
+        target,
+        "ext4",
+        MountFlags::RDONLY | MountFlags::NODEV | MountFlags::NOSUID,
+        Some(c"noload"),
+    )
+    .map_err(|error| failed("mounting", target, error))
+}
+
+/// Mounts the read-only union of `lowers` at `target`, the first on top, as
+/// a gVisor sandbox sees its system: its system filesystem's upper
+/// directory over its base.
+pub fn read_only_overlay(_: &OffLoop, lowers: &[&Path], target: &Path) -> io::Result<()> {
+    let lowers: Vec<String> = lowers.iter().map(|lower| lower.display().to_string()).collect();
+    let options = format!("lowerdir={},redirect_dir=off", lowers.join(":"));
+    let data = CString::new(options).map_err(io::Error::other)?;
+    rustix::mount::mount("overlay", target, "overlay", MountFlags::RDONLY, Some(data.as_c_str()))
+        .map_err(|error| failed("mounting", target, error))
+}
+
 /// Mounts a tmpfs at `target` with `options`, such as `size=1m,mode=0700`.
 pub fn tmpfs(_: &OffLoop, target: &Path, options: &str) -> io::Result<()> {
     let data = CString::new(options).map_err(io::Error::other)?;

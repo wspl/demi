@@ -12,6 +12,9 @@
 //!   retries.
 //! - A death event goes to the one receiver the backend routes to the device's
 //!   owner.
+//! - What the manager can do with each isolation, which its `hello` names,
+//!   is kept as the last connection said it, for the settings and the
+//!   Clouds' maintenance to read.
 //! - A device's status the manager pushes (`ManagerEvent::CloudStatus`) is
 //!   kept, the latest of each device, and its device goes to the receiver the
 //!   backend routes to the device's owner. A page reads it from here and
@@ -31,8 +34,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use demi_machine_manager_protocol::{
-    Capacity, DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse,
-    ManagerEvent, Operation, WIRE_VERSION, decode_response, encode_line,
+    Capacity, DeviceId, Enforces, Isolation, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse,
+    ManagerEvent, MoveStatus, Operation, RuntimeOffer, WIRE_VERSION, decode_response, encode_line,
 };
 use demi_backend_database::server_log::ServerLog;
 use futures_util::StreamExt as _;
@@ -88,12 +91,17 @@ pub enum MachinesError {
 }
 
 /// A device's stored image as the manager last said it is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImageStatus {
-    /// The capacities of its filesystems; none before its first generation.
+    /// The capacities of its filesystems; none on Simple Isolation and
+    /// before its first generation.
     pub volumes: Option<Capacity>,
     /// Its system is on another base than the manager's configured one.
     pub newer_image: bool,
+    /// The isolation its storage is on.
+    pub isolation: Isolation,
+    /// Its move to the other isolation, which the master chose.
+    pub move_status: Option<MoveStatus>,
 }
 
 /// What the manager tells the backend unasked, for the backend's routers.
@@ -113,6 +121,7 @@ pub struct Notices {
 pub struct MachinesClient {
     commands: mpsc::Sender<Command>,
     statuses: Arc<Mutex<HashMap<DeviceId, ImageStatus>>>,
+    runtimes: Arc<Mutex<Option<Vec<RuntimeOffer>>>>,
     /// Ends the supervisor with the client.
     _supervisor: AbortOnDropHandle<()>,
 }
@@ -138,6 +147,7 @@ impl MachinesClient {
         // One waiting notice says all a second would.
         let (connected, connections) = mpsc::channel(1);
         let kept = Arc::new(Mutex::new(HashMap::new()));
+        let runtimes = Arc::new(Mutex::new(None));
         let supervisor = Supervisor {
             socket,
             connection: None,
@@ -147,6 +157,7 @@ impl MachinesClient {
             changed,
             connected,
             statuses: kept.clone(),
+            runtimes: runtimes.clone(),
             log,
         };
         let task = tokio::spawn(supervisor.run(received));
@@ -154,6 +165,7 @@ impl MachinesClient {
             Self {
                 commands,
                 statuses: kept,
+                runtimes,
                 _supervisor: AbortOnDropHandle::new(task),
             },
             Notices { deaths: died, statuses, connections },
@@ -167,7 +179,22 @@ impl MachinesClient {
             .lock()
             .expect("the statuses are never held across a panic")
             .get(device)
-            .copied()
+            .cloned()
+    }
+
+    /// What the manager can do with each isolation, as its last `hello`
+    /// said; none before the client first connected. It calls no one.
+    pub fn runtimes(&self) -> Option<Vec<RuntimeOffer>> {
+        self.runtimes.lock().expect("the runtimes are never held across a panic").clone()
+    }
+
+    /// What `isolation` enforces; none when the manager cannot run it or
+    /// has not said.
+    pub fn enforces(&self, isolation: Isolation) -> Option<Enforces> {
+        self.runtimes()?
+            .into_iter()
+            .find(|offer| offer.isolation == isolation)
+            .and_then(|offer| offer.offer.ok())
     }
 
     /// Runs `params` on the manager and answers its result.
@@ -218,6 +245,7 @@ struct Supervisor {
     changed: mpsc::Sender<DeviceId>,
     connected: mpsc::Sender<()>,
     statuses: Arc<Mutex<HashMap<DeviceId, ImageStatus>>>,
+    runtimes: Arc<Mutex<Option<Vec<RuntimeOffer>>>>,
     log: ServerLog,
 }
 
@@ -286,9 +314,11 @@ impl Supervisor {
         }
     }
 
-    /// Keeps `connection` and says the client connected.
-    fn connected(&mut self, connection: Connection) {
+    /// Keeps `connection` and what its manager offers, and says the client
+    /// connected.
+    fn connected(&mut self, (connection, runtimes): (Connection, Vec<RuntimeOffer>)) {
         self.connection = Some(connection);
+        *self.runtimes.lock().expect("the runtimes are never held across a panic") = Some(runtimes);
         // A notice already waiting covers this one.
         let _ = self.connected.try_send(());
     }
@@ -384,7 +414,7 @@ impl Supervisor {
 
     /// Keeps what the manager said of a device, and tells the router.
     async fn event(&mut self, event: ManagerEvent) {
-        let ManagerEvent::CloudStatus { device_id, volumes, newer_image } = event;
+        let ManagerEvent::CloudStatus { device_id, volumes, newer_image, isolation, move_status } = event;
         let device = match DeviceId::parse(device_id) {
             Ok(device) => device,
             Err(error) => {
@@ -392,12 +422,12 @@ impl Supervisor {
                 return;
             }
         };
-        let status = ImageStatus { volumes, newer_image };
+        let status = ImageStatus { volumes, newer_image, isolation, move_status };
         let changed = self
             .statuses
             .lock()
             .expect("the statuses are never held across a panic")
-            .insert(device.clone(), status)
+            .insert(device.clone(), status.clone())
             != Some(status);
         if changed {
             // The router only ends when the backend does, which ends this
@@ -441,8 +471,9 @@ async fn next_incoming(connection: &mut Option<Connection>) -> Incoming {
     }
 }
 
-/// Opens the socket and starts reading its lines.
-async fn connect(socket: &Path) -> Result<Connection, String> {
+/// Opens the socket and starts reading its lines; answers what its manager
+/// offers too.
+async fn connect(socket: &Path) -> Result<(Connection, Vec<RuntimeOffer>), String> {
     let stream = UnixStream::connect(socket)
         .await
         .map_err(|error| format!("{}: {error}", socket.display()))?;
@@ -451,8 +482,8 @@ async fn connect(socket: &Path) -> Result<Connection, String> {
     let hello = tokio::time::timeout(HELLO_WAIT, framed.next())
         .await
         .map_err(|_| "the machine manager sent no hello".to_owned())?;
-    let version = match hello.map(|line| line.map(|line| decode_response(&line))) {
-        Some(Ok(Ok(MachineResponse::Hello { version }))) => version,
+    let (version, runtimes) = match hello.map(|line| line.map(|line| decode_response(&line))) {
+        Some(Ok(Ok(MachineResponse::Hello { version, runtimes }))) => (version, runtimes),
         Some(Ok(Ok(_))) => return Err("the machine manager's first message was no hello".into()),
         Some(Ok(Err(error))) => return Err(format!("the machine manager's hello did not read: {error}")),
         Some(Err(error)) => return Err(error.to_string()),
@@ -480,9 +511,12 @@ async fn connect(socket: &Path) -> Result<Connection, String> {
         // The supervisor may have let go of this connection already.
         let _ = lines.send(Incoming::Closed(end)).await;
     });
-    Ok(Connection {
-        writer,
-        incoming,
-        _reader: AbortOnDropHandle::new(reader),
-    })
+    Ok((
+        Connection {
+            writer,
+            incoming,
+            _reader: AbortOnDropHandle::new(reader),
+        },
+        runtimes,
+    ))
 }

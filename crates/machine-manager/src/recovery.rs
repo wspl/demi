@@ -8,7 +8,8 @@ use std::io;
 use demi_machine_manager_protocol::{DeviceId, IdError};
 
 use crate::{
-    blocking,
+    blocking::{self, OffLoop},
+    linux::mount,
     manager::Core,
     sandbox::{Sandbox, SandboxError, files::SandboxRecord},
     storage::{
@@ -34,6 +35,21 @@ pub enum RecoveryError {
     Save(#[from] SaveError),
 }
 
+/// Removes the stage `path`. A move mounts a Cloud's images in its stage, and
+/// they stay mounted when the manager dies: each is detached first, which
+/// needs no order, though the overlay holds the image under it.
+fn remove_stage(off: &OffLoop, path: &std::path::Path) -> io::Result<()> {
+    if fs_err::symlink_metadata(path)?.is_dir() {
+        for entry in fs_err::read_dir(path)? {
+            let child = entry?.path();
+            if mount::mount_root(off, &child)? == Some(true) {
+                mount::detach(off, &child)?;
+            }
+        }
+    }
+    remove_tree(off, path)
+}
+
 /// Fences each recorded sandbox and saves each working pair, but those of
 /// the devices in `running`, whose sandboxes this manager runs and keeps.
 /// Every device operation has finished and none can start: the caller holds
@@ -51,7 +67,7 @@ pub async fn fence_and_save(core: &Core, running: &[DeviceId]) -> Result<(), Rec
                 let name = entry?.file_name().to_string_lossy().into_owned();
                 if name.starts_with('.') {
                     // A stage has replaced neither a working nor a committed pair.
-                    remove_tree(off, &working.join(&name))?;
+                    remove_stage(off, &working.join(&name))?;
                 } else {
                     names.push(name);
                 }

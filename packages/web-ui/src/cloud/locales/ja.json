@@ -14,6 +14,12 @@
     "title": "ストレージ",
     "line": "システム {system} · ホーム {home}"
   },
+  "move": {
+    "moving": "「{isolation}」に移行しています…",
+    "movingDescription": "ファイルの移行が終わるとクラウドが起動します。",
+    "failed": "「{isolation}」に移行できませんでした",
+    "failedDescription": "{message} 次にクラウドを起動するときに再試行します。"
+  },
   "reset": {
     "title": "クラウド環境をリセット",
     "body": "クラウドのタスクを停止し、システムパッケージと設定をリセットします。ホームのファイルとクラウドプロジェクトは残ります。",

@@ -68,7 +68,7 @@ const SCRATCH: &str = "Files only you need (screenshots, probe scripts) go in $D
 /// machine manager's firewall closes to Clouds unless the master opens it
 /// (`crates/machine-manager/src/network/mod.rs`): a refused connection is
 /// the server's setting, not a fault to work around.
-const CLOUD_PRIVATE_NETWORK: &str = "Addresses on the server's private network are blocked unless the server's master allows them in Settings › Cloud Network.";
+const CLOUD_PRIVATE_NETWORK: &str = "Addresses on the server's private network are blocked unless the server's master allows them in Settings › Cloud.";
 
 /// What a block for Windows says of its utilities: the others are Git for
 /// Windows' (`crates/runner/src/git.rs`).
@@ -236,7 +236,10 @@ impl Shard {
             Some(RunnerPlatform::Win32) => format!("{WINDOWS_UTILITIES}. {WINDOWS_SHELLS}"),
             _ => format!("{UTILITIES}."),
         };
-        if device.as_ref().is_none_or(|record| record.kind == DeviceKind::Managed) {
+        let closed = |record: &DeviceRecord| {
+            demi_backend_cloud::isolation::private_network_closed(&self.services().cloud, record.id.as_str())
+        };
+        if device.as_ref().is_none_or(|record| record.kind == DeviceKind::Managed && closed(record)) {
             utilities = format!("{utilities} {CLOUD_PRIVATE_NETWORK}");
         }
         let host = match device.and_then(|record| record.os) {

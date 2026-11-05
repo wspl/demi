@@ -48,7 +48,7 @@ function row(user: ListedUser): SettingsUser {
 const useUserStore = defineStore('user-settings', () => {
   const session = useSession()
   const product = useProduct()
-  const users = computed(() => (product.snapshot?.users ?? []).map(row))
+  const users = computed(() => (product.snapshot?.users?.users ?? []).map(row))
 
   async function add(user: SettingsNewUser): Promise<UserAddOutcome> {
     try {
@@ -139,6 +139,7 @@ const useUserStore = defineStore('user-settings', () => {
     session.user
       ? {
           users: users.value,
+          cloudStorageLimits: product.snapshot?.users?.cloudStorageLimits ?? true,
           viewerId: session.user.id,
           sharing:
             session.user.role === 'master' && product.snapshot?.mode

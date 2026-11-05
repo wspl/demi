@@ -29,13 +29,14 @@
 //!   connection as a death event does, and the backend stores it in its log. A
 //!   line made while no connection is open stays in the manager's journal.
 //! - A device's status (`ManagerEvent::CloudStatus`) goes to every open
-//!   connection when the device's operation ends, and for every device with
-//!   stored images when a connection opens, so the backend holds the latest
-//!   and never asks for it.
+//!   connection when the device's operation ends or its move starts or ends,
+//!   and for every device with stored images when a connection opens, so the
+//!   backend holds the latest and never asks for it.
 //!
 //! It holds no manager policy and no IO.
 
 pub mod image;
+pub mod isolation;
 pub mod network;
 pub mod runtime;
 pub mod store;
@@ -116,12 +117,14 @@ pub use state::{
     BaseVersion, DeviceId, GenerationId, IdError, MachineImageState, RuntimeState, Volume,
     is_image_name,
 };
+pub use isolation::{Enforces, Isolation, MoveStatus, RuntimeOffer, Unavailable};
 pub use network::{Destination, PrivateNetwork};
 pub use wire::{
     Capacity, CheckpointParams, CurrentBaseVersionParams, DecodeError, HibernateParams,
     ImageStateParams, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, ManagerEvent, Message,
     Operation, ReconcileParams, Reconciled, ResetParams, RuntimeStateParams, VERSION as WIRE_VERSION,
-    SandboxMachine, SetPrivateNetworkParams, WakeParams, decode_request, decode_response, encode_line,
+    SandboxMachine, SetIsolationParams, SetPrivateNetworkParams, WakeParams, decode_request, decode_response,
+    encode_line,
 };
 
 /// The room a large write to a server's disk leaves free: the backend's

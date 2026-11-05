@@ -42,6 +42,7 @@ pub(super) async fn list(
 ) -> Result<Json<Users>, ApiError> {
     Ok(Json(Users {
         users: services.control.users().await?,
+        cloud_storage_limits: demi_backend_cloud::isolation::storage_limits(&services.control, &services.cloud).await?,
     }))
 }
 

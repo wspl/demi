@@ -28,8 +28,13 @@ export function galleryUsers(): SettingsUser[] {
  * A specimen's accounts as `viewerId` sees them; `sharing` is the master's
  * choice of providers, which only the master's specimen shows.
  */
-export function createUsersState(viewerId: string, sharing?: { mode: 'shared' | 'isolated'; subscriptions: boolean }) {
-  return reactive({ users: galleryUsers(), viewerId, sharing })
+/** The accounts as `viewerId` sees them; `cloudStorageLimits` is false on a server whose Clouds are on Simple Isolation. */
+export function createUsersState(
+  viewerId: string,
+  sharing?: { mode: 'shared' | 'isolated'; subscriptions: boolean },
+  cloudStorageLimits = true,
+) {
+  return reactive({ users: galleryUsers(), viewerId, sharing, cloudStorageLimits })
 }
 
 export type UsersState = ReturnType<typeof createUsersState>

@@ -39,8 +39,55 @@ pub struct SetInstanceMode {
     pub mode: InstanceMode,
 }
 
+/// How the server's Clouds are isolated, which the master chooses in
+/// Settings › Cloud.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Isolation {
+    /// Each Cloud a directory tree of its own, which needs no root and
+    /// protects against mistakes only.
+    Simple,
+    /// Each Cloud a gVisor sandbox.
+    Gvisor,
+}
+
+serde_plain::derive_display_from_serialize!(Isolation);
+serde_plain::derive_fromstr_from_deserialize!(Isolation);
+
+/// Settings › Cloud's isolation, which only the master reads with
+/// `GET /settings/cloud-isolation`: the one chosen, and what the server can
+/// do with each, none while its machine manager has not been reached.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CloudIsolation {
+    pub isolation: Isolation,
+    pub runtimes: Option<Vec<IsolationRuntime>>,
+}
+
+/// What the server can do with one isolation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct IsolationRuntime {
+    pub isolation: Isolation,
+    /// Why the server cannot run it, in its machine manager's words; none
+    /// when it can.
+    pub unavailable: Option<String>,
+    /// Whether Private Network Access decides what its Clouds reach.
+    pub private_network: bool,
+    /// Whether each user's Cloud Storage bounds its Clouds.
+    pub storage_limits: bool,
+}
+
+/// `PUT /settings/cloud-isolation`, which only the master sends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct SetCloudIsolation {
+    #[garde(skip)]
+    pub isolation: Isolation,
+}
+
 /// Which private destinations the server's Clouds reach, which the master
-/// chooses in Settings › Cloud Network.
+/// chooses in Settings › Cloud.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PrivateNetworkAccess {
@@ -55,8 +102,9 @@ pub enum PrivateNetworkAccess {
 serde_plain::derive_display_from_serialize!(PrivateNetworkAccess);
 serde_plain::derive_fromstr_from_deserialize!(PrivateNetworkAccess);
 
-/// Settings › Cloud Network, which only the master reads with
-/// `GET /settings/cloud-network` and changes with `PUT` to the same path.
+/// Settings › Cloud's Private Network Access, which only the master reads
+/// with `GET /settings/cloud-network` and changes with `PUT` to the same
+/// path.
 /// `destinations` are written as the master typed them, such as
 /// `10.20.0.0/16` or `10.20.0.7:22`, and kept while another access is chosen.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]

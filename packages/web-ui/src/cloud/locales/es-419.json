@@ -14,6 +14,12 @@
     "title": "Almacenamiento",
     "line": "Sistema {system} · Personal {home}"
   },
+  "move": {
+    "moving": "Pasando a {isolation}…",
+    "movingDescription": "Tu nube se iniciará en cuanto se hayan movido sus archivos.",
+    "failed": "No se pudo pasar a {isolation}",
+    "failedDescription": "{message} El próximo inicio de tu nube lo volverá a intentar."
+  },
   "reset": {
     "title": "Restablecer el entorno en la nube",
     "body": "Detiene las tareas en la nube y restablece los paquetes y la configuración del sistema. Tus archivos personales y tus proyectos en la nube se conservan.",

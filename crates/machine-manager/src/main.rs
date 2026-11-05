@@ -179,7 +179,9 @@ mod service {
         storage::{base, durable, room, state, store::ImageStore},
         tools::{Tool, Tools},
     };
-    use demi_machine_manager_protocol::{LeftSandbox, LeftSimple, PrivateNetwork};
+    use demi_machine_manager_protocol::{
+        Enforces, Isolation, LeftSandbox, LeftSimple, PrivateNetwork, RuntimeOffer, Unavailable,
+    };
     use demi_shared_types::LogLine;
     use tokio::signal::unix::{SignalKind, signal};
     use tokio::sync::mpsc::Receiver;
@@ -421,7 +423,9 @@ mod service {
             .filter(|sandbox| running.contains(&sandbox.device))
             .map(|sandbox| sandbox.programs.clone())
             .collect();
-        base::retain(&core.config.images(), &core.config.working(), &base, &programs).await?;
+        let trees = core.simple.trees.clone();
+        let pinned = blocking::run(move |off| trees.bases(off)).await?;
+        base::retain(&core.config.images(), &core.config.working(), &base, &programs, &pinned).await?;
         let probed = core.simple.probe(&core.config.data.join("simple-probe")).await;
         match (&probed, &core.gvisor) {
             (Ok(()), _) => {}
@@ -441,7 +445,31 @@ mod service {
         let socket = Socket::bind(&socket_path).await?;
         let (deaths, received) = tokio::sync::mpsc::channel(DEATHS);
         let (changes, changed) = tokio::sync::mpsc::channel(DEATHS);
-        let manager = Rc::new(Manager::new(core.clone(), base, deaths, changes));
+        let offers = vec![
+            RuntimeOffer {
+                isolation: Isolation::Simple,
+                offer: match &probed {
+                    Ok(()) => Ok(Enforces {
+                        checkpoints: false,
+                        storage_limits: false,
+                        private_network: false,
+                    }),
+                    Err(error) => Err(Unavailable { reason: error.to_string() }),
+                },
+            },
+            RuntimeOffer {
+                isolation: Isolation::Gvisor,
+                offer: match &core.gvisor {
+                    Ok(_) => Ok(Enforces {
+                        checkpoints: true,
+                        storage_limits: true,
+                        private_network: true,
+                    }),
+                    Err(reason) => Err(Unavailable { reason: reason.clone() }),
+                },
+            },
+        ];
+        let manager = Manager::new(core.clone(), base, offers, deaths, changes);
         for (device, sandbox) in adopted {
             manager.adopt(device, sandbox);
         }

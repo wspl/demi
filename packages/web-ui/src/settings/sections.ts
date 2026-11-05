@@ -252,26 +252,26 @@ export function withUsersSection(groups: SettingsNavGroup[], role: UserRole): Se
   )
 }
 
-/** Settings › Cloud Network, which only the master has. */
-export function cloudNetworkSection(): SettingsNavItem {
+/** Settings › Cloud, which only the master has. */
+export function cloudSection(): SettingsNavItem {
   return {
-    id: 'cloudNetwork',
-    label: t('cloudNetwork.title'),
+    id: 'cloud',
+    label: t('cloud.title'),
     icon: CloudCog,
-    keywords: words(t('sections.cloudNetwork.keywords')),
-    settings: [{ label: t('cloudNetwork.access') }],
+    keywords: words(t('sections.cloud.keywords')),
+    settings: [{ label: t('cloud.isolation') }, { label: t('cloud.access') }],
   }
 }
 
-/** The rail with Cloud Network after Users, for the master; the rail unchanged for anyone else. */
-export function withCloudNetworkSection(groups: SettingsNavGroup[], role: UserRole): SettingsNavGroup[] {
+/** The rail with Cloud after Users, for the master; the rail unchanged for anyone else. */
+export function withCloudSection(groups: SettingsNavGroup[], role: UserRole): SettingsNavGroup[] {
   if (role !== 'master') {
     return groups
   }
-  const network = cloudNetworkSection()
+  const cloud = cloudSection()
   return groups.map((group) =>
     group.items.some((item) => item.id === 'users')
-      ? { ...group, items: group.items.flatMap((item) => (item.id === 'users' ? [item, network] : [item])) }
+      ? { ...group, items: group.items.flatMap((item) => (item.id === 'users' ? [item, cloud] : [item])) }
       : group,
   )
 }

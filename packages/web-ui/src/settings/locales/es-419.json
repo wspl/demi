@@ -413,8 +413,8 @@
     "users": {
       "keywords": "cuentas,personas,admin,agregar usuario,invitar,restablecer contraseña,rol,desactivar,cerrar sesión en todas partes"
     },
-    "cloudNetwork": {
-      "keywords": "red,red privada,intranet,interna,lan,firewall,proxy,git,tailscale,ip,dirección,puerto"
+    "cloud": {
+      "keywords": "red,red privada,intranet,interna,lan,firewall,proxy,git,tailscale,ip,dirección,puerto,aislamiento,sandbox,gvisor,seguridad"
     },
     "developer": {
       "keywords": "desarrollador,depuración,solución de problemas",
@@ -484,6 +484,7 @@
     "role": "Rol",
     "cloudStorage": "Almacenamiento en la nube",
     "cloudStorageDescription": "Los discos de su nube.",
+    "cloudStorageUnenforced": "Las nubes con aislamiento simple no tienen límites de almacenamiento.",
     "storageSizes": "{system} GB · {home} GB",
     "signIn": "Inicio de sesión",
     "signInCode": "Código de inicio de sesión",
@@ -558,9 +559,22 @@
       "note": "No se elimina nada. Activar restaura el acceso."
     }
   },
-  "cloudNetwork": {
-    "title": "Red de la nube",
-    "description": "A qué redes llegan las nubes de este servidor.",
+  "cloud": {
+    "title": "Nube",
+    "description": "Cómo se aíslan las nubes de este servidor y a qué redes llegan.",
+    "isolation": "Aislamiento",
+    "isolations": {
+      "simple": "Aislamiento simple",
+      "gvisor": "gVisor"
+    },
+    "isolationDescriptions": {
+      "simple": "Cada nube tiene su propio sistema y sus propios archivos. Esto protege contra errores, no contra un programa que intente escapar.",
+      "gvisor": "Cada nube se ejecuta en un sandbox de gVisor, que también detiene a un programa que intente escapar."
+    },
+    "unavailable": "Este servidor no puede usarlo: {reason}",
+    "moving": "Las nubes detenidas pasan a {isolation} ahora, y las que están en ejecución en cuanto se detengan. Sus archivos y paquetes instalados pasan con ellas.",
+    "isolationFailed": "No se pudo cambiar el aislamiento",
+    "noPrivateNetwork": "Las nubes con aislamiento simple comparten la red del servidor, así que esta configuración no se aplica.",
     "access": "Acceso a la red privada",
     "accessDescription": "Por defecto, las nubes solo llegan a internet. Si Demi se ejecuta en la red de tu empresa, activa esto para que las nubes lleguen a sus servidores de Git, servicios internos y proxies. El servidor, los servicios de metadatos de la nube y las nubes de otras personas siguen inaccesibles.",
     "entireDescription": "Las nubes llegan a todas las direcciones privadas, como una computadora de tu red, así que una página web que abra el navegador de una nube también puede intentar llegar a tus servicios internos. El servidor, los servicios de metadatos de la nube y las nubes de otras personas siguen inaccesibles.",
@@ -577,8 +591,8 @@
     },
     "pending": "Guardado. Las nubes recibirán el cambio cuando el administrador de máquinas vuelva a estar disponible.",
     "failed": "No se pudo cambiar el acceso a la red privada",
-    "loadFailed": "No se pudo cargar la red de la nube",
-    "loading": "Cargando la red de la nube…",
+    "loadFailed": "No se pudo cargar la configuración de la nube",
+    "loading": "Cargando la configuración de la nube…",
     "accesses": {
       "off": "Desactivado",
       "entire": "Toda la red privada",

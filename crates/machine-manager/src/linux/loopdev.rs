@@ -9,7 +9,8 @@ use std::{
 };
 
 use linux_raw_sys::loop_device::{
-    LO_FLAGS_AUTOCLEAR, LOOP_CONFIGURE, LOOP_CTL_GET_FREE, LOOP_SET_DIRECT_IO, loop_config,
+    LO_FLAGS_AUTOCLEAR, LO_FLAGS_READ_ONLY, LOOP_CONFIGURE, LOOP_CTL_GET_FREE, LOOP_SET_DIRECT_IO,
+    loop_config,
 };
 use rustix::{
     io::Errno,
@@ -76,10 +77,20 @@ pub fn set_direct_io(_: &OffLoop, device: &Path) -> io::Result<()> {
 }
 
 /// Attaches `image` to a free loop device with auto-clear set.
-pub fn attach(_: &OffLoop, image: &Path) -> io::Result<LoopDevice> {
+pub fn attach(off: &OffLoop, image: &Path) -> io::Result<LoopDevice> {
+    attach_as(off, image, false)
+}
+
+/// Attaches `image` to a free loop device that refuses writes, with
+/// auto-clear set: a committed image, which nothing may change.
+pub fn attach_read_only(off: &OffLoop, image: &Path) -> io::Result<LoopDevice> {
+    attach_as(off, image, true)
+}
+
+fn attach_as(_: &OffLoop, image: &Path, read_only: bool) -> io::Result<LoopDevice> {
     let backing = fs_err::OpenOptions::new()
         .read(true)
-        .write(true)
+        .write(!read_only)
         .open(image)?;
     let control = fs_err::OpenOptions::new()
         .read(true)
@@ -105,6 +116,9 @@ pub fn attach(_: &OffLoop, image: &Path) -> io::Result<LoopDevice> {
         let mut config: loop_config = unsafe { std::mem::zeroed() };
         config.fd = u32::try_from(backing.as_raw_fd()).expect("a file descriptor is not negative");
         config.info.lo_flags = LO_FLAGS_AUTOCLEAR as u32;
+        if read_only {
+            config.info.lo_flags |= LO_FLAGS_READ_ONLY as u32;
+        }
         // SAFETY: LOOP_CONFIGURE reads a loop_config from the pointer the
         // Setter passes, and the backing descriptor stays open for the call.
         let configured = unsafe {

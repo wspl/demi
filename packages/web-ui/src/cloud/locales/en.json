@@ -14,6 +14,12 @@
     "title": "Storage",
     "line": "System {system} · Home {home}"
   },
+  "move": {
+    "moving": "Moving to {isolation}…",
+    "movingDescription": "Your Cloud starts once its files have moved.",
+    "failed": "Couldn’t move to {isolation}",
+    "failedDescription": "{message} Your Cloud’s next start tries again."
+  },
   "reset": {
     "title": "Reset Cloud Environment",
     "body": "Stops Cloud tasks and resets system packages and settings. Your home files and Cloud projects stay.",

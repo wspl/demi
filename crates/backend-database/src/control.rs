@@ -12,7 +12,7 @@ use demi_shared_types::{Clock, Timestamp};
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::UserId;
 use demi_web_api_protocol::server_upgrade::UpgradeChannel;
-use demi_web_api_protocol::settings::{CloudNetwork, InstanceMode, Preferences, PrivateNetworkAccess};
+use demi_web_api_protocol::settings::{CloudNetwork, InstanceMode, Isolation, Preferences, PrivateNetworkAccess};
 use demi_web_api_protocol::text::EmailAddress;
 use demi_web_api_protocol::users::{CloudStorage, ListedUser};
 use jiff::SignedDuration;
@@ -479,6 +479,36 @@ impl ControlService {
                  ON CONFLICT (id) DO UPDATE SET private_network = excluded.private_network,
                    private_destinations = excluded.private_destinations",
                 [network.access.to_string(), destinations],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// How Clouds are isolated: Simple Isolation until the master chooses.
+    pub async fn isolation(&self) -> Result<Isolation, StorageError> {
+        self.call(|connection, _| {
+            let stored: Option<String> = connection
+                .query_row("SELECT isolation FROM server_settings WHERE id = 1", [], |row| row.get(0))
+                .optional()?;
+            let Some(stored) = stored else {
+                return Ok(Isolation::Simple);
+            };
+            stored.parse().map_err(|_| StorageError::Corrupt {
+                table: "server_settings",
+                column: "isolation",
+                reason: format!("{stored} is no isolation"),
+            })
+        })
+        .await
+    }
+
+    pub async fn set_isolation(&self, isolation: Isolation) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "INSERT INTO server_settings (id, isolation) VALUES (1, ?1)
+                 ON CONFLICT (id) DO UPDATE SET isolation = excluded.isolation",
+                [isolation.to_string()],
             )?;
             Ok(())
         })

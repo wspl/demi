@@ -16,7 +16,7 @@ import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDia
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import {
   settingsSections,
-  withCloudNetworkSection,
+  withCloudSection,
   withUpdatesSection,
   withUsersSection,
 } from '@demicodes/web-ui/settings/sections'
@@ -59,7 +59,7 @@ import InstructionsPanel from './InstructionsPanel.vue'
 import SubagentsPanel from './SubagentsPanel.vue'
 import CredentialsPanel from './CredentialsPanel.vue'
 import UsersPanel from './UsersPanel.vue'
-import CloudNetworkPanel from './CloudNetworkPanel.vue'
+import CloudPanel from './CloudPanel.vue'
 import AboutPanel from './AboutPanel.vue'
 import UpdatesPanel from './UpdatesPanel.vue'
 import type { Action } from '@demicodes/web-ui/ui/operations'
@@ -82,14 +82,14 @@ const pluginSettings = usePluginSettings()
 const router = useRouter()
 const lifetime = new AbortController()
 /**
- * The rail lists Users for the master and admins only, Cloud Network for the
+ * The rail lists Users for the master and admins only, Cloud for the
  * master only, and Updates for the master and admins on a server that offers
  * updates, whose state then carries it.
  */
 const withUsers = computed(() => {
   const role = product.snapshot?.user?.role ?? 'user'
   return withUpdatesSection(
-    withCloudNetworkSection(withUsersSection(settingsSections(), role), role),
+    withCloudSection(withUsersSection(settingsSections(), role), role),
     !!product.snapshot?.serverUpgrade,
   )
 })
@@ -485,7 +485,7 @@ function resetShortcuts(): void {
     <DevicesPanel v-else-if="section === 'devices'" />
     <PortForwardsPanel v-else-if="section === 'portForwards'" />
     <UsersPanel v-else-if="section === 'users' && product.snapshot?.user?.role !== 'user'" />
-    <CloudNetworkPanel v-else-if="section === 'cloudNetwork' && product.snapshot?.user?.role === 'master'" />
+    <CloudPanel v-else-if="section === 'cloud' && product.snapshot?.user?.role === 'master'" />
     <CredentialsPanel v-else-if="section === 'credentials'" />
     <InstructionsPanel v-else-if="section === 'instructions'" />
     <SubagentsPanel v-else-if="section === 'subagents'" />

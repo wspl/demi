@@ -14,6 +14,12 @@
     "title": "Stockage",
     "line": "Système {system} · Dossier personnel {home}"
   },
+  "move": {
+    "moving": "Passage à {isolation}…",
+    "movingDescription": "Votre cloud démarrera une fois ses fichiers déplacés.",
+    "failed": "Impossible de passer à {isolation}",
+    "failedDescription": "{message} Le prochain démarrage de votre cloud réessaiera."
+  },
   "reset": {
     "title": "Réinitialiser l’environnement cloud",
     "body": "Arrête les tâches cloud et réinitialise les paquets et réglages système. Les fichiers de votre dossier personnel et vos projets cloud sont conservés.",

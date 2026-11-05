@@ -14,6 +14,12 @@
     "title": "Speicher",
     "line": "System {system} · Benutzerordner {home}"
   },
+  "move": {
+    "moving": "Wechsel zu {isolation} …",
+    "movingDescription": "Deine Cloud startet, sobald ihre Dateien umgezogen sind.",
+    "failed": "Wechsel zu {isolation} fehlgeschlagen",
+    "failedDescription": "{message} Der nächste Start deiner Cloud versucht es erneut."
+  },
   "reset": {
     "title": "Cloud-Umgebung zurücksetzen",
     "body": "Stoppt Cloud-Aufgaben und setzt Systempakete und Einstellungen zurück. Deine Dateien im Benutzerordner und deine Cloud-Projekte bleiben erhalten.",

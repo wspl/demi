@@ -839,6 +839,8 @@ export interface SettingsProviderSharing {
 
 export interface SettingsUsersHost extends VerificationHost {
   users: readonly SettingsUser[]
+  /** Whether Cloud Storage bounds the Clouds, which the isolation the master chose decides; the row stays, disabled, when it doesn't. */
+  cloudStorageLimits: boolean
   /** Present for the master alone. */
   sharing?: SettingsProviderSharing
   /** The signed-in user's account: its row is marked You and has no menu. */

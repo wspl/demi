@@ -413,8 +413,8 @@
     "users": {
       "keywords": "Konten,Personen,Admin,Benutzer hinzufügen,einladen,Passwort zurücksetzen,Rolle,deaktivieren,überall abmelden,users"
     },
-    "cloudNetwork": {
-      "keywords": "Netzwerk,privates Netzwerk,Intranet,intern,LAN,Firewall,Proxy,Git,Tailscale,IP,Adresse,Port"
+    "cloud": {
+      "keywords": "Netzwerk,privates Netzwerk,Intranet,intern,LAN,Firewall,Proxy,Git,Tailscale,IP,Adresse,Port,Isolierung,Sandbox,gVisor,Sicherheit"
     },
     "developer": {
       "keywords": "Entwickler,Debug,Fehlerbehebung,developer",
@@ -484,6 +484,7 @@
     "role": "Rolle",
     "cloudStorage": "Cloud-Speicher",
     "cloudStorageDescription": "Die Festplatten ihrer Cloud.",
+    "cloudStorageUnenforced": "Clouds mit einfacher Isolierung haben keine Speichergrenzen.",
     "storageSizes": "{system} GB · {home} GB",
     "signIn": "Anmeldung",
     "signInCode": "Anmeldecode",
@@ -558,9 +559,22 @@
       "note": "Nichts wird entfernt. „Aktivieren“ stellt den Zugang wieder her."
     }
   },
-  "cloudNetwork": {
-    "title": "Cloud-Netzwerk",
-    "description": "Welche Netzwerke die Clouds auf diesem Server erreichen.",
+  "cloud": {
+    "title": "Cloud",
+    "description": "Wie die Clouds auf diesem Server isoliert sind und welche Netzwerke sie erreichen.",
+    "isolation": "Isolierung",
+    "isolations": {
+      "simple": "Einfache Isolierung",
+      "gvisor": "gVisor"
+    },
+    "isolationDescriptions": {
+      "simple": "Jede Cloud hat ein eigenes System und eigene Dateien. Das schützt vor Fehlern, aber nicht vor einem Programm, das auszubrechen versucht.",
+      "gvisor": "Jede Cloud läuft in einer gVisor-Sandbox, die auch ein Programm stoppt, das auszubrechen versucht."
+    },
+    "unavailable": "Dieser Server kann sie nicht ausführen: {reason}",
+    "moving": "Gestoppte Clouds wechseln jetzt zu {isolation}, laufende, sobald sie stoppen. Ihre Dateien und installierten Pakete wechseln mit.",
+    "isolationFailed": "Isolierung konnte nicht geändert werden",
+    "noPrivateNetwork": "Clouds mit einfacher Isolierung teilen sich das Netzwerk des Servers, daher gilt diese Einstellung nicht.",
     "access": "Zugriff auf private Netzwerke",
     "accessDescription": "Clouds erreichen standardmäßig nur das Internet. Wenn Demi im Netzwerk deines Unternehmens läuft, aktiviere dies, damit Clouds dessen Git-Server, interne Dienste und Proxys erreichen. Der Server selbst, Cloud-Metadatendienste und die Clouds anderer bleiben unerreichbar.",
     "entireDescription": "Clouds erreichen jede private Adresse, wie ein Computer in deinem Netzwerk, sodass auch eine Webseite, die der Browser einer Cloud öffnet, versuchen kann, deine internen Dienste zu erreichen. Der Server selbst, Cloud-Metadatendienste und die Clouds anderer bleiben unerreichbar.",
@@ -577,8 +591,8 @@
     },
     "pending": "Gespeichert. Clouds erhalten die Änderung, sobald der Maschinenmanager wieder verfügbar ist.",
     "failed": "Zugriff auf private Netzwerke konnte nicht geändert werden",
-    "loadFailed": "Cloud-Netzwerk konnte nicht geladen werden",
-    "loading": "Cloud-Netzwerk wird geladen …",
+    "loadFailed": "Cloud-Einstellungen konnten nicht geladen werden",
+    "loading": "Cloud-Einstellungen werden geladen …",
     "accesses": {
       "off": "Aus",
       "entire": "Gesamtes privates Netzwerk",

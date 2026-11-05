@@ -54,10 +54,14 @@ impl CloudStorage {
     }
 }
 
-/// `GET /users`: every account, in the order they were created.
+/// `GET /users`: every account, in the order they were created, and whether
+/// their Cloud Storage bounds their Clouds, which the isolation the master
+/// chose decides.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct Users {
     pub users: Vec<ListedUser>,
+    pub cloud_storage_limits: bool,
 }
 
 /// The role an administrator gives an account; only setup makes the master.

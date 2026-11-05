@@ -142,14 +142,17 @@ fn read_record<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>,
 /// neither names, that was not imported ahead, that no committed
 /// generation or working pair, under `images` and `working`, is pinned to,
 /// and that is not among `running`, the bases whose programs the sandboxes
-/// taken over mount (`crate::handover`).
+/// taken over mount (`crate::handover`), or `trees`, the bases Simple
+/// Isolation's systems are pinned to, which a move to gVisor compares them
+/// with.
 pub async fn retain(
     images: &Path,
     working: &Path,
     base: &BaseVersion,
     running: &[BaseVersion],
+    trees: &[BaseVersion],
 ) -> Result<(), BaseError> {
-    let running = running.to_vec();
+    let running: Vec<BaseVersion> = running.iter().chain(trees).cloned().collect();
     let images = images.to_owned();
     let working = working.to_owned();
     let base = base.clone();

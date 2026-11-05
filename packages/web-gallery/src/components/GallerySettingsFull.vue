@@ -38,7 +38,7 @@ import GallerySubagents from './GallerySubagents.vue'
 import GalleryAgent from './GalleryAgent.vue'
 import GalleryAbout from './GalleryAbout.vue'
 import GalleryUpdates from './GalleryUpdates.vue'
-import GalleryCloudNetwork from './GalleryCloudNetwork.vue'
+import GalleryCloud from './GalleryCloud.vue'
 import GalleryPortForwards from './GalleryPortForwards.vue'
 import { slow } from '../fixtures/slow'
 import { formatDay } from '@demicodes/web-ui/ui/dates'
@@ -61,6 +61,9 @@ const cloud = ref<CloudState>(
     // The server was upgraded since this Cloud's last reset; a reset moves
     // its system to the new image.
     newerImage: true,
+    // The master chose Simple Isolation: the Cloud's files are copied there
+    // before its next start.
+    moveStatus: { state: 'moving', to: 'simple' },
     deviceId: 'cloud',
     report: demoDeviceReport('linux', DEMO_RUNNER_RELEASE),
   }
@@ -415,7 +418,7 @@ function resetShortcuts() {
 
   <GalleryAbout v-else-if="tab === 'about'" />
   <GalleryUpdates v-else-if="tab === 'updates'" />
-  <GalleryCloudNetwork v-else-if="tab === 'cloudNetwork'" />
+  <GalleryCloud v-else-if="tab === 'cloud'" />
 
   <SettingsData
     v-else-if="tab === 'data'"

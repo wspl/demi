@@ -160,6 +160,8 @@ pub fn web() -> Vec<Root> {
         receives::<settings::UserPreferences>(),
         sends::<settings::PreferencesPatch>(),
         receives::<settings::CloudNetwork>(),
+        receives::<settings::CloudIsolation>(),
+        sends::<settings::SetCloudIsolation>(),
         sends::<plugins::PluginSwitch>(),
         sends::<plugins::ReplyBlocksRead>(),
         sends::<instructions::InstructionsBody>(),

@@ -8,11 +8,14 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use demi_backend_accounts::settings;
 use demi_backend_cloud::client::MachinesError;
+use demi_backend_cloud::isolation;
 use demi_backend_cloud::network::{self, DestinationError};
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::settings::{CloudNetwork, PreferencesPatch, SetInstanceMode, Settings, UserPreferences};
+use demi_web_api_protocol::settings::{
+    CloudIsolation, CloudNetwork, PreferencesPatch, SetCloudIsolation, SetInstanceMode, Settings, UserPreferences,
+};
 
 use super::body::JsonBody;
 use super::error::ApiError;
@@ -39,7 +42,62 @@ pub(super) async fn set_instance_mode(
     Ok(Json(Settings { mode: request.mode }))
 }
 
-/// Settings › Cloud Network, which only the master reads.
+/// Settings › Cloud's isolation, which only the master reads.
+pub(super) async fn cloud_isolation(
+    State(services): State<Arc<Services>>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<CloudIsolation>, ApiError> {
+    if user.role != Role::Master {
+        return Err(ApiError::forbidden("Only the master sees how Clouds are isolated"));
+    }
+    Ok(Json(isolation::setting(&services.control, &services.cloud).await?))
+}
+
+/// Changes how Clouds are isolated, which only the master does: one the
+/// machine manager says it cannot run is refused. A manager that cannot be
+/// reached gets the stored choice when the backend connects to it again;
+/// one that refuses it leaves the choice as it was.
+pub(super) async fn set_cloud_isolation(
+    State(services): State<Arc<Services>>,
+    AuthUser(user): AuthUser,
+    JsonBody(request): JsonBody<SetCloudIsolation>,
+) -> Result<Json<CloudIsolation>, ApiError> {
+    if user.role != Role::Master {
+        return Err(ApiError::forbidden("Only the master changes how Clouds are isolated"));
+    }
+    let offer = services
+        .cloud
+        .machines
+        .runtimes()
+        .and_then(|offers| offers.into_iter().find(|offer| offer.isolation == isolation::machine_isolation(request.isolation)));
+    if let Some(Err(unavailable)) = offer.map(|offer| offer.offer) {
+        return Err(ApiError::invalid_body(format!("This server can't run it: {}", unavailable.reason)));
+    }
+    match isolation::apply(&services.cloud, request.isolation).await {
+        Ok(()) => {
+            services.control.set_isolation(request.isolation).await?;
+            // Whether Cloud Storage applies follows the isolation.
+            services.sync.mark_everyone(&Part::Users);
+        }
+        Err(error @ MachinesError::Unavailable { .. }) => {
+            services.control.set_isolation(request.isolation).await?;
+            services.sync.mark_everyone(&Part::Users);
+            return Err(ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ErrorCode::CloudUnavailable,
+                format!("Saved. Clouds get it when the machine manager is back: {error}"),
+            ));
+        }
+        Err(error) => {
+            return Err(ApiError::internal_message(format!(
+                "The machine manager did not take the isolation: {error}"
+            )));
+        }
+    }
+    Ok(Json(isolation::setting(&services.control, &services.cloud).await?))
+}
+
+/// Settings › Cloud's Private Network Access, which only the master reads.
 pub(super) async fn cloud_network(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,

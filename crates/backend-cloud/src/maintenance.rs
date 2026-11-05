@@ -24,7 +24,7 @@
 use std::rc::{Rc, Weak};
 
 use demi_backend_idle_watch::{Activity, IdlePolicy, Retirement};
-use demi_machine_manager_protocol::CheckpointParams;
+use demi_machine_manager_protocol::{CheckpointParams, DeviceId};
 use demi_shared_gates::{GateLease, Purpose};
 use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
@@ -92,7 +92,7 @@ impl dyn CloudShard {
         let now = Instant::now();
         if now.duration_since(started_at) >= tuning.lifetime_cap {
             self.stop_at_lifetime_cap(machine).await;
-        } else if now.duration_since(checkpoint_at) >= tuning.checkpoint_interval {
+        } else if now.duration_since(checkpoint_at) >= tuning.checkpoint_interval && self.has_checkpoints(machine) {
             let Some(lease) = machine.gate.try_enter(Purpose::Maintenance) else {
                 return;
             };
@@ -103,6 +103,19 @@ impl dyn CloudShard {
             self.tasks()
                 .spawn_local(async move { shard.checkpoint(&machine, lease, now).await });
         }
+    }
+
+    /// Whether the isolation the machine's storage is on takes checkpoints,
+    /// as the manager last said; one it has said nothing of is asked.
+    fn has_checkpoints(&self, machine: &Machine) -> bool {
+        let machines = &self.cloud_services().machines;
+        let Ok(device) = DeviceId::parse(machine.device.id.as_str()) else {
+            return true;
+        };
+        machines
+            .status(&device)
+            .and_then(|status| machines.enforces(status.isolation))
+            .is_none_or(|enforces| enforces.checkpoints)
     }
 
     /// Publishes the running machine's disks, keeping its processes

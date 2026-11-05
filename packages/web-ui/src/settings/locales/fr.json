@@ -413,8 +413,8 @@
     "users": {
       "keywords": "comptes,personnes,admin,ajouter un utilisateur,inviter,réinitialiser le mot de passe,rôle,désactiver,déconnecter partout"
     },
-    "cloudNetwork": {
-      "keywords": "réseau,réseau privé,intranet,interne,lan,pare-feu,proxy,git,tailscale,ip,adresse,port"
+    "cloud": {
+      "keywords": "réseau,réseau privé,intranet,interne,lan,pare-feu,proxy,git,tailscale,ip,adresse,port,isolation,bac à sable,sandbox,gvisor,sécurité"
     },
     "developer": {
       "keywords": "développeur,débogage,dépannage",
@@ -484,6 +484,7 @@
     "role": "Rôle",
     "cloudStorage": "Stockage cloud",
     "cloudStorageDescription": "Les disques de son cloud.",
+    "cloudStorageUnenforced": "Les clouds en isolation simple n’ont pas de limite de stockage.",
     "storageSizes": "{system} Go · {home} Go",
     "signIn": "Connexion",
     "signInCode": "Code de connexion",
@@ -558,9 +559,22 @@
       "note": "Rien n’est supprimé. Activer rétablit l’accès."
     }
   },
-  "cloudNetwork": {
-    "title": "Réseau du cloud",
-    "description": "Les réseaux que les clouds de ce serveur peuvent atteindre.",
+  "cloud": {
+    "title": "Cloud",
+    "description": "Comment les clouds de ce serveur sont isolés et les réseaux qu’ils peuvent atteindre.",
+    "isolation": "Isolation",
+    "isolations": {
+      "simple": "Isolation simple",
+      "gvisor": "gVisor"
+    },
+    "isolationDescriptions": {
+      "simple": "Chaque cloud a son propre système et ses propres fichiers. Cela protège contre les erreurs, pas contre un programme qui tente de s’échapper.",
+      "gvisor": "Chaque cloud s’exécute dans un bac à sable gVisor, qui arrête aussi un programme qui tente de s’échapper."
+    },
+    "unavailable": "Ce serveur ne peut pas l’utiliser : {reason}",
+    "moving": "Les clouds arrêtés passent à {isolation} maintenant, et ceux en cours d’exécution dès qu’ils s’arrêtent. Leurs fichiers et paquets installés les suivent.",
+    "isolationFailed": "Impossible de modifier l’isolation",
+    "noPrivateNetwork": "Les clouds en isolation simple partagent le réseau du serveur, ce réglage ne s’applique donc pas.",
     "access": "Accès au réseau privé",
     "accessDescription": "Par défaut, les clouds n’atteignent qu’Internet. Si Demi fonctionne sur le réseau de votre entreprise, activez cette option pour que les clouds atteignent ses serveurs Git, ses services internes et ses proxys. Le serveur lui-même, les services de métadonnées cloud et les clouds des autres restent inaccessibles.",
     "entireDescription": "Les clouds atteignent toutes les adresses privées, comme un ordinateur de votre réseau, si bien qu’une page web ouverte par le navigateur d’un cloud peut aussi tenter d’atteindre vos services internes. Le serveur lui-même, les services de métadonnées cloud et les clouds des autres restent inaccessibles.",
@@ -577,8 +591,8 @@
     },
     "pending": "Enregistré. Les clouds recevront la modification dès que le gestionnaire de machines sera de nouveau disponible.",
     "failed": "Impossible de modifier l’accès au réseau privé",
-    "loadFailed": "Impossible de charger le réseau du cloud",
-    "loading": "Chargement du réseau du cloud…",
+    "loadFailed": "Impossible de charger les réglages du cloud",
+    "loading": "Chargement des réglages du cloud…",
     "accesses": {
       "off": "Désactivé",
       "entire": "Tout le réseau privé",

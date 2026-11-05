@@ -413,8 +413,8 @@
     "users": {
       "keywords": "账户,人员,管理员,添加用户,邀请,重置密码,角色,禁用,全部退出登录"
     },
-    "cloudNetwork": {
-      "keywords": "网络,内网,局域网,私有网络,防火墙,代理,git,tailscale,ip,地址,端口"
+    "cloud": {
+      "keywords": "网络,内网,局域网,私有网络,防火墙,代理,git,tailscale,ip,地址,端口,隔离,沙盒,gvisor,安全"
     },
     "developer": {
       "keywords": "开发,调试,疑难解答",
@@ -484,6 +484,7 @@
     "role": "角色",
     "cloudStorage": "云端存储",
     "cloudStorageDescription": "对方云端的磁盘。",
+    "cloudStorageUnenforced": "简易隔离的云端没有存储上限。",
     "storageSizes": "{system} GB · {home} GB",
     "signIn": "登录",
     "signInCode": "登录代码",
@@ -558,9 +559,22 @@
       "note": "不会移除任何内容。“启用”可恢复访问。"
     }
   },
-  "cloudNetwork": {
-    "title": "云端网络",
-    "description": "这台服务器上的云端能访问哪些网络。",
+  "cloud": {
+    "title": "云端",
+    "description": "这台服务器上的云端如何隔离，以及能访问哪些网络。",
+    "isolation": "隔离方式",
+    "isolations": {
+      "simple": "简易隔离",
+      "gvisor": "gVisor"
+    },
+    "isolationDescriptions": {
+      "simple": "每个云端都有自己的系统和文件。它能防止误操作，但挡不住试图逃逸的程序。",
+      "gvisor": "每个云端都运行在 gVisor 沙盒中，也能拦住试图逃逸的程序。"
+    },
+    "unavailable": "这台服务器无法使用：{reason}",
+    "moving": "已停止的云端现在就迁移到“{isolation}”，运行中的云端在停止后迁移。文件和已安装的软件包会一起迁移。",
+    "isolationFailed": "无法更改隔离方式",
+    "noPrivateNetwork": "简易隔离的云端与服务器共用网络，因此这项设置不适用。",
     "access": "内网访问",
     "accessDescription": "云端默认只能访问互联网。如果 Demi 部署在公司内网，打开它，云端就能访问内网的 Git 服务器、内部服务和代理。服务器本身、云厂商的元数据服务和其他人的云端始终无法访问。",
     "entireDescription": "云端可以访问所有内网地址，就像接入内网的一台电脑，所以云端浏览器打开的网页也可能尝试访问你的内部服务。服务器本身、云厂商的元数据服务和其他人的云端始终无法访问。",
@@ -577,8 +591,8 @@
     },
     "pending": "已保存。机器管理器恢复后，云端就会应用这项更改。",
     "failed": "无法更改内网访问",
-    "loadFailed": "无法加载云端网络",
-    "loading": "正在加载云端网络…",
+    "loadFailed": "无法加载云端设置",
+    "loading": "正在加载云端设置…",
     "accesses": {
       "off": "关闭",
       "entire": "整个内网",

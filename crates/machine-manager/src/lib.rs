@@ -76,11 +76,12 @@
 //! itself through `/proc/self/exe` and which enters the namespace before
 //! `exec`, so every thread and child of that process lives in it.
 //!
-//! The manager never cancels a device operation: shutdown drains the device
-//! queues, and a checkpoint's frozen window is one synchronous job whose guard
-//! always thaws the filesystem. The shutdown of an upgrade that asks leaves
-//! the running sandboxes to the next manager instead, once their operations
-//! end (`handover`).
+//! The manager never cancels a device operation but a move between runtimes,
+//! which the next manager makes again: shutdown drains the device queues, and
+//! a checkpoint's frozen window is one synchronous job whose guard always
+//! thaws the filesystem. The shutdown of an upgrade that asks leaves the
+//! running sandboxes to the next manager instead, once their operations end
+//! (`handover`).
 //!
 //! The manager listens on no TCP socket, links no backend and executes no image
 //! content on the host. Workload credentials use `runner-protocol`'s

@@ -28,8 +28,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use crate::runner::{RunnerProcess, RunnerProcessOptions, runner_binary};
 use demi_host_interface::SpawnEnv;
 use demi_machine_manager_protocol::{
-    BaseVersion, GenerationId, MachineCall, MachineImageState, MachineResponse, RuntimeState, WIRE_VERSION,
-    decode_request, encode_line,
+    BaseVersion, Enforces, GenerationId, Isolation, MachineCall, MachineImageState, MachineResponse, RuntimeOffer,
+    RuntimeState, WIRE_VERSION, decode_request, encode_line,
 };
 use futures_util::FutureExt as _;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
@@ -126,9 +126,19 @@ async fn serve(listener: UnixListener, shared: Arc<Shared>) {
 async fn connection(stream: UnixStream, shared: Arc<Shared>) {
     let (read, mut write) = stream.into_split();
     let (lines, mut outgoing) = mpsc::channel::<Vec<u8>>(64);
-    // A manager's first line names its wire version.
+    // A manager's first line names its wire version and its runtimes: both
+    // run, though it isolates nothing.
+    let enforces = |all| Enforces {
+        checkpoints: all,
+        storage_limits: all,
+        private_network: all,
+    };
     let hello = encode_line(&MachineResponse::Hello {
         version: WIRE_VERSION,
+        runtimes: vec![
+            RuntimeOffer { isolation: Isolation::Simple, offer: Ok(enforces(false)) },
+            RuntimeOffer { isolation: Isolation::Gvisor, offer: Ok(enforces(true)) },
+        ],
     });
     lines.try_send(hello).expect("a new connection's queue has room");
     let writer = AbortOnDropHandle::new(tokio::spawn(async move {
@@ -214,6 +224,8 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
         // Its guests run on the host's own network, which no firewall
         // limits.
         MachineCall::SetPrivateNetwork(_) => json(serde_json::Value::Null),
+        // Its guests run as processes of the host whatever the isolation.
+        MachineCall::SetIsolation(_) => json(serde_json::Value::Null),
         MachineCall::CurrentBaseVersion(_) => json(serde_json::json!(BASE)),
         MachineCall::ImageState(params) => {
             let image = shared

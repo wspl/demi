@@ -357,11 +357,11 @@ impl Device {
             // The home filesystem's root is the sandbox's /home.
             fs_err::create_dir(&prepared)?;
             fs_err::set_permissions(&prepared, std::fs::Permissions::from_mode(0o755))?;
-            tree::copy(off, &skeleton, &prepared.join("demi"), Some(USER_ID))
+            tree::copy(off, &skeleton, &prepared.join("demi"), Some(USER_ID), None)
         })
         .await?;
         let images = ImagePair::in_directory(stage);
-        ext4::make_home(&self.core.tools, &root, &images.home, capacity.home_bytes).await?;
+        ext4::make_populated(&self.core.tools, Volume::Home, &root, &images.home, capacity.home_bytes).await?;
         ext4::make_system(&self.core.tools, &images.system, capacity.system_bytes).await?;
         let state = MachineImageState {
             generation: new_generation(),

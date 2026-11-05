@@ -7,6 +7,8 @@ use std::{
     ffi::OsStr, fs::File, io, num::NonZeroU64, os::unix::fs::FileExt, path::Path, time::Duration,
 };
 
+use demi_machine_manager_protocol::Volume;
+
 use crate::{
     blocking::{self, OffLoop},
     storage::durable::sync,
@@ -85,22 +87,29 @@ pub async fn make_system(tools: &Tools, image: &Path, bytes: NonZeroU64) -> Resu
     Ok(())
 }
 
-/// A home filesystem whose root is populated from `root`, ownership and
-/// modes included.
-pub async fn make_home(
+/// A filesystem of `volume` whose root is populated from `root`, ownership,
+/// modes, device files and extended attributes included: a home, or a
+/// system that a move brings OverlayFS's upper directory into, whiteouts
+/// and all.
+pub async fn make_populated(
     tools: &Tools,
+    volume: Volume,
     root: &Path,
     image: &Path,
     bytes: NonZeroU64,
 ) -> Result<(), Ext4Error> {
     let size = kibibytes(bytes);
+    let label = match volume {
+        Volume::System => "system",
+        Volume::Home => "home",
+    };
     let args = [
         OsStr::new("-q"),
         OsStr::new("-t"),
         OsStr::new("ext4"),
         OsStr::new("-F"),
         OsStr::new("-L"),
-        OsStr::new("home"),
+        OsStr::new(label),
         OsStr::new("-d"),
         root.as_os_str(),
         image.as_os_str(),

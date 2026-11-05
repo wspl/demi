@@ -293,10 +293,14 @@ impl Shard {
                 if user.role == Role::User {
                     return Ok(None);
                 }
-                let list = Users { users: control.users().await? };
+                let list = Users {
+                    users: control.users().await?,
+                    cloud_storage_limits: demi_backend_cloud::isolation::storage_limits(control, &self.services().cloud).await?,
+                };
                 SyncEvent::Users {
                     etag: etag_of(&list),
                     users: list.users,
+                    cloud_storage_limits: list.cloud_storage_limits,
                 }
             }
             Part::ServerUpgrade => {

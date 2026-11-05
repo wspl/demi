@@ -13,18 +13,26 @@
 //!
 //! A device runs on the runtime its storage is on: a gVisor generation or
 //! working pair, or a Simple Isolation tree. One that has neither yet starts
-//! on the manager's runtime for new devices.
+//! on the isolation the master chose. Once stopped, a device whose storage
+//! is on the other runtime moves to the chosen one (`moves`).
 
 pub mod gvisor;
+pub mod moves;
 pub mod simple;
 
 use std::io;
 
-use demi_machine_manager_protocol::{BaseVersion, Capacity, DeviceId, LeftSandbox, LeftSimple, SandboxMachine};
+use std::rc::Rc;
+
+use demi_machine_manager_protocol::{BaseVersion, Capacity, DeviceId, Isolation, LeftSandbox, LeftSimple, SandboxMachine};
 use demi_runner_protocol::boot::ManagedBoot;
 use tokio::sync::mpsc;
 
-use crate::{manager::OpError, network::slots::Slot, storage::store::Retention};
+use crate::{
+    manager::{Core, OpError},
+    network::slots::Slot,
+    storage::store::Retention,
+};
 
 /// The operations that change a device.
 pub enum DeviceOp {
@@ -91,6 +99,22 @@ pub enum Left {
 }
 
 impl DeviceRuntime {
+    /// A stopped `device` on the runtime of `isolation`, whose new storage
+    /// is made from `base`.
+    pub fn on(isolation: Isolation, device: DeviceId, core: Rc<Core>, base: BaseVersion, reports: Reports) -> Self {
+        match isolation {
+            Isolation::Gvisor => Self::Gvisor(gvisor::Device::new(device, core, base, reports)),
+            Isolation::Simple => Self::Simple(simple::Device::new(device, core, base)),
+        }
+    }
+
+    pub fn isolation(&self) -> Isolation {
+        match self {
+            Self::Gvisor(_) => Isolation::Gvisor,
+            Self::Simple(_) => Isolation::Simple,
+        }
+    }
+
     /// Runs `op`. A runtime that an operation could not keep running, such
     /// as a checkpoint whose thaw failed, reports the death itself.
     pub async fn operate(&mut self, op: DeviceOp) -> Result<(), OpError> {

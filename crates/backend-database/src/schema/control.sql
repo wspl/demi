@@ -1039,8 +1039,10 @@ CREATE TABLE server_settings (
   instance_mode   TEXT NOT NULL DEFAULT 'isolated' CHECK (instance_mode IN ('shared', 'isolated')),
   -- Whether a check that finds a newer release gets it ready at once, which an administrator turns on in Settings › Updates.
   prepare_ahead   INTEGER NOT NULL DEFAULT 0 CHECK (prepare_ahead IN (0, 1)),
-  -- Which private destinations Clouds reach, which the master chooses in Settings › Cloud Network.
+  -- Which private destinations Clouds reach, which the master chooses in Settings › Cloud.
   private_network TEXT NOT NULL DEFAULT 'off' CHECK (private_network IN ('off', 'entire', 'only')),
   -- The destinations Only These Addresses allows, a JSON array of the strings the master wrote, kept while another choice is on.
-  private_destinations TEXT NOT NULL DEFAULT '[]'
+  private_destinations TEXT NOT NULL DEFAULT '[]',
+  -- How Clouds are isolated, which the master chooses in Settings › Cloud.
+  isolation       TEXT NOT NULL DEFAULT 'simple' CHECK (isolation IN ('simple', 'gvisor'))
 ) STRICT;

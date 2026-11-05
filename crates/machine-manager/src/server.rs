@@ -23,8 +23,8 @@ use std::{
 };
 
 use demi_machine_manager_protocol::{
-    DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, ManagerEvent, decode_request,
-    WIRE_VERSION, encode_line,
+    DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, ManagerEvent, RuntimeOffer,
+    decode_request, WIRE_VERSION, encode_line,
 };
 use demi_shared_types::LogLine;
 use futures_util::StreamExt;
@@ -67,6 +67,9 @@ pub trait MachineService {
 
     /// The status of every device that has stored images.
     fn snapshot(&self) -> impl Future<Output = Vec<ManagerEvent>>;
+
+    /// What the manager can do with each isolation, which its hello names.
+    fn runtimes(&self) -> Vec<RuntimeOffer>;
 }
 
 /// The bound socket; [`serve`] removes its file when it stops.
@@ -158,6 +161,7 @@ pub async fn serve<S: MachineService + 'static>(
                     // its queue is new, so it has room.
                     let hello = encode_line(&MachineResponse::Hello {
                         version: WIRE_VERSION,
+                        runtimes: service.runtimes(),
                     });
                     outbox.try_send(hello).expect("a new connection's queue has room");
                     // Its first statuses follow the hello from a task of their
