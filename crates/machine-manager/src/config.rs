@@ -99,6 +99,10 @@ struct Cli {
     /// /opt/demi/gvisor].
     #[arg(long, env = "DEMI_MANAGED_RUNSC", value_name = "DEMI_MANAGED_RUNSC", value_parser = absolute)]
     runsc: Option<PathBuf>,
+    /// The proot executable, which runs Simple Isolation Clouds [default:
+    /// bin/proot in the server release].
+    #[arg(long, env = "DEMI_MANAGED_PROOT", value_name = "DEMI_MANAGED_PROOT", value_parser = absolute)]
+    proot: Option<PathBuf>,
     /// The backend's public URL: the only backend a sandbox's runner may
     /// connect to.
     #[arg(
@@ -133,8 +137,9 @@ struct Cli {
     /// How many sandboxes may run at once; each takes four addresses.
     #[arg(long, env = "DEMI_MANAGED_SLOTS", value_name = "DEMI_MANAGED_SLOTS", default_value = "256", value_parser = slots)]
     slots: u16,
-    /// The resolvers a sandbox uses, separated by commas [default: the
-    /// host's own upstream resolvers].
+    /// The resolvers a Cloud uses, separated by commas [default: on gVisor,
+    /// the host's own upstream resolvers; on Simple Isolation, which shares
+    /// the host's network, the host's resolver file as it is].
     #[arg(
         long,
         env = "DEMI_MANAGED_DNS",
@@ -176,6 +181,7 @@ pub struct Config {
     pub socket: PathBuf,
     pub data: PathBuf,
     pub runsc: PathBuf,
+    pub proot: PathBuf,
     pub image: PathBuf,
     pub backend_url: url::Url,
     /// The backend's runner socket (`crates/backend-http/src/lib.rs`).
@@ -185,7 +191,8 @@ pub struct Config {
     pub limits: Option<Limits>,
     pub subnet: Ipv4Net,
     pub slots: u16,
-    pub dns: Vec<Ipv4Addr>,
+    /// The resolvers `DEMI_MANAGED_DNS` names, if it names any.
+    pub dns: Option<Vec<Ipv4Addr>>,
 }
 
 /// One sandbox's cgroup v2 limits.
@@ -264,11 +271,6 @@ pub enum ConfigError {
     SlotsExceedSubnet,
     #[error("DEMI_RELEASE is not set and the executable's directory is unknown: {0}")]
     NoRelease(std::io::Error),
-    #[error(
-        "DEMI_MANAGED_DNS is not set and the host names no resolver a sandbox can use in {}",
-        RESOLVER_FILES.join(" or ")
-    )]
-    NoResolver,
     #[error("{0} applies only with DEMI_MANAGED_LIMITS=on")]
     LimitsOff(&'static str),
 }
@@ -318,11 +320,7 @@ impl Config {
         let runsc = cli
             .runsc
             .unwrap_or_else(|| RuntimeRelease::pinned().directory().join("runsc"));
-        let dns = if cli.dns.is_empty() {
-            host_resolvers()?
-        } else {
-            cli.dns
-        };
+        let dns = (!cli.dns.is_empty()).then_some(cli.dns);
         let limits = match cli.limits {
             Switch::On => Some(Limits {
                 cpus: cli.cpus,
@@ -348,6 +346,7 @@ impl Config {
             socket: cli.socket,
             data: cli.data,
             runsc,
+            proot: cli.proot.unwrap_or_else(|| release.join("bin").join("proot")),
             image: release.join("image"),
             backend_url: cli.backend_url,
             runner_socket: cli.runner_socket,
@@ -390,23 +389,33 @@ fn release_of_executable() -> Result<PathBuf, ConfigError> {
         })
 }
 
-/// The resolvers the host itself forwards to, from the first of
-/// [`RESOLVER_FILES`] that exists.
-fn host_resolvers() -> Result<Vec<Ipv4Addr>, ConfigError> {
-    for path in RESOLVER_FILES {
-        match std::fs::read_to_string(path) {
-            Ok(text) => {
-                let resolvers = usable_resolvers(&text);
-                if resolvers.is_empty() {
-                    return Err(ConfigError::NoResolver);
-                }
-                return Ok(resolvers);
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(_) => return Err(ConfigError::NoResolver),
+impl Config {
+    /// The resolvers a gVisor Cloud, on a network of its own, uses: those
+    /// `DEMI_MANAGED_DNS` names, or else those the host itself forwards to,
+    /// from the first of [`RESOLVER_FILES`] that exists; or why there are
+    /// none, which leaves gVisor unavailable.
+    pub fn gvisor_resolvers(&self) -> Result<Vec<Ipv4Addr>, String> {
+        if let Some(dns) = &self.dns {
+            return Ok(dns.clone());
         }
+        let none = || {
+            format!(
+                "DEMI_MANAGED_DNS is not set and the host names no resolver a gVisor Cloud can use in {}",
+                RESOLVER_FILES.join(" or ")
+            )
+        };
+        for path in RESOLVER_FILES {
+            match std::fs::read_to_string(path) {
+                Ok(text) => {
+                    let resolvers = usable_resolvers(&text);
+                    return if resolvers.is_empty() { Err(none()) } else { Ok(resolvers) };
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(_) => return Err(none()),
+            }
+        }
+        Err(none())
     }
-    Err(ConfigError::NoResolver)
 }
 
 /// The `nameserver` addresses of a resolv.conf that a sandbox can use: IPv4

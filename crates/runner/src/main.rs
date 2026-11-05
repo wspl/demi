@@ -660,8 +660,14 @@ async fn runner(cli: Cli) -> io::Result<u8> {
     }
     let installation_directory = directory.clone();
     // A Cloud's runner reaches its backend through the socket the machine
-    // manager mounted (`crates/backend-http/src/lib.rs`).
+    // manager mounted, or the abstract socket its boot names
+    // (`crates/backend-http/src/lib.rs`).
     let backend = match &boot {
+        #[cfg(target_os = "linux")]
+        Some(ManagedBoot {
+            abstract_socket: Some(name),
+            ..
+        }) => Backend::through(backend, demi_runner_protocol::boot::abstract_socket_path(name)),
         Some(_) => Backend::through(backend, PathBuf::from(BACKEND_SOCKET)),
         None => Backend::at(backend),
     };

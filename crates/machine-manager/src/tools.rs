@@ -8,6 +8,10 @@
 //!   modes, ACLs and extended attributes intact and refuses a path that leaves
 //!   the target.
 //! - `nft`, which applies the firewall table as one transaction.
+//! - `proot`, which runs a Simple Isolation Cloud (`crate::runtime::simple`).
+//!
+//! A manager needs `bsdtar` and `proot` to serve at all; it runs gVisor only
+//! when the others are installed too.
 //!
 //! Each starts from the loop, which only spawns it and waits for its exit, with
 //! the C locale's UTF-8 variant so its messages have one form. Dropping a
@@ -34,10 +38,11 @@ pub enum Tool {
     Resize2fs,
     Bsdtar,
     Nft,
+    Proot,
 }
 
 impl Tool {
-    /// The programs found on `PATH`; runsc is configured.
+    /// The programs found on `PATH`; runsc and proot are configured.
     const ON_PATH: [Tool; 5] = [
         Self::Mke2fs,
         Self::E2fsck,
@@ -54,7 +59,13 @@ impl Tool {
             Self::Resize2fs => "resize2fs",
             Self::Bsdtar => "bsdtar",
             Self::Nft => "nft",
+            Self::Proot => "proot",
         }
+    }
+
+    /// Whether only the gVisor runtime runs the program.
+    fn gvisor_only(self) -> bool {
+        !matches!(self, Self::Bsdtar)
     }
 }
 
@@ -73,6 +84,9 @@ pub struct Tools {
     resize2fs: PathBuf,
     bsdtar: PathBuf,
     nft: PathBuf,
+    proot: PathBuf,
+    /// The programs gVisor needs that are not installed.
+    missing: Vec<&'static str>,
 }
 
 /// Programs that are not installed.
@@ -135,23 +149,26 @@ fn describe(status: ExitStatus) -> String {
 }
 
 impl Tools {
-    /// Finds every program: `runsc` at its configured path, the others on
-    /// `PATH`.
-    pub fn resolve(runsc: &Path) -> Result<Self, MissingTools> {
+    /// Finds every program: `runsc` and `proot` at their configured paths,
+    /// the others on `PATH`. Only a program every manager needs that is
+    /// missing fails; one gVisor alone needs is told by [`Tools::gvisor`],
+    /// and a missing proot by Simple Isolation's probe, which runs it.
+    pub fn resolve(runsc: &Path, proot: &Path) -> Result<Self, MissingTools> {
         let mut missing = Vec::new();
         let mut find = |tool: Tool| match which::which(tool.name()) {
             Ok(path) => path,
             Err(_) => {
-                missing.push(tool.name());
+                missing.push(tool);
                 PathBuf::new()
             }
         };
         let [mke2fs, e2fsck, resize2fs, bsdtar, nft] = Tool::ON_PATH.map(&mut find);
         if !runsc.is_file() {
-            missing.push(Tool::Runsc.name());
+            missing.push(Tool::Runsc);
         }
-        if !missing.is_empty() {
-            return Err(MissingTools(missing));
+        let (gvisor, every): (Vec<Tool>, Vec<Tool>) = missing.into_iter().partition(|tool| tool.gvisor_only());
+        if !every.is_empty() {
+            return Err(MissingTools(every.into_iter().map(Tool::name).collect()));
         }
         Ok(Self {
             runsc: runsc.to_owned(),
@@ -160,7 +177,17 @@ impl Tools {
             resize2fs,
             bsdtar,
             nft,
+            proot: proot.to_owned(),
+            missing: gvisor.into_iter().map(Tool::name).collect(),
         })
+    }
+
+    /// Whether every program gVisor needs is installed.
+    pub fn gvisor(&self) -> Result<(), MissingTools> {
+        match self.missing.is_empty() {
+            true => Ok(()),
+            false => Err(MissingTools(self.missing.clone())),
+        }
     }
 
     pub fn path(&self, tool: Tool) -> &Path {
@@ -171,6 +198,7 @@ impl Tools {
             Tool::Resize2fs => &self.resize2fs,
             Tool::Bsdtar => &self.bsdtar,
             Tool::Nft => &self.nft,
+            Tool::Proot => &self.proot,
         }
     }
 

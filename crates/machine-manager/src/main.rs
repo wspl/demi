@@ -96,9 +96,17 @@ fn main() -> std::process::ExitCode {
     // namespace: the one a manager that left its sandboxes saved, which
     // holds their storage, or a copy of this process's own.
     let mut adopting = false;
-    if config.mode == demi_machine_manager::config::Mode::Serve {
+    // Why this manager cannot run gVisor, as far as its namespace tells:
+    // only root makes the copy of the mount namespace gVisor's sandboxes
+    // need.
+    let mut namespace = Ok(());
+    if !rustix::process::geteuid().is_root() {
+        namespace = Err("the machine manager does not run as root".to_owned());
+    } else if config.mode == demi_machine_manager::config::Mode::Serve {
         let entered = match demi_machine_manager::handover::read_left() {
-            Ok(Some(_)) => {
+            // Only gVisor sandboxes live in the saved namespace; Simple
+            // Isolation Clouds a manager left need none.
+            Ok(Some(left)) if !left.sandboxes.is_empty() => {
                 let namespace = demi_machine_manager::namespace::SavedNamespace::new(&config);
                 // A namespace that holds another state directory's
                 // sandboxes is refused, as its recovery refuses it.
@@ -117,7 +125,7 @@ fn main() -> std::process::ExitCode {
                     }
                 }
             }
-            Ok(None) => false,
+            Ok(_) => false,
             Err(error) => {
                 tracing::warn!(event = "machine_manager.left_record_unreadable", %error, "the sandboxes the manager before this one left are fenced instead of taken over");
                 false
@@ -127,12 +135,7 @@ fn main() -> std::process::ExitCode {
         if !entered
             && let Err(error) = demi_machine_manager::namespace::number_after_host()
         {
-            tracing::error!(
-                event = "machine_manager.exited",
-                error_chain = %error,
-                "the machine manager ended with an error"
-            );
-            return std::process::ExitCode::FAILURE;
+            namespace = Err(format!("the mount namespace cannot be copied: {error}"));
         }
     }
     // One thread owns the manager's state.
@@ -140,7 +143,7 @@ fn main() -> std::process::ExitCode {
         .enable_all()
         .build_local(tokio::runtime::LocalOptions::default())
         .expect("the manager's runtime");
-    let result = runtime.block_on(service::run(config, forwarded, adopting));
+    let result = runtime.block_on(service::run(config, forwarded, adopting, namespace));
     // Every task the manager owns has ended; blocking jobs that remain belong
     // to nothing that waits for them.
     runtime.shutdown_background();
@@ -159,7 +162,7 @@ fn main() -> std::process::ExitCode {
 
 #[cfg(target_os = "linux")]
 mod service {
-    use std::{error::Error, rc::Rc};
+    use std::{error::Error, net::Ipv4Addr, rc::Rc};
 
     use demi_machine_manager::{
         blocking,
@@ -168,13 +171,15 @@ mod service {
         lock::{self, ManagerLock},
         manager::{Core, Manager},
         namespace::SavedNamespace,
+        network::CloudNetwork,
         preflight, recovery,
-        sandbox::cgroup,
+        runtime::simple,
+        sandbox::{cgroup, runsc::Runsc},
         server::{self, Socket},
         storage::{base, durable, room, state, store::ImageStore},
-        tools::Tools,
+        tools::{Tool, Tools},
     };
-    use demi_machine_manager_protocol::PrivateNetwork;
+    use demi_machine_manager_protocol::{LeftSandbox, LeftSimple, PrivateNetwork};
     use demi_shared_types::LogLine;
     use tokio::signal::unix::{SignalKind, signal};
     use tokio::sync::mpsc::Receiver;
@@ -190,8 +195,7 @@ mod service {
     /// namespace. It replaces the base an earlier import ahead of an update
     /// left, which no manager ran, so one waits ahead at most.
     async fn import(config: Config) -> Result<(), Failure> {
-        let runsc = config.runsc.clone();
-        let tools = blocking::run(move |_| Tools::resolve(&runsc)).await?;
+        let tools = resolve(&config).await?;
         let bases = ImageStore::new(config.images()).bases();
         let data = config.data.clone();
         blocking::run(move |off| durable::create_private(off, &data)).await?;
@@ -201,33 +205,78 @@ mod service {
         Ok(())
     }
 
+    async fn resolve(config: &Config) -> Result<Tools, Failure> {
+        let (runsc, proot) = (config.runsc.clone(), config.proot.clone());
+        Ok(blocking::run(move |_| Tools::resolve(&runsc, &proot)).await?)
+    }
+
+    /// The resolvers gVisor's Clouds use, or why this manager cannot run
+    /// gVisor: the checks of a start that change nothing but make the
+    /// working and image directories, after the namespace `main` made.
+    async fn gvisor(config: &Config, tools: &Tools, namespace: Result<(), String>) -> Result<Vec<Ipv4Addr>, String> {
+        namespace?;
+        let dns = config.gvisor_resolvers()?;
+        blocking::run(preflight::require_private_namespace).await.map_err(|error| error.to_string())?;
+        tools.gvisor().map_err(|error| error.to_string())?;
+        let runsc = Runsc::new(tools.clone(), config.runtime(), config.limits.is_some());
+        preflight::require_runsc(&runsc).await.map_err(|error| error.to_string())?;
+        if config.limits.is_some() {
+            cgroup::check().await.map_err(|error| error.to_string())?;
+        }
+        let network = CloudNetwork::new(config.subnet, dns.clone(), tools.path(Tool::Nft).to_owned());
+        network.check().await.map_err(|error| error.to_string())?;
+        let (working, images) = (config.working(), config.images());
+        blocking::run(move |off| preflight::require_one_filesystem(off, &working, &images))
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(dns)
+    }
+
+    /// Why a manager can run neither runtime: Simple Isolation's `error` and
+    /// gVisor's `reason`.
+    fn no_runtime(error: &impl std::fmt::Display, reason: &str) -> Failure {
+        format!("no Cloud can run here: {error}. gVisor isn't available: {reason}").into()
+    }
+
     /// Checks what a start checks before it serves, changing nothing that
     /// outlives the check (`installation.md` § The steps): each check prints
-    /// its name as it passes, and the first that fails ends the run.
-    async fn check_host(config: Config) -> Result<(), Failure> {
-        blocking::run(preflight::require_private_namespace).await?;
-        println!("ok: privileges");
-        let runsc = config.runsc.clone();
-        let tools = blocking::run(move |_| Tools::resolve(&runsc)).await?;
-        let core = Rc::new(Core::new(config, tools));
-        preflight::require_runsc(&core).await?;
-        println!("ok: programs and runsc");
-        if core.config.limits.is_some() {
-            cgroup::check().await?;
-            println!("ok: cgroup v2 controllers");
+    /// its name as it passes. A machine passes when it runs either runtime,
+    /// as a start serves then, and the run says why it cannot run the other.
+    async fn check_host(config: Config, namespace: Result<(), String>) -> Result<(), Failure> {
+        let tools = resolve(&config).await?;
+        println!("ok: programs");
+        let data = config.data.clone();
+        blocking::run(move |off| durable::create_private(off, &data)).await?;
+        let simple = simple::Simple::new(&config).probe(&config.data.join("simple-probe")).await;
+        match &simple {
+            Ok(()) => println!("ok: Simple Isolation"),
+            Err(error) => println!("Simple Isolation isn't available: {error}"),
         }
-        let (data, runtime) = (core.config.data.clone(), core.config.runtime().to_owned());
-        blocking::run(move |off| -> std::io::Result<()> {
-            durable::create_private(off, &data)?;
-            durable::create_private(off, &runtime)
-        })
-        .await?;
-        let (working, images) = (core.config.working(), core.config.images());
-        blocking::run(move |off| preflight::require_one_filesystem(off, &working, &images)).await?;
+        let probed = match gvisor(&config, &tools, namespace).await {
+            Ok(dns) => {
+                println!("ok: network");
+                probe_gvisor(config, tools, dns).await.map_err(|error| error.to_string())
+            }
+            Err(reason) => Err(reason),
+        };
+        match (probed, simple) {
+            (Ok(()), _) => Ok(()),
+            (Err(reason), Ok(())) => {
+                println!("gVisor isn't available: {reason}");
+                Ok(())
+            }
+            (Err(reason), Err(error)) => Err(no_runtime(&error, &reason)),
+        }
+    }
+
+    /// Runs a gVisor sandbox on the storage a start uses, for the host
+    /// check, removing what it made.
+    async fn probe_gvisor(config: Config, tools: Tools, dns: Vec<Ipv4Addr>) -> Result<(), Failure> {
+        let core = Rc::new(Core::new(config, tools, Ok(dns)));
+        let runtime = core.config.runtime().to_owned();
+        blocking::run(move |off| durable::create_private(off, &runtime)).await?;
         preflight::probe_storage(&core).await?;
         println!("ok: storage");
-        core.gvisor.network.check().await?;
-        println!("ok: network");
         preflight::probe_runtime(&core).await?;
         println!("ok: gVisor");
         Ok(())
@@ -239,29 +288,40 @@ mod service {
 
     /// Serves until a stop; `adopting` when this process entered the saved
     /// namespace of a manager that left its sandboxes (`handover`), which it
-    /// takes over.
-    pub async fn run(config: Config, lines: Receiver<LogLine>, adopting: bool) -> Result<(), Failure> {
+    /// takes over, and `namespace` why it could not make the namespace
+    /// gVisor needs, if it could not.
+    pub async fn run(config: Config, lines: Receiver<LogLine>, adopting: bool, namespace: Result<(), String>) -> Result<(), Failure> {
         if config.mode == Mode::CheckConfig {
             return Ok(());
         }
-        preflight::require_root()?;
         let data = config.data.clone();
         blocking::run(move |off| room::require_mounted(off, &data)).await?;
         if config.mode == Mode::Import {
             return import(config).await;
         }
         if config.mode == Mode::CheckHost {
-            return check_host(config).await;
+            return check_host(config, namespace).await;
         }
-        blocking::run(preflight::require_private_namespace).await?;
-        let runsc = config.runsc.clone();
-        let tools = blocking::run(move |_| Tools::resolve(&runsc)).await?;
-        let core = Rc::new(Core::new(config, tools));
-        preflight::require_runsc(&core).await?;
+        let tools = resolve(&config).await?;
+        let gvisor = gvisor(&config, &tools, namespace).await;
+        if let Err(reason) = &gvisor {
+            if config.mode == Mode::RecoverNamespace {
+                return Err(reason.clone().into());
+            }
+            tracing::warn!(event = "machine_manager.gvisor_unavailable", reason, "gVisor isn't available; Clouds run on Simple Isolation");
+        }
+        let core = Rc::new(Core::new(config, tools, gvisor));
+        let runs_gvisor = core.gvisor.is_ok();
+        // Only root has the runtime directory, where an upgrade asks a
+        // manager to leave its Clouds and the manager records those it left.
+        let root = rustix::process::geteuid().is_root();
         let (data, runtime) = (core.config.data.clone(), core.config.runtime().to_owned());
         blocking::run(move |off| -> std::io::Result<()> {
             durable::create_private(off, &data)?;
-            durable::create_private(off, &runtime)
+            if root {
+                durable::create_private(off, &runtime)?;
+            }
+            Ok(())
         })
         .await?;
         state::require_format(&core.config.data).await?;
@@ -274,22 +334,30 @@ mod service {
             recovery::fence_and_save(&core, &[]).await?;
             return Ok(());
         }
-        let (data, runtime) = (core.config.data.clone(), core.config.runtime().to_owned());
-        let lock = blocking::run(move |off| ManagerLock::acquire(off, &data, &runtime)).await?;
+        let (data, runtime) = (core.config.data.clone(), runs_gvisor.then(|| core.config.runtime().to_owned()));
+        let lock = blocking::run(move |off| ManagerLock::acquire(off, &data, runtime.as_deref())).await?;
         let namespace = SavedNamespace::new(&core.config);
-        let left = handover::read_left()?;
+        let left = if root { handover::read_left()? } else { None };
         // The namespace of a manager that left its sandboxes holds them for
         // the next manager: the stop-post recovery leaves it alone.
         if core.config.mode == Mode::Recover && left.is_some() {
             tracing::info!(event = "machine_manager.recovery_skipped", "the manager left its sandboxes to the next one");
             return Ok(());
         }
-        let left = left.filter(|_| adopting);
+        // The gVisor sandboxes a manager left are taken over only from
+        // inside the saved namespace that holds them, which this process
+        // entered when `adopting`; its Simple Isolation Clouds need none.
+        let saved = adopting && left.is_some();
+        let left_sandboxes: &[LeftSandbox] = match &left {
+            Some(left) if adopting => &left.sandboxes,
+            _ => &[],
+        };
+        let left_simple: &[LeftSimple] = left.as_ref().map_or(&[], |left| &left.simple);
         // Taking over reads records and asks runsc, and touches no disk
         // image, so the sweep below knows what to keep before anything does.
         let mut adopted = Vec::new();
         let mut owners = Vec::new();
-        for sandbox in left.iter().flat_map(|left| &left.sandboxes) {
+        for sandbox in left_sandboxes {
             match handover::take_over(&core, sandbox).await {
                 Ok(Some(taken)) => {
                     tracing::info!(event = "cloud_runtime.taken_over", host_id = %sandbox.device, "a Cloud the manager before this one left running was taken over");
@@ -300,49 +368,75 @@ mod service {
                 Err(error) => tracing::warn!(event = "cloud_runtime.take_over_failed", host_id = %sandbox.device, %error, "a Cloud the manager before this one left could not be taken over; it is saved"),
             }
         }
-        namespace.refuse_other()?;
+        let mut adopted_simple = Vec::new();
+        for left in left_simple {
+            match simple::Process::take_over(&core.simple, left).await {
+                Ok(Some(process)) => {
+                    tracing::info!(event = "cloud_runtime.taken_over", host_id = %left.device, "a Cloud the manager before this one left running was taken over");
+                    adopted_simple.push((left.device.clone(), process));
+                }
+                Ok(None) => tracing::info!(event = "cloud_runtime.ended_meanwhile", host_id = %left.device, "a Cloud the manager before this one left had ended"),
+                Err(error) => tracing::warn!(event = "cloud_runtime.take_over_failed", host_id = %left.device, %error, "a Cloud the manager before this one left could not be taken over; it is stopped"),
+            }
+        }
+        if runs_gvisor {
+            namespace.refuse_other()?;
+        }
         // What systemd's stop used to end, which no record owns, such as an
         // `e2fsck` of a manager killed while it repaired an image: gone
         // before any recovery writes that image again.
-        handover::sweep(owners).await?;
-        if left.is_none() {
+        let proots = adopted_simple.iter().map(|(_, process)| process.pid()).collect();
+        handover::sweep(owners, proots).await?;
+        if runs_gvisor && !saved {
             namespace.recover(&lock).await?;
         }
-        preflight::release_probes(&core.config.data).await?;
-        match core.config.limits {
-            Some(_) => cgroup::prepare().await?,
-            None => tracing::warn!(
-                event = "machine_manager.limits_off",
-                "DEMI_MANAGED_LIMITS=off: Clouds run without CPU, memory or PID limits"
-            ),
-        }
-        let (working, images) = (core.config.working(), core.config.images());
-        blocking::run(move |off| preflight::require_one_filesystem(off, &working, &images)).await?;
+        let running_simple: Vec<_> = adopted_simple.iter().map(|(device, _)| device.clone()).collect();
+        core.simple.prepare(&core.config.data).await?;
+        core.simple.recover(&running_simple).await?;
         let running: Vec<_> = adopted.iter().map(|(device, _)| device.clone()).collect();
-        recovery::fence_and_save(&core, &running).await?;
+        if runs_gvisor {
+            preflight::release_probes(&core.config.data).await?;
+            match core.config.limits {
+                Some(_) => cgroup::prepare().await?,
+                None => tracing::warn!(
+                    event = "machine_manager.limits_off",
+                    "DEMI_MANAGED_LIMITS=off: Clouds run without CPU, memory or PID limits"
+                ),
+            }
+            recovery::fence_and_save(&core, &running).await?;
+        }
         if core.config.mode == Mode::Recover {
             return Ok(());
         }
         // The recovery above fenced every recorded sandbox but those taken
         // over, which keep running. They reach no private destination until
         // the backend, as it connects, names the private network.
-        let slots: Vec<_> = adopted.iter().filter_map(|(_, sandbox)| sandbox.admitted()).collect();
-        core.gvisor.network.prepare(&slots, &PrivateNetwork::Off).await?;
-        let base = base::import(&core.tools, &core.config.image, &core.gvisor.store.bases()).await?;
-        let programs: Vec<_> = left
+        if let Ok(gvisor) = &core.gvisor {
+            let slots: Vec<_> = adopted.iter().filter_map(|(_, sandbox)| sandbox.admitted()).collect();
+            gvisor.network.prepare(&slots, &PrivateNetwork::Off).await?;
+        }
+        let base = base::import(&core.tools, &core.config.image, &core.bases()).await?;
+        let programs: Vec<_> = left_sandboxes
             .iter()
-            .flat_map(|left| &left.sandboxes)
             .filter(|sandbox| running.contains(&sandbox.device))
             .map(|sandbox| sandbox.programs.clone())
             .collect();
         base::retain(&core.config.images(), &core.config.working(), &base, &programs).await?;
-        // The saved namespace a manager that left its sandboxes pinned is
-        // this one, with its directory of network namespaces mounted.
-        if left.is_none() {
-            namespace.pin().await?;
-            core.gvisor.network.mount_namespace_directory().await?;
+        let probed = core.simple.probe(&core.config.data.join("simple-probe")).await;
+        match (&probed, &core.gvisor) {
+            (Ok(()), _) => {}
+            (Err(error), Ok(_)) => tracing::warn!(event = "machine_manager.simple_unavailable", %error, "Simple Isolation isn't available; Clouds run on gVisor"),
+            (Err(error), Err(reason)) => return Err(no_runtime(error, reason)),
         }
-        preflight::probe_storage(&core).await?;
+        if runs_gvisor {
+            // The saved namespace a manager that left its sandboxes pinned is
+            // this one, with its directory of network namespaces mounted.
+            if !saved {
+                namespace.pin().await?;
+                core.gvisor().network.mount_namespace_directory().await?;
+            }
+            preflight::probe_storage(&core).await?;
+        }
         let socket_path = core.config.socket.clone();
         let socket = Socket::bind(&socket_path).await?;
         let (deaths, received) = tokio::sync::mpsc::channel(DEATHS);
@@ -351,7 +445,12 @@ mod service {
         for (device, sandbox) in adopted {
             manager.adopt(device, sandbox);
         }
-        handover::remove_left().await?;
+        for (device, process) in adopted_simple {
+            manager.adopt_simple(device, process);
+        }
+        if root {
+            handover::remove_left().await?;
+        }
         let mut terminate = signal(SignalKind::terminate())?;
         let mut interrupt = signal(SignalKind::interrupt())?;
         // Readiness for systemd's Type=notify; without a notify socket this
@@ -362,11 +461,16 @@ mod service {
         } else {
             "off"
         };
+        let runtimes = match (&core.gvisor, &probed) {
+            (Ok(_), Ok(())) => "gVisor/systrap and Simple Isolation are",
+            (Ok(_), Err(_)) => "gVisor/systrap is",
+            (Err(_), _) => "Simple Isolation is",
+        };
         tracing::info!(
             event = "machine_manager.ready",
             socket = %socket_path.display(),
             limits,
-            "gVisor/systrap is ready"
+            "{runtimes} ready"
         );
         let stopping = async move {
             tokio::select! {
@@ -391,7 +495,9 @@ mod service {
         drained?;
         // Only a successful drain releases the handle; otherwise the
         // service's stop-post recovery works through it.
-        namespace.release().await?;
+        if runs_gvisor {
+            namespace.release().await?;
+        }
         drop(lock);
         Ok(())
     }

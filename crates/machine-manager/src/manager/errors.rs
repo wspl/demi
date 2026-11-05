@@ -29,6 +29,10 @@ pub enum OpError {
     NoWorkingManifest,
     #[error("Cloud base {0} is not imported")]
     MissingBase(BaseVersion),
+    #[error("This Cloud runs on gVisor, which this server can't run: {0}")]
+    GvisorUnavailable(String),
+    #[error(transparent)]
+    Simple(#[from] crate::runtime::simple::SimpleError),
     #[error("Cloud start and cleanup failed; working storage retained")]
     StartAndCleanup(#[source] Parts),
     #[error("Cloud checkpoint recovery failed")]

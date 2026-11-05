@@ -139,7 +139,7 @@ pub struct Edge {
     stop: CancellationToken,
     serving: JoinHandle<()>,
     /// The runner socket's server, when the backend has the socket.
-    serving_runners: Option<JoinHandle<()>>,
+    serving_runners: Vec<JoinHandle<()>>,
     /// The management socket's server, when the backend has the socket.
     serving_management: Option<JoinHandle<()>>,
 }
@@ -173,7 +173,12 @@ pub struct Edge {
 /// - No TLS crosses the socket.
 /// - An artifact URL on that origin goes through it.
 /// - Any other URL, such as an S3 store's, goes over the network.
-pub fn runner_socket(path: &Path) -> io::Result<Option<UnixListener>> {
+///
+/// A Simple Isolation Cloud, which runs on the host's network, reaches the
+/// backend on an abstract socket named after the file instead
+/// (`demi_runner_protocol::boot::abstract_socket`): a bound file would be
+/// one its programs could remove.
+pub fn runner_socket(path: &Path) -> io::Result<Option<RunnerSockets>> {
     let directory = path.parent().unwrap_or(Path::new("/"));
     if !directory.is_dir() {
         tracing::warn!(
@@ -187,9 +192,22 @@ pub fn runner_socket(path: &Path) -> io::Result<Option<UnixListener>> {
         Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
         _ => {}
     }
-    let listener = UnixListener::bind(path)?;
+    let file = UnixListener::bind(path)?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666))?;
-    Ok(Some(listener))
+    #[cfg(target_os = "linux")]
+    let named = Some(UnixListener::bind(demi_runner_protocol::boot::abstract_socket_path(
+        &demi_runner_protocol::boot::abstract_socket(path),
+    ))?);
+    #[cfg(not(target_os = "linux"))]
+    let named = None;
+    Ok(Some(RunnerSockets { file, named }))
+}
+
+/// The backend's runner sockets: its file, and on Linux the abstract socket
+/// named after it.
+pub struct RunnerSockets {
+    file: UnixListener,
+    named: Option<UnixListener>,
 }
 
 /// The network listener of a backend that does not serve yet: it answers
@@ -252,7 +270,7 @@ impl Listening {
     /// ([`manage_socket`]).
     pub fn open(
         self,
-        runner_socket: Option<UnixListener>,
+        runner_socket: Option<RunnerSockets>,
         manage_socket: Option<UnixListener>,
         state: AppState,
         web_directory: Option<PathBuf>,
@@ -271,14 +289,23 @@ impl Listening {
             .services
             .public_url
             .listening(state.site.public_url.as_ref(), local_addr);
-        let serving_runners = runner_socket.map(|socket| {
-            let socket = socket.tap_io(listener::within_one_sandbox_read);
-            let listener = EdgeListener::new(socket, closing.clone(), connections.clone());
+        let mut serving_runners = Vec::new();
+        if let Some(RunnerSockets { file, named }) = runner_socket {
             let app = runner_socket_router(state.clone(), closing.clone());
-            tokio::spawn(listener::serve(listener, stop.clone(), move |peer, request| {
-                respond(app.clone(), peer, request)
-            }))
-        });
+            // Only a gVisor sandbox reads the file's socket.
+            let file = file.tap_io(listener::within_one_sandbox_read);
+            let file = EdgeListener::new(file, closing.clone(), connections.clone());
+            let served = app.clone();
+            serving_runners.push(tokio::spawn(listener::serve(file, stop.clone(), move |peer, request| {
+                respond(served.clone(), peer, request)
+            })));
+            if let Some(named) = named {
+                let named = EdgeListener::new(named, closing.clone(), connections.clone());
+                serving_runners.push(tokio::spawn(listener::serve(named, stop.clone(), move |peer, request| {
+                    respond(app.clone(), peer, request)
+                })));
+            }
+        }
         let serving_management = manage_socket
             .map(|socket| tokio::spawn(manage::serve(socket, state.clone(), stop.clone())));
         let app = router(state.clone(), closing.clone(), web_directory);
@@ -320,7 +347,7 @@ impl Edge {
         self.closing.cancel();
         self.connections.cancel();
         self.stop.cancel();
-        if let Some(serving) = self.serving_runners {
+        for serving in self.serving_runners {
             serving.await.map_err(io::Error::other)?;
         }
         if let Some(serving) = self.serving_management {

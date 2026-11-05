@@ -8,15 +8,10 @@
 //! runtime stops what remains and saves the device's storage, and the worker
 //! sends the death event, even when stopping or saving fails.
 
-use demi_machine_manager_protocol::{BaseVersion, SandboxMachine};
 use tokio::sync::{mpsc, oneshot};
 
 use super::errors::OpError;
-use crate::{
-    network::slots::Slot,
-    runtime::{DeviceOp, DeviceRuntime, Reports},
-    sandbox::files::SandboxRecord,
-};
+use crate::runtime::{DeviceOp, DeviceRuntime, Left, Reports, Running};
 
 /// What a device's worker is asked to do.
 pub enum DeviceCommand {
@@ -24,16 +19,16 @@ pub enum DeviceCommand {
         op: DeviceOp,
         reply: oneshot::Sender<Result<(), OpError>>,
     },
-    /// The running device's slot and machine; none when it is stopped.
+    /// The running device; none when it is stopped.
     Running {
-        reply: oneshot::Sender<Option<(Slot, SandboxMachine)>>,
+        reply: oneshot::Sender<Option<Running>>,
     },
     /// The manager leaves its sandboxes to the next one
-    /// (`crates/machine-manager/src/handover.rs`): the worker hands its
-    /// running runtime's boot, programs' base and machine over, releases
+    /// (`crates/machine-manager/src/handover.rs`): the worker hands over
+    /// what the next manager takes over of its running runtime, releases
     /// nothing of it, and serves no more.
     Leave {
-        reply: oneshot::Sender<Option<(SandboxRecord, BaseVersion, SandboxMachine)>>,
+        reply: oneshot::Sender<Option<Left>>,
     },
 }
 

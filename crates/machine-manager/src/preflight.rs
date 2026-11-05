@@ -3,7 +3,12 @@
 //! for the state directory, and a storage probe that mounts, freezes and
 //! copies a small image.
 
-use std::{io, num::NonZeroU64, os::unix::fs::MetadataExt, path::Path};
+use std::{
+    io,
+    num::NonZeroU64,
+    os::unix::fs::{MetadataExt, PermissionsExt},
+    path::Path,
+};
 
 use demi_machine_manager_protocol::runtime::RuntimeRelease;
 
@@ -11,7 +16,7 @@ use crate::{
     blocking::{self, OffLoop},
     linux::{freeze, loopdev, mount},
     manager::Core,
-    sandbox::runsc::reports_version,
+    sandbox::runsc::{Runsc, reports_version},
     storage::{clone::clone_sparse, durable::remove_tree, ext4, room},
     tools::ToolError,
 };
@@ -141,9 +146,9 @@ fn listener_taken() -> bool {
 }
 
 /// Requires the configured runsc to report exactly the pinned version.
-pub async fn require_runsc(core: &Core) -> Result<(), PreflightError> {
+pub async fn require_runsc(runsc: &Runsc) -> Result<(), PreflightError> {
     let version = RuntimeRelease::pinned().version();
-    let reported = core.gvisor.runsc.version().await?;
+    let reported = runsc.version().await?;
     if !reports_version(&reported, &version) {
         return Err(PreflightError::Runsc(version));
     }
@@ -151,14 +156,19 @@ pub async fn require_runsc(core: &Core) -> Result<(), PreflightError> {
 }
 
 /// Requires the working and image directories on one filesystem, because
-/// publication links images between them.
+/// publication links images between them, and makes each private to the
+/// manager, whatever the umask it started with: the data directory that
+/// holds them lets a Simple Isolation Cloud's user pass through to its own
+/// directory (`crate::runtime::simple`).
 pub fn require_one_filesystem(
-    _: &OffLoop,
+    off: &OffLoop,
     working: &Path,
     images: &Path,
 ) -> Result<(), PreflightError> {
-    fs_err::create_dir_all(working)?;
-    fs_err::create_dir_all(images)?;
+    for directory in [working, images] {
+        crate::storage::durable::create_private(off, directory)?;
+        fs_err::set_permissions(directory, std::fs::Permissions::from_mode(0o700))?;
+    }
     if fs_err::metadata(working)?.dev() != fs_err::metadata(images)?.dev() {
         return Err(PreflightError::Filesystems(
             working.display().to_string(),

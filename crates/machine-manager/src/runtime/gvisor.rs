@@ -2,11 +2,11 @@
 //! (`crate::sandbox`) over a pair of ext4 images (`crate::storage`), on a
 //! network slot of its own (`crate::network`).
 
-use std::{path::Path, rc::Rc};
+use std::{net::Ipv4Addr, path::Path, rc::Rc};
 
 use demi_machine_manager_protocol::image::PROGRAMS_PATH;
 use demi_machine_manager_protocol::{
-    BaseVersion, Capacity, DeviceId, MachineImageState, SandboxMachine, Volume,
+    BaseVersion, Capacity, DeviceId, LeftSandbox, MachineImageState, SandboxMachine, Volume,
 };
 use demi_runner_protocol::boot::ManagedBoot;
 
@@ -19,12 +19,16 @@ use crate::{
         CloudNetwork,
         slots::{Slot, SlotPool},
     },
-    sandbox::{Sandbox, files::SandboxRecord, runsc::Runsc},
+    sandbox::{
+        Sandbox,
+        files::USER_ID,
+        runsc::Runsc,
+    },
     server::chain,
     storage::{
         clone::clone_sparse,
         durable::{remove_tree, sync, write_json},
-        base, ext4, room, skeleton,
+        base, ext4, room, tree,
         store::{ImagePair, ImageStore, Retention},
         working::{WorkingPair, new_generation},
     },
@@ -40,10 +44,11 @@ pub struct Gvisor {
 }
 
 impl Gvisor {
-    pub fn new(config: &Config, tools: &Tools) -> Self {
+    /// The runtime whose Clouds use the resolvers `dns`.
+    pub fn new(config: &Config, tools: &Tools, dns: Vec<Ipv4Addr>) -> Self {
         Self {
             runsc: Runsc::new(tools.clone(), config.runtime(), config.limits.is_some()),
-            network: CloudNetwork::new(config.subnet, config.dns.clone(), tools.path(Tool::Nft).to_owned()),
+            network: CloudNetwork::new(config.subnet, dns, tools.path(Tool::Nft).to_owned()),
             store: ImageStore::new(config.images()),
             slots: SlotPool::new(config.subnet, config.slots),
         }
@@ -141,7 +146,7 @@ impl Device {
 
     /// The sandbox exited without being asked to: stop what remains and
     /// save the working pair. The worker reports the death after.
-    pub async fn recover(&mut self, outcome: Result<(), ToolError>) {
+    pub async fn recover(&mut self, outcome: std::io::Result<()>) {
         if let Err(error) = outcome {
             tracing::error!(event = "cloud_runtime.wait_failed", host_id = %self.device, %error, "a Cloud's runtime could not be waited for");
         }
@@ -171,8 +176,15 @@ impl Device {
 
     /// Hands the running sandbox's boot, programs' base and machine over
     /// to the next manager, releasing nothing of it.
-    pub fn leave(mut self) -> Option<(SandboxRecord, BaseVersion, SandboxMachine)> {
-        self.sandbox.take().and_then(Sandbox::leave)
+    pub fn leave(mut self) -> Option<LeftSandbox> {
+        let (record, programs, machine) = self.sandbox.take().and_then(Sandbox::leave)?;
+        Some(LeftSandbox {
+            device: self.device.clone(),
+            id: record.id.as_str().to_owned(),
+            slot: record.slot,
+            programs,
+            machine,
+        })
     }
 
     async fn working_manifest(&self) -> Result<Option<MachineImageState>, OpError> {
@@ -181,7 +193,7 @@ impl Device {
     }
 
     async fn committed(&self) -> Result<Option<MachineImageState>, OpError> {
-        let store = self.core.gvisor.store.clone();
+        let store = self.core.gvisor().store.clone();
         let device = self.device.clone();
         Ok(blocking::run(move |off| store.read(off, &device)).await?)
     }
@@ -205,7 +217,7 @@ impl Device {
             return Err(OpError::ActiveWriter);
         }
         self.working
-            .save(&self.core.tools, &self.core.gvisor.store, &self.device, retention)
+            .save(&self.core.tools, &self.core.gvisor().store, &self.device, retention)
             .await?;
         Ok(())
     }
@@ -228,7 +240,7 @@ impl Device {
             Some(state) => state,
             None => self.initialize(&self.base.clone(), capacity).await?,
         };
-        let bases = self.core.gvisor.store.bases();
+        let bases = self.core.gvisor().store.bases();
         let base = bases.join(&state.base_version);
         // Demi's own programs come from the configured base, whatever base
         // the device is pinned to.
@@ -239,7 +251,7 @@ impl Device {
         let copied = self.stage_working(state, capacity, stage.path()).await;
         stage.remove().await;
         copied?;
-        let lease = self.core.gvisor.slots.take()?;
+        let lease = self.core.gvisor().slots.take()?;
         let mut sandbox = Sandbox::new(&self.core, lease);
         let started = sandbox
             .start(
@@ -279,10 +291,10 @@ impl Device {
         capacity: Capacity,
         stage: &Path,
     ) -> Result<(), OpError> {
-        let sources = self.core.gvisor.store.images(&self.device, &state.generation);
+        let sources = self.core.gvisor().store.images(&self.device, &state.generation);
         let copies = ImagePair::in_directory(stage);
         let copied = copies.clone();
-        let mut room = room::for_device(self.core.gvisor.store.clone(), self.device.clone());
+        let mut room = room::for_device(self.core.gvisor().store.clone(), self.device.clone());
         blocking::run(move |off| -> std::io::Result<()> {
             for volume in Volume::ALL {
                 clone_sparse(off, sources.get(volume), copied.get(volume), &mut room)?;
@@ -337,7 +349,7 @@ impl Device {
         capacity: Capacity,
         stage: &Path,
     ) -> Result<MachineImageState, OpError> {
-        let skeleton = self.core.gvisor.store.bases().join(base).join("rootfs/etc/skel");
+        let skeleton = self.core.gvisor().store.bases().join(base).join("rootfs/etc/skel");
         let root = stage.join("mkhome");
         let prepared = root.clone();
         blocking::run(move |off| -> std::io::Result<()> {
@@ -345,7 +357,7 @@ impl Device {
             // The home filesystem's root is the sandbox's /home.
             fs_err::create_dir(&prepared)?;
             fs_err::set_permissions(&prepared, std::fs::Permissions::from_mode(0o755))?;
-            skeleton::copy(off, &skeleton, &prepared.join("demi"))
+            tree::copy(off, &skeleton, &prepared.join("demi"), Some(USER_ID))
         })
         .await?;
         let images = ImagePair::in_directory(stage);
@@ -358,7 +370,7 @@ impl Device {
             system_bytes: capacity.system_bytes,
             home_bytes: capacity.home_bytes,
         };
-        let store = self.core.gvisor.store.clone();
+        let store = self.core.gvisor().store.clone();
         let device = self.device.clone();
         let published = state.clone();
         blocking::run(move |off| -> Result<(), OpError> {
@@ -407,7 +419,7 @@ impl Device {
             // once the sandbox is resumed.
             Err(error) => (Err(OpError::from(error)), Vec::new()),
             Ok(()) => {
-                let room = room::for_device(self.core.gvisor.store.clone(), self.device.clone());
+                let room = room::for_device(self.core.gvisor().store.clone(), self.device.clone());
                 let capture = sandbox.capture(&self.working, stage, room).await;
                 let cleanup = capture.thaw_errors.into_iter().map(OpError::from).collect();
                 (capture.copied.map_err(OpError::from), cleanup)
@@ -434,7 +446,7 @@ impl Device {
             generation: new_generation(),
             ..state
         };
-        let store = self.core.gvisor.store.clone();
+        let store = self.core.gvisor().store.clone();
         let device = self.device.clone();
         let copies = ImagePair::in_directory(stage);
         blocking::run(move |off| {
@@ -453,7 +465,7 @@ impl Device {
         capacity: Capacity,
         retention: Retention,
     ) -> Result<(), OpError> {
-        let manifest = self.core.gvisor.store.bases().join(base).join("manifest.json");
+        let manifest = self.core.gvisor().store.bases().join(base).join("manifest.json");
         let imported = blocking::run(move |_| fs_err::metadata(manifest)).await;
         match imported {
             Ok(_) => {}
@@ -492,7 +504,7 @@ impl Device {
         let system_bytes = capacity.system_bytes;
         ext4::make_system(&self.core.tools, &system, system_bytes).await?;
         // The home enters the new generation as a link to the saved image.
-        let home = self.core.gvisor.store.images(&self.device, &state.generation).home;
+        let home = self.core.gvisor().store.images(&self.device, &state.generation).home;
         let reset = MachineImageState {
             generation: new_generation(),
             base_version: base.clone(),
@@ -500,7 +512,7 @@ impl Device {
             system_bytes,
             home_bytes: state.home_bytes,
         };
-        let store = self.core.gvisor.store.clone();
+        let store = self.core.gvisor().store.clone();
         let device = self.device.clone();
         blocking::run(move |off| -> Result<(), OpError> {
             sync(off, &system)?;

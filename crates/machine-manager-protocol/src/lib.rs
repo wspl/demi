@@ -70,10 +70,25 @@ pub const LEAVE_REQUEST: &str = "/run/demi-machine-manager/leave";
 /// in its runtime directory, which a reboot empties as it ends them.
 pub const LEFT_RECORD: &str = "/run/demi-machine-manager/left.json";
 
-/// What [`LEFT_RECORD`] holds: each sandbox the manager left running.
+/// What [`LEFT_RECORD`] holds: each sandbox the manager left running, gVisor
+/// sandboxes and Simple Isolation Clouds.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LeftRecord {
     pub sandboxes: Vec<LeftSandbox>,
+    /// Absent from a record of a release without Simple Isolation.
+    #[serde(default)]
+    pub simple: Vec<LeftSimple>,
+}
+
+/// A Simple Isolation Cloud a manager left running: its device, and its
+/// proot's process, which the next manager takes over only while the
+/// device's own record names the same one
+/// (`crates/machine-manager/src/runtime/simple.rs`).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LeftSimple {
+    pub device: DeviceId,
+    pub pid: i32,
+    pub started: u64,
 }
 
 /// A sandbox a manager left running: its device, the boot its working pair

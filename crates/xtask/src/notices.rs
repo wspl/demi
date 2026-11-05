@@ -97,7 +97,9 @@ struct Library {
 ///   (`crates/backend-user-shard/src/schedules/holidays.rs`).
 /// - Tailwind's browser build and html-to-image, which a widget's document
 ///   runs and the widget plugin serves (`crates/plugin-widget/plugin/src/page.rs`).
-const LIBRARIES: [Library; 9] = [
+/// - proot and the talloc it links, which run Simple Isolation Clouds
+///   (`crates/machine-manager/proot/README.md`).
+const LIBRARIES: [Library; 11] = [
     Library {
         name: "idb",
         version: "1.7.6",
@@ -151,6 +153,18 @@ const LIBRARIES: [Library; 9] = [
         version: "1.11.13",
         license: "MIT",
         notice: "crates/plugin-widget/plugin/vendor/LICENSE-html-to-image",
+    },
+    Library {
+        name: "PRoot (Termux)",
+        version: "52d65a4dc140ca554d241a1438ddd4f6b00c9813",
+        license: "GPL-2.0-or-later",
+        notice: "crates/machine-manager/proot/LICENSE-proot",
+    },
+    Library {
+        name: "talloc",
+        version: "2.4.2",
+        license: "LGPL-3.0-or-later",
+        notice: "crates/machine-manager/proot/LICENSE-talloc",
     },
 ];
 

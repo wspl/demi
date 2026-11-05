@@ -119,6 +119,11 @@ mod linux {
             Self { pool, dns, nft }
         }
 
+        /// The resolvers the Clouds use, which the firewall lets them reach.
+        pub fn dns(&self) -> &[Ipv4Addr] {
+            &self.dns
+        }
+
         /// Checks that the pool overlaps no host route, enables forwarding,
         /// and installs the firewall table with the private network Clouds
         /// reach and the pairs of `running`, the slots of the sandboxes that

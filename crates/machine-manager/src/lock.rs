@@ -1,8 +1,8 @@
 //! The manager's exclusive locks
 //! (`crates/machine-manager-protocol/src/lib.rs`): one on its state
-//! directory, one on its runtime directory, so a second manager on either
-//! is refused. The kernel releases them when the process ends, however it
-//! ends.
+//! directory, and one on its runtime directory when it runs gVisor, so a
+//! second manager on either is refused. The kernel releases them when the
+//! process ends, however it ends.
 
 use std::{
     io,
@@ -28,10 +28,10 @@ pub enum LockError {
     NotInherited(PathBuf),
 }
 
-/// Both locks, held while this value lives.
+/// The locks, held while this value lives.
 pub struct ManagerLock {
     data: fs_err::File,
-    _runtime: fs_err::File,
+    _runtime: Option<fs_err::File>,
 }
 
 fn lock_file(directory: &Path) -> PathBuf {
@@ -52,10 +52,10 @@ fn take(path: &Path) -> Result<fs_err::File, LockError> {
 }
 
 impl ManagerLock {
-    pub fn acquire(_: &OffLoop, data: &Path, runtime: &Path) -> Result<Self, LockError> {
+    pub fn acquire(_: &OffLoop, data: &Path, runtime: Option<&Path>) -> Result<Self, LockError> {
         Ok(Self {
             data: take(&lock_file(data))?,
-            _runtime: take(&lock_file(runtime))?,
+            _runtime: runtime.map(|runtime| take(&lock_file(runtime))).transpose()?,
         })
     }
 

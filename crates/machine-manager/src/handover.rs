@@ -78,10 +78,10 @@ pub async fn take_over(core: &Core, left: &LeftSandbox) -> io::Result<Option<Tak
     let Some(record) = record.filter(|record| record.id.as_str() == left.id && record.slot == left.slot) else {
         return Ok(None);
     };
-    let Some(sentry) = core.gvisor.runsc.sentry(&record.id).await.map_err(io::Error::other)? else {
+    let Some(sentry) = core.gvisor().runsc.sentry(&record.id).await.map_err(io::Error::other)? else {
         return Ok(None);
     };
-    let lease = core.gvisor.slots.reserve(record.slot).map_err(|_| io::Error::other("the sandbox's network slot is taken"))?;
+    let lease = core.gvisor().slots.reserve(record.slot).map_err(|_| io::Error::other("the sandbox's network slot is taken"))?;
     let sandbox = Sandbox::adopted(core, record, lease, left.programs.clone(), left.machine);
     let owner = Owner {
         bundle: sandbox.bundle().to_owned(),
@@ -157,11 +157,14 @@ pub fn enter_saved_namespace(handle: &Path) -> io::Result<()> {
 /// process is in the unit's, so the Sentry's process id comes from `runsc`,
 /// not from the unit. A manager outside a service unit of its own, as one
 /// started by hand is, ends nothing: its cgroup holds other programs.
-pub async fn sweep(keep: Vec<Owner>) -> io::Result<()> {
-    blocking::run(move |_| sweep_blocking(&keep)).await
+///
+/// The proots `proots` names, of the Simple Isolation Clouds it took over,
+/// are kept with their descendants too.
+pub async fn sweep(keep: Vec<Owner>, proots: Vec<i32>) -> io::Result<()> {
+    blocking::run(move |_| sweep_blocking(&keep, &proots)).await
 }
 
-fn sweep_blocking(keep: &[Owner]) -> io::Result<()> {
+fn sweep_blocking(keep: &[Owner], proots: &[i32]) -> io::Result<()> {
     let own = fs_err::read_to_string("/proc/self/cgroup")?;
     let Some(path) = own.lines().find_map(|line| line.strip_prefix("0::")) else {
         return Ok(());
@@ -173,11 +176,7 @@ fn sweep_blocking(keep: &[Owner]) -> io::Result<()> {
     let procs = fs_err::read_to_string(&procs_path)?;
     let pids: Vec<i32> = procs.lines().filter_map(|line| line.trim().parse().ok()).collect();
     let me = std::process::id() as i32;
-    let parent = |pid: i32| -> Option<i32> {
-        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-        // The command's name, in parentheses, may hold spaces.
-        stat.rsplit_once(')')?.1.split_whitespace().nth(1)?.parse().ok()
-    };
+    let parent = crate::linux::process::parent;
     let arguments = |pid: i32| -> String {
         std::fs::read(format!("/proc/{pid}/cmdline"))
             .map(|bytes| String::from_utf8_lossy(&bytes).replace('\0', " "))
@@ -192,6 +191,7 @@ fn sweep_blocking(keep: &[Owner]) -> io::Result<()> {
         })
         .collect();
     roots.push(me);
+    roots.extend(proots);
     let sentries: Vec<i32> = keep.iter().map(|owner| owner.sentry).collect();
     let kept = |pid: i32| -> bool {
         let mut current = pid;

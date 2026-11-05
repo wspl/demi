@@ -11,6 +11,8 @@
 //!   bin/demi-backend              the target's backend
 //!   bin/demi-machine-manager      the target's machine manager
 //!   bin/demi-server               the server's installer and upgrader
+//!   bin/proot                     what runs Simple Isolation Clouds
+//!   sources/                      proot's and talloc's source archives
 //!   systemd/                      the units of the services and the update
 //!   web/                          the built web app, with its build.json
 //!   runners/                      the runner release's manifests
@@ -149,6 +151,11 @@ pub enum Error {
     NoNotices(PathBuf),
     #[error("{} has no parent directory to assemble it beside", .0.display())]
     NoParent(PathBuf),
+    #[error(
+        "{} holds no proot: crates/machine-manager/proot/README.md says how to build it",
+        .0.display()
+    )]
+    NoProot(PathBuf),
     #[error("copying the web app failed: {0}")]
     Copy(#[from] fs_extra::error::Error),
     #[error(transparent)]
@@ -243,6 +250,15 @@ pub(crate) async fn assemble(options: &Options, cancel: &CancellationToken) -> R
             // `copy` keeps the executable's permissions.
             tokio::fs::copy(&built, bin.join(executable.name())).await?;
         }
+        // proot, built beside the executables
+        // (`crates/machine-manager/proot/build.sh`), and the sources it was
+        // built from, which its license asks to accompany it.
+        let built = artifacts.join(server).join("release");
+        if !tokio::fs::try_exists(built.join("proot")).await? {
+            return Err(Error::NoProot(built));
+        }
+        tokio::fs::copy(built.join("proot"), bin.join("proot")).await?;
+        copy_directory(built.join("proot-sources"), stage.path().join("sources")).await?;
         let systemd = stage.path().join("systemd");
         tokio::fs::create_dir_all(&systemd).await?;
         for (name, unit) in UNITS {

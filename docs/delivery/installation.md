@@ -73,8 +73,9 @@ with every user in Settings › Users, which a shared server offers as API keys
 only, without subscriptions.
 
 Installation is Linux only, on the [supported distributions](#distributions).
-`setup` refuses a machine that cannot run Cloud, because every deployment has
-Cloud. There is no uninstall.
+`setup` refuses a machine that can run Cloud on neither of its runtimes,
+gVisor and Simple Isolation ([Set up managed Cloud hosts](../cloud/setup.md)),
+because every deployment has Cloud. There is no uninstall.
 
 ## The bootstrap
 
@@ -134,7 +135,7 @@ The following table lists the parameters:
 | `--storage local\|s3` | Where the object store lives (`crates/backend-blobs/src/store.rs`). Default `local`. |
 | `--s3-bucket`, `--s3-region`, `--s3-endpoint`, `--s3-force-path-style` | The bucket, with `s3`. The credentials come from `setup`'s own `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, never from the command line, which other users of the machine can read. |
 | `--cloud-data <directory>` | The machine manager's state directory, on one filesystem. Default `/opt/demi/data/cloud`. |
-| `--cloud-limits on\|off` | Whether Clouds run under cgroup limits. Default `on`. `setup` refuses a machine without the cgroup v2 controllers unless the value is `off`. |
+| `--cloud-limits on\|off` | Whether gVisor Clouds run under cgroup limits. Default `on`. On a machine without the cgroup v2 controllers, `on` leaves gVisor unavailable, so Clouds run on Simple Isolation, and `off` runs gVisor without limits. |
 | `--version <version>` | The release to set up. Default the release of the running `demi-server`. |
 | `--beta`, `--canary` | Set up the newest release of the channel instead of the running `demi-server`'s. Not with `--version`. |
 | `--no-packages` | Install no system package: the operator installed e2fsprogs, bsdtar and nftables, on a distribution `setup` does not know ([Distributions](#distributions)). |
@@ -200,9 +201,10 @@ than 0.
    manager with `demi-machine-manager --check-host`. That command runs
    everything the manager's start checks before it serves
    (`crates/machine-manager/src/main.rs`), on the state directory and with the
-   limits the parameters give, without starting anything. `setup` refuses a
-   machine that fails, with the manager's reasons, such as a missing cgroup
-   controller, or SELinux refusing gVisor.
+   limits the parameters give, without starting anything. A machine that runs
+   one runtime passes, and the output says why it cannot run the other, such
+   as a missing cgroup controller, or SELinux refusing gVisor. `setup` refuses
+   a machine that runs neither, with both reasons.
 5. **Write the installation.** `setup` creates the system user `demi` and the
    group `demi-cloud`, the data directories, and `/opt/demi/config/demi.env`
    readable by root alone. A configuration file that is already there and says

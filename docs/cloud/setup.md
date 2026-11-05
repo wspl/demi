@@ -6,6 +6,16 @@ Cloud runs on a Linux execution host:
 - The runner in each sandbox reaches the backend over the backend's runner
   socket, which the manager mounts into the sandbox.
 
+The manager runs each Cloud on one of two runtimes:
+
+- **gVisor**: the Cloud runs in a gVisor sandbox, with its own kernel, its
+  own network and a storage quota. It needs root and the host facilities
+  below.
+- **Simple Isolation**: the Cloud runs under proot, which gives it its own
+  root directory, so `rm -rf /` inside it removes only its own files. It
+  needs no root, and has no CPU, memory or storage limits and no rules for
+  private network destinations. It isolates files, not a hostile program.
+
 Related reading:
 
 - How the manager works: `crates/machine-manager/src/lib.rs`.
@@ -17,7 +27,16 @@ Related reading:
 
 ### The host
 
-- A native amd64 or arm64 Linux host.
+Both runtimes need:
+
+- A native amd64 or arm64 Linux host. Under an emulator of another
+  architecture, proot does not hold a Cloud inside its root directory.
+- Permission for the manager to trace the processes it starts (`ptrace`),
+  which Simple Isolation is built on. A container's seccomp profile or Yama's
+  `ptrace_scope` 2 or 3 can forbid it; the manager's start probes it.
+
+gVisor needs, in addition:
+
 - Linux 5.14 or later.
 - seccomp, namespaces, veth interfaces, OverlayFS, ext4, loop devices,
   filesystem freeze and nftables.
@@ -37,23 +56,34 @@ provider's product name.
 
 ### Programs
 
+Both runtimes need:
+
+- `proot`, which the server release carries in `bin/`, built from the sources
+  `crates/machine-manager/proot/release.json` pins.
+- `bsdtar` from libarchive-tools.
+
+gVisor needs, in addition:
+
 - `runsc`, the version `crates/machine-manager/runtime/release.json` pins,
   from `/opt/demi/gvisor/<version>/`. `demi-server` fetches it before a
   release that pins it runs.
 - `mke2fs`, `e2fsck` and `resize2fs` from e2fsprogs.
-- `bsdtar` from libarchive-tools.
 - `nft` from nftables.
 
 Docker and containerd are not required.
 
 ### How the manager runs
 
-- As root, as a privileged system service in a private mount namespace.
+- As a system service. A server runs it as root, in a private mount
+  namespace; a manager without root runs Simple Isolation alone.
 - Only its dedicated group may connect to its socket. Membership in that
   group grants control of Cloud machines.
-- Before it serves requests, it checks the host. When a requirement is
-  missing, it refuses to start with a named diagnostic. It never falls back
-  to another runtime or starts an unisolated process.
+- Before it serves requests, it checks the host for both runtimes. When
+  gVisor's requirements are missing, it logs why and runs every Cloud on
+  Simple Isolation; when Simple Isolation's are, it logs why and runs every
+  Cloud on gVisor. When both are missing, it refuses to start with both
+  reasons. A Cloud whose storage is gVisor's waits, failing to start, until
+  gVisor is available again.
 
 ### Other firewalls
 
@@ -95,8 +125,9 @@ The backend's definition of each holds.
 | --- | --- |
 | `DEMI_MANAGED_DATA` | The manager's persistent state, on one filesystem; default `/opt/demi/data/cloud`. |
 | `DEMI_MANAGED_RUNSC` | The pinned runsc executable; default `/opt/demi/gvisor/<pinned version>/runsc`. A deployment leaves it out. |
+| `DEMI_MANAGED_PROOT` | The proot executable; default `bin/proot` in the manager's release. A deployment leaves it out. |
 | `DEMI_MANAGED_DNS` | The IPv4 resolvers a Cloud uses. Optional: see [DNS](#dns). |
-| `DEMI_MANAGED_LIMITS` | `on` (default) or `off`: whether sandboxes run under the cgroup v2 CPU, memory and PID limits. |
+| `DEMI_MANAGED_LIMITS` | `on` (default) or `off`: whether gVisor sandboxes run under the cgroup v2 CPU, memory and PID limits. |
 | `DEMI_MANAGED_CPUS`, `DEMI_MANAGED_MEM_MIB` | Per-sandbox CPU budget and total memory limit, with the limits on. Either one with `DEMI_MANAGED_LIMITS=off` fails configuration. |
 | `DEMI_MANAGED_SUBNET`, `DEMI_MANAGED_SLOTS` | The IPv4 address pool and the maximum number of network slots. |
 
@@ -120,7 +151,10 @@ shipped profile, not settings.
 `DEMI_MANAGED_DNS` is a comma-separated, nonempty list. It holds no loopback,
 unspecified, multicast or broadcast address.
 
-Without it, the manager takes the resolvers the host forwards to:
+With it, every Cloud uses those resolvers. Without it, a Cloud on Simple
+Isolation, which shares the host's network, gets a copy of the host's own
+`/etc/resolv.conf` at each boot, and a gVisor Cloud, on a network of its own,
+gets the resolvers the host forwards to:
 
 1. Those in systemd-resolved's `/run/systemd/resolve/resolv.conf`, when the
    host runs it.
@@ -134,9 +168,10 @@ From those, it skips the addresses a sandbox cannot use
   broadcast;
 - IPv6 addresses, which the sandbox turns off.
 
-If none remains, startup fails and names `DEMI_MANAGED_DNS`. The manager
-never picks a public resolver itself. So a host whose resolver is a local
-cache with no upstream file sets the variable.
+If none remains, gVisor is unavailable, and the manager's start names
+`DEMI_MANAGED_DNS` as the reason. The manager never picks a public resolver
+itself. So a host whose resolver is a local cache with no upstream file sets
+the variable to run gVisor.
 
 ### The private network
 

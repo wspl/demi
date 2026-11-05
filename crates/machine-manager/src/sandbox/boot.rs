@@ -116,7 +116,7 @@ impl Sandbox {
         programs: BaseVersion,
         machine: SandboxMachine,
     ) -> Self {
-        let runsc = core.gvisor.runsc.clone();
+        let runsc = core.gvisor().runsc.clone();
         let id = record.id.clone();
         Self {
             directory: RuntimeDirectory::new(core.config.runtime(), record.id.as_str()),
@@ -147,7 +147,7 @@ impl Sandbox {
     pub fn recorded(core: &Core, record: SandboxRecord) -> Self {
         Self {
             directory: RuntimeDirectory::new(core.config.runtime(), record.id.as_str()),
-            slot: core.gvisor.slots.slot(record.slot),
+            slot: core.gvisor().slots.slot(record.slot),
             _lease: None,
             record,
             waiter: None,
@@ -231,7 +231,7 @@ impl Sandbox {
         }
         let directory = self.directory.clone();
         let credentials = boot.clone();
-        let dns = core.config.dns.clone();
+        let dns = core.gvisor().network.dns().to_vec();
         blocking::run(move |off| -> io::Result<()> {
             mount::system_overlay(
                 off,
@@ -244,10 +244,10 @@ impl Sandbox {
             Ok(())
         })
         .await?;
-        core.gvisor.network.attach(&self.slot, machine).await?;
+        core.gvisor().network.attach(&self.slot, machine).await?;
         let spec = oci::spec(&oci::Boot {
             directory: &self.directory,
-            namespace: &core.gvisor.network.namespace_file(&self.slot),
+            namespace: &core.gvisor().network.namespace_file(&self.slot),
             cgroup: core.config.limits.map(|limits| oci::Cgroup {
                 name: self.record.id.as_str(),
                 limits: limits.of(machine),
@@ -267,10 +267,10 @@ impl Sandbox {
             Ok((log.into_parts().0, directory.log()))
         })
         .await?;
-        core.gvisor.runsc
+        core.gvisor().runsc
             .start(&self.record.id, self.directory.root(), log)
             .await?;
-        let runsc = core.gvisor.runsc.clone();
+        let runsc = core.gvisor().runsc.clone();
         let id = self.record.id.clone();
         self.waiter = Some(tokio::task::spawn_local(
             async move { runsc.wait(&id).await },
@@ -296,11 +296,11 @@ impl Sandbox {
     }
 
     pub async fn pause(&self, core: &Core) -> Result<(), ToolError> {
-        core.gvisor.runsc.pause(&self.record.id).await
+        core.gvisor().runsc.pause(&self.record.id).await
     }
 
     pub async fn resume(&self, core: &Core) -> Result<(), ToolError> {
-        core.gvisor.runsc.resume(&self.record.id).await
+        core.gvisor().runsc.resume(&self.record.id).await
     }
 
     /// Trims both working filesystems through their host mounts, so the
@@ -375,7 +375,7 @@ impl Sandbox {
             unmount_all(off, &directory)
         })
         .await?;
-        core.gvisor.network.detach(&self.slot).await?;
+        core.gvisor().network.detach(&self.slot).await?;
         let directory = self.directory.clone();
         let pair = working.clone();
         blocking::run(move |off| -> io::Result<()> {
@@ -394,25 +394,25 @@ impl Sandbox {
     /// deletes the runtime.
     async fn stop_runtime(&self, core: &Core) -> Result<(), SandboxError> {
         let id = &self.record.id;
-        let status = core.gvisor.runsc.status(id).await?;
+        let status = core.gvisor().runsc.status(id).await?;
         if let Some(status) = status.filter(|status| *status != Status::Stopped) {
             if status == Status::Paused {
-                core.gvisor.runsc.resume(id).await?;
+                core.gvisor().runsc.resume(id).await?;
             }
-            let signalled = core.gvisor.runsc.terminate(id).await?;
-            if !signalled.status.success() && core.gvisor.runsc.status(id).await? != Some(Status::Stopped)
+            let signalled = core.gvisor().runsc.terminate(id).await?;
+            if !signalled.status.success() && core.gvisor().runsc.status(id).await? != Some(Status::Stopped)
             {
                 return Err(SandboxError::Signal(signalled.message().to_owned()));
             }
             let deadline = tokio::time::Instant::now() + STOP_GRACE;
             while tokio::time::Instant::now() < deadline
-                && core.gvisor.runsc.status(id).await? == Some(Status::Running)
+                && core.gvisor().runsc.status(id).await? == Some(Status::Running)
             {
                 tokio::time::sleep(STOP_POLL).await;
             }
         }
-        if core.gvisor.runsc.status(id).await?.is_some() {
-            core.gvisor.runsc.delete(id).await?;
+        if core.gvisor().runsc.status(id).await?.is_some() {
+            core.gvisor().runsc.delete(id).await?;
         }
         Ok(())
     }

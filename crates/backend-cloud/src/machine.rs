@@ -642,6 +642,7 @@ impl dyn CloudShard {
             boot: ManagedBoot {
                 backend_url,
                 device_token: token,
+                abstract_socket: None,
             },
             machine: sandbox_machine(&machine.device),
         };

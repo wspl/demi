@@ -1,5 +1,6 @@
-//! The Cloud machine manager: it runs users' Cloud machines as gVisor sandboxes
-//! and serves the backend over a Unix socket.
+//! The Cloud machine manager: it runs users' Cloud machines, as gVisor
+//! sandboxes or under Simple Isolation (`runtime`), and serves the backend
+//! over a Unix socket.
 //!
 //! The manager runs only on Linux. Elsewhere the crate builds its portable
 //! modules, without the Linux callers that use them.
@@ -8,10 +9,10 @@
 //! Backend (Linux)
 //!     | requests over a restricted Unix socket   (demi-machine-manager-protocol)
 //!     v
-//! Machine manager (Linux, root, private mount namespace)
-//!     | OCI bundle and `runsc` commands
-//!     v
-//! One user's gVisor/systrap sandbox
+//! Machine manager (Linux; root and a private mount namespace for gVisor)
+//!     | OCI bundle and `runsc` commands     | `proot` over a directory tree
+//!     v                                     v
+//! One user's gVisor/systrap sandbox     One user's Simple Isolation Cloud
 //!     init -> runner -> jobs and residents -> Chrome
 //!     |
 //!     +---- authenticated outbound connection ----> Backend (runner socket)
@@ -26,22 +27,23 @@
 //! mounts, networking, resource enforcement and stored generations, and has no
 //! users, conversations, transcripts or control database.
 //!
-//! The execution platform:
+//! The execution platforms:
 //!
-//! - Every deployment provides Cloud, and its only execution platform is gVisor
-//!   with systrap.
-//! - There is no selectable hypervisor, ordinary-container fallback or
-//!   unsandboxed execution on the backend host, and a missing requirement fails
-//!   startup rather than falling back.
+//! - Every deployment provides Cloud, on gVisor with systrap where the manager
+//!   can run it, and on Simple Isolation everywhere else on Linux.
+//! - gVisor needs root, a private mount namespace, its programs, the pinned
+//!   `runsc` and, with the limits on, the cgroup v2 controllers. A manager
+//!   that lacks one says which, and runs Simple Isolation alone; a device
+//!   whose storage is on gVisor then fails to start with that reason.
 //! - A VPS without KVM suffices, since systrap needs no nested virtualization.
 //! - Docker and containerd are not dependencies: the manager drives the pinned
 //!   `runsc` through its OCI interface, with a bundle it generates for each
 //!   boot over a prepared root, not another image build on each wake.
 //!
-//! The manager is a trusted, privileged service, since it prepares mounts, loop
-//! devices, network namespaces, firewall rules and cgroups. Its state and
-//! runtime directories are closed to ordinary host users, and no sandbox
-//! receives these privileges.
+//! For gVisor the manager is a trusted, privileged service, since it prepares
+//! mounts, loop devices, network namespaces, firewall rules and cgroups. Its
+//! state and runtime directories are closed to ordinary host users, and no
+//! sandbox receives these privileges.
 //!
 //! It controls the host through the kernel's own interfaces rather than
 //! administration tools, so results and errors are values and no command output

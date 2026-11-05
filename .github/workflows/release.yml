@@ -216,6 +216,10 @@ jobs:
               echo "missing: files/ in $archive, built before a release held its programs: publish a newer commit" >&2
               missing=1
             }
+            [ ! -s "$archive" ] || tar --zstd -tf "$archive" ./bin/proot ./sources/ > /dev/null 2>&1 || {
+              echo "missing: proot in $archive, built before a release held it: publish a newer commit" >&2
+              missing=1
+            }
           done
           directories=$(find "$RUNNER_TEMP/symbols" -mindepth 1 -maxdepth 1 -type d | wc -l)
           [ "$directories" -eq "$SYMBOLS" ] || {
@@ -233,8 +237,15 @@ jobs:
           # assets, from the root of a server release.
           tar --zstd -xf "dist/demi-$VERSION-server-linux-amd64.tar.zst" -C dist \
             ./LICENSE ./NOTICE ./THIRD-PARTY-NOTICES
+          # The source archives of proot and talloc, which a server release
+          # carries and whose licenses ask the release to publish; both
+          # architectures' are the same archives.
+          tar --zstd -xf "dist/demi-$VERSION-server-linux-amd64.tar.zst" -C dist ./sources/
+          sources=$(cd dist/sources && ls)
+          mv dist/sources/* dist/
+          rmdir dist/sources
           cd dist
-          sha256sum demi-* > SHA256SUMS
+          sha256sum demi-* $sources > SHA256SUMS
           # A pre-release is never the latest release, which the installer
           # and `demi-server upgrade` without a version take.
           kind=()

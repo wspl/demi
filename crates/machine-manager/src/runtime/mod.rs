@@ -8,21 +8,23 @@
 //!     v
 //! DeviceRuntime
 //!     +-- Gvisor: a gVisor/systrap sandbox over ext4 images
+//!     +-- Simple: a directory tree under proot
 //! ```
+//!
+//! A device runs on the runtime its storage is on: a gVisor generation or
+//! working pair, or a Simple Isolation tree. One that has neither yet starts
+//! on the manager's runtime for new devices.
 
 pub mod gvisor;
+pub mod simple;
 
-use demi_machine_manager_protocol::{BaseVersion, Capacity, DeviceId, SandboxMachine};
+use std::io;
+
+use demi_machine_manager_protocol::{BaseVersion, Capacity, DeviceId, LeftSandbox, LeftSimple, SandboxMachine};
 use demi_runner_protocol::boot::ManagedBoot;
 use tokio::sync::mpsc;
 
-use crate::{
-    manager::OpError,
-    network::slots::Slot,
-    sandbox::files::SandboxRecord,
-    storage::store::Retention,
-    tools::ToolError,
-};
+use crate::{manager::OpError, network::slots::Slot, storage::store::Retention};
 
 /// The operations that change a device.
 pub enum DeviceOp {
@@ -70,6 +72,22 @@ impl Reports {
 /// A device on the runtime its storage is on.
 pub enum DeviceRuntime {
     Gvisor(gvisor::Device),
+    Simple(simple::Device),
+}
+
+/// A running device as the manager sees it.
+pub struct Running {
+    pub machine: SandboxMachine,
+    /// The gVisor sandbox's network slot; a Simple Isolation Cloud, on the
+    /// host's network, has none.
+    pub slot: Option<Slot>,
+}
+
+/// What a manager that leaves its devices to the next one records of a
+/// running one.
+pub enum Left {
+    Gvisor(LeftSandbox),
+    Simple(LeftSimple),
 }
 
 impl DeviceRuntime {
@@ -78,37 +96,44 @@ impl DeviceRuntime {
     pub async fn operate(&mut self, op: DeviceOp) -> Result<(), OpError> {
         match self {
             Self::Gvisor(device) => device.operate(op).await,
+            Self::Simple(device) => device.operate(op).await,
         }
     }
 
     /// Waits for the device's runtime to end; while none runs, forever.
-    pub async fn exited(&mut self) -> Result<(), ToolError> {
+    pub async fn exited(&mut self) -> io::Result<()> {
         match self {
-            Self::Gvisor(device) => device.exited().await,
+            Self::Gvisor(device) => device.exited().await.map_err(io::Error::other),
+            Self::Simple(device) => device.exited().await,
         }
     }
 
-    /// Stops what remains of a runtime that ended unasked and saves the
-    /// device's storage.
-    pub async fn recover(&mut self, outcome: Result<(), ToolError>) {
+    /// Stops what remains of a runtime that ended unasked and makes the
+    /// device's storage durable.
+    pub async fn recover(&mut self, outcome: io::Result<()>) {
         match self {
             Self::Gvisor(device) => device.recover(outcome).await,
+            Self::Simple(device) => device.recover(outcome).await,
         }
     }
 
-    /// The network slot and the machine of the running device; none when it
-    /// is stopped.
-    pub fn running(&self) -> Option<(Slot, SandboxMachine)> {
+    /// The running device; none when it is stopped.
+    pub fn running(&self) -> Option<Running> {
         match self {
-            Self::Gvisor(device) => device.running(),
+            Self::Gvisor(device) => device.running().map(|(slot, machine)| Running {
+                machine,
+                slot: Some(slot),
+            }),
+            Self::Simple(device) => device.running().map(|machine| Running { machine, slot: None }),
         }
     }
 
     /// What the next manager takes over of the running device; none when it
     /// is stopped. Nothing of it is released.
-    pub fn leave(self) -> Option<(SandboxRecord, BaseVersion, SandboxMachine)> {
+    pub fn leave(self) -> Option<Left> {
         match self {
-            Self::Gvisor(device) => device.leave(),
+            Self::Gvisor(device) => device.leave().map(Left::Gvisor),
+            Self::Simple(device) => device.leave().map(Left::Simple),
         }
     }
 }

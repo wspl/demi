@@ -231,19 +231,23 @@ impl RuntimeDirectory {
         boot: &ManagedBoot,
         dns: &[Ipv4Addr],
     ) -> io::Result<()> {
-        let resolver: String = dns
-            .iter()
-            .map(|address| format!("nameserver {address}\n"))
-            .collect();
-        create(&self.resolver(), resolver.as_bytes(), 0o444)?;
-        create(
-            &self.hosts(),
-            b"127.0.0.1 localhost\n127.0.1.1 demi-cloud\n",
-            0o444,
-        )?;
+        create(&self.resolver(), resolver(dns).as_bytes(), 0o444)?;
+        create(&self.hosts(), hosts(&[]).as_bytes(), 0o444)?;
         create(&self.boot(), &serde_json::to_vec(boot)?, 0o400)?;
         fs_err::os::unix::fs::chown(self.boot(), Some(USER_ID), Some(USER_ID))
     }
+}
+
+/// A Cloud's `/etc/resolv.conf`: the resolvers `dns` names.
+pub fn resolver(dns: &[Ipv4Addr]) -> String {
+    dns.iter().map(|address| format!("nameserver {address}\n")).collect()
+}
+
+/// A Cloud's `/etc/hosts`: its own name, and `names` beside it.
+pub fn hosts(names: &[&str]) -> String {
+    let mut own = vec!["demi-cloud"];
+    own.extend(names);
+    format!("127.0.0.1 localhost\n127.0.1.1 {}\n", own.join(" "))
 }
 
 /// A new file with `bytes` and exactly `mode`.

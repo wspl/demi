@@ -40,7 +40,7 @@ pub enum RecoveryError {
 /// the whole admission gate, or no manager serves.
 pub async fn fence_and_save(core: &Core, running: &[DeviceId]) -> Result<(), RecoveryError> {
     let working = core.config.working();
-    let runsc = core.gvisor.runsc.root().to_owned();
+    let runsc = core.gvisor().runsc.root().to_owned();
     let entries = blocking::run({
         let working = working.clone();
         move |off| -> Result<Vec<String>, RecoveryError> {
@@ -80,13 +80,13 @@ pub async fn fence_and_save(core: &Core, running: &[DeviceId]) -> Result<(), Rec
         })
         .await?;
         if let Some(record) = record {
-            if !core.gvisor.slots.contains(record.slot) {
+            if !core.gvisor().slots.contains(record.slot) {
                 return Err(RecoveryError::Slot);
             }
             Sandbox::recorded(core, record).close(core, &pair).await?;
         }
         // A save no request named the machine for removes no fallback.
-        pair.save(&core.tools, &core.gvisor.store, &device, Retention::Previous)
+        pair.save(&core.tools, &core.gvisor().store, &device, Retention::Previous)
             .await?;
     }
     Ok(())

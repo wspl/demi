@@ -325,7 +325,7 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      # For the image build script and its pins.
+      # For the image build script, proot's build script and their pins.
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.commit || github.sha }}
@@ -354,6 +354,13 @@ jobs:
           for archive in "$RUNNER_TEMP"/native/native-*.tar; do
             tar -xf "$archive" -C native-target
           done
+      # proot for Simple Isolation Clouds, built on the architecture it runs
+      # on, beside the executables, where the server release takes it from.
+      - name: Build proot
+        run: |
+          builder=$(jq -r .builder crates/machine-manager/proot/release.json)
+          docker run --rm -v "$PWD:/work" -w /work "$builder" \
+            sh crates/machine-manager/proot/build.sh native-target/${{ matrix.target }}/release
       - name: Assemble the root
         run: |
           mkdir -p dist/server
