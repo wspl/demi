@@ -48,10 +48,13 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       COMMIT: ${{ github.event.workflow_run.head_sha }}
     steps:
-      # The version counts the commit's history (.github/actions/version), and
-      # the published versions are the tags it fetches with it.
+      # The version counts the commit's history (.github/scripts/version.sh),
+      # and the published versions are the tags it fetches with it. The commit
+      # itself is checked out, not main's newest, so its version comes from its
+      # own series, as release.yml's does.
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           filter: tree:0
       - name: Publish the commit when its build and checks passed
@@ -68,7 +71,7 @@ jobs:
             fi
           done
 
-          version=0.1.$(git rev-list --count "$COMMIT")
+          version=$(.github/scripts/version.sh)
           newest=$(git tag --list 'v[0-9]*' | sort -V | tail -n 1)
           if [ -n "$newest" ] && [ "$(printf '%s\nv%s\n' "$newest" "$version" | sort -V | tail -n 1)" = "$newest" ]; then
             echo "$newest is published already, and v$version is not above it"
