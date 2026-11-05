@@ -63,8 +63,9 @@ fn main() -> std::process::ExitCode {
     use demi_shared_types::{LogOrigin, log_layer::LineLayer};
     use tracing_subscriber::{filter::LevelFilter, fmt, prelude::*};
 
-    let config = match demi_machine_manager::config::Config::from_env() {
-        Ok(config) => config,
+    let config = match demi_machine_manager::config::Invocation::from_env() {
+        Ok(demi_machine_manager::config::Invocation::Manage(config)) => config,
+        Ok(demi_machine_manager::config::Invocation::FetchGvisor(directory)) => return fetch_gvisor(&directory),
         Err(demi_machine_manager::config::ConfigError::Invalid(error)) => error.exit(),
         Err(error) => {
             eprintln!("demi-machine-manager: {error}");
@@ -160,6 +161,27 @@ fn main() -> std::process::ExitCode {
     }
 }
 
+/// Fetches the pinned gVisor release into `directory` and prints the
+/// version's directory, for `demi-server runtime`.
+#[cfg(target_os = "linux")]
+fn fetch_gvisor(directory: &std::path::Path) -> std::process::ExitCode {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("the fetch's runtime");
+    let cancel = tokio_util::sync::CancellationToken::new();
+    match runtime.block_on(demi_machine_manager::gvisor_release::fetch(directory, &cancel, |_, _| {})) {
+        Ok(fetched) => {
+            println!("{}", fetched.display());
+            std::process::ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("demi-machine-manager: {error}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
 #[cfg(target_os = "linux")]
 mod service {
     use std::{error::Error, net::Ipv4Addr, rc::Rc};
@@ -180,7 +202,7 @@ mod service {
         tools::{Tool, Tools},
     };
     use demi_machine_manager_protocol::{
-        Enforces, Isolation, LeftSandbox, LeftSimple, PrivateNetwork, RuntimeOffer, Unavailable,
+        Download, Enforces, Isolation, LeftSandbox, LeftSimple, Offer, PrivateNetwork, RuntimeOffer, Unavailable,
     };
     use demi_shared_types::LogLine;
     use tokio::signal::unix::{SignalKind, signal};
@@ -212,16 +234,47 @@ mod service {
         Ok(blocking::run(move |_| Tools::resolve(&runsc, &proot)).await?)
     }
 
+    /// Why a manager cannot run gVisor.
+    enum NoGvisor {
+        /// It lacks only the pinned release, which it fetches when the
+        /// master chooses gVisor.
+        Release,
+        Missing(String),
+    }
+
+    impl NoGvisor {
+        fn reason(&self) -> String {
+            match self {
+                Self::Release => "gVisor's release isn't downloaded".into(),
+                Self::Missing(reason) => reason.clone(),
+            }
+        }
+    }
+
+    impl From<String> for NoGvisor {
+        fn from(reason: String) -> Self {
+            Self::Missing(reason)
+        }
+    }
+
     /// The resolvers gVisor's Clouds use, or why this manager cannot run
     /// gVisor: the checks of a start that change nothing but make the
-    /// working and image directories, after the namespace `main` made.
-    async fn gvisor(config: &Config, tools: &Tools, namespace: Result<(), String>) -> Result<Vec<Ipv4Addr>, String> {
+    /// working and image directories, after the namespace `main` made. A
+    /// manager that would fetch the pinned release lacks only that when it
+    /// passes every other check.
+    async fn gvisor(config: &Config, tools: &Tools, namespace: Result<(), String>) -> Result<Vec<Ipv4Addr>, NoGvisor> {
         namespace?;
         let dns = config.gvisor_resolvers()?;
         blocking::run(preflight::require_private_namespace).await.map_err(|error| error.to_string())?;
-        tools.gvisor().map_err(|error| error.to_string())?;
-        let runsc = Runsc::new(tools.clone(), config.runtime(), config.limits.is_some());
-        preflight::require_runsc(&runsc).await.map_err(|error| error.to_string())?;
+        let release = match tools.gvisor() {
+            Ok(()) => true,
+            Err(missing) if missing.only(Tool::Runsc) && config.gvisor_directory().is_some() => false,
+            Err(missing) => return Err(missing.to_string().into()),
+        };
+        if release {
+            let runsc = Runsc::new(tools.clone(), config.runtime(), config.limits.is_some());
+            preflight::require_runsc(&runsc).await.map_err(|error| error.to_string())?;
+        }
         if config.limits.is_some() {
             cgroup::check().await.map_err(|error| error.to_string())?;
         }
@@ -231,7 +284,10 @@ mod service {
         blocking::run(move |off| preflight::require_one_filesystem(off, &working, &images))
             .await
             .map_err(|error| error.to_string())?;
-        Ok(dns)
+        match release {
+            true => Ok(dns),
+            false => Err(NoGvisor::Release),
+        }
     }
 
     /// Why a manager can run neither runtime: Simple Isolation's `error` and
@@ -259,7 +315,7 @@ mod service {
                 println!("ok: network");
                 probe_gvisor(config, tools, dns).await.map_err(|error| error.to_string())
             }
-            Err(reason) => Err(reason),
+            Err(no) => Err(no.reason()),
         };
         match (probed, simple) {
             (Ok(()), _) => Ok(()),
@@ -288,6 +344,13 @@ mod service {
     /// takes them at once; each queue is bounded so that memory is.
     const DEATHS: usize = 64;
 
+    /// What gVisor enforces, where it runs and where it runs once fetched.
+    const GVISOR_ENFORCES: Enforces = Enforces {
+        checkpoints: true,
+        storage_limits: true,
+        private_network: true,
+    };
+
     /// Serves until a stop; `adopting` when this process entered the saved
     /// namespace of a manager that left its sandboxes (`handover`), which it
     /// takes over, and `namespace` why it could not make the namespace
@@ -305,7 +368,10 @@ mod service {
             return check_host(config, namespace).await;
         }
         let tools = resolve(&config).await?;
-        let gvisor = gvisor(&config, &tools, namespace).await;
+        let (gvisor, release_missing) = match gvisor(&config, &tools, namespace).await {
+            Ok(dns) => (Ok(dns), false),
+            Err(no) => (Err(no.reason()), matches!(no, NoGvisor::Release)),
+        };
         if let Err(reason) = &gvisor {
             if config.mode == Mode::RecoverNamespace {
                 return Err(reason.clone().into());
@@ -449,23 +515,23 @@ mod service {
             RuntimeOffer {
                 isolation: Isolation::Simple,
                 offer: match &probed {
-                    Ok(()) => Ok(Enforces {
+                    Ok(()) => Offer::Runs(Enforces {
                         checkpoints: false,
                         storage_limits: false,
                         private_network: false,
                     }),
-                    Err(error) => Err(Unavailable { reason: error.to_string() }),
+                    Err(error) => Offer::Unavailable(Unavailable { reason: error.to_string() }),
                 },
             },
             RuntimeOffer {
                 isolation: Isolation::Gvisor,
                 offer: match &core.gvisor {
-                    Ok(_) => Ok(Enforces {
-                        checkpoints: true,
-                        storage_limits: true,
-                        private_network: true,
-                    }),
-                    Err(reason) => Err(Unavailable { reason: reason.clone() }),
+                    Ok(_) => Offer::Runs(GVISOR_ENFORCES),
+                    Err(_) if release_missing => Offer::AfterDownload {
+                        enforces: GVISOR_ENFORCES,
+                        download: Download::Waiting,
+                    },
+                    Err(reason) => Offer::Unavailable(Unavailable { reason: reason.clone() }),
                 },
             },
         ];
@@ -506,7 +572,8 @@ mod service {
                 _ = interrupt.recv() => {}
             }
         };
-        let in_flight = server::serve(socket, manager.clone(), received, changed, lines, stopping).await;
+        let offers = manager.watch_offers();
+        let in_flight = server::serve(socket, manager.clone(), received, changed, offers, lines, stopping).await;
         // An upgrade that keeps the state format asks the manager to leave
         // its sandboxes to the next one rather than save them.
         if handover::take_request().await? {

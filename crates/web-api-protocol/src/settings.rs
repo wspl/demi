@@ -55,8 +55,9 @@ serde_plain::derive_display_from_serialize!(Isolation);
 serde_plain::derive_fromstr_from_deserialize!(Isolation);
 
 /// Settings › Cloud's isolation, which only the master reads with
-/// `GET /settings/cloud-isolation`: the one chosen, and what the server can
-/// do with each, none while its machine manager has not been reached.
+/// `GET /settings/cloud-isolation` and follows as `SyncEvent::CloudIsolation`:
+/// the one chosen, and what the server can do with each, none while its
+/// machine manager has not been reached.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CloudIsolation {
@@ -76,6 +77,28 @@ pub struct IsolationRuntime {
     pub private_network: bool,
     /// Whether each user's Cloud Storage bounds its Clouds.
     pub storage_limits: bool,
+    /// The download of its release, which the server makes when the master
+    /// chooses it; none when the server runs it without one.
+    pub download: Option<IsolationDownload>,
+}
+
+/// Where the server is with the download of an isolation's release.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum IsolationDownload {
+    /// Not started: the master has not chosen the isolation.
+    Waiting,
+    /// `received` bytes of `total`, which the source may not say.
+    Downloading {
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        received: u64,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        total: Option<u64>,
+    },
+    /// Downloaded; the machine manager restarts to run it.
+    Starting,
+    /// The last download failed; choosing the isolation again retries it.
+    Failed { message: String },
 }
 
 /// `PUT /settings/cloud-isolation`, which only the master sends.

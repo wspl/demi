@@ -341,10 +341,7 @@ fn setup(layout: &Layout, options: setup::Options) -> Result<(), Box<dyn std::er
 }
 
 fn runtime(layout: &Layout) -> Result<(), Box<dyn std::error::Error>> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let directory = runtime.block_on(gvisor::fetch(layout, &CancellationToken::new()))?;
+    let directory = gvisor::fetch(layout)?;
     println!("{}", directory.display());
     Ok(())
 }

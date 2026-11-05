@@ -21,8 +21,8 @@ use std::{
     rc::Rc,
 };
 
-use demi_machine_manager_protocol::{BaseVersion, DeviceId, Isolation, MoveStatus, RuntimeOffer};
-use tokio::sync::{mpsc, oneshot};
+use demi_machine_manager_protocol::{BaseVersion, DeviceId, Download, Isolation, MoveStatus, Offer, RuntimeOffer};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
 use super::{Core, errors::OpError};
@@ -31,7 +31,9 @@ use crate::runtime::{DeviceOp, DeviceRuntime, Left, Reports, Running, moves};
 /// The isolation the master chose, what this manager can run, and each
 /// device's move to the chosen isolation, which its status reports.
 pub struct Placement {
-    offers: Vec<RuntimeOffer>,
+    /// What the manager can do with each isolation; the server tells each
+    /// connection when it changes, as a download changes it.
+    offers: watch::Sender<Vec<RuntimeOffer>>,
     chosen: Cell<Isolation>,
     moves: RefCell<HashMap<DeviceId, MoveStatus>>,
     /// Cancelled when the manager stops or leaves its devices: the saves it
@@ -45,7 +47,7 @@ impl Placement {
     /// manager runs it, as every Cloud did before it could choose.
     pub fn new(offers: Vec<RuntimeOffer>) -> Self {
         let placement = Self {
-            offers,
+            offers: watch::Sender::new(offers),
             chosen: Cell::new(Isolation::Simple),
             moves: RefCell::default(),
             stopping: CancellationToken::new(),
@@ -56,12 +58,62 @@ impl Placement {
         placement
     }
 
-    pub fn offers(&self) -> &[RuntimeOffer] {
-        &self.offers
+    pub fn offers(&self) -> Vec<RuntimeOffer> {
+        self.offers.borrow().clone()
+    }
+
+    /// Hears each change of the offers.
+    pub fn watch_offers(&self) -> watch::Receiver<Vec<RuntimeOffer>> {
+        self.offers.subscribe()
     }
 
     pub fn runs(&self, isolation: Isolation) -> bool {
-        self.offers.iter().any(|offer| offer.isolation == isolation && offer.offer.is_ok())
+        self.offers.borrow().iter().any(|offer| offer.isolation == isolation && offer.runs().is_some())
+    }
+
+    /// Whether `isolation` runs once its release is downloaded, and no
+    /// download of it is under way or done.
+    pub fn awaits_download(&self, isolation: Isolation) -> bool {
+        self.offers.borrow().iter().any(|offer| {
+            offer.isolation == isolation
+                && matches!(
+                    &offer.offer,
+                    Offer::AfterDownload {
+                        download: Download::Waiting | Download::Failed { .. },
+                        ..
+                    }
+                )
+        })
+    }
+
+    /// Records where the download of `isolation`'s release is.
+    pub fn set_download(&self, isolation: Isolation, state: Download) {
+        self.offers.send_if_modified(|offers| {
+            let Some(Offer::AfterDownload { download, .. }) = offers
+                .iter_mut()
+                .find(|offer| offer.isolation == isolation)
+                .map(|offer| &mut offer.offer)
+            else {
+                return false;
+            };
+            let changed = *download != state;
+            *download = state;
+            changed
+        });
+    }
+
+    /// Replaces what the manager says of `isolation`.
+    pub fn set_offer(&self, isolation: Isolation, offer: Offer) {
+        self.offers.send_modify(|offers| {
+            if let Some(found) = offers.iter_mut().find(|found| found.isolation == isolation) {
+                found.offer = offer;
+            }
+        });
+    }
+
+    /// The token a download cancels on, which the manager's stop cancels.
+    pub fn stopping_child(&self) -> CancellationToken {
+        self.stopping.child_token()
     }
 
     pub fn chosen(&self) -> Isolation {

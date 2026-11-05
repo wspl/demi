@@ -34,7 +34,7 @@ use tokio::{
         UnixListener, UnixStream,
         unix::{OwnedReadHalf, OwnedWriteHalf},
     },
-    sync::mpsc,
+    sync::{mpsc, watch},
     task::JoinSet,
 };
 use tokio_util::{
@@ -137,6 +137,7 @@ pub async fn serve<S: MachineService + 'static>(
     service: Rc<S>,
     mut deaths: mpsc::Receiver<DeviceId>,
     mut changes: mpsc::Receiver<DeviceId>,
+    mut offers: watch::Receiver<Vec<RuntimeOffer>>,
     mut lines: mpsc::Receiver<LogLine>,
     shutdown: impl Future<Output = ()>,
 ) -> InFlight {
@@ -146,6 +147,7 @@ pub async fn serve<S: MachineService + 'static>(
     let mut next_connection = 0_u64;
     let mut deaths_open = true;
     let mut changes_open = true;
+    let mut offers_open = true;
     let mut lines_open = true;
     tokio::pin!(shutdown);
     loop {
@@ -231,6 +233,18 @@ pub async fn serve<S: MachineService + 'static>(
                     }
                 }
                 None => changes_open = false,
+            },
+            changed = offers.changed(), if offers_open => match changed {
+                Ok(()) => {
+                    let runtimes = offers.borrow_and_update().clone();
+                    let line = encode_line(&MachineResponse::Event { event: ManagerEvent::Runtimes { runtimes } });
+                    for outbox in outboxes.values().filter_map(mpsc::WeakSender::upgrade) {
+                        // A connection whose queue is full is told the next
+                        // change, which says all of it.
+                        let _ = outbox.try_send(line.clone());
+                    }
+                }
+                Err(_) => offers_open = false,
             },
             line = lines.recv(), if lines_open => match line {
                 Some(line) => {

@@ -24,6 +24,11 @@
 //! saved, as after a crash. The stop-post recovery leaves alone the namespace
 //! of a manager that left its sandboxes.
 //!
+//! A manager that fetched the gVisor release restarts the same way
+//! ([`restart`]): it writes the leave request itself and asks systemd to
+//! restart its unit, so the next manager runs gVisor and takes over the
+//! Clouds this one runs.
+//!
 //! systemd's stop no longer ends the unit's leftover processes, so every
 //! start and stop-post recovery ends them first ([`sweep`]) and waits until
 //! they exited, before anything writes a disk image: every process of the
@@ -38,7 +43,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use demi_machine_manager_protocol::{LEAVE_REQUEST, LEFT_RECORD, LeftRecord, LeftSandbox};
+use demi_machine_manager_protocol::{LEAVE_REQUEST, LEFT_RECORD, LeftRecord, LeftSandbox, MANAGER_UNIT};
 use rustix::thread::LinkNameSpaceType;
 
 use crate::{
@@ -88,6 +93,30 @@ pub async fn take_over(core: &Core, left: &LeftSandbox) -> io::Result<Option<Tak
         sentry,
     };
     Ok(Some(Taken { sandbox, owner }))
+}
+
+/// Has systemd restart this manager, which leaves its running Clouds to the
+/// next one; the restart comes after this returns. A manager that systemd
+/// doesn't run, which `INVOCATION_ID` tells, can't be restarted, and the
+/// error says so.
+pub async fn restart() -> Result<(), String> {
+    if std::env::var_os("INVOCATION_ID").is_none() {
+        return Err("gVisor is downloaded, and runs once the Cloud manager restarts".into());
+    }
+    blocking::run(|_| fs_err::write(LEAVE_REQUEST, b"")).await.map_err(|error| error.to_string())?;
+    // `--no-block` queues the restart and returns: the stop it starts
+    // signals this process, which must not wait for it.
+    let status = tokio::process::Command::new("systemctl")
+        .args(["restart", "--no-block", MANAGER_UNIT])
+        .status()
+        .await
+        .map_err(|error| format!("systemctl could not start: {error}"))?;
+    if status.success() {
+        return Ok(());
+    }
+    // A request no restart takes would keep the Clouds of a later stop.
+    let _ = take_request().await;
+    Err(format!("systemctl could not restart {MANAGER_UNIT}: {status}"))
 }
 
 /// Whether an upgrade asked this manager to leave its sandboxes; the request

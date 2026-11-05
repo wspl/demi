@@ -63,7 +63,8 @@
       "of": "{done} de {count}",
       "toUpdate": "{count} para atualizar | {count} para atualizar",
       "installed": "Já instalado",
-      "noChanges": "Nenhuma alteração necessária"
+      "noChanges": "Nenhuma alteração necessária",
+      "unused": "Não usado neste servidor"
     }
   },
   "account": {
@@ -570,6 +571,15 @@
     "isolationDescriptions": {
       "simple": "Cada nuvem tem seu próprio sistema e seus próprios arquivos. Isso protege contra erros, não contra um programa que tente escapar.",
       "gvisor": "Cada nuvem roda em uma sandbox do gVisor, que também impede um programa que tente escapar."
+    },
+    "download": {
+      "hint": "Baixa o gVisor, cerca de 160 MB, na primeira vez",
+      "downloading": "Baixando o gVisor…",
+      "received": "Baixando o gVisor… {bytes}",
+      "starting": "Iniciando o gVisor…",
+      "failed": "Não foi possível baixar o gVisor: {message}",
+      "tryAgain": "Tentar novamente",
+      "moving": "As nuvens paradas passam para o gVisor assim que ele for baixado, e as em execução assim que pararem. Os arquivos e pacotes instalados vão junto."
     },
     "unavailable": "Este servidor não consegue usá-lo: {reason}",
     "moving": "As nuvens paradas passam para {isolation} agora, e as em execução assim que pararem. Os arquivos e pacotes instalados vão junto.",

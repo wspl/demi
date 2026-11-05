@@ -35,6 +35,10 @@
 //!   `runsc` and, with the limits on, the cgroup v2 controllers. A manager
 //!   that lacks one says which, and runs Simple Isolation alone; a device
 //!   whose storage is on gVisor then fails to start with that reason.
+//! - A manager that lacks only the pinned `runsc` fetches its release when
+//!   the master chooses gVisor (`gvisor_release`), then has systemd restart
+//!   it, leaving its running Clouds to the next manager as an upgrade does,
+//!   so gVisor starts the way it does at every start.
 //! - A VPS without KVM suffices, since systrap needs no nested virtualization.
 //! - Docker and containerd are not dependencies: the manager drives the pinned
 //!   `runsc` through its OCI interface, with a bundle it generates for each
@@ -91,6 +95,8 @@
 
 pub mod blocking;
 pub mod config;
+#[cfg(target_os = "linux")]
+pub mod gvisor_release;
 #[cfg(target_os = "linux")]
 pub mod handover;
 #[cfg(target_os = "linux")]

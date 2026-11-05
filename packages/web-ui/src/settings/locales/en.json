@@ -63,7 +63,8 @@
       "of": "{done} of {count}",
       "toUpdate": "{count} to update | {count} to update",
       "installed": "Already installed",
-      "noChanges": "No changes needed"
+      "noChanges": "No changes needed",
+      "unused": "Not used on this server"
     }
   },
   "account": {
@@ -570,6 +571,15 @@
     "isolationDescriptions": {
       "simple": "Each Cloud has its own system and files. This protects against mistakes, not against a program that tries to break out.",
       "gvisor": "Each Cloud runs in a gVisor sandbox, which also stops a program that tries to break out."
+    },
+    "download": {
+      "hint": "Downloads gVisor, about 160 MB, the first time",
+      "downloading": "Downloading gVisor…",
+      "received": "Downloading gVisor… {bytes}",
+      "starting": "Starting gVisor…",
+      "failed": "Couldn’t download gVisor: {message}",
+      "tryAgain": "Try Again",
+      "moving": "Stopped Clouds move to gVisor once it’s downloaded, and running ones once they stop. Their files and installed packages move with them."
     },
     "unavailable": "This server can’t run it: {reason}",
     "moving": "Stopped Clouds move to {isolation} now, and running ones once they stop. Their files and installed packages move with them.",

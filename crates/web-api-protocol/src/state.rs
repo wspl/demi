@@ -125,6 +125,7 @@ pub enum SyncFollowed {
     Passkeys,
     Sessions,
     Users,
+    CloudIsolation,
 }
 
 /// A value a page follows on its synchronization channel, and the version of
@@ -305,6 +306,15 @@ pub enum SyncEvent {
         users: Vec<ListedUser>,
         #[serde(rename = "cloudStorageLimits")]
         cloud_storage_limits: bool,
+        /// The entity tag of the list's route's answer; empty when it has none.
+        etag: String,
+    },
+    /// The master chose another isolation, or what the server can do with
+    /// one changed, as a download of its release changes it: Settings ›
+    /// Cloud's isolation, as `GET /settings/cloud-isolation` answers. Only
+    /// the master's channels carry it.
+    CloudIsolation {
+        isolation: crate::settings::CloudIsolation,
         /// The entity tag of the list's route's answer; empty when it has none.
         etag: String,
     },

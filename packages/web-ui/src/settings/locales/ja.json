@@ -63,7 +63,8 @@
       "of": "{done}/{count}",
       "toUpdate": "{count} 件をアップデート",
       "installed": "インストール済み",
-      "noChanges": "変更なし"
+      "noChanges": "変更なし",
+      "unused": "このサーバーでは未使用"
     }
   },
   "account": {
@@ -570,6 +571,15 @@
     "isolationDescriptions": {
       "simple": "クラウドごとに専用のシステムとファイルを持ちます。操作ミスからは守りますが、外へ抜け出そうとするプログラムは防げません。",
       "gvisor": "クラウドごとに gVisor サンドボックスで実行し、外へ抜け出そうとするプログラムも阻止します。"
+    },
+    "download": {
+      "hint": "初めて使うときに gVisor（約 160 MB）をダウンロードします",
+      "downloading": "gVisor をダウンロードしています…",
+      "received": "gVisor をダウンロードしています… {bytes}",
+      "starting": "gVisor を起動しています…",
+      "failed": "gVisor をダウンロードできませんでした：{message}",
+      "tryAgain": "再試行",
+      "moving": "gVisor のダウンロード後、停止中のクラウドはすぐに移行し、実行中のクラウドは停止したときに移行します。ファイルとインストール済みのパッケージも一緒に移行します。"
     },
     "unavailable": "このサーバーでは使用できません: {reason}",
     "moving": "停止中のクラウドは今すぐ「{isolation}」に移行し、実行中のクラウドは停止したときに移行します。ファイルとインストール済みのパッケージも一緒に移行します。",

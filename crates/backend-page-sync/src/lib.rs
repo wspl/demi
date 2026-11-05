@@ -85,6 +85,9 @@ pub enum Part {
     Sessions,
     /// Every account, which only the channels of the master and admins send.
     Users,
+    /// Settings › Cloud's isolation and what the server can do with each,
+    /// which only the master's channels send.
+    CloudIsolation,
     /// Settings › Updates, which only the channels of the master and
     /// admins send.
     ServerUpgrade,

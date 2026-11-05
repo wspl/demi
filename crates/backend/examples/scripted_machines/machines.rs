@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use crate::runner::{RunnerProcess, RunnerProcessOptions, runner_binary};
 use demi_host_interface::SpawnEnv;
 use demi_machine_manager_protocol::{
-    BaseVersion, Enforces, GenerationId, Isolation, MachineCall, MachineImageState, MachineResponse, RuntimeOffer,
+    BaseVersion, Enforces, GenerationId, Isolation, MachineCall, MachineImageState, MachineResponse, Offer, RuntimeOffer,
     RuntimeState, WIRE_VERSION, decode_request, encode_line,
 };
 use futures_util::FutureExt as _;
@@ -136,8 +136,8 @@ async fn connection(stream: UnixStream, shared: Arc<Shared>) {
     let hello = encode_line(&MachineResponse::Hello {
         version: WIRE_VERSION,
         runtimes: vec![
-            RuntimeOffer { isolation: Isolation::Simple, offer: Ok(enforces(false)) },
-            RuntimeOffer { isolation: Isolation::Gvisor, offer: Ok(enforces(true)) },
+            RuntimeOffer { isolation: Isolation::Simple, offer: Offer::Runs(enforces(false)) },
+            RuntimeOffer { isolation: Isolation::Gvisor, offer: Offer::Runs(enforces(true)) },
         ],
     });
     lines.try_send(hello).expect("a new connection's queue has room");

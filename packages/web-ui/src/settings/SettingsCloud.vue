@@ -1,16 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Plus, Trash2 } from '@lucide/vue'
+import { formatByteRatio, formatBytes } from '../files/format'
 import { showToast } from '../infra/toast'
 import type { OverlayStore } from '../overlay/overlayStore'
 import AsyncRegion from '../ui/AsyncRegion.vue'
+import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
+import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import InlineError from '../ui/InlineError.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
+import ProgressBar from '../ui/ProgressBar.vue'
 import TextInput from '../ui/TextInput.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import type { Action } from '../ui/operations'
 import type { SentenceText } from '../ui/ui-text'
@@ -36,6 +41,12 @@ import { t } from './locales/text'
  * server's reason as its tooltip. A setting the chosen isolation doesn't
  * enforce stays visible, disabled, and says why in place of its
  * description, as Private Network Access does on Simple Isolation.
+ *
+ * gVisor on a server that has never run it is offered with a hint that
+ * choosing it downloads it. While the server downloads it and starts it, a
+ * row under Isolation says how far it is, as a provider's command-line tool
+ * says while it installs; a download that failed says why, with Try Again,
+ * which chooses it again.
  *
  * The list is a card of plain rows under one bare field, as the models of a
  * provider are under their filter: Enter in the field adds what it holds,
@@ -66,6 +77,38 @@ const props = defineProps<{
 function unavailable(isolation: Isolation): string | null {
   return props.isolation?.runtimes?.find((runtime) => runtime.isolation === isolation)?.unavailable ?? null
 }
+
+/** Whether choosing `isolation` downloads its release first. */
+function downloads(isolation: Isolation): boolean {
+  const state = props.isolation?.runtimes?.find((runtime) => runtime.isolation === isolation)?.download?.state
+  return state === 'waiting' || state === 'failed'
+}
+
+/** The download of the chosen isolation's release while the server makes it or after it failed; null otherwise. */
+const download = computed(() => {
+  const chosen = props.isolation?.runtimes?.find((runtime) => runtime.isolation === props.isolation?.isolation)
+  return chosen?.download && chosen.download.state !== 'waiting' ? chosen.download : null
+})
+
+/**
+ * What the download says in place of the isolation's description, on one
+ * line, so the row keeps its height in every state.
+ */
+const downloadStatus = computed(() => {
+  const now = download.value
+  switch (now?.state) {
+    case 'downloading':
+      return t('cloud.download.received', {
+        bytes: now.total !== null ? formatByteRatio(now.received, now.total) : formatBytes(now.received),
+      })
+    case 'starting':
+      return t('cloud.download.starting')
+    case 'failed':
+      return t('cloud.download.failed', { message: now.message })
+    default:
+      return null
+  }
+})
 
 /** Whether Private Network Access applies to the chosen isolation; it does while the server hasn't said. */
 const networkApplies = computed(() => {
@@ -137,8 +180,23 @@ async function remove(index: number): Promise<void> {
         <template v-if="network && isolation">
           <SettingsRow
             :label="t('cloud.isolation')"
-            :description="t(`cloud.isolationDescriptions.${isolation.isolation}`)"
+            :description="downloadStatus ? undefined : t(`cloud.isolationDescriptions.${isolation.isolation}`)"
           >
+            <template v-if="downloadStatus" #description>
+              <TruncatedText class="tabular-nums" :text="downloadStatus" />
+            </template>
+            <Button v-if="download?.state === 'failed'" size="sm" @click="onSetIsolation?.(isolation.isolation)">{{
+              t('cloud.download.tryAgain')
+            }}</Button>
+            <div v-else-if="download" class="flex w-24 items-center justify-end">
+              <ProgressBar
+                v-if="download.state === 'downloading' && download.total"
+                :value="download.received"
+                :max="download.total"
+                :label="t('cloud.download.downloading')"
+              />
+              <IndeterminateSpinner v-else />
+            </div>
             <Dropdown
               size="sm"
               :overlay-store="overlayStore"
@@ -156,6 +214,7 @@ async function remove(index: number): Promise<void> {
                     :is-selected="isolation.isolation === choice"
                     :disabled="unavailable(choice) !== null"
                     :disabled-reason="t('cloud.unavailable', { reason: unavailable(choice) ?? '' })"
+                    :hint="downloads(choice) ? t('cloud.download.hint') : undefined"
                     @select="close(); choice === isolation.isolation || onSetIsolation?.(choice)"
                   />
                 </Menu>

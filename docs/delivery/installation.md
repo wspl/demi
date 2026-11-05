@@ -195,8 +195,11 @@ than 0.
    runs: e2fsprogs, bsdtar and nftables.
 3. **Fetch the release.** `setup` fetches the release into
    `/opt/demi/releases/<version>`, as an upgrade does
-   ([Fetch](upgrades.md#fetch)), and the gVisor version its manager pins into
-   `/opt/demi/gvisor/<version>/` (`crates/server/src/gvisor.rs`).
+   ([Fetch](upgrades.md#fetch)). It doesn't fetch gVisor: the machine manager
+   downloads it into `/opt/demi/gvisor/<version>/` when the master first
+   chooses gVisor in Settings › Cloud. Only a machine that can't run Simple
+   Isolation has `setup` fetch it at the next step, so that the check passes
+   on gVisor.
 4. **Check that the machine can run Cloud.** `setup` runs the release's own
    manager with `demi-machine-manager --check-host`. That command runs
    everything the manager's start checks before it serves

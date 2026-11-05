@@ -12,9 +12,10 @@
 //!   retries.
 //! - A death event goes to the one receiver the backend routes to the device's
 //!   owner.
-//! - What the manager can do with each isolation, which its `hello` names,
-//!   is kept as the last connection said it, for the settings and the
-//!   Clouds' maintenance to read.
+//! - What the manager can do with each isolation, which its `hello` names
+//!   and `ManagerEvent::Runtimes` repeats as a download changes it, is kept
+//!   as the manager last said it, for the settings and the Clouds'
+//!   maintenance to read, and each change is noticed.
 //! - A device's status the manager pushes (`ManagerEvent::CloudStatus`) is
 //!   kept, the latest of each device, and its device goes to the receiver the
 //!   backend routes to the device's owner. A page reads it from here and
@@ -113,6 +114,8 @@ pub struct Notices {
     /// The client connected to the manager, which may have started since the
     /// last connection and lost what it keeps in memory only.
     pub connections: mpsc::Receiver<()>,
+    /// What the manager can do with each isolation changed.
+    pub runtimes: mpsc::Receiver<()>,
 }
 
 /// A handle on the machine manager's socket.
@@ -146,6 +149,7 @@ impl MachinesClient {
         let (changed, statuses) = mpsc::channel(STATUSES);
         // One waiting notice says all a second would.
         let (connected, connections) = mpsc::channel(1);
+        let (offered, offers) = mpsc::channel(1);
         let kept = Arc::new(Mutex::new(HashMap::new()));
         let runtimes = Arc::new(Mutex::new(None));
         let supervisor = Supervisor {
@@ -156,6 +160,7 @@ impl MachinesClient {
             deaths,
             changed,
             connected,
+            offered,
             statuses: kept.clone(),
             runtimes: runtimes.clone(),
             log,
@@ -168,7 +173,12 @@ impl MachinesClient {
                 runtimes,
                 _supervisor: AbortOnDropHandle::new(task),
             },
-            Notices { deaths: died, statuses, connections },
+            Notices {
+                deaths: died,
+                statuses,
+                connections,
+                runtimes: offers,
+            },
         )
     }
 
@@ -182,19 +192,19 @@ impl MachinesClient {
             .cloned()
     }
 
-    /// What the manager can do with each isolation, as its last `hello`
-    /// said; none before the client first connected. It calls no one.
+    /// What the manager can do with each isolation, as it last said; none
+    /// before the client first connected. It calls no one.
     pub fn runtimes(&self) -> Option<Vec<RuntimeOffer>> {
         self.runtimes.lock().expect("the runtimes are never held across a panic").clone()
     }
 
-    /// What `isolation` enforces; none when the manager cannot run it or
-    /// has not said.
+    /// What `isolation` enforces; none when the manager doesn't run it now
+    /// or has not said.
     pub fn enforces(&self, isolation: Isolation) -> Option<Enforces> {
         self.runtimes()?
             .into_iter()
             .find(|offer| offer.isolation == isolation)
-            .and_then(|offer| offer.offer.ok())
+            .and_then(|offer| offer.runs())
     }
 
     /// Runs `params` on the manager and answers its result.
@@ -244,6 +254,7 @@ struct Supervisor {
     deaths: mpsc::Sender<DeviceId>,
     changed: mpsc::Sender<DeviceId>,
     connected: mpsc::Sender<()>,
+    offered: mpsc::Sender<()>,
     statuses: Arc<Mutex<HashMap<DeviceId, ImageStatus>>>,
     runtimes: Arc<Mutex<Option<Vec<RuntimeOffer>>>>,
     log: ServerLog,
@@ -318,9 +329,16 @@ impl Supervisor {
     /// connected.
     fn connected(&mut self, (connection, runtimes): (Connection, Vec<RuntimeOffer>)) {
         self.connection = Some(connection);
-        *self.runtimes.lock().expect("the runtimes are never held across a panic") = Some(runtimes);
+        self.offered(runtimes);
         // A notice already waiting covers this one.
         let _ = self.connected.try_send(());
+    }
+
+    /// Keeps what the manager can do with each isolation, and says so.
+    fn offered(&mut self, runtimes: Vec<RuntimeOffer>) {
+        *self.runtimes.lock().expect("the runtimes are never held across a panic") = Some(runtimes);
+        // A notice already waiting covers this one.
+        let _ = self.offered.try_send(());
     }
 
     /// Sends `call`, connecting first.
@@ -412,9 +430,18 @@ impl Supervisor {
         }
     }
 
-    /// Keeps what the manager said of a device, and tells the router.
+    /// Keeps what the manager said of a device, and tells the router, or
+    /// what it can do with each isolation.
     async fn event(&mut self, event: ManagerEvent) {
-        let ManagerEvent::CloudStatus { device_id, volumes, newer_image, isolation, move_status } = event;
+        let (device_id, volumes, newer_image, isolation, move_status) = match event {
+            ManagerEvent::CloudStatus { device_id, volumes, newer_image, isolation, move_status } => {
+                (device_id, volumes, newer_image, isolation, move_status)
+            }
+            ManagerEvent::Runtimes { runtimes } => {
+                self.offered(runtimes);
+                return;
+            }
+        };
         let device = match DeviceId::parse(device_id) {
             Ok(device) => device,
             Err(error) => {

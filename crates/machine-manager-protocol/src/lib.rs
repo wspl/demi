@@ -60,6 +60,10 @@ pub struct DrainRecord {
     pub saving: u32,
 }
 
+/// The manager's systemd unit, which an upgrade stops and starts, and which
+/// a manager restarts to run the gVisor release it fetched.
+pub const MANAGER_UNIT: &str = "demi-machine-manager.service";
+
 /// What an upgrade writes before it stops the manager when the release it
 /// moves to keeps [`STATE_FORMAT`]: the manager that stops then leaves its
 /// running sandboxes to the next one, which takes them over, rather than
@@ -117,7 +121,7 @@ pub use state::{
     BaseVersion, DeviceId, GenerationId, IdError, MachineImageState, RuntimeState, Volume,
     is_image_name,
 };
-pub use isolation::{Enforces, Isolation, MoveStatus, RuntimeOffer, Unavailable};
+pub use isolation::{Download, Enforces, Isolation, MoveStatus, Offer, RuntimeOffer, Unavailable};
 pub use network::{Destination, PrivateNetwork};
 pub use wire::{
     Capacity, CheckpointParams, CurrentBaseVersionParams, DecodeError, HibernateParams,

@@ -47,11 +47,11 @@ use std::{
 };
 
 use demi_machine_manager_protocol::{
-    ROOM_RESERVE,
+    MANAGER_UNIT, ROOM_RESERVE,
     store::{appended, mounted_from, partial_file, store_file},
 };
 
-use crate::{layout::MANAGER, moving::run};
+use crate::moving::run;
 
 /// How a store came to share extents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -229,7 +229,7 @@ fn add_to_fstab(file: &Path, store: &Path) -> io::Result<()> {
     text.extend_from_slice(b"# Demi's Cloud store, which shares extents (demi-server)\n");
     text.extend_from_slice(
         format!(
-            "{} {point} xfs loop,discard,nofail,x-systemd.before={MANAGER},x-systemd.required-by={MANAGER} 0 0\n",
+            "{} {point} xfs loop,discard,nofail,x-systemd.before={MANAGER_UNIT},x-systemd.required-by={MANAGER_UNIT} 0 0\n",
             escape(file)
         )
         .as_bytes(),

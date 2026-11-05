@@ -96,6 +96,9 @@ pub struct Backend {
     statuses: AbortOnDropHandle<()>,
     /// Gives the machine manager the Cloud settings at each connection.
     cloud_settings: AbortOnDropHandle<()>,
+    /// Marks the pages that show what the machine manager can do with each
+    /// isolation changed when it says so.
+    runtimes: AbortOnDropHandle<()>,
     /// Has the users whose search index is reset index their conversations
     /// again (`crates/backend-database/src/search.rs`).
     resets: AbortOnDropHandle<()>,
@@ -209,6 +212,26 @@ async fn send_cloud_settings(mut connections: tokio::sync::mpsc::Receiver<()>, s
         };
         if let Err(error) = sent {
             tracing::warn!(event = "cloud_network.not_sent", %error, "the machine manager did not get the private network Clouds reach");
+        }
+    }
+}
+
+/// Tells the pages that show how Clouds are isolated each time the machine
+/// manager says what it can do with each isolation, as it does on each
+/// connection and as a download progresses; progress, twice a second, leaves
+/// what each enforces as it was, which Settings › Users shows.
+async fn announce_runtimes(mut runtimes: tokio::sync::mpsc::Receiver<()>, services: Arc<Services>) {
+    let enforced = |services: &Services| {
+        services.cloud.machines.runtimes().map(|offers| offers.iter().map(|offer| (offer.isolation, offer.runs())).collect::<Vec<_>>())
+    };
+    let mut told = enforced(&services);
+    while runtimes.recv().await.is_some() {
+        let now = enforced(&services);
+        if now == told {
+            services.download_changed();
+        } else {
+            told = now;
+            services.isolation_changed();
         }
     }
 }
@@ -511,6 +534,7 @@ impl Backend {
             notices.connections,
             services.clone(),
         )));
+        let runtimes = AbortOnDropHandle::new(tokio::spawn(announce_runtimes(notices.runtimes, services.clone())));
         let resets = AbortOnDropHandle::new(tokio::spawn(follow_resets(
             services.search.resets(),
             services.control.clone(),
@@ -630,6 +654,7 @@ impl Backend {
             deaths,
             statuses,
             cloud_settings,
+            runtimes,
             resets,
             usage,
             sampling,
@@ -666,6 +691,7 @@ impl Backend {
         drop(self.deaths);
         drop(self.statuses);
         drop(self.cloud_settings);
+        drop(self.runtimes);
         drop(self.resets);
         drop(self.usage);
         drop(self.sampling);

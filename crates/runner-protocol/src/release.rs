@@ -477,6 +477,10 @@ pub enum SkipReason {
     Installed,
     /// The new release changes nothing it would.
     NoChanges,
+    /// The server doesn't use what it would fetch: gVisor's release on a
+    /// server that has never downloaded one, whose Clouds run on Simple
+    /// Isolation.
+    Unused,
 }
 
 impl UpgradeNotice {

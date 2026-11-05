@@ -13,7 +13,6 @@ doctest = false
 bench = false
 
 [dependencies]
-bzip2 = "0.6"
 clap = { version = "4", features = ["derive"] }
 demi-backend-database = { path = "../backend-database" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }

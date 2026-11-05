@@ -63,7 +63,8 @@
       "of": "{done}/{count}",
       "toUpdate": "{count} 个需要更新",
       "installed": "已安装",
-      "noChanges": "无需更改"
+      "noChanges": "无需更改",
+      "unused": "此服务器未使用"
     }
   },
   "account": {
@@ -570,6 +571,15 @@
     "isolationDescriptions": {
       "simple": "每个云端都有自己的系统和文件。它能防止误操作，但挡不住试图逃逸的程序。",
       "gvisor": "每个云端都运行在 gVisor 沙盒中，也能拦住试图逃逸的程序。"
+    },
+    "download": {
+      "hint": "首次使用时会下载 gVisor，约 160 MB",
+      "downloading": "正在下载 gVisor…",
+      "received": "正在下载 gVisor… {bytes}",
+      "starting": "正在启动 gVisor…",
+      "failed": "无法下载 gVisor：{message}",
+      "tryAgain": "重试",
+      "moving": "gVisor 下载完成后，已停止的云端就迁移过去，运行中的云端在停止后迁移。文件和已安装的软件包会一起迁移。"
     },
     "unavailable": "这台服务器无法使用：{reason}",
     "moving": "已停止的云端现在就迁移到“{isolation}”，运行中的云端在停止后迁移。文件和已安装的软件包会一起迁移。",

@@ -23,7 +23,9 @@
 
 use std::{fmt, io, process::Command};
 
-use demi_machine_manager_protocol::{DRAIN_RECORD, DrainRecord, LEAVE_REQUEST, LEFT_RECORD, STATE_FORMAT, runtime::RuntimeRelease};
+use demi_machine_manager_protocol::{
+    DRAIN_RECORD, DrainRecord, LEAVE_REQUEST, LEFT_RECORD, MANAGER_UNIT, STATE_FORMAT, runtime::RuntimeRelease,
+};
 use demi_runner_protocol::release::{
     RestartStepKind, SkipReason, StepProgress, StepState, StepSummary, UpgradeStepKind,
 };
@@ -33,7 +35,7 @@ use crate::{
     data,
     gvisor,
     journal::{Data, Journal, Step},
-    layout::{BACKEND, Layout, MANAGER, UNITS},
+    layout::{BACKEND, Layout, UNITS},
     notices::Notices,
     progress,
     runners,
@@ -183,6 +185,9 @@ fn prepare(
 pub fn install(layout: &Layout, settings: &Settings, to: &Version, notices: &mut Notices) -> io::Result<()> {
     if layout.gvisor().join(RuntimeRelease::pinned().version()).exists() {
         notices.step(UpgradeStepKind::DownloadGvisor, StepState::Skipped { why: SkipReason::Installed });
+    } else if !gvisor::downloaded(layout)? {
+        // The manager fetches it when the master first chooses gVisor.
+        notices.step(UpgradeStepKind::DownloadGvisor, StepState::Skipped { why: SkipReason::Unused });
     } else {
         notices.start(UpgradeStepKind::DownloadGvisor);
         gvisor::of_release(layout, to)?;
@@ -356,7 +361,7 @@ fn take_steps(
                 // A run that goes on after the machine restarted finds the
                 // release's manager started by its unit: it stops, and
                 // saves every Cloud, before its store moves.
-                services.stop(MANAGER)?;
+                services.stop(MANAGER_UNIT)?;
                 let moved = store::move_in(&settings.manager_data()?, &mut |done, total| {
                     notices.progress_restart(
                         RestartStepKind::StartManager,
@@ -443,7 +448,7 @@ fn save_clouds(services: &dyn Services, notices: &mut Notices, keep: bool) -> io
     notices.start_restart(RestartStepKind::SaveClouds);
     let mut saving = 0;
     let stopped = std::thread::scope(|scope| {
-        let stopping = scope.spawn(|| services.stop(MANAGER));
+        let stopping = scope.spawn(|| services.stop(MANAGER_UNIT));
         let mut last = None;
         while !stopping.is_finished() {
             let read = std::fs::read(DRAIN_RECORD)
@@ -525,7 +530,7 @@ fn start_all(
     notices: &mut Notices,
 ) -> Result<(), (&'static str, io::Error)> {
     notices.start_restart(RestartStepKind::StartManager);
-    services.start(MANAGER).map_err(|error| (MANAGER, error))?;
+    services.start(MANAGER_UNIT).map_err(|error| (MANAGER_UNIT, error))?;
     notices.done_restart(RestartStepKind::StartManager, StepSummary::None);
     screen.down(services);
     // The backend takes its start, and its data's steps, from here.
@@ -554,7 +559,7 @@ fn return_to_from(
     layout.install_units(&journal.from)?;
     services.reload(&layout.path_units())?;
     let started = services
-        .start(MANAGER)
+        .start(MANAGER_UNIT)
         .and_then(|()| {
             screen.down(services);
             services.start(BACKEND)

@@ -507,6 +507,21 @@ impl Services {
         })
     }
 
+    /// Tells the pages that show how Clouds are isolated: Settings › Cloud's,
+    /// and Settings › Users', whose Cloud Storage applies as the isolation
+    /// enforces it. The master's choice changes them, and so does what the
+    /// machine manager enforces with each isolation.
+    pub fn isolation_changed(&self) {
+        self.sync.mark_everyone(&demi_backend_page_sync::Part::CloudIsolation);
+        self.sync.mark_everyone(&demi_backend_page_sync::Part::Users);
+    }
+
+    /// Tells Settings › Cloud that a runtime's download moved on, which
+    /// changes nothing Settings › Users shows.
+    pub fn download_changed(&self) {
+        self.sync.mark_everyone(&demi_backend_page_sync::Part::CloudIsolation);
+    }
+
     /// Cancels the logins, drains the catalog refreshes and quota
     /// writes, before storage closes.
     pub async fn close_providers(&self) {

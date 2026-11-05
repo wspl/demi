@@ -25,14 +25,14 @@ mod linux {
     };
 
     use demi_machine_manager_protocol::{
-        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeviceId, DrainRecord, HibernateParams, ImageStateParams, Isolation, LeftRecord, MachineCall, ManagerEvent, Operation, PrivateNetwork, ReconcileParams, Reconciled,
-        ResetParams, RuntimeOffer, RuntimeState, RuntimeStateParams, SandboxMachine, SetIsolationParams, SetPrivateNetworkParams, WakeParams,
+        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeviceId, Download, DrainRecord, HibernateParams, ImageStateParams, Isolation, LeftRecord, MachineCall, ManagerEvent, Offer, Operation, PrivateNetwork,
+        ReconcileParams, Reconciled, ResetParams, RuntimeOffer, RuntimeState, RuntimeStateParams, SandboxMachine, SetIsolationParams, SetPrivateNetworkParams, Unavailable, WakeParams,
     };
     use tokio::{
-        sync::{mpsc, oneshot},
+        sync::{mpsc, oneshot, watch},
         task::JoinSet,
     };
-    use tokio_util::task::AbortOnDropHandle;
+    use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
     use super::{
         admission::Admission,
@@ -139,6 +139,9 @@ mod linux {
         /// The moves of the stopped devices to the chosen isolation, one at
         /// a time; a new choice replaces them.
         moving: RefCell<Option<AbortOnDropHandle<()>>>,
+        /// Cancels the download of gVisor's release under way, which choosing
+        /// Simple Isolation does.
+        downloading: RefCell<Option<CancellationToken>>,
     }
 
     impl Manager {
@@ -162,6 +165,7 @@ mod linux {
                 private: RefCell::new(PrivateNetwork::Off),
                 placement: Rc::new(Placement::new(offers)),
                 moving: RefCell::default(),
+                downloading: RefCell::default(),
                 deaths,
                 changes,
             })
@@ -334,6 +338,16 @@ mod linux {
         /// A failed move to the isolation chosen before is forgotten.
         pub async fn set_isolation(&self, isolation: Isolation) -> Result<(), OpError> {
             let forgotten = self.placement.choose(isolation);
+            match isolation {
+                Isolation::Gvisor if self.placement.awaits_download(Isolation::Gvisor) => self.download_gvisor(),
+                Isolation::Gvisor => {}
+                Isolation::Simple => {
+                    if let Some(download) = self.downloading.take() {
+                        download.cancel();
+                        self.placement.set_download(Isolation::Gvisor, Download::Waiting);
+                    }
+                }
+            }
             for device in forgotten {
                 // The server stops listening at shutdown, when no one is left
                 // to tell.
@@ -350,6 +364,54 @@ mod linux {
             });
             self.moving.replace(Some(AbortOnDropHandle::new(moving)));
             Ok(())
+        }
+
+        /// Hears each change of what the manager can do with each isolation.
+        pub fn watch_offers(&self) -> watch::Receiver<Vec<RuntimeOffer>> {
+            self.placement.watch_offers()
+        }
+
+        /// Fetches gVisor's release in the background, then has systemd
+        /// restart the manager, whose next start runs gVisor. Choosing
+        /// Simple Isolation, or the manager's stop, cancels it.
+        fn download_gvisor(&self) {
+            let Some(directory) = self.core.config.gvisor_directory() else {
+                return;
+            };
+            let cancel = self.placement.stopping_child();
+            if let Some(earlier) = self.downloading.replace(Some(cancel.clone())) {
+                earlier.cancel();
+            }
+            let placement = self.placement.clone();
+            placement.set_download(Isolation::Gvisor, Download::Downloading { received: 0, total: None });
+            tokio::task::spawn_local(async move {
+                // A change of what a page shows each time the download takes a
+                // piece would flood the connections.
+                const EVERY: std::time::Duration = std::time::Duration::from_millis(500);
+                let mut told = std::time::Instant::now();
+                let fetched = crate::gvisor_release::fetch(&directory, &cancel, |received, total| {
+                    if told.elapsed() >= EVERY {
+                        told = std::time::Instant::now();
+                        placement.set_download(Isolation::Gvisor, Download::Downloading { received, total });
+                    }
+                })
+                .await;
+                // What cancelled it says what the download is now.
+                if cancel.is_cancelled() {
+                    return;
+                }
+                if let Err(error) = fetched {
+                    tracing::warn!(event = "gvisor_release.fetch_failed", %error, "gVisor's release could not be downloaded");
+                    placement.set_download(Isolation::Gvisor, Download::Failed { message: error.to_string() });
+                    return;
+                }
+                tracing::info!(event = "gvisor_release.fetched", directory = %directory.display(), "gVisor's release is downloaded; the manager restarts to run it");
+                placement.set_download(Isolation::Gvisor, Download::Starting);
+                if let Err(reason) = crate::handover::restart().await {
+                    tracing::warn!(event = "gvisor_release.restart_failed", reason, "the manager could not restart to run gVisor");
+                    placement.set_offer(Isolation::Gvisor, Offer::Unavailable(Unavailable { reason }));
+                }
+            });
         }
 
         /// Asks each device whose storage is on the other runtime than the
@@ -576,7 +638,7 @@ mod linux {
         }
 
         fn runtimes(&self) -> Vec<RuntimeOffer> {
-            self.placement.offers().to_vec()
+            self.placement.offers()
         }
 
         async fn handle(&self, call: MachineCall) -> Result<serde_json::Value, OpError> {

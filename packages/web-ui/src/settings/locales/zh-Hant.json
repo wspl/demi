@@ -63,7 +63,8 @@
       "of": "{done}/{count}",
       "toUpdate": "{count} 個需要更新",
       "installed": "已安裝",
-      "noChanges": "無需變更"
+      "noChanges": "無需變更",
+      "unused": "此伺服器未使用"
     }
   },
   "account": {
@@ -570,6 +571,15 @@
     "isolationDescriptions": {
       "simple": "每個雲端都有自己的系統和檔案。它能防止誤操作，但擋不住試圖逃脫的程式。",
       "gvisor": "每個雲端都在 gVisor 沙盒中執行，也能擋住試圖逃脫的程式。"
+    },
+    "download": {
+      "hint": "首次使用時會下載 gVisor，約 160 MB",
+      "downloading": "正在下載 gVisor…",
+      "received": "正在下載 gVisor… {bytes}",
+      "starting": "正在啟動 gVisor…",
+      "failed": "無法下載 gVisor：{message}",
+      "tryAgain": "再試一次",
+      "moving": "gVisor 下載完成後，已停止的雲端就移轉過去，執行中的雲端則在停止後移轉。檔案和已安裝的套件會一起移轉。"
     },
     "unavailable": "這台伺服器無法使用：{reason}",
     "moving": "已停止的雲端現在就移轉到「{isolation}」，執行中的雲端則在停止後移轉。檔案和已安裝的套件會一起移轉。",

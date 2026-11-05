@@ -303,6 +303,16 @@ impl Shard {
                     cloud_storage_limits: list.cloud_storage_limits,
                 }
             }
+            Part::CloudIsolation => {
+                // Only the master chooses the isolation.
+                if user.role != Role::Master {
+                    return Ok(None);
+                }
+                SyncEvent::CloudIsolation {
+                    isolation: demi_backend_cloud::isolation::setting(control, &self.services().cloud).await?,
+                    etag: String::new(),
+                }
+            }
             Part::ServerUpgrade => {
                 // A user's channel never carries the server's updates.
                 if user.role == Role::User {

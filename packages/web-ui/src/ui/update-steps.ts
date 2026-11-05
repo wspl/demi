@@ -22,7 +22,7 @@ export type StepState =
   | { state: 'waiting' }
   | { state: 'running', started: string, progress?: StepProgress | null }
   | { state: 'done', tookMs: number, summary: StepSummary }
-  | { state: 'skipped', why: 'installed' | 'noChanges' }
+  | { state: 'skipped', why: 'installed' | 'noChanges' | 'unused' }
   | { state: 'failed', reason: string }
 
 /** One line of a step list, worded by its surface. */

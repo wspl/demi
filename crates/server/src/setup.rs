@@ -212,21 +212,28 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
 
     step(&format!("Fetching Demi {version}"));
     runtime.block_on(fetch::fetch(layout, &source, &version, &CancellationToken::new(), &mut |_| {}))?;
-    step("Fetching the gVisor runtime it pins");
-    gvisor::of_release(layout, &version)?;
 
     step("Making the Cloud store");
     crate::store::make(&options.cloud_data)?;
     step("Checking that this machine can run Cloud");
     let release = layout.release(&version);
-    let checked = settings
-        .command(Path::new("unshare"))
-        .args(["--mount", "--propagation", "private"])
-        .arg(release.join("bin/demi-machine-manager"))
-        .arg("--check-host")
-        .status()?;
-    if !checked.success() {
-        return Err("this machine cannot run Cloud, so Demi cannot be set up on it (the check above names why)".into());
+    let check = || {
+        settings
+            .command(Path::new("unshare"))
+            .args(["--mount", "--propagation", "private"])
+            .arg(release.join("bin/demi-machine-manager"))
+            .arg("--check-host")
+            .status()
+    };
+    // A new server runs Simple Isolation, and fetches gVisor's release, about
+    // 160 MB, when the master first chooses gVisor; a machine that runs no
+    // Simple Isolation needs it now.
+    if !check()?.success() {
+        step("Fetching the gVisor runtime it pins");
+        gvisor::of_release(layout, &version)?;
+        if !check()?.success() {
+            return Err("this machine cannot run Cloud, so Demi cannot be set up on it (the check above names why)".into());
+        }
     }
 
     step("Writing the installation");

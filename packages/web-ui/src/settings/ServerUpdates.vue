@@ -149,7 +149,7 @@ function stateDetail(state: StepState): string {
       return took
     }
     case 'skipped':
-      return t(state.why === 'installed' ? 'updates.detail.installed' : 'updates.detail.noChanges')
+      return t(`updates.detail.${state.why}`)
     case 'failed':
       return state.reason
   }

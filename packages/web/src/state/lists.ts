@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import {
+  cloudIsolationSchema,
   credentialDtoSchema,
   credentialListSchema,
   instructionsAnswerSchema,
@@ -30,6 +31,7 @@ export const heldListsShape = {
   sessions: z.array(sessionDtoSchema).optional(),
   users: usersSchema.optional(),
   portForwards: z.array(portForwardDtoSchema).optional(),
+  cloudIsolation: cloudIsolationSchema.optional(),
 }
 
 /** The state a read of `GET /state` gives: the whole product state, with the lists the page holds. */
@@ -43,7 +45,15 @@ export type ReadState = z.infer<typeof readStateSchema>
 export type PageState = Partial<ReadState>
 
 /** A list the page holds only while a view shows it, named as the message that carries it. */
-export type ListPart = 'subagents' | 'instructions' | 'credentials' | 'passkeys' | 'sessions' | 'users' | 'port_forwards'
+export type ListPart =
+  | 'subagents'
+  | 'instructions'
+  | 'credentials'
+  | 'passkeys'
+  | 'sessions'
+  | 'users'
+  | 'port_forwards'
+  | 'cloud_isolation'
 
 /** `event` without the entity tag a list's message carries, which an answer of a write has none of. */
 export type Untagged<Event> = Event extends { etag: string } ? Omit<Event, 'etag'> & { etag?: string } : Event
@@ -97,6 +107,11 @@ export const LIST_ROUTES = {
     route: '/port-forwards',
     schema: portForwardListSchema,
     event: ({ forwards }) => ({ type: 'port_forwards', portForwards: forwards }),
+  }),
+  cloud_isolation: route({
+    route: '/settings/cloud-isolation',
+    schema: cloudIsolationSchema,
+    event: (isolation) => ({ type: 'cloud_isolation', isolation }),
   }),
 }
 

@@ -94,6 +94,13 @@ pub struct Tools {
 #[error("Cloud manager needs: {}", .0.join(", "))]
 pub struct MissingTools(Vec<&'static str>);
 
+impl MissingTools {
+    /// Whether `tool` is the one missing.
+    pub fn only(&self, tool: Tool) -> bool {
+        self.0 == [tool.name()]
+    }
+}
+
 /// A program that could not run or did not succeed. The message carries the
 /// end of its output, which names what went wrong.
 #[derive(Debug, thiserror::Error)]

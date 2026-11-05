@@ -271,9 +271,11 @@ runners', which no step waits for:
 2. **Configuration.** The new backend and the new machine manager each check
    `/opt/demi/config/demi.env` with `--check-config`, which validates every
    setting as a start would and exits. A failure names the variable.
-3. **gVisor.** `demi-server` fetches the `runsc` version that the new manager
-   pins into `/opt/demi/gvisor/<version>/`, unless it is there
-   (`crates/server/src/gvisor.rs`).
+3. **gVisor.** On a server that has downloaded gVisor before, `demi-server`
+   has the new manager fetch the version it pins into
+   `/opt/demi/gvisor/<version>/`, unless it is there
+   (`crates/server/src/gvisor.rs`). A server that never downloaded gVisor
+   skips this step: its Clouds run on Simple Isolation.
 4. **Cloud image.** The new manager imports the release's `image/` with
    `demi-machine-manager --import`, beside the running manager. Bases are
    immutable directories named by their `baseVersion` and published

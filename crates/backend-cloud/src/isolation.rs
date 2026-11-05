@@ -5,8 +5,8 @@
 //! each connection as well as after each change.
 
 use demi_backend_database::StorageError;
-use demi_machine_manager_protocol::{DeviceId, Isolation as MachineIsolation, SetIsolationParams};
-use demi_web_api_protocol::settings::{CloudIsolation, Isolation, IsolationRuntime};
+use demi_machine_manager_protocol::{Download, DeviceId, Isolation as MachineIsolation, Offer, SetIsolationParams};
+use demi_web_api_protocol::settings::{CloudIsolation, Isolation, IsolationDownload, IsolationRuntime};
 
 use crate::client::MachinesError;
 use crate::{CloudServices, ControlService};
@@ -43,12 +43,17 @@ pub async fn setting(control: &ControlService, cloud: &CloudServices) -> Result<
         offers
             .into_iter()
             .map(|offer| {
-                let enforces = offer.offer.as_ref().ok();
+                let (enforces, unavailable, download) = match offer.offer {
+                    Offer::Runs(enforces) => (Some(enforces), None, None),
+                    Offer::AfterDownload { enforces, download } => (Some(enforces), None, Some(web_download(download))),
+                    Offer::Unavailable(unavailable) => (None, Some(unavailable.reason), None),
+                };
                 IsolationRuntime {
                     isolation: web_isolation(offer.isolation),
-                    unavailable: offer.offer.as_ref().err().map(|unavailable| unavailable.reason.clone()),
+                    unavailable,
                     private_network: enforces.is_some_and(|enforces| enforces.private_network),
                     storage_limits: enforces.is_some_and(|enforces| enforces.storage_limits),
+                    download,
                 }
             })
             .collect()
@@ -57,6 +62,30 @@ pub async fn setting(control: &ControlService, cloud: &CloudServices) -> Result<
         isolation: control.isolation().await?,
         runtimes,
     })
+}
+
+/// Why the manager can't run `isolation`, in its words; none when it runs
+/// it, runs it once it has downloaded it, or has not said.
+pub fn unavailable(cloud: &CloudServices, isolation: Isolation) -> Option<String> {
+    let isolation = machine_isolation(isolation);
+    cloud
+        .machines
+        .runtimes()?
+        .into_iter()
+        .find(|offer| offer.isolation == isolation)
+        .and_then(|offer| match offer.offer {
+            Offer::Unavailable(unavailable) => Some(unavailable.reason),
+            Offer::Runs(_) | Offer::AfterDownload { .. } => None,
+        })
+}
+
+fn web_download(download: Download) -> IsolationDownload {
+    match download {
+        Download::Waiting => IsolationDownload::Waiting,
+        Download::Downloading { received, total } => IsolationDownload::Downloading { received, total },
+        Download::Starting => IsolationDownload::Starting,
+        Download::Failed { message } => IsolationDownload::Failed { message },
+    }
 }
 
 /// Whether the manager's firewall keeps the Cloud `device` from the private

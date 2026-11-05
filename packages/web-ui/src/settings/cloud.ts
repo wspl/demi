@@ -14,7 +14,19 @@ export interface IsolationRuntime {
   unavailable: string | null
   /** Whether Private Network Access decides what its Clouds reach. */
   privateNetwork: boolean
+  /** The download of its release, which the server makes when the master chooses it; null when it runs without one. */
+  download: IsolationDownload | null
 }
+
+/** Where the server is with the download of an isolation's release. */
+export type IsolationDownload =
+  | { state: 'waiting' }
+  /** `received` bytes of `total`, which the source may not say. */
+  | { state: 'downloading', received: number, total: number | null }
+  /** Downloaded; the server's machine manager restarts to run it. */
+  | { state: 'starting' }
+  /** The last download failed; choosing the isolation again retries it. */
+  | { state: 'failed', message: string }
 
 /**
  * Settings › Cloud's isolation: the one chosen, and what the server can do

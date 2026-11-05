@@ -211,6 +211,7 @@ fn list_of(part: &Part) -> Option<SyncFollowed> {
         Part::Passkeys => SyncFollowed::Passkeys,
         Part::Sessions => SyncFollowed::Sessions,
         Part::Users => SyncFollowed::Users,
+        Part::CloudIsolation => SyncFollowed::CloudIsolation,
         _ => return None,
     })
 }
@@ -226,6 +227,7 @@ fn part_of(list: SyncFollowed) -> Option<Part> {
         SyncFollowed::Passkeys => Part::Passkeys,
         SyncFollowed::Sessions => Part::Sessions,
         SyncFollowed::Users => Part::Users,
+        SyncFollowed::CloudIsolation => Part::CloudIsolation,
     })
 }
 
@@ -472,6 +474,7 @@ fn part_name(part: &Part) -> (&'static str, Option<&ConversationId>, Option<&str
         Part::Passkeys => ("passkeys", None, None),
         Part::Sessions => ("sessions", None, None),
         Part::Users => ("users", None, None),
+        Part::CloudIsolation => ("cloud_isolation", None, None),
         Part::ServerUpgrade => ("server_upgrade", None, None),
         Part::Update => ("update", None, None),
         Part::Plugins => ("plugins", None, None),

@@ -63,7 +63,8 @@
       "of": "{done} von {count}",
       "toUpdate": "{count} zu aktualisieren | {count} zu aktualisieren",
       "installed": "Bereits installiert",
-      "noChanges": "Keine Änderungen nötig"
+      "noChanges": "Keine Änderungen nötig",
+      "unused": "Auf diesem Server nicht verwendet"
     }
   },
   "account": {
@@ -570,6 +571,15 @@
     "isolationDescriptions": {
       "simple": "Jede Cloud hat ein eigenes System und eigene Dateien. Das schützt vor Fehlern, aber nicht vor einem Programm, das auszubrechen versucht.",
       "gvisor": "Jede Cloud läuft in einer gVisor-Sandbox, die auch ein Programm stoppt, das auszubrechen versucht."
+    },
+    "download": {
+      "hint": "Lädt gVisor beim ersten Mal herunter, etwa 160 MB",
+      "downloading": "gVisor wird geladen …",
+      "received": "gVisor wird geladen … {bytes}",
+      "starting": "gVisor wird gestartet …",
+      "failed": "gVisor konnte nicht geladen werden: {message}",
+      "tryAgain": "Erneut versuchen",
+      "moving": "Gestoppte Clouds wechseln zu gVisor, sobald es geladen ist, laufende, sobald sie stoppen. Ihre Dateien und installierten Pakete wechseln mit."
     },
     "unavailable": "Dieser Server kann sie nicht ausführen: {reason}",
     "moving": "Gestoppte Clouds wechseln jetzt zu {isolation}, laufende, sobald sie stoppen. Ihre Dateien und installierten Pakete wechseln mit.",

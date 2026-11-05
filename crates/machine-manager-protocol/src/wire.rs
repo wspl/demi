@@ -282,6 +282,9 @@ pub enum ManagerEvent {
         isolation: Isolation,
         move_status: Option<MoveStatus>,
     },
+    /// What the manager can do with each isolation changed since its hello,
+    /// as a download of a runtime's release changes it.
+    Runtimes { runtimes: Vec<RuntimeOffer> },
 }
 
 /// A call's parameters, and the result its `ok` reply carries.

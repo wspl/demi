@@ -65,23 +65,17 @@ pub(super) async fn set_cloud_isolation(
     if user.role != Role::Master {
         return Err(ApiError::forbidden("Only the master changes how Clouds are isolated"));
     }
-    let offer = services
-        .cloud
-        .machines
-        .runtimes()
-        .and_then(|offers| offers.into_iter().find(|offer| offer.isolation == isolation::machine_isolation(request.isolation)));
-    if let Some(Err(unavailable)) = offer.map(|offer| offer.offer) {
-        return Err(ApiError::invalid_body(format!("This server can't run it: {}", unavailable.reason)));
+    if let Some(reason) = isolation::unavailable(&services.cloud, request.isolation) {
+        return Err(ApiError::invalid_body(format!("This server can't run it: {reason}")));
     }
     match isolation::apply(&services.cloud, request.isolation).await {
         Ok(()) => {
             services.control.set_isolation(request.isolation).await?;
-            // Whether Cloud Storage applies follows the isolation.
-            services.sync.mark_everyone(&Part::Users);
+            services.isolation_changed();
         }
         Err(error @ MachinesError::Unavailable { .. }) => {
             services.control.set_isolation(request.isolation).await?;
-            services.sync.mark_everyone(&Part::Users);
+            services.isolation_changed();
             return Err(ApiError::new(
                 StatusCode::SERVICE_UNAVAILABLE,
                 ErrorCode::CloudUnavailable,

@@ -63,7 +63,8 @@
       "of": "{done} sur {count}",
       "toUpdate": "{count} à mettre à jour | {count} à mettre à jour",
       "installed": "Déjà installé",
-      "noChanges": "Aucune modification nécessaire"
+      "noChanges": "Aucune modification nécessaire",
+      "unused": "Non utilisé sur ce serveur"
     }
   },
   "account": {
@@ -570,6 +571,15 @@
     "isolationDescriptions": {
       "simple": "Chaque cloud a son propre système et ses propres fichiers. Cela protège contre les erreurs, pas contre un programme qui tente de s’échapper.",
       "gvisor": "Chaque cloud s’exécute dans un bac à sable gVisor, qui arrête aussi un programme qui tente de s’échapper."
+    },
+    "download": {
+      "hint": "Télécharge gVisor, environ 160 Mo, la première fois",
+      "downloading": "Téléchargement de gVisor…",
+      "received": "Téléchargement de gVisor… {bytes}",
+      "starting": "Démarrage de gVisor…",
+      "failed": "Impossible de télécharger gVisor : {message}",
+      "tryAgain": "Réessayer",
+      "moving": "Les clouds arrêtés passent à gVisor dès qu’il est téléchargé, et ceux en cours d’exécution dès qu’ils s’arrêtent. Leurs fichiers et paquets installés les suivent."
     },
     "unavailable": "Ce serveur ne peut pas l’utiliser : {reason}",
     "moving": "Les clouds arrêtés passent à {isolation} maintenant, et ceux en cours d’exécution dès qu’ils s’arrêtent. Leurs fichiers et paquets installés les suivent.",

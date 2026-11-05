@@ -2617,6 +2617,7 @@ dependencies = [
 name = "demi-machine-manager"
 version = "0.1.65"
 dependencies = [
+ "bzip2",
  "clap",
  "demi-machine-manager-protocol",
  "demi-runner-protocol",
@@ -3457,7 +3458,6 @@ dependencies = [
 name = "demi-server"
 version = "0.1.65"
 dependencies = [
- "bzip2",
  "clap",
  "demi-backend-database",
  "demi-machine-manager-protocol",

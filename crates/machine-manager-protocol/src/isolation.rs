@@ -28,8 +28,44 @@ impl Isolation {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeOffer {
     pub isolation: Isolation,
-    /// What the runtime enforces, or why this manager cannot run it.
-    pub offer: Result<Enforces, Unavailable>,
+    pub offer: Offer,
+}
+
+impl RuntimeOffer {
+    /// What the runtime enforces when the manager runs it now.
+    pub fn runs(&self) -> Option<Enforces> {
+        match &self.offer {
+            Offer::Runs(enforces) => Some(*enforces),
+            Offer::AfterDownload { .. } | Offer::Unavailable(_) => None,
+        }
+    }
+}
+
+/// Whether a manager runs a runtime.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum Offer {
+    /// The manager runs it, enforcing this.
+    Runs(Enforces),
+    /// The manager runs it once it has downloaded its release, which it does
+    /// when the master chooses it: gVisor on a server that has never run it.
+    AfterDownload { enforces: Enforces, download: Download },
+    /// The manager cannot run it.
+    Unavailable(Unavailable),
+}
+
+/// Where a manager is with the download of a runtime's release.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum Download {
+    /// Nothing is downloaded until the master chooses the runtime.
+    Waiting,
+    /// `received` bytes of `total`, which the source may not say.
+    Downloading { received: u64, total: Option<u64> },
+    /// The release is in place, and the manager restarts to run it.
+    Starting,
+    /// The last download failed; choosing the runtime again retries it.
+    Failed { message: String },
 }
 
 /// What a runtime enforces of the settings the backend shows: the backend

@@ -62,6 +62,17 @@ struct Cli {
     /// running one.
     #[arg(long, conflicts_with_all = ["recover", "recover_namespace"])]
     import: bool,
+    /// Fetch the gVisor release this manager pins into DIRECTORY, which
+    /// holds a directory for each version, print the version's directory
+    /// and exit, as `demi-server runtime` does for a setup or an upgrade;
+    /// it reads no other setting.
+    #[arg(
+        long,
+        value_name = "DIRECTORY",
+        value_parser = absolute,
+        conflicts_with_all = ["recover", "recover_namespace", "check_config", "check_host", "import"]
+    )]
+    fetch_gvisor: Option<PathBuf>,
     /// The server release root, whose image/ holds the Cloud image [default:
     /// the directory above the one that holds this executable].
     #[arg(long, env = "DEMI_RELEASE", value_name = "DEMI_RELEASE", value_parser = absolute)]
@@ -109,9 +120,10 @@ struct Cli {
         long,
         env = "DEMI_BACKEND_PUBLIC_URL",
         value_name = "DEMI_BACKEND_PUBLIC_URL",
-        value_parser = backend_url
+        value_parser = backend_url,
+        required_unless_present = "fetch_gvisor"
     )]
-    backend_url: url::Url,
+    backend_url: Option<url::Url>,
     /// Whether sandboxes run under cgroup v2 CPU, memory and PID limits.
     #[arg(
         long,
@@ -157,7 +169,18 @@ enum Switch {
     Off,
 }
 
-/// What the manager was started to do.
+/// What the process was started to do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Invocation {
+    /// Manage Clouds, or one step around that, with this configuration.
+    Manage(Config),
+    /// Fetch the pinned gVisor release into this directory, then exit; a
+    /// download needs none of the configuration, which a setup has not
+    /// written yet when it fetches.
+    FetchGvisor(PathBuf),
+}
+
+/// What the manager was started to do with its configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     /// Recover, then serve the backend until SIGTERM (the service).
@@ -275,13 +298,13 @@ pub enum ConfigError {
     LimitsOff(&'static str),
 }
 
-impl Config {
-    /// Reads the configuration from the process's arguments and environment.
+impl Invocation {
+    /// Reads the invocation from the process's arguments and environment.
     pub fn from_env() -> Result<Self, ConfigError> {
         Self::parse(std::env::args_os(), std::env::vars_os())
     }
 
-    /// Reads the configuration from `args`, with the variables in `vars`.
+    /// Reads the invocation from `args`, with the variables in `vars`.
     /// clap reads the process environment itself, so `vars` must be it; tests
     /// pass the same values as arguments.
     pub fn parse(
@@ -296,6 +319,9 @@ impl Config {
         }
         let matches = command.try_get_matches_from(args)?;
         let cli = Cli::from_arg_matches(&matches)?;
+        if let Some(directory) = cli.fetch_gvisor {
+            return Ok(Self::FetchGvisor(directory));
+        }
         let capacity = 1_u64 << (32 - u32::from(cli.subnet.prefix_len()));
         if u64::from(cli.slots) * 4 > capacity {
             return Err(ConfigError::SlotsExceedSubnet);
@@ -341,22 +367,24 @@ impl Config {
                 None
             }
         };
-        Ok(Self {
+        Ok(Self::Manage(Config {
             mode,
             socket: cli.socket,
             data: cli.data,
             runsc,
             proot: cli.proot.unwrap_or_else(|| release.join("bin").join("proot")),
             image: release.join("image"),
-            backend_url: cli.backend_url,
+            backend_url: cli.backend_url.expect("clap requires the backend's URL without --fetch-gvisor"),
             runner_socket: cli.runner_socket,
             limits,
             subnet: cli.subnet,
             slots: cli.slots,
             dns,
-        })
+        }))
     }
+}
 
+impl Config {
     /// The devices' working pairs: `<data>/working`.
     pub fn working(&self) -> PathBuf {
         self.data.join("working")
@@ -370,6 +398,18 @@ impl Config {
     /// The runtime directory: `/run/demi-machine-manager`.
     pub fn runtime(&self) -> &Path {
         Path::new(RUNTIME_DIRECTORY)
+    }
+
+    /// The directory the manager fetches gVisor's release into, which holds
+    /// a directory for each version: none when the configuration names
+    /// another runsc than the pinned version's there, which whoever named
+    /// it provides.
+    pub fn gvisor_directory(&self) -> Option<PathBuf> {
+        let pinned = RuntimeRelease::pinned().directory();
+        match self.runsc == pinned.join("runsc") {
+            true => pinned.parent().map(Path::to_path_buf),
+            false => None,
+        }
     }
 }
 
