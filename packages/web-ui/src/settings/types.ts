@@ -423,6 +423,13 @@ export interface SettingsProviderEntry {
    */
   throughDevice?: string | null
   /**
+   * A subscription's: whether its requests can go out through a device, which
+   * its page then offers as Connect Through below its accounts. False for one
+   * whose requests its CLI makes on another machine, such as Claude Code's.
+   * Absent for an API key, whose page offers it with its endpoint.
+   */
+  connectsThrough?: boolean
+  /**
    * The headers every request of an API key's entry carries. A compatible
    * API's are its user's, in their order, and `{conversation}` in a value is
    * the conversation's ID; a vendor's are each one its vendor documents, with

@@ -751,6 +751,7 @@
       "throughServer": "Server",
       "throughServerDescription": "Requests go out from the server.",
       "throughDevice": "Requests go out from {device}, which reaches the endpoint on its own network.",
+      "throughDeviceSubscription": "Requests go out from {device}.",
       "throughOffline": "{device} is offline: requests fail until it connects.",
       "throughRemoved": "Removed Device",
       "throughRemovedDescription": "The device was removed: requests fail until you choose another."

@@ -102,6 +102,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     // The page lists the entries of the kinds the user manages: on a shared
     // instance another's API keys, or subscriptions, are only inferred with.
     const manages = product.snapshot?.manages
+    const families = product.vendors?.subscriptions ?? []
     const configured = resources.providers.filter((provider) =>
       provider.kind === 'subscription' ? manages?.subscriptions !== false : manages?.apiKeys !== false,
     ).map((provider) => ({
@@ -113,14 +114,17 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     // The signed-in subscriptions in the user's order, which generated
     // media follow, then each one nobody signed in to, in the vendors' order,
     // as what could be added follows what was.
-    const placeholders = (manages?.subscriptions !== false ? product.vendors?.subscriptions ?? [] : []).flatMap((subscription) =>
+    const placeholders = (manages?.subscriptions !== false ? families : []).flatMap((subscription) =>
       configured.some(
         (provider) =>
           provider.kind === 'subscription' &&
           provider.providerType === subscription.providerType,
       )
         ? []
-        : [emptyProvider(subscription.providerType, subscription.name, 'subscription')],
+        : [{
+            ...emptyProvider(subscription.providerType, subscription.name, 'subscription'),
+            connectsThrough: subscription.connectsThrough,
+          }],
     )
     const subscriptions = configured.filter((provider) => provider.kind === 'subscription')
     const keys = configured.filter((provider) => provider.kind !== 'subscription')
@@ -252,11 +256,12 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   /**
    * Adding asks only the kind and creates the entry at once: it joins the list
    * once the channel brings it, selected, and its page shows what it still
-   * lacks (`crates/backend-user-shard/src/provider_settings.rs`).
+   * lacks (`crates/backend-user-shard/src/provider_settings.rs`). `holder` is
+   * the provider the operation holds: `new` for Add, a placeholder for its own.
    */
-  function create(body: CreateProvider): void {
+  function create(body: CreateProvider, holder = 'new'): void {
     const current = lifetime
-    void run('new', { kind: 'saving' }, async (signal) => {
+    void run(holder, { kind: 'saving' }, async (signal) => {
       const response = await apiRequest('/providers', {
         method: 'POST',
         signal,
@@ -346,6 +351,15 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   ): void {
     if (changes.enabled !== undefined) {
       preferences.showProvider(provider.id, changes.enabled)
+      return
+    }
+    // A subscription nobody signed in to has no entry yet, and goes by its
+    // family's id: choosing its device creates it, holding its fields
+    // meanwhile, and its sign-ins then add to it.
+    if (provider.configured === false && provider.kind === 'subscription') {
+      if (changes.throughDevice) {
+        create({ source: 'subscription', providerType: provider.id, throughDevice: changes.throughDevice }, provider.id)
+      }
       return
     }
     // A test or a refresh only reads; any other operation of the provider

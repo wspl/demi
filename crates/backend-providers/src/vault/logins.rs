@@ -793,7 +793,7 @@ impl LoginFlows {
             } => {
                 let created = self
                     .vault
-                    .create_subscription(owner, family.clone(), label, &staged)
+                    .create_subscription(owner, family.clone(), label, None, &staged)
                     .await;
                 match created {
                     Ok(Some(entry)) => entry.id,

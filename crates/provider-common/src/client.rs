@@ -158,6 +158,13 @@ impl ProviderHttp {
         }
     }
 
+    /// Whether its requests go out from a device, which carries an HTTP
+    /// request and its answer and nothing else: a caller that would open a
+    /// WebSocket sends HTTP instead.
+    pub fn goes_through_device(&self) -> bool {
+        self.through.is_some()
+    }
+
     /// The same way, to the network or through the device, on a client that
     /// follows no redirect, for a caller that follows them itself, choosing each hop's
     /// headers.

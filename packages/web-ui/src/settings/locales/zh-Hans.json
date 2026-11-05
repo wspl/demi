@@ -751,6 +751,7 @@
       "throughServer": "服务器",
       "throughServerDescription": "请求从服务器发出。",
       "throughDevice": "请求从 {device} 发出，端点填它能访问的地址。",
+      "throughDeviceSubscription": "请求从 {device} 发出。",
       "throughOffline": "{device} 离线：连上之前请求会失败。",
       "throughRemoved": "已移除的设备",
       "throughRemovedDescription": "该设备已被移除：选择其他设备之前请求会失败。"

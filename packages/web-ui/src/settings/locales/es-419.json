@@ -751,6 +751,7 @@
       "throughServer": "Servidor",
       "throughServerDescription": "Las solicitudes salen del servidor.",
       "throughDevice": "Las solicitudes salen de {device}, que llega al endpoint en su propia red.",
+      "throughDeviceSubscription": "Las solicitudes salen de {device}.",
       "throughOffline": "{device} está sin conexión: las solicitudes fallan hasta que se conecte.",
       "throughRemoved": "Dispositivo eliminado",
       "throughRemovedDescription": "Se eliminó el dispositivo: las solicitudes fallan hasta que elijas otro."

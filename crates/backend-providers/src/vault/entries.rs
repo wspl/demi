@@ -440,6 +440,7 @@ impl Vault {
             config: Some(sealed),
             active: None,
             cache_ttl,
+            through_device: None,
         };
         let row = self.0.control.insert_provider(provider, Vec::new()).await?;
         // An API-key entry is under no uniqueness rule.
@@ -448,9 +449,10 @@ impl Vault {
         self.decode(row)
     }
 
-    /// Publishes a completed login's entry with the accounts of its staged
-    /// pool, in one transaction
-    /// (`crates/backend-providers/src/vault/logins.rs`).
+    /// Stores a new subscription entry that connects through `through_device`
+    /// with the accounts of `staged`, in one transaction: a completed login's
+    /// (`crates/backend-providers/src/vault/logins.rs`), or an empty pool's
+    /// for an entry that Settings creates before any sign-in.
     ///
     /// The transaction stores the entry, its accounts, and the staged active
     /// account, or its first. The result is `None` when the owner already holds
@@ -460,6 +462,7 @@ impl Vault {
         owner: UserId,
         family: String,
         label: String,
+        through_device: Option<DeviceId>,
         staged: &MemoryCredentialPool,
     ) -> Result<Option<ProviderEntry>, StorageError> {
         let id = new_id();
@@ -499,6 +502,7 @@ impl Vault {
             config: None,
             active,
             cache_ttl: None,
+            through_device,
         };
         let row = self.0.control.insert_provider(provider, accounts).await?;
         if let Some(row) = &row {
@@ -541,7 +545,7 @@ impl Vault {
             .expect("a pool in memory stores");
         staged.set_active(&id).await.expect("a pool in memory selects");
         if self
-            .create_subscription(owner.clone(), seeded.family.clone(), seeded.label.clone(), &staged)
+            .create_subscription(owner.clone(), seeded.family.clone(), seeded.label.clone(), None, &staged)
             .await?
             .is_some()
         {

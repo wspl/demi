@@ -63,6 +63,11 @@ impl ProviderFamily for RelayFamily {
         true
     }
 
+    /// Its runs go over a socket to the lender, which no device carries.
+    fn connects_through(&self) -> bool {
+        false
+    }
+
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
         let FamilyCredential::ApiKey(settings) = args.credential else {
             return Err(FamilyError::WrongCredential);
@@ -515,6 +520,11 @@ impl ProviderFamily for ClaudeCodeFamily {
 
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
         Ok(Arc::new(self.build(args)?))
+    }
+
+    /// The CLI makes the requests, on the Claude Code machine.
+    fn connects_through(&self) -> bool {
+        false
     }
 
     fn login_accounts(

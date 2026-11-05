@@ -751,6 +751,7 @@
       "throughServer": "Server",
       "throughServerDescription": "Anfragen gehen vom Server aus.",
       "throughDevice": "Anfragen gehen von {device} aus, das den Endpunkt in seinem eigenen Netzwerk erreicht.",
+      "throughDeviceSubscription": "Anfragen gehen von {device} aus.",
       "throughOffline": "{device} ist offline: Anfragen schlagen fehl, bis es sich verbindet.",
       "throughRemoved": "Entferntes Gerät",
       "throughRemovedDescription": "Das Gerät wurde entfernt: Anfragen schlagen fehl, bis du ein anderes wählst."

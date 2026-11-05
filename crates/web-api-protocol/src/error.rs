@@ -121,8 +121,8 @@ pub enum ErrorCode {
     UnknownProviderType,
     /// models.dev lists no vendor of that id that a family speaks to.
     UnknownVendor,
-    /// A subscription family is created by its login, and its entry takes
-    /// only a new label.
+    /// A subscription family's entry is created as a subscription, by its
+    /// login or before it, and takes no key, endpoint or model list.
     SubscriptionOnly,
     /// The change does not fit the kind of API-key entry: a vendor entry's
     /// protocol is its vendor's and is never set.

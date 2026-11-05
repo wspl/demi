@@ -1711,7 +1711,7 @@ impl ShownEntry {
             .field("Endpoint", entry.base_url.as_ref().map(|url| url.url().to_string()))
             .field(
                 "Connect through",
-                api_key.then(|| self.through_name.as_deref().unwrap_or("Server")),
+                entry.connects_through.then(|| self.through_name.as_deref().unwrap_or("Server")),
             )
             .field("Key saved", api_key.then_some(entry.has_api_key));
         if sent > 0 {

@@ -751,6 +751,7 @@
       "throughServer": "Serveur",
       "throughServerDescription": "Les requêtes partent du serveur.",
       "throughDevice": "Les requêtes partent de {device}, qui atteint le point de terminaison sur son propre réseau.",
+      "throughDeviceSubscription": "Les requêtes partent de {device}.",
       "throughOffline": "{device} est hors ligne : les requêtes échouent jusqu’à sa connexion.",
       "throughRemoved": "Appareil supprimé",
       "throughRemovedDescription": "L’appareil a été supprimé : les requêtes échouent jusqu’à ce que vous en choisissiez un autre."

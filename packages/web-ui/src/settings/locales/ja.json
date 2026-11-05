@@ -751,6 +751,7 @@
       "throughServer": "サーバ",
       "throughServerDescription": "リクエストはサーバから送信されます。",
       "throughDevice": "リクエストは {device} から送信され、そのネットワークからエンドポイントにアクセスします。",
+      "throughDeviceSubscription": "リクエストは {device} から送信されます。",
       "throughOffline": "{device} はオフラインです。接続されるまでリクエストは失敗します。",
       "throughRemoved": "削除されたデバイス",
       "throughRemovedDescription": "デバイスは削除されました。別のデバイスを選ぶまでリクエストは失敗します。"

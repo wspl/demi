@@ -751,6 +751,7 @@
       "throughServer": "서버",
       "throughServerDescription": "요청은 서버에서 보냅니다.",
       "throughDevice": "요청은 {device}에서 보내며, 해당 네트워크에서 엔드포인트에 연결합니다.",
+      "throughDeviceSubscription": "요청은 {device}에서 보냅니다.",
       "throughOffline": "{device}이(가) 오프라인입니다. 연결될 때까지 요청이 실패합니다.",
       "throughRemoved": "제거된 기기",
       "throughRemovedDescription": "기기가 제거되었습니다. 다른 기기를 선택할 때까지 요청이 실패합니다."

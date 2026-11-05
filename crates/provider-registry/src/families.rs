@@ -60,6 +60,15 @@ pub trait ProviderFamily: Send + Sync + 'static {
     /// The provider of one entry and account.
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError>;
 
+    /// Whether an entry of the family may connect through one of its owner's
+    /// devices: every family whose requests the backend makes with the
+    /// entry's client (`ProviderRegistry::http_for`), and none whose requests
+    /// go another way, such as a process of its own on another machine or a
+    /// socket to another server.
+    fn connects_through(&self) -> bool {
+        true
+    }
+
     /// The prompt cache lifetimes an API-key entry of the family knows on
     /// `wire`, which it may ask for beside any other; none for a family whose
     /// requests name no lifetime. A subscription's never do: its vendor's
@@ -278,6 +287,13 @@ impl FamilyRegistry {
 
     pub fn get(&self, name: &str) -> Option<&Arc<dyn ProviderFamily>> {
         self.families.get(name)
+    }
+
+    /// Whether an entry of the family `name` may connect through a device
+    /// ([`ProviderFamily::connects_through`]); false for a family not
+    /// registered.
+    pub fn connects_through(&self, name: &str) -> bool {
+        self.get(name).is_some_and(|family| family.connects_through())
     }
 
     /// The registry with `audio` making a compatible entry's speech.
