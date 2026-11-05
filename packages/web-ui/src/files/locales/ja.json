@@ -225,6 +225,7 @@
     "seek": "{name} の再生位置",
     "mute": "消音",
     "unmute": "消音を解除",
+    "volume": "音量",
     "speed": "再生速度",
     "enterFullScreen": "フルスクリーンにする",
     "exitFullScreen": "フルスクリーンを解除"

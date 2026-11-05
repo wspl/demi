@@ -225,6 +225,7 @@
     "seek": "Posição em {name}",
     "mute": "Silenciar",
     "unmute": "Ativar som",
+    "volume": "Volume",
     "speed": "Velocidade de reprodução",
     "enterFullScreen": "Entrar em tela cheia",
     "exitFullScreen": "Sair da tela cheia"

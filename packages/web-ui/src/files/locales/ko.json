@@ -225,6 +225,7 @@
     "seek": "{name} 재생 위치",
     "mute": "음소거",
     "unmute": "음소거 해제",
+    "volume": "음량",
     "speed": "재생 속도",
     "enterFullScreen": "전체 화면 시작",
     "exitFullScreen": "전체 화면 종료"

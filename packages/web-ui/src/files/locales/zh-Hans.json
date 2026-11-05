@@ -225,6 +225,7 @@
     "seek": "{name} 的播放位置",
     "mute": "静音",
     "unmute": "取消静音",
+    "volume": "音量",
     "speed": "播放速度",
     "enterFullScreen": "进入全屏幕",
     "exitFullScreen": "退出全屏幕"

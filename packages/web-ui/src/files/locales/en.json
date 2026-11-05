@@ -225,6 +225,7 @@
     "seek": "Position in {name}",
     "mute": "Mute",
     "unmute": "Unmute",
+    "volume": "Volume",
     "speed": "Playback Speed",
     "enterFullScreen": "Enter Full Screen",
     "exitFullScreen": "Exit Full Screen"
