@@ -1,4 +1,4 @@
-# Writes the build version, `0.1.<commit count>`, into the checkout's Cargo.toml
+# Writes the build version, `<series>.<commits>`, into the checkout's Cargo.toml
 # and Cargo.lock, so every program the job builds reports it. The workspace
 # version, the one committed in Cargo.toml, never changes: a build writes its own
 # here, after the Rust cache is restored, and commits nothing.

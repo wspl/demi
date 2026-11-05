@@ -16,8 +16,8 @@
 # - release.yml calls it for a commit it finds no finished build of, with the
 #   commit.
 #
-# The version of a build is `0.1.<commits>`, the number of commits in the
-# commit's history (`.github/actions/version`). It is written into Cargo.toml and
+# The version of a build is its series and the number of commits in the
+# commit's history (`.github/scripts/version.sh`). It is written into Cargo.toml and
 # Cargo.lock of each job's checkout (`.github/actions/stamp-version`), never
 # committed, so the same commit always builds the same version and no commit
 # exists only to change a number.

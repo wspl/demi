@@ -457,10 +457,11 @@ published release. Pages reload into the new web app, the user's paired
 devices replace their runners, and Clouds wake with the new programs, exactly
 as after an upgrade. Nothing is compiled on the developer's machine.
 
-Every commit of the branch has a version of its own: `0.1.` and the number of
-commits in its history, `0.1.4213` for a commit with 4,213 commits behind it.
-The same commit always has the same version, and a later commit a higher one.
-Nothing is committed to deploy, and versions skip numbers between releases.
+Every commit of the branch has a version of its own: the series and the number
+of commits in its history, `0.2.4213` for a commit with 4,213 commits behind
+it (`.github/scripts/version.sh`). The same commit always has the same version,
+and a later commit a higher one. Nothing is committed to deploy, and versions
+skip numbers between releases.
 
 Every push to `main` builds everything a release publishes, for every
 target (`.github/workflows/build.yml`), unless it changes only files no
@@ -476,7 +477,7 @@ not published again:
 ```sh
 git fetch origin main
 commit=$(git rev-parse FETCH_HEAD)
-version=0.1.$(git rev-list --count "$commit")
+version=$(git show "$commit:.github/scripts/version.sh" | bash -s -- "$commit")
 published() {
   [ "$(gh release view "v$version" --json isDraft -q .isDraft 2> /dev/null)" = false ]
 }
@@ -531,6 +532,12 @@ published one and carries it out ([The upgrade](#the-upgrade)): the checks,
 the database copies, the switch and the return on failure are an upgrade's.
 `demi-server rollback` returns to the release before it.
 
+- **Its version.** A Beta that holds a new feature or a change on screen,
+  anything since the Beta before it beyond bug fixes, is a new minor: before
+  it is deployed, a commit moves the series in `.github/scripts/version.sh` to
+  the next minor, such as 0.2 to 0.3, and that commit's Canary is the one
+  published. A Beta of bug fixes alone keeps the series, and its last number,
+  the count of commits, is all that grows.
 - **Publishing it.** To publish a deployed version the user is content with,
   turn its pre-release into the latest release on GitHub with
   `gh release edit "v$version" --prerelease=false --latest --notes-file
