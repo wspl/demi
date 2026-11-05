@@ -32,7 +32,7 @@
 use std::sync::Arc;
 
 use demi_provider_common::{Provider, is_snapshot};
-use demi_shared_types::{ModelCost, ModelSelection, ProviderModel, ProviderModelList, ServiceTier, Timestamp};
+use demi_shared_types::{ModelCost, ModelSelection, ModelWire, ProviderModel, ProviderModelList, ServiceTier, Timestamp};
 use demi_web_api_protocol::providers::{CatalogModel, CatalogProvider, ConfiguredModel, ModelKind};
 use futures_util::future::join_all;
 use sha2::{Digest, Sha256};
@@ -160,10 +160,23 @@ impl ProviderRegistry {
                             && let Some(offered) = provider.offered_models(&http).await
                         {
                             // An alias is offered when the vendor lists a
-                            // snapshot of it, as Anthropic lists dated IDs.
+                            // snapshot of it, as Anthropic lists dated IDs,
+                            // and takes thinking as the first such snapshot
+                            // does: Anthropic lists the newest first, the one
+                            // its alias points to.
                             let offered = offered?;
-                            list.models.retain(|model| {
-                                offered.iter().any(|listed| *listed == model.id || is_snapshot(listed, &model.id))
+                            list.models.retain_mut(|model| {
+                                let mut listed = offered
+                                    .iter()
+                                    .filter(|listed| listed.id == model.id || is_snapshot(&listed.id, &model.id))
+                                    .peekable();
+                                if listed.peek().is_none() {
+                                    return false;
+                                }
+                                if let Some(form) = listed.find_map(|listed| listed.thinking_form) {
+                                    model.thinking_form = form;
+                                }
+                                true
                             });
                         }
                         if let Some((id, digest)) = retiring {
@@ -375,6 +388,22 @@ impl ProviderRegistry {
                 "a retired model was not kept"
             ),
         }
+    }
+}
+
+impl ProviderRegistry {
+    /// How each model of the catalog the cache holds for `entry` wants
+    /// thinking sent and sent back, without reading its source; none without
+    /// a record, such as before the entry's first read.
+    pub(crate) async fn held_wires(&self, entry: &ProviderEntry) -> Vec<(String, ModelWire)> {
+        let held = self.catalogs().held(&entry.id, catalog_key(entry)).await;
+        held.into_iter()
+            .flat_map(|list| list.models)
+            .map(|model| {
+                let wire = model.wire();
+                (model.id, wire)
+            })
+            .collect()
     }
 }
 

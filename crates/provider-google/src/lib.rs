@@ -18,7 +18,7 @@ mod videos;
 use std::sync::Arc;
 
 use demi_provider_common::{
-    Capabilities, InferenceRequest, Provider, ProviderHttp, ProviderRun, ProviderRuntime,
+    Capabilities, InferenceRequest, OfferedModel, Provider, ProviderHttp, ProviderRun, ProviderRuntime,
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, read_http_failure,
     audio::AudioMaker,
     images::ImageMaker,
@@ -145,13 +145,13 @@ impl Provider for GoogleProvider {
 
     /// The models Google lists for the key with `generateContent`, the
     /// method a conversation calls (as `streamGenerateContent`).
-    fn offered_models<'a>(&'a self, http: &'a ProviderHttp) -> BoxFuture<'a, Option<Result<Vec<String>, String>>> {
+    fn offered_models<'a>(&'a self, http: &'a ProviderHttp) -> BoxFuture<'a, Option<Result<Vec<OfferedModel>, String>>> {
         Box::pin(async move {
             let key = self.key.as_ref()?;
             let listed = key.list(http, |_, methods| methods.iter().any(|method| method == "generateContent")).await;
             Some(
                 listed
-                    .map(|models| models.into_iter().map(|model| model.id).collect())
+                    .map(|models| models.into_iter().map(|model| OfferedModel::named(model.id)).collect())
                     .map_err(|failure| format!("Google's model list could not be read: {}", failure.outcome())),
             )
         })

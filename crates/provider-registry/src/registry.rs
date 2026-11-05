@@ -363,15 +363,16 @@ impl ProviderRegistry {
     }
 
     /// How each model of `entry` wants thinking sent and sent back: a
-    /// compatible entry's as its user set them; a vendor's from models.dev,
-    /// whether the entry follows the vendor's list or keeps its own, so a
-    /// model models.dev does not list takes the defaults.
+    /// compatible entry's as its user set them; a vendor's as the entry's
+    /// kept catalog states them, which the vendor's own list corrects
+    /// (`crate::catalog`), and from models.dev for a model it does not hold,
+    /// so a model models.dev does not list either takes the defaults.
     async fn model_wires(&self, entry: &ProviderEntry) -> ModelWires {
         let EntryCredential::ApiKey(config) = &entry.credential else {
             return ModelWires::default();
         };
         match config.vendor_id.as_deref() {
-            Some(vendor_id) => self.vendors.wires(vendor_id).await,
+            Some(vendor_id) => self.vendors.wires(vendor_id).await.with(self.held_wires(entry).await),
             None => ModelWires::new(
                 config
                     .models

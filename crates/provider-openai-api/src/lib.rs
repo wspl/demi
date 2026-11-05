@@ -22,7 +22,7 @@ pub use audio::compatible_audio;
 use std::sync::Arc;
 
 use demi_provider_common::{
-    Capabilities, InferenceRequest, Provider, ProviderHttp, ProviderRun, ProviderRuntime,
+    Capabilities, InferenceRequest, OfferedModel, Provider, ProviderHttp, ProviderRun, ProviderRuntime,
     ModelWires, RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, endpoint_url, read_http_failure,
     audio::AudioMaker,
     images::ImageMaker,
@@ -204,10 +204,11 @@ impl Provider for OpenAiProvider {
         }
     }
 
-    fn offered_models<'a>(&'a self, http: &'a ProviderHttp) -> BoxFuture<'a, Option<Result<Vec<String>, String>>> {
+    fn offered_models<'a>(&'a self, http: &'a ProviderHttp) -> BoxFuture<'a, Option<Result<Vec<OfferedModel>, String>>> {
         Box::pin(async move {
             let url = self.shared.models_url.as_ref()?;
-            Some(models::list(http, url, self.shared.authorization.as_ref()).await)
+            let listed = models::list(http, url, self.shared.authorization.as_ref()).await;
+            Some(listed.map(|ids| ids.into_iter().map(OfferedModel::named).collect()))
         })
     }
 

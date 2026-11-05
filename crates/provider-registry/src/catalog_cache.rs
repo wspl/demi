@@ -164,6 +164,18 @@ impl ModelCatalogCache {
         self.lookup(provider, key, revision, fetch, false, false).await
     }
 
+    /// The catalog the entry holds under `key`, in memory or in storage,
+    /// whatever its age; none without one. It never reads the source or
+    /// starts a refresh.
+    pub async fn held(&self, provider: &ProviderId, key: String) -> Option<ProviderModelList> {
+        if self.closing.is_cancelled() {
+            return None;
+        }
+        let entry = self.entry(provider, key);
+        let record = self.stored(provider, &entry, &None).await.ok()??;
+        Some(record.catalog.clone())
+    }
+
     /// The one read behind both: the answer at once, or the refresh's when
     /// `wait` says to wait for it; none when it would wait and `wait` is false.
     async fn lookup(
