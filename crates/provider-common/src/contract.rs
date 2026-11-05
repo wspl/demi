@@ -6,7 +6,8 @@ use std::{num::NonZeroU32, sync::Arc};
 
 use demi_shared_types::{
     AgentAccount, AuthState, B64Bytes, MODEL_MEDIA_TYPES, Model, ModelMediaKind, ModelSelection, ProviderErrorDiagnostics,
-    ProviderFailureFacts, ProviderModelList, QuotaWindow, QuotaWindowName, RuntimeState, ThinkingConfig, Timestamp,
+    ProviderFailureFacts, ProviderModelList, QuotaWindow, QuotaWindowName, RuntimeState, ThinkingConfig, ThinkingForm,
+    Timestamp,
     TokenUsage,
     model_accepts_media_type, model_media_type_for,
 };
@@ -56,14 +57,15 @@ pub trait Provider: std::any::Any + Send + Sync {
         })
     }
 
-    /// The ids of the models the key may call for a conversation, by the
-    /// vendor's own list read through `http`, the entry's client; `None` for
-    /// a provider whose vendor keeps no such list Demi trusts.
+    /// The models the key may call for a conversation, by the vendor's own
+    /// list read through `http`, the entry's client; `None` for a provider
+    /// whose vendor keeps no such list Demi trusts.
     ///
-    /// The list only takes models out of the vendor's models.dev list
-    /// (`crates/provider-registry/src/catalog.rs`): the vendor's own keeps
-    /// no window, price or thinking facts.
-    fn offered_models<'a>(&'a self, _http: &'a crate::ProviderHttp) -> BoxFuture<'a, Option<Result<Vec<String>, String>>> {
+    /// The list takes models out of the vendor's models.dev list
+    /// (`crates/provider-registry/src/catalog.rs`), and states how a model
+    /// takes a reasoning level where the vendor's own list says so; it keeps
+    /// no window or price facts.
+    fn offered_models<'a>(&'a self, _http: &'a crate::ProviderHttp) -> BoxFuture<'a, Option<Result<Vec<OfferedModel>, String>>> {
         Box::pin(async { None })
     }
 
@@ -115,6 +117,22 @@ pub trait Provider: std::any::Any + Send + Sync {
     /// Builds a runtime for one session. The backend calls it on the shard
     /// that will own the runtime.
     fn runtime(&self, env: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError>;
+}
+
+/// A model a vendor's own list offers to the key ([`Provider::offered_models`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfferedModel {
+    pub id: String,
+    /// How the model takes a reasoning level, when the vendor's list states
+    /// it; models.dev's answer stands otherwise.
+    pub thinking_form: Option<ThinkingForm>,
+}
+
+impl OfferedModel {
+    /// A model the vendor lists with nothing said of its thinking.
+    pub fn named(id: String) -> Self {
+        Self { id, thinking_form: None }
+    }
 }
 
 /// What a provider requires of the Host its conversation runs on.

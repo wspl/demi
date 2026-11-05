@@ -15,6 +15,12 @@ impl ModelWires {
         Self(models)
     }
 
+    /// These facts, with `models`' in place of any of the same model.
+    pub fn with(mut self, models: impl IntoIterator<Item = (String, ModelWire)>) -> Self {
+        self.0.extend(models);
+        self
+    }
+
     /// The facts of model `model_id`; the defaults for a model the entry does
     /// not describe, such as one models.dev does not list.
     pub fn of(&self, model_id: &str) -> ModelWire {
