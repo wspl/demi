@@ -1211,7 +1211,8 @@ export function createSettingsState() {
     account: {
       name: 'Alex',
       email: 'alex@example.com',
-      passwordChanged: '3 months ago',
+      /** A moment, not words, so the page says the day in its own language. */
+      passwordChanged: ago(90 * DAY),
       passkeys: galleryPasskeys(),
       sessions: gallerySessions(),
     },
