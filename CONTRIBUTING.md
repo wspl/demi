@@ -160,11 +160,5 @@ contract for one vendor family. For the steps, see
 
 ## License
 
-A contribution carries the license of the part it changes:
-
-- Most of Demi is under the [Apache License 2.0](LICENSE). A contribution there
-  falls under it, as its section 5 says.
-- A contribution to the server or the web app, the parts
-  [LICENSE-DEMI](LICENSE-DEMI) lists, falls under the Demi License. You
-  agree that The Demi Authors may also license it to others under other terms,
-  including terms that permit what that license otherwise forbids.
+Demi is under the [Apache License 2.0](LICENSE), and a contribution falls
+under it, as its section 5 says.

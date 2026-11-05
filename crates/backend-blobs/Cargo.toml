@@ -2,7 +2,7 @@
 name = "demi-backend-blobs"
 version.workspace = true
 edition.workspace = true
-license = "LicenseRef-Demi-License"
+license.workspace = true
 publish.workspace = true
 
 [lib]

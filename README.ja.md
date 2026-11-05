@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="#ライセンス"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20Demi%20License-blue"></a>
+  <a href="#ライセンス"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue"></a>
   <a href="https://github.com/demi-sh/demi/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/demi-sh/demi"></a>
   <a href="https://github.com/demi-sh/demi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/demi-sh/demi/actions/workflows/ci.yml/badge.svg"></a>
 </p>
@@ -193,22 +193,4 @@ OpenHands、Orca、T3 Code、DeepSeek Harness、opencode、Pi、herdr と Demi �
 
 ## ライセンス
 
-Demi の大部分は [Apache License 2.0](LICENSE) で公開されており、どのような用途にも使えます。対象は次のとおりです:
-
-- エージェントのランタイム
-- モデルプロバイダーと、設定からそれを用意するライブラリ
-- あなたのマシンにインストールするランナーと、それを動かすライブラリ
-- コマンド
-- プラグインとその SDK、それを動かすホスト
-- UI コンポーネントライブラリとそのギャラリー
-- プロトコル
-- ドキュメント
-
-サーバーと Web アプリ（`crates/backend*`、`crates/server`、`crates/machine-manager`、`packages/web`）は [Demi License](LICENSE-DEMI) で公開されています。これは Apache License 2.0 に次の条件を加えたものです:
-
-- **無料で利用可能**：社内で自分たちのチームのために使うことも含め、利用、改変、実行できます。
-- **サポートの提供は自由**：他者が自ら運用する Demi の導入、統合、サポートを有償で提供できます。
-- **サービスとしての再販は不可**：有償のホスティングサービスやマルチテナントサービスとして他者に提供すること、また実質的に Demi である製品として提供することはできません。
-- **ブランドの保持**：Web アプリ内の Demi の名称、ロゴ、著作権表示を削除または変更しないでください。
-
-その他の用途については [support@demi.sh](mailto:support@demi.sh) までお問い合わせください。
+Demi は [Apache License 2.0](LICENSE) で公開されています。

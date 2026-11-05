@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="#licence"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20Demi%20License-blue"></a>
+  <a href="#licence"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue"></a>
   <a href="https://github.com/demi-sh/demi/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/demi-sh/demi"></a>
   <a href="https://github.com/demi-sh/demi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/demi-sh/demi/actions/workflows/ci.yml/badge.svg"></a>
 </p>
@@ -299,33 +299,4 @@ Ces documents sont en anglais.
 
 ## Licence
 
-La majeure partie de Demi est publiée sous la [Apache License 2.0](LICENSE).
-Vous pouvez utiliser ces parties pour tout usage :
-
-- Le runtime de l’agent.
-- Les fournisseurs de modèles, et la bibliothèque qui les configure à partir de
-  votre configuration.
-- Le runner que vous installez sur vos machines, et la bibliothèque qui le
-  pilote.
-- Les commandes.
-- Les plug-ins, leur SDK et l’hôte qui les exécute.
-- La bibliothèque de composants d’interface et sa galerie.
-- Les protocoles.
-- La documentation.
-
-Le serveur et l’app web (`crates/backend*`, `crates/server`,
-`crates/machine-manager` et `packages/web`) sont publiés sous la [Demi
-License](LICENSE-DEMI), qui est la Apache License 2.0 avec des conditions
-supplémentaires :
-
-- **Libre d’utilisation** : Utilisez-les, modifiez-les et exécutez-les, y
-  compris dans votre entreprise pour votre propre équipe.
-- **Libre d’assistance** : Facturez le déploiement, l’intégration ou
-  l’assistance d’instances de Demi que d’autres exploitent eux-mêmes.
-- **Pas de revente en tant que service** : Ne les proposez pas à d’autres contre
-  rémunération comme service hébergé ou multilocataire, ni comme produit qui est
-  essentiellement Demi.
-- **Conservez la marque** : Ne supprimez pas et ne modifiez pas le nom, le logo
-  ni les mentions de copyright de Demi dans l’app web.
-
-Pour d’autres usages, contactez [support@demi.sh](mailto:support@demi.sh).
+Demi est publié sous la [Apache License 2.0](LICENSE).

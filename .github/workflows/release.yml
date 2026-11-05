@@ -229,10 +229,10 @@ jobs:
       - name: Publish the release
         run: |
           cp "$RUNNER_TEMP"/symbols/*/* dist/
-          # The release's licenses, notice and third-party notices, as
+          # The release's license, notice and third-party notices, as
           # assets, from the root of a server release.
           tar --zstd -xf "dist/demi-$VERSION-server-linux-amd64.tar.zst" -C dist \
-            ./LICENSE ./LICENSE-DEMI ./NOTICE ./THIRD-PARTY-NOTICES
+            ./LICENSE ./NOTICE ./THIRD-PARTY-NOTICES
           cd dist
           sha256sum demi-* > SHA256SUMS
           # A pre-release is never the latest release, which the installer

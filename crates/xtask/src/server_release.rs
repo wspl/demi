@@ -50,8 +50,8 @@
 //!
 //! No root carries gVisor.
 //!
-//! Its `LICENSE`, `LICENSE-DEMI` and `NOTICE` are the repository's, and with a
-//! web app its `THIRD-PARTY-NOTICES` are the ones `xtask notices` wrote into
+//! Its `LICENSE` and `NOTICE` are the repository's, and with a web app its
+//! `THIRD-PARTY-NOTICES` are the ones `xtask notices` wrote into
 //! it. Packaging makes each release whole first, so its records and its files
 //! are the ones packaging checked.
 //!
@@ -69,12 +69,10 @@ use crate::notices::WEB_NOTICES;
 /// The file a built web app holds, which the backend reads its build from.
 const WEB_BUILD: &str = "build.json";
 
-/// The project's licenses, the Apache License and the Demi License that
-/// covers the server and the web app, and its notice, which every release
-/// carries at its root.
-const LEGAL: [(&str, &str); 3] = [
+/// The project's license and its notice, which every release carries at its
+/// root.
+const LEGAL: [(&str, &str); 2] = [
     ("LICENSE", include_str!("../../../LICENSE")),
-    ("LICENSE-DEMI", include_str!("../../../LICENSE-DEMI")),
     ("NOTICE", include_str!("../../../NOTICE")),
 ];
 

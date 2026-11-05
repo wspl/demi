@@ -76,8 +76,8 @@ Demi never translates the following:
 ### The product's name
 
 In a sentence, the name is *Demi*, as in *Demi needs permission* and *Add Demi
-to Your Home Screen*. The license's names, the *Demi License* and *The Demi
-Authors*, are written the same way.
+to Your Home Screen*. The copyright holder's name, *The Demi Authors*, is
+written the same way.
 
 Where the name stands alone as the product's mark, it is the wordmark *demi*,
 in lowercase in every language. Amazon's and Intel's logos work the same way,
