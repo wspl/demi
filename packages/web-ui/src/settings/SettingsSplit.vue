@@ -72,11 +72,13 @@ onBeforeUnmount(leaveBar)
     <div
       class="grid h-full grid-rows-[minmax(0,1fr)] gap-x-8 gap-y-4 wide:grid-cols-[11rem_minmax(0,1fr)]"
     >
-      <!-- Scroll regions clip both axes; the -mx/px pair leaves room for rings at the edges. -->
+      <!-- Scroll regions clip both axes; the -mx/px pair leaves room for rings at the edges.
+           The entries stack in a grid, not a flex column: a column would shrink each entry
+           below its height once the list outgrows the rail, so the rows would close up. -->
       <ScrollArea
         class="-mx-1 min-h-0"
         :class="detailOpen ? 'hidden wide:flex' : 'flex'"
-        viewport-class="flex flex-col gap-0.5 px-1"
+        viewport-class="grid grid-cols-[minmax(0,1fr)] content-start gap-0.5 px-1"
       >
         <slot name="list" />
       </ScrollArea>
