@@ -415,7 +415,7 @@
       "keywords": "accounts,people,admin,add user,invite,reset password,role,disable,sign out everywhere"
     },
     "cloud": {
-      "keywords": "network,private network,intranet,internal,lan,firewall,proxy,git,tailscale,ip,address,port,isolation,sandbox,gvisor,security"
+      "keywords": "network,private network,intranet,internal,lan,firewall,proxy,git,tailscale,ip,address,port,isolation,sandbox,gvisor,security,policy,network policy,domain,allowlist,dns"
     },
     "developer": {
       "keywords": "developer,debug,troubleshooting",
@@ -584,30 +584,49 @@
     "unavailable": "This server can’t run it: {reason}",
     "moving": "Stopped Clouds move to {isolation} now, and running ones once they stop. Their files and installed packages move with them.",
     "isolationFailed": "Couldn’t change isolation",
-    "noPrivateNetwork": "Clouds on Simple Isolation share the server’s network, so this setting doesn’t apply.",
-    "access": "Private Network Access",
-    "accessDescription": "Clouds reach only the internet by default. If Demi runs on your company’s network, turn this on so Clouds can reach its Git servers, internal services and proxies. The server itself, cloud metadata services and other people’s Clouds stay unreachable.",
-    "entireDescription": "Clouds reach every private address, as a computer on your network does, so a web page a Cloud’s browser opens can try to reach your internal services too. The server itself, cloud metadata services and other people’s Clouds stay unreachable.",
-    "addresses": "Addresses",
-    "addressesDescription": "Clouds reach each address or network listed: on every port, or only on the port written after it.",
-    "add": "Add Address",
-    "placeholder": "Add addresses, such as 10.20.0.0/16 or 10.20.0.7:22",
+    "noNetworkPolicy": "Clouds on Simple Isolation share the server’s network, so the network policy doesn’t apply.",
+    "policy": "Network Policy",
+    "policies": {
+      "noNetwork": "No Network",
+      "developerServices": "Developer Services",
+      "internetOnly": "Internet Only",
+      "internetAndPrivateNetwork": "Internet and Private Network",
+      "custom": "Custom"
+    },
+    "policyDescriptions": {
+      "noNetwork": "Clouds reach nothing on any network.",
+      "developerServices": "Clouds reach only the services builds download from, such as GitHub, npm and PyPI.",
+      "internetOnly": "Clouds reach the internet, and nothing on the server’s private network.",
+      "internetAndPrivateNetwork": "Clouds reach the internet and every private address, as a computer on the server’s network does, so a web page a Cloud’s browser opens can try to reach your internal services too.",
+      "custom": "Clouds reach only what’s allowed below."
+    },
+    "allowedGroups": "Allowed",
+    "neverReachable": "The server itself, cloud metadata services and other people’s Clouds are never reachable.",
+    "groups": {
+      "internet": "Internet",
+      "privateNetwork": "Private Network",
+      "developerServices": "Developer Services"
+    },
+    "groupDescriptions": {
+      "internet": "Every public address.",
+      "privateNetwork": "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 and 100.64.0.0/10.",
+      "developerServices": "GitHub, npm, PyPI and {count} more."
+    },
+    "domainsAndAddresses": "Domains and Addresses",
+    "domainsAndAddressesDescription": "Clouds reach each one listed: on every port, or only on the port written after it. While the internet is off, a name resolves only if it’s listed.",
+    "add": "Add Domain or Address",
+    "placeholder": "Add domains or addresses, such as *.example.com or 10.20.0.7:22",
     "remove": "Remove",
-    "empty": "No addresses yet.",
+    "empty": "No domains or addresses yet.",
     "problems": {
-      "address": "Enter an IPv4 address or network, such as 10.20.0.7 or 10.20.0.0/16.",
+      "entry": "Enter a domain, such as git.example.com or *.example.com, or an IPv4 address or network, such as 10.20.0.0/16.",
       "port": "Enter a port from 1 to 65535.",
       "neverReachable": "Clouds can never reach this address."
     },
     "pending": "Saved. Clouds get the change once the machine manager is available again.",
-    "failed": "Couldn’t change private network access",
+    "failed": "Couldn’t change the network policy",
     "loadFailed": "Couldn’t load Cloud settings",
-    "loading": "Loading Cloud settings…",
-    "accesses": {
-      "off": "Off",
-      "entire": "Entire Private Network",
-      "only": "Only These Addresses"
-    }
+    "loading": "Loading Cloud settings…"
   },
   "addUser": {
     "title": "Add User",

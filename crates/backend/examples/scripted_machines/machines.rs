@@ -131,7 +131,7 @@ async fn connection(stream: UnixStream, shared: Arc<Shared>) {
     let enforces = |all| Enforces {
         checkpoints: all,
         storage_limits: all,
-        private_network: all,
+        network_policy: all,
     };
     let hello = encode_line(&MachineResponse::Hello {
         version: WIRE_VERSION,
@@ -223,7 +223,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
         }
         // Its guests run on the host's own network, which no firewall
         // limits.
-        MachineCall::SetPrivateNetwork(_) => json(serde_json::Value::Null),
+        MachineCall::SetNetworkRules(_) => json(serde_json::Value::Null),
         // Its guests run as processes of the host whatever the isolation.
         MachineCall::SetIsolation(_) => json(serde_json::Value::Null),
         MachineCall::CurrentBaseVersion(_) => json(serde_json::json!(BASE)),

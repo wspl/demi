@@ -415,7 +415,7 @@
       "keywords": "comptes,personnes,admin,ajouter un utilisateur,inviter,réinitialiser le mot de passe,rôle,désactiver,déconnecter partout"
     },
     "cloud": {
-      "keywords": "réseau,réseau privé,intranet,interne,lan,pare-feu,proxy,git,tailscale,ip,adresse,port,isolation,bac à sable,sandbox,gvisor,sécurité"
+      "keywords": "réseau,réseau privé,intranet,interne,lan,pare-feu,proxy,git,tailscale,ip,adresse,port,isolation,bac à sable,sandbox,gvisor,sécurité,politique,politique réseau,domaine,liste autorisée,dns"
     },
     "developer": {
       "keywords": "développeur,débogage,dépannage",
@@ -584,30 +584,49 @@
     "unavailable": "Ce serveur ne peut pas l’utiliser : {reason}",
     "moving": "Les clouds arrêtés passent à {isolation} maintenant, et ceux en cours d’exécution dès qu’ils s’arrêtent. Leurs fichiers et paquets installés les suivent.",
     "isolationFailed": "Impossible de modifier l’isolation",
-    "noPrivateNetwork": "Les clouds en isolation simple partagent le réseau du serveur, ce réglage ne s’applique donc pas.",
-    "access": "Accès au réseau privé",
-    "accessDescription": "Par défaut, les clouds n’atteignent qu’Internet. Si Demi fonctionne sur le réseau de votre entreprise, activez cette option pour que les clouds atteignent ses serveurs Git, ses services internes et ses proxys. Le serveur lui-même, les services de métadonnées cloud et les clouds des autres restent inaccessibles.",
-    "entireDescription": "Les clouds atteignent toutes les adresses privées, comme un ordinateur de votre réseau, si bien qu’une page web ouverte par le navigateur d’un cloud peut aussi tenter d’atteindre vos services internes. Le serveur lui-même, les services de métadonnées cloud et les clouds des autres restent inaccessibles.",
-    "addresses": "Adresses",
-    "addressesDescription": "Les clouds atteignent chaque adresse ou réseau de la liste : sur tous les ports, ou seulement sur le port indiqué après.",
-    "add": "Ajouter une adresse",
-    "placeholder": "Ajoutez des adresses, comme 10.20.0.0/16 ou 10.20.0.7:22",
+    "noNetworkPolicy": "Les clouds en isolation simple partagent le réseau du serveur, la politique réseau ne s’applique donc pas.",
+    "policy": "Politique réseau",
+    "policies": {
+      "noNetwork": "Aucun réseau",
+      "developerServices": "Services pour développeurs",
+      "internetOnly": "Internet uniquement",
+      "internetAndPrivateNetwork": "Internet et réseau privé",
+      "custom": "Personnalisée"
+    },
+    "policyDescriptions": {
+      "noNetwork": "Les clouds n’atteignent aucun réseau.",
+      "developerServices": "Les clouds n’atteignent que les services d’où les builds téléchargent, comme GitHub, npm et PyPI.",
+      "internetOnly": "Les clouds atteignent Internet, mais rien sur le réseau privé du serveur.",
+      "internetAndPrivateNetwork": "Les clouds atteignent Internet et toutes les adresses privées, comme un ordinateur du réseau du serveur, si bien qu’une page web ouverte par le navigateur d’un cloud peut aussi tenter d’atteindre vos services internes.",
+      "custom": "Les clouds n’atteignent que ce qui est autorisé ci-dessous."
+    },
+    "allowedGroups": "Autorisé",
+    "neverReachable": "Le serveur lui-même, les services de métadonnées cloud et les clouds des autres ne sont jamais accessibles.",
+    "groups": {
+      "internet": "Internet",
+      "privateNetwork": "Réseau privé",
+      "developerServices": "Services pour développeurs"
+    },
+    "groupDescriptions": {
+      "internet": "Toutes les adresses publiques.",
+      "privateNetwork": "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 et 100.64.0.0/10.",
+      "developerServices": "GitHub, npm, PyPI et {count} autres."
+    },
+    "domainsAndAddresses": "Domaines et adresses",
+    "domainsAndAddressesDescription": "Les clouds atteignent chaque élément de la liste : sur tous les ports, ou seulement sur le port indiqué après. Quand Internet est désactivé, seul un nom de la liste est résolu.",
+    "add": "Ajouter un domaine ou une adresse",
+    "placeholder": "Ajoutez des domaines ou des adresses, comme *.example.com ou 10.20.0.7:22",
     "remove": "Supprimer",
-    "empty": "Aucune adresse pour l’instant.",
+    "empty": "Aucun domaine ni adresse pour l’instant.",
     "problems": {
-      "address": "Saisissez une adresse ou un réseau IPv4, comme 10.20.0.7 ou 10.20.0.0/16.",
+      "entry": "Saisissez un domaine, comme git.example.com ou *.example.com, ou une adresse ou un réseau IPv4, comme 10.20.0.0/16.",
       "port": "Saisissez un port de 1 à 65535.",
       "neverReachable": "Les clouds ne peuvent jamais atteindre cette adresse."
     },
     "pending": "Enregistré. Les clouds recevront la modification dès que le gestionnaire de machines sera de nouveau disponible.",
-    "failed": "Impossible de modifier l’accès au réseau privé",
+    "failed": "Impossible de modifier la politique réseau",
     "loadFailed": "Impossible de charger les réglages du cloud",
-    "loading": "Chargement des réglages du cloud…",
-    "accesses": {
-      "off": "Désactivé",
-      "entire": "Tout le réseau privé",
-      "only": "Uniquement ces adresses"
-    }
+    "loading": "Chargement des réglages du cloud…"
   },
   "addUser": {
     "title": "Ajouter un utilisateur",

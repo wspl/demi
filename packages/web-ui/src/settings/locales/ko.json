@@ -415,7 +415,7 @@
       "keywords": "계정,사람,관리자,사용자 추가,초대,비밀번호 재설정,역할,비활성화,모든 곳에서 로그아웃"
     },
     "cloud": {
-      "keywords": "네트워크,사설 네트워크,인트라넷,내부망,LAN,방화벽,프록시,git,tailscale,IP,주소,포트,격리,샌드박스,gVisor,보안"
+      "keywords": "네트워크,사설 네트워크,인트라넷,내부망,LAN,방화벽,프록시,git,tailscale,IP,주소,포트,격리,샌드박스,gVisor,보안,정책,네트워크 정책,도메인,허용 목록,dns"
     },
     "developer": {
       "keywords": "개발,디버그,문제 해결",
@@ -584,30 +584,49 @@
     "unavailable": "이 서버에서는 사용할 수 없음: {reason}",
     "moving": "중지된 클라우드는 지금 {isolation}(으)로 옮겨지고, 실행 중인 클라우드는 중지되면 옮겨집니다. 파일과 설치한 패키지도 함께 옮겨집니다.",
     "isolationFailed": "격리 방식을 변경할 수 없음",
-    "noPrivateNetwork": "간이 격리 클라우드는 서버의 네트워크를 공유하므로 이 설정이 적용되지 않습니다.",
-    "access": "사설 네트워크 접근",
-    "accessDescription": "클라우드는 기본적으로 인터넷에만 접근합니다. Demi를 회사 네트워크에서 운영한다면 이 설정을 켜서 클라우드가 사내 Git 서버, 내부 서비스, 프록시에 접근하게 하세요. 서버 자체, 클라우드 메타데이터 서비스, 다른 사람의 클라우드에는 항상 접근할 수 없습니다.",
-    "entireDescription": "클라우드가 네트워크에 연결된 컴퓨터처럼 모든 사설 주소에 접근하므로, 클라우드의 브라우저에서 연 웹 페이지도 내부 서비스에 접근을 시도할 수 있습니다. 서버 자체, 클라우드 메타데이터 서비스, 다른 사람의 클라우드에는 항상 접근할 수 없습니다.",
-    "addresses": "주소",
-    "addressesDescription": "목록의 각 주소나 네트워크에 클라우드가 접근합니다. 포트를 붙이면 그 포트만, 붙이지 않으면 모든 포트입니다.",
-    "add": "주소 추가",
-    "placeholder": "주소 추가(예: 10.20.0.0/16, 10.20.0.7:22)",
+    "noNetworkPolicy": "간이 격리 클라우드는 서버의 네트워크를 공유하므로 네트워크 정책이 적용되지 않습니다.",
+    "policy": "네트워크 정책",
+    "policies": {
+      "noNetwork": "네트워크 없음",
+      "developerServices": "개발자 서비스",
+      "internetOnly": "인터넷만",
+      "internetAndPrivateNetwork": "인터넷 및 사설 네트워크",
+      "custom": "사용자 지정"
+    },
+    "policyDescriptions": {
+      "noNetwork": "클라우드가 어떤 네트워크에도 접근할 수 없습니다.",
+      "developerServices": "클라우드가 GitHub, npm, PyPI 같은 빌드가 내려받는 서비스에만 접근합니다.",
+      "internetOnly": "클라우드가 인터넷에 접근하고, 서버의 사설 네트워크에는 접근할 수 없습니다.",
+      "internetAndPrivateNetwork": "클라우드가 서버 네트워크에 연결된 컴퓨터처럼 인터넷과 모든 사설 주소에 접근하므로, 클라우드의 브라우저에서 연 웹 페이지도 내부 서비스에 접근을 시도할 수 있습니다.",
+      "custom": "클라우드가 아래에서 허용한 것에만 접근합니다."
+    },
+    "allowedGroups": "허용",
+    "neverReachable": "서버 자체, 클라우드 메타데이터 서비스, 다른 사람의 클라우드에는 항상 접근할 수 없습니다.",
+    "groups": {
+      "internet": "인터넷",
+      "privateNetwork": "사설 네트워크",
+      "developerServices": "개발자 서비스"
+    },
+    "groupDescriptions": {
+      "internet": "모든 공인 주소.",
+      "privateNetwork": "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10.",
+      "developerServices": "GitHub, npm, PyPI 외 도메인 {count}개."
+    },
+    "domainsAndAddresses": "도메인 및 주소",
+    "domainsAndAddressesDescription": "목록의 각 항목에 클라우드가 접근합니다. 포트를 붙이면 그 포트만, 붙이지 않으면 모든 포트입니다. 인터넷이 꺼져 있으면 목록에 있는 이름만 확인됩니다.",
+    "add": "도메인 또는 주소 추가",
+    "placeholder": "도메인 또는 주소 추가(예: *.example.com, 10.20.0.7:22)",
     "remove": "제거",
-    "empty": "아직 주소가 없습니다.",
+    "empty": "아직 도메인이나 주소가 없습니다.",
     "problems": {
-      "address": "IPv4 주소 또는 네트워크를 입력하세요(예: 10.20.0.7, 10.20.0.0/16).",
+      "entry": "도메인(예: git.example.com, *.example.com)이나 IPv4 주소 또는 네트워크(예: 10.20.0.0/16)를 입력하세요.",
       "port": "1부터 65535 사이의 포트를 입력하세요.",
       "neverReachable": "클라우드는 이 주소에 항상 접근할 수 없습니다."
     },
     "pending": "저장했습니다. 머신 관리자가 다시 사용 가능해지면 클라우드에 변경 사항이 적용됩니다.",
-    "failed": "사설 네트워크 접근을 변경할 수 없음",
+    "failed": "네트워크 정책을 변경할 수 없음",
     "loadFailed": "클라우드 설정을 불러올 수 없음",
-    "loading": "클라우드 설정을 불러오는 중…",
-    "accesses": {
-      "off": "끔",
-      "entire": "전체 사설 네트워크",
-      "only": "이 주소만"
-    }
+    "loading": "클라우드 설정을 불러오는 중…"
   },
   "addUser": {
     "title": "사용자 추가",

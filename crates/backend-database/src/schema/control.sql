@@ -1039,10 +1039,15 @@ CREATE TABLE server_settings (
   instance_mode   TEXT NOT NULL DEFAULT 'isolated' CHECK (instance_mode IN ('shared', 'isolated')),
   -- Whether a check that finds a newer release gets it ready at once, which an administrator turns on in Settings › Updates.
   prepare_ahead   INTEGER NOT NULL DEFAULT 0 CHECK (prepare_ahead IN (0, 1)),
-  -- Which private destinations Clouds reach, which the master chooses in Settings › Cloud.
-  private_network TEXT NOT NULL DEFAULT 'off' CHECK (private_network IN ('off', 'entire', 'only')),
-  -- The destinations Only These Addresses allows, a JSON array of the strings the master wrote, kept while another choice is on.
-  private_destinations TEXT NOT NULL DEFAULT '[]',
   -- How Clouds are isolated, which the master chooses in Settings › Cloud.
-  isolation       TEXT NOT NULL DEFAULT 'simple' CHECK (isolation IN ('simple', 'gvisor'))
+  isolation       TEXT NOT NULL DEFAULT 'simple' CHECK (isolation IN ('simple', 'gvisor')),
+  -- What Clouds reach, which the master chooses in Settings › Cloud.
+  network_policy  TEXT NOT NULL DEFAULT 'internetOnly'
+    CHECK (network_policy IN ('noNetwork', 'developerServices', 'internetOnly', 'internetAndPrivateNetwork', 'custom')),
+  -- What Custom allows, kept while another policy is chosen: its groups, and the domains and addresses
+  -- as a JSON array of the strings the master wrote.
+  custom_internet INTEGER NOT NULL DEFAULT 1 CHECK (custom_internet IN (0, 1)),
+  custom_private_network INTEGER NOT NULL DEFAULT 0 CHECK (custom_private_network IN (0, 1)),
+  custom_developer_services INTEGER NOT NULL DEFAULT 0 CHECK (custom_developer_services IN (0, 1)),
+  custom_allowed  TEXT NOT NULL DEFAULT '[]'
 ) STRICT;

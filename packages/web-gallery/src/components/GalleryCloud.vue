@@ -5,13 +5,16 @@ import { showToast } from '@demicodes/web-ui/infra/toast'
 import SettingsCloud from '@demicodes/web-ui/settings/SettingsCloud.vue'
 import {
   destinationProblemText,
+  withPolicy,
   type CloudIsolationSetting,
   type CloudNetworkSetting,
+  type CustomNetworkPolicy,
   type DestinationProblem,
   type Isolation,
   type IsolationDownload,
   type IsolationRuntime,
-  type PrivateNetworkAccess,
+  type NetworkGroup,
+  type NetworkPolicy,
 } from '@demicodes/web-ui/settings/cloud'
 import { t } from '@demicodes/web-ui/settings/locales/text'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
@@ -19,9 +22,8 @@ import { slow } from '../fixtures/slow'
 
 /** Which moment of Settings › Cloud the specimen starts at. */
 export type CloudMoment =
-  | 'off'
-  | 'entire'
-  | 'only'
+  | 'internetOnly'
+  | 'custom'
   | 'simple'
   | 'noGvisor'
   | 'needsDownload'
@@ -32,10 +34,10 @@ export type CloudMoment =
   | 'managerAway'
 
 /**
- * Settings › Cloud with a stand-in server. It reads each destination the
- * way the server does and refuses what the server refuses: what is not an
- * IPv4 address or network, a port out of range, and the ranges no Cloud
- * ever reaches, such as 127.0.0.1 or 169.254.169.254. With the machine
+ * Settings › Cloud with a stand-in server. It reads each entry the way the
+ * server does and refuses what the server refuses: what is neither a domain
+ * nor an IPv4 address or network, a port out of range, and the ranges no
+ * Cloud ever reaches, such as 127.0.0.1 or 169.254.169.254. With the machine
  * manager away, a change is stored and the page says when it applies. A
  * server without gVisor offers Simple Isolation alone, and says why. One
  * that has never run gVisor downloads it when gVisor is chosen: the stand-in
@@ -43,27 +45,51 @@ export type CloudMoment =
  * Simple Isolation meanwhile cancels the download, and one that failed is
  * tried again by Try Again.
  */
-const props = withDefaults(defineProps<{ moment?: CloudMoment }>(), { moment: 'only' })
+const props = withDefaults(defineProps<{ moment?: CloudMoment }>(), { moment: 'custom' })
 
-const LISTED = ['10.20.0.0/16', '10.40.0.7:22']
+const LISTED = ['git.example.com', '*.registry.example.com', '10.20.0.0/16', '10.40.0.7:22']
+
+/** The start of the list the server ships, enough for the row's count. */
+const DEVELOPER_SERVICES = [
+  'github.com', 'npmjs.org', 'pypi.org', 'crates.io', 'rubygems.org', 'golang.org', 'maven.org', 'nuget.org',
+  'docker.io', 'ghcr.io', 'gitlab.com', 'bitbucket.org', 'yarnpkg.com', 'pythonhosted.org', 'debian.org',
+  'ubuntu.com', 'alpinelinux.org', 'nodejs.org', 'rustup.rs', 'gradle.org', 'packagist.org', 'pub.dev',
+  'hex.pm', 'cocoapods.org', 'swift.org', 'quay.io', 'gcr.io', 'k8s.io', 'apache.org', 'cpan.org',
+  'metacpan.org', 'haskell.org', 'githubusercontent.com', 'ruby-lang.org', 'dot.net', 'mcr.microsoft.com',
+  'packages.microsoft.com', 'archlinux.org', 'fedoraproject.org', 'centos.org', 'launchpad.net',
+  'ppa.launchpad.net', 'anaconda.com', 'continuum.io', 'pypa.io', 'pypi.python.org', 'goproxy.io',
+  'pkg.go.dev', 'java.com', 'java.net', 'spring.io', 'eclipse.org', 'sourceforge.net', 'hashicorp.com',
+  'docker.com', 'json.schemastore.org', 'json-schema.org', 'jcenter.bintray.com', 'packagecloud.io',
+  'rvm.io', 'rubyonrails.org', 'rubyforge.org', 'bower.io', 'npmjs.com', 'apt.llvm.org', 'azure.com',
+  'visualstudio.com', 'dotnet.microsoft.com', 'oracle.com', 'microsoft.com', 'google.com',
+]
+
+/** Custom as a server that upgraded from a list of private addresses holds it. */
+function custom(allowed: string[]): CustomNetworkPolicy {
+  return { internet: true, privateNetwork: false, developerServices: false, allowed }
+}
+
+function setting(policy: NetworkPolicy, allowed: string[] = [...LISTED]): CloudNetworkSetting {
+  return { policy, custom: custom(allowed), developerServices: DEVELOPER_SERVICES }
+}
 
 /** What a server with root offers. */
 const BOTH: IsolationRuntime[] = [
-  { isolation: 'simple', unavailable: null, privateNetwork: false, download: null },
-  { isolation: 'gvisor', unavailable: null, privateNetwork: true, download: null },
+  { isolation: 'simple', unavailable: null, networkPolicy: false, download: null },
+  { isolation: 'gvisor', unavailable: null, networkPolicy: true, download: null },
 ]
 
 /** What a server that runs as an ordinary user offers. */
 const SIMPLE_ONLY: IsolationRuntime[] = [
-  { isolation: 'simple', unavailable: null, privateNetwork: false, download: null },
-  { isolation: 'gvisor', unavailable: 'the machine manager does not run as root', privateNetwork: true, download: null },
+  { isolation: 'simple', unavailable: null, networkPolicy: false, download: null },
+  { isolation: 'gvisor', unavailable: 'the machine manager does not run as root', networkPolicy: true, download: null },
 ]
 
 /** What a server with root offers before it has ever run gVisor, with gVisor's download at `download`. */
 function beforeGvisor(download: IsolationDownload): IsolationRuntime[] {
   return [
-    { isolation: 'simple', unavailable: null, privateNetwork: false, download: null },
-    { isolation: 'gvisor', unavailable: null, privateNetwork: true, download },
+    { isolation: 'simple', unavailable: null, networkPolicy: false, download: null },
+    { isolation: 'gvisor', unavailable: null, networkPolicy: true, download },
   ]
 }
 
@@ -120,18 +146,18 @@ function start(): void {
   switch (props.moment) {
     case 'needsDownload':
       isolation.value = { isolation: 'simple', runtimes: beforeGvisor({ state: 'waiting' }) }
-      network.value = { access: 'off', destinations: [] }
+      network.value = setting('internetOnly', [])
       load.value = 'ready'
       return
     case 'downloading':
       isolation.value = { isolation: 'gvisor', runtimes: beforeGvisor({ state: 'waiting' }) }
-      network.value = { access: 'off', destinations: [] }
+      network.value = setting('internetOnly', [])
       load.value = 'ready'
       download()
       return
     case 'downloadFailed':
       isolation.value = { isolation: 'gvisor', runtimes: beforeGvisor({ state: 'failed', message: FAILURE }) }
-      network.value = { access: 'off', destinations: [] }
+      network.value = setting('internetOnly', [])
       load.value = 'ready'
       return
     case 'loading':
@@ -146,22 +172,22 @@ function start(): void {
       return
     case 'managerAway':
       isolation.value = { isolation: 'gvisor', runtimes: null }
-      network.value = { access: 'only', destinations: [...LISTED] }
+      network.value = setting('custom')
       load.value = 'ready'
       return
     case 'simple':
       isolation.value = { isolation: 'simple', runtimes: BOTH }
-      network.value = { access: 'only', destinations: [...LISTED] }
+      network.value = setting('custom')
       load.value = 'ready'
       return
     case 'noGvisor':
       isolation.value = { isolation: 'simple', runtimes: SIMPLE_ONLY }
-      network.value = { access: 'off', destinations: [] }
+      network.value = setting('internetOnly', [])
       load.value = 'ready'
       return
     default:
       isolation.value = { isolation: 'gvisor', runtimes: BOTH }
-      network.value = { access: props.moment, destinations: props.moment === 'only' ? [...LISTED] : [] }
+      network.value = setting(props.moment, props.moment === 'custom' ? [...LISTED] : [])
       load.value = 'ready'
   }
 }
@@ -172,7 +198,7 @@ async function retry(): Promise<void> {
   load.value = 'loading'
   await slow()
   isolation.value = { isolation: 'gvisor', runtimes: BOTH }
-  network.value = { access: 'off', destinations: [] }
+  network.value = setting('internetOnly', [])
   load.value = 'ready'
 }
 
@@ -223,16 +249,23 @@ function numberOf(octets: readonly number[]): number {
   return (octets[0] << 24 | octets[1] << 16 | octets[2] << 8 | octets[3]) >>> 0
 }
 
-/** Why the stand-in server refuses `written`, or null for a destination it takes. */
+/** A domain, `git.example.com` or `*.example.com`, with an optional port. */
+const DOMAIN = /^(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]*[a-z0-9](?::(.*))?$/i
+
+/** Why the stand-in server refuses `written`, or null for an entry it takes. */
 function problemOf(written: string): DestinationProblem | null {
+  const domain = DOMAIN.exec(written.trim())
+  if (domain) {
+    return domain[1] === undefined || /^\d+$/.test(domain[1]) && Number(domain[1]) >= 1 && Number(domain[1]) <= 65535 ? null : 'port'
+  }
   const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/(\d{1,2}))?(?::(.*))?$/.exec(written.trim())
   if (!match) {
-    return 'address'
+    return 'entry'
   }
   const octets = match.slice(1, 5).map(Number)
   const bits = match[5] === undefined ? 32 : Number(match[5])
   if (octets.some((octet) => octet > 255) || bits > 32) {
-    return 'address'
+    return 'entry'
   }
   if (match[6] !== undefined) {
     const port = Number(match[6])
@@ -251,27 +284,31 @@ function problemOf(written: string): DestinationProblem | null {
 
 async function put(next: CloudNetworkSetting): Promise<SentenceText | null> {
   await slow(300)
-  if (next.access === 'only') {
-    for (const written of next.destinations) {
-      const problem = problemOf(written)
-      if (problem !== null) {
-        return destinationProblemText(problem)
-      }
+  for (const written of next.custom.allowed) {
+    const problem = problemOf(written)
+    if (problem !== null) {
+      return destinationProblemText(problem)
     }
   }
-  network.value = { access: next.access, destinations: next.destinations.map((written) => written.trim()) }
+  network.value = { ...next, custom: { ...next.custom, allowed: next.custom.allowed.map((written) => written.trim()) } }
   if (props.moment === 'managerAway') {
     showToast({ title: t('cloud.title'), message: t('cloud.pending'), tone: 'neutral' })
   }
   return null
 }
 
-function setAccess(access: PrivateNetworkAccess): Promise<SentenceText | null> {
-  return put({ access, destinations: network.value?.destinations ?? [] })
+function setPolicy(policy: NetworkPolicy): Promise<SentenceText | null> | undefined {
+  return network.value ? put(withPolicy(network.value, policy)) : undefined
 }
 
-function saveDestinations(destinations: string[]): Promise<SentenceText | null> {
-  return put({ access: 'only', destinations })
+function setGroup(group: NetworkGroup, on: boolean): Promise<SentenceText | null> | undefined {
+  const current = network.value
+  return current ? put({ ...current, custom: { ...current.custom, [group]: on } }) : undefined
+}
+
+function saveAllowed(allowed: string[]): Promise<SentenceText | null> {
+  const current = network.value ?? setting('custom', [])
+  return put({ ...current, custom: { ...current.custom, allowed } })
 }
 </script>
 
@@ -284,7 +321,8 @@ function saveDestinations(destinations: string[]): Promise<SentenceText | null> 
     :overlay-store="appOverlayStore"
     :on-retry="retry"
     :on-set-isolation="setIsolation"
-    :on-set-access="setAccess"
-    :save-destinations="saveDestinations"
+    :on-set-policy="setPolicy"
+    :on-set-group="setGroup"
+    :save-allowed="saveAllowed"
   />
 </template>

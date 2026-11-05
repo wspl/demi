@@ -25,8 +25,8 @@ mod linux {
     };
 
     use demi_machine_manager_protocol::{
-        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeviceId, Download, DrainRecord, HibernateParams, ImageStateParams, Isolation, LeftRecord, MachineCall, ManagerEvent, Offer, Operation, PrivateNetwork,
-        ReconcileParams, Reconciled, ResetParams, RuntimeOffer, RuntimeState, RuntimeStateParams, SandboxMachine, SetIsolationParams, SetPrivateNetworkParams, Unavailable, WakeParams,
+        BaseVersion, Capacity, CheckpointParams, CurrentBaseVersionParams, DRAIN_RECORD, DeviceId, Download, DrainRecord, HibernateParams, ImageStateParams, Isolation, LeftRecord, MachineCall, ManagerEvent, NetworkRules, Offer, Operation,
+        ReconcileParams, Reconciled, ResetParams, RuntimeOffer, RuntimeState, RuntimeStateParams, SandboxMachine, SetIsolationParams, SetNetworkRulesParams, Unavailable, WakeParams,
     };
     use tokio::{
         sync::{mpsc, oneshot, watch},
@@ -133,8 +133,8 @@ mod linux {
         workers: RefCell<JoinSet<()>>,
         deaths: mpsc::Sender<DeviceId>,
         changes: mpsc::Sender<DeviceId>,
-        /// The private network Clouds reach, as the backend last named it.
-        private: RefCell<PrivateNetwork>,
+        /// What Clouds reach, as the backend last named it.
+        network_rules: RefCell<NetworkRules>,
         placement: Rc<Placement>,
         /// The moves of the stopped devices to the chosen isolation, one at
         /// a time; a new choice replaces them.
@@ -162,7 +162,7 @@ mod linux {
                 admission: Admission::new(),
                 devices: RefCell::default(),
                 workers: RefCell::default(),
-                private: RefCell::new(PrivateNetwork::Off),
+                network_rules: RefCell::default(),
                 placement: Rc::new(Placement::new(offers)),
                 moving: RefCell::default(),
                 downloading: RefCell::default(),
@@ -315,17 +315,17 @@ mod linux {
 
         /// Reports the devices whose sandboxes run, which stay running,
         /// recovers what an interrupted operation left of the others, and
-        /// installs the network policy again with the running sandboxes'
-        /// slots and the private network the backend last named: a
-        /// backend's restart stops no Cloud and cuts none off.
+        /// installs the firewall again with the running sandboxes' slots and
+        /// the network rules the backend last named: a backend's restart
+        /// stops no Cloud and cuts none off.
         pub async fn reconcile(&self) -> Result<Reconciled, OpError> {
             let _whole = self.admission.exclusive().await?;
             let (running, states): (Vec<DeviceId>, Vec<Running>) = self.running_devices().await.into_iter().unzip();
             self.core.simple.recover(&running).await?;
             if let Ok(gvisor) = &self.core.gvisor {
                 recovery::fence_and_save(&self.core, &running).await?;
-                let private = self.private.borrow().clone();
-                gvisor.network.prepare(&slots(&states), &private).await?;
+                let rules = self.network_rules.borrow().clone();
+                gvisor.network.prepare(&slots(&states), &rules).await?;
             }
             Ok(Reconciled {
                 running: running.iter().map(|device| device.as_str().to_owned()).collect(),
@@ -449,18 +449,18 @@ mod linux {
             Ok(())
         }
 
-        /// Installs the network policy with the private network `private`
-        /// and the running sandboxes' slots; under the whole gate, so no
-        /// sandbox starts or stops while the table is replaced.
-        pub async fn set_private_network(&self, private: PrivateNetwork) -> Result<(), OpError> {
+        /// Installs the firewall with `rules` and the running sandboxes'
+        /// slots; under the whole gate, so no sandbox starts or stops while
+        /// the table is replaced.
+        pub async fn set_network_rules(&self, rules: NetworkRules) -> Result<(), OpError> {
             let _whole = self.admission.exclusive().await?;
-            // A manager without gVisor keeps the choice for no Cloud: Simple
+            // A manager without gVisor keeps the rules for no Cloud: Simple
             // Isolation's are on the host's network.
             if let Ok(gvisor) = &self.core.gvisor {
                 let states: Vec<Running> = self.running_devices().await.into_iter().map(|(_, state)| state).collect();
-                gvisor.network.prepare(&slots(&states), &private).await?;
+                gvisor.network.prepare(&slots(&states), &rules).await?;
             }
-            *self.private.borrow_mut() = private;
+            *self.network_rules.borrow_mut() = rules;
             Ok(())
         }
 
@@ -648,9 +648,9 @@ mod linux {
                     self.set_isolation(params.isolation).await?;
                     Ok(reply::<SetIsolationParams>(()))
                 }
-                MachineCall::SetPrivateNetwork(params) => {
-                    self.set_private_network(params.private_network).await?;
-                    Ok(reply::<SetPrivateNetworkParams>(()))
+                MachineCall::SetNetworkRules(params) => {
+                    self.set_network_rules(params.network_rules).await?;
+                    Ok(reply::<SetNetworkRulesParams>(()))
                 }
                 MachineCall::CurrentBaseVersion(_) => {
                     Ok(reply::<CurrentBaseVersionParams>(self.base.clone()))

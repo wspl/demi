@@ -51,7 +51,7 @@ pub async fn setting(control: &ControlService, cloud: &CloudServices) -> Result<
                 IsolationRuntime {
                     isolation: web_isolation(offer.isolation),
                     unavailable,
-                    private_network: enforces.is_some_and(|enforces| enforces.private_network),
+                    network_policy: enforces.is_some_and(|enforces| enforces.network_policy),
                     storage_limits: enforces.is_some_and(|enforces| enforces.storage_limits),
                     download,
                 }
@@ -88,16 +88,15 @@ fn web_download(download: Download) -> IsolationDownload {
     }
 }
 
-/// Whether the manager's firewall keeps the Cloud `device` from the private
-/// network unless the master opens it: its storage's isolation enforces
-/// Private Network Access, or the manager has not said.
-pub fn private_network_closed(cloud: &CloudServices, device: &str) -> bool {
+/// Whether the network policy decides what the Cloud `device` reaches: its
+/// storage's isolation enforces it, or the manager has not said.
+pub fn network_policy_applies(cloud: &CloudServices, device: &str) -> bool {
     let machines = &cloud.machines;
     DeviceId::parse(device)
         .ok()
         .and_then(|device| machines.status(&device))
         .and_then(|status| machines.enforces(status.isolation))
-        .is_none_or(|enforces| enforces.private_network)
+        .is_none_or(|enforces| enforces.network_policy)
 }
 
 /// Whether each user's Cloud Storage bounds the Clouds: the chosen

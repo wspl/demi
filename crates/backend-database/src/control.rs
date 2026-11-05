@@ -12,7 +12,7 @@ use demi_shared_types::{Clock, Timestamp};
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::UserId;
 use demi_web_api_protocol::server_upgrade::UpgradeChannel;
-use demi_web_api_protocol::settings::{CloudNetwork, InstanceMode, Isolation, Preferences, PrivateNetworkAccess};
+use demi_web_api_protocol::settings::{CustomNetworkPolicy, InstanceMode, Isolation, NetworkPolicy, Preferences};
 use demi_web_api_protocol::text::EmailAddress;
 use demi_web_api_protocol::users::{CloudStorage, ListedUser};
 use jiff::SignedDuration;
@@ -437,48 +437,67 @@ impl ControlService {
         .await
     }
 
-    /// Which private destinations Clouds reach: none until the master
-    /// chooses.
-    pub async fn cloud_network(&self) -> Result<CloudNetwork, StorageError> {
+    /// What Clouds reach, and what Custom allows: the internet alone until
+    /// the master chooses.
+    pub async fn network_policy(&self) -> Result<(NetworkPolicy, CustomNetworkPolicy), StorageError> {
         self.call(|connection, _| {
-            let row: Option<(String, String)> = connection
+            let row: Option<(String, bool, bool, bool, String)> = connection
                 .query_row(
-                    "SELECT private_network, private_destinations FROM server_settings WHERE id = 1",
+                    "SELECT network_policy, custom_internet, custom_private_network, custom_developer_services,
+                       custom_allowed FROM server_settings WHERE id = 1",
                     [],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
                 )
                 .optional()?;
-            let Some((access, destinations)) = row else {
-                return Ok(CloudNetwork {
-                    access: PrivateNetworkAccess::Off,
-                    destinations: Vec::new(),
-                });
+            let Some((policy, internet, private_network, developer_services, allowed)) = row else {
+                return Ok((
+                    NetworkPolicy::InternetOnly,
+                    CustomNetworkPolicy {
+                        internet: true,
+                        private_network: false,
+                        developer_services: false,
+                        allowed: Vec::new(),
+                    },
+                ));
             };
             let corrupt = |column, reason: String| StorageError::Corrupt {
                 table: "server_settings",
                 column,
                 reason,
             };
-            Ok(CloudNetwork {
-                access: access
+            Ok((
+                policy
                     .parse()
-                    .map_err(|_| corrupt("private_network", format!("{access} is no access")))?,
-                destinations: serde_json::from_str(&destinations)
-                    .map_err(|error| corrupt("private_destinations", error.to_string()))?,
-            })
+                    .map_err(|_| corrupt("network_policy", format!("{policy} is no network policy")))?,
+                CustomNetworkPolicy {
+                    internet,
+                    private_network,
+                    developer_services,
+                    allowed: serde_json::from_str(&allowed).map_err(|error| corrupt("custom_allowed", error.to_string()))?,
+                },
+            ))
         })
         .await
     }
 
-    pub async fn set_cloud_network(&self, network: CloudNetwork) -> Result<(), StorageError> {
+    pub async fn set_network_policy(&self, policy: NetworkPolicy, custom: CustomNetworkPolicy) -> Result<(), StorageError> {
         self.call(move |connection, _| {
-            let destinations = serde_json::to_string(&network.destinations)
-                .expect("a list of strings serializes");
+            let allowed = serde_json::to_string(&custom.allowed).expect("a list of strings serializes");
             connection.execute(
-                "INSERT INTO server_settings (id, private_network, private_destinations) VALUES (1, ?1, ?2)
-                 ON CONFLICT (id) DO UPDATE SET private_network = excluded.private_network,
-                   private_destinations = excluded.private_destinations",
-                [network.access.to_string(), destinations],
+                "INSERT INTO server_settings (id, network_policy, custom_internet, custom_private_network,
+                   custom_developer_services, custom_allowed) VALUES (1, ?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT (id) DO UPDATE SET network_policy = excluded.network_policy,
+                   custom_internet = excluded.custom_internet,
+                   custom_private_network = excluded.custom_private_network,
+                   custom_developer_services = excluded.custom_developer_services,
+                   custom_allowed = excluded.custom_allowed",
+                params![
+                    policy.to_string(),
+                    custom.internet,
+                    custom.private_network,
+                    custom.developer_services,
+                    allowed
+                ],
             )?;
             Ok(())
         })

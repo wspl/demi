@@ -64,11 +64,11 @@ const MACOS_UTILITIES: &str = "sh, bash and the standard utilities that write fi
 /// Where the agent keeps the files only it needs (`crates/runner-jobs/src/scratch.rs`), which every block says after where shells start.
 const SCRATCH: &str = "Files only you need (screenshots, probe scripts) go in $DEMI_SCRATCH, which shows as no change and lasts as long as the conversation.";
 
-/// What a block for a Cloud says of the network the server is on, which the
-/// machine manager's firewall closes to Clouds unless the master opens it
-/// (`crates/machine-manager/src/network/mod.rs`): a refused connection is
-/// the server's setting, not a fault to work around.
-const CLOUD_PRIVATE_NETWORK: &str = "Addresses on the server's private network are blocked unless the server's master allows them in Settings › Cloud.";
+/// What a block for a Cloud says of what it reaches, which the machine
+/// manager's firewall and resolver limit to what the master's network policy
+/// allows (`crates/machine-manager/src/network/mod.rs`): a refused
+/// connection or name is the server's setting, not a fault to work around.
+const CLOUD_NETWORK_POLICY: &str = "The server's network policy, which its master sets in Settings › Cloud, decides what this Cloud reaches: a destination it does not allow fails with \"No route to host\", and a name it does not allow may not resolve.";
 
 /// What a block for Windows says of its utilities: the others are Git for
 /// Windows' (`crates/runner/src/git.rs`).
@@ -236,11 +236,11 @@ impl Shard {
             Some(RunnerPlatform::Win32) => format!("{WINDOWS_UTILITIES}. {WINDOWS_SHELLS}"),
             _ => format!("{UTILITIES}."),
         };
-        let closed = |record: &DeviceRecord| {
-            demi_backend_cloud::isolation::private_network_closed(&self.services().cloud, record.id.as_str())
+        let limited = |record: &DeviceRecord| {
+            demi_backend_cloud::isolation::network_policy_applies(&self.services().cloud, record.id.as_str())
         };
-        if device.as_ref().is_none_or(|record| record.kind == DeviceKind::Managed && closed(record)) {
-            utilities = format!("{utilities} {CLOUD_PRIVATE_NETWORK}");
+        if device.as_ref().is_none_or(|record| record.kind == DeviceKind::Managed && limited(record)) {
+            utilities = format!("{utilities} {CLOUD_NETWORK_POLICY}");
         }
         let host = match device.and_then(|record| record.os) {
             Some(os) => format!("{name}, {} ({})", os.name, os.arch),

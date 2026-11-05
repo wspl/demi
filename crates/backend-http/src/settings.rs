@@ -9,12 +9,13 @@ use axum::http::StatusCode;
 use demi_backend_accounts::settings;
 use demi_backend_cloud::client::MachinesError;
 use demi_backend_cloud::isolation;
-use demi_backend_cloud::network::{self, DestinationError};
+use demi_backend_cloud::network::{self, AllowedError};
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::settings::{
-    CloudIsolation, CloudNetwork, PreferencesPatch, SetCloudIsolation, SetInstanceMode, Settings, UserPreferences,
+    CloudIsolation, CloudNetwork, PreferencesPatch, SetCloudIsolation, SetCloudNetwork, SetInstanceMode, Settings,
+    UserPreferences,
 };
 
 use super::body::JsonBody;
@@ -91,47 +92,47 @@ pub(super) async fn set_cloud_isolation(
     Ok(Json(isolation::setting(&services.control, &services.cloud).await?))
 }
 
-/// Settings › Cloud's Private Network Access, which only the master reads.
+/// Settings › Cloud's network policy, which only the master reads.
 pub(super) async fn cloud_network(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<CloudNetwork>, ApiError> {
     if user.role != Role::Master {
-        return Err(ApiError::forbidden("Only the master sees which private destinations Clouds reach"));
+        return Err(ApiError::forbidden("Only the master sees the network policy"));
     }
-    Ok(Json(services.control.cloud_network().await?))
+    Ok(Json(network::setting(&services.control).await?))
 }
 
-/// Changes which private destinations Clouds reach, which only the master
-/// does. A destination that is not one refuses the change, naming its place
-/// in the list (`index`). A manager that cannot be reached gets the stored
-/// setting when the backend connects to it again; one that refuses it
-/// leaves the setting as it was.
+/// Changes the network policy, which only the master does. An entry of
+/// Custom's list that is not one refuses the change, naming its place in the
+/// list (`index`). A manager that cannot be reached gets the stored policy
+/// when the backend connects to it again; one that refuses it leaves the
+/// policy as it was.
 pub(super) async fn set_cloud_network(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
-    JsonBody(request): JsonBody<CloudNetwork>,
+    JsonBody(request): JsonBody<SetCloudNetwork>,
 ) -> Result<Json<CloudNetwork>, ApiError> {
     if user.role != Role::Master {
-        return Err(ApiError::forbidden("Only the master changes which private destinations Clouds reach"));
+        return Err(ApiError::forbidden("Only the master changes the network policy"));
     }
-    let private = network::private_network(&request).map_err(|invalid| {
+    let rules = network::network_rules(request.policy, &request.custom).map_err(|invalid| {
         let problem = match invalid.error {
-            DestinationError::Address(_) => "address",
-            DestinationError::Port(_) => "port",
-            DestinationError::NeverReachable(_) => "neverReachable",
+            AllowedError::Entry(_) => "entry",
+            AllowedError::Port(_) => "port",
+            AllowedError::NeverReachable(_) => "neverReachable",
         };
         ApiError::invalid_body(invalid.to_string())
             .with_param("index", invalid.index)
             .with_param("problem", problem)
     })?;
-    match network::apply(&services.cloud, private).await {
+    match network::apply(&services.cloud, rules).await {
         Ok(()) => {
-            services.control.set_cloud_network(request.clone()).await?;
-            Ok(Json(request))
+            services.control.set_network_policy(request.policy, request.custom).await?;
+            Ok(Json(network::setting(&services.control).await?))
         }
         Err(error @ MachinesError::Unavailable { .. }) => {
-            services.control.set_cloud_network(request).await?;
+            services.control.set_network_policy(request.policy, request.custom).await?;
             Err(ApiError::new(
                 StatusCode::SERVICE_UNAVAILABLE,
                 ErrorCode::CloudUnavailable,
@@ -139,7 +140,7 @@ pub(super) async fn set_cloud_network(
             ))
         }
         Err(error) => Err(ApiError::internal_message(format!(
-            "The machine manager did not apply the private network: {error}"
+            "The machine manager did not apply the network policy: {error}"
         ))),
     }
 }

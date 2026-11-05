@@ -7,7 +7,7 @@ use demi_runner_protocol::boot::ManagedBoot;
 use demi_shared_types::LogLine;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::{BaseVersion, Isolation, MachineImageState, MoveStatus, PrivateNetwork, RuntimeOffer, RuntimeState, Volume};
+use crate::{BaseVersion, Isolation, MachineImageState, MoveStatus, NetworkRules, RuntimeOffer, RuntimeState, Volume};
 
 /// The longest line either end reads, its newline excluded: a reader holds a
 /// line whole, so an end that never sends a newline would fill memory. The
@@ -17,7 +17,7 @@ pub const MAX_LINE_BYTES: usize = 1 << 20;
 /// The wire's version, which the manager's `hello` names. The backend and
 /// the manager of a deployment run one release, so a change to any message
 /// changes it.
-pub const VERSION: u32 = 8;
+pub const VERSION: u32 = 9;
 
 /// A request: an id the client chooses, which its reply names, and the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -44,7 +44,7 @@ pub enum MachineCall {
     Hibernate(#[garde(dive)] HibernateParams),
     Checkpoint(#[garde(dive)] CheckpointParams),
     Reset(#[garde(dive)] ResetParams),
-    SetPrivateNetwork(#[garde(skip)] SetPrivateNetworkParams),
+    SetNetworkRules(#[garde(skip)] SetNetworkRulesParams),
     SetIsolation(#[garde(skip)] SetIsolationParams),
 }
 
@@ -60,7 +60,7 @@ impl MachineCall {
             Self::Hibernate(_) => "hibernate",
             Self::Checkpoint(_) => "checkpoint",
             Self::Reset(_) => "reset",
-            Self::SetPrivateNetwork(_) => "set_private_network",
+            Self::SetNetworkRules(_) => "set_network_rules",
             Self::SetIsolation(_) => "set_isolation",
         }
     }
@@ -71,14 +71,14 @@ impl MachineCall {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReconcileParams {}
 
-/// Replace the private network Clouds reach and install the network policy
-/// with it. The manager keeps it in memory only and starts with
-/// [`PrivateNetwork::Off`], so the backend sends it each time it connects as
-/// well as each time the master changes it.
+/// Replace what Clouds reach, which the firewall and the resolver apply at
+/// once. The manager keeps the rules in memory only and starts with the
+/// [default](NetworkRules::default), so the backend sends them each time it
+/// connects as well as each time the master changes the network policy.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SetPrivateNetworkParams {
-    pub private_network: PrivateNetwork,
+pub struct SetNetworkRulesParams {
+    pub network_rules: NetworkRules,
 }
 
 /// Choose the isolation new devices start on and every device moves to once
@@ -317,7 +317,7 @@ operations! {
     HibernateParams => Hibernate: (),
     CheckpointParams => Checkpoint: (),
     ResetParams => Reset: (),
-    SetPrivateNetworkParams => SetPrivateNetwork: (),
+    SetNetworkRulesParams => SetNetworkRules: (),
     SetIsolationParams => SetIsolation: (),
 }
 
