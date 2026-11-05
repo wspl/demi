@@ -30,7 +30,8 @@ use demi_backend_database::providers::EntrySwitches;
 use demi_provider_registry::families::{ProviderFamily, family_name};
 use demi_provider_registry::entry::{ApiKeyConfig, EntryCredential, ProviderEntry};
 use demi_backend_providers::vault::entries::Vault;
-use demi_backend_providers::vault::operations::OperationGuard;
+use demi_backend_providers::vault::operations::{Held, OperationGuard};
+use demi_provider_common::credentials::MemoryCredentialPool;
 use demi_provider_common::{ProviderHttp, Secret, SecretError};
 use demi_provider_relay::borrow::{Borrowed, FAMILY as BORROWED, server_name};
 use demi_provider_relay::key::{NotAKey, ShareKey};
@@ -75,9 +76,12 @@ pub enum ProviderRefusal {
     Busy,
     #[error("Unknown provider type \"{0}\"")]
     UnknownFamily(String),
-    /// A subscription family, whose entry a login makes.
+    /// A subscription family named as an API-key entry's.
     #[error("Provider type \"{0}\" is configured by its login")]
     LoginFamily(String),
+    /// An API-key family named as a subscription's.
+    #[error("Provider type \"{0}\" takes an API key, not a subscription")]
+    KeyFamily(String),
     #[error("wireApi: the {family} family does not speak {wire}")]
     Wire { family: String, wire: WireApi },
     #[error("Unknown vendor \"{0}\"")]
@@ -87,8 +91,11 @@ pub enum ProviderRefusal {
     CatalogUnavailable(String),
     #[error("apiKey: {0}")]
     Key(#[from] SecretError),
+    /// A second subscription entry of a family; it names the family.
+    #[error("This scope already has a {0} subscription")]
+    Exists(String),
     /// A key or an endpoint for a subscription entry.
-    #[error("A subscription entry takes only a new label")]
+    #[error("A subscription entry takes no key or endpoint")]
     SubscriptionOnly,
     /// A model list for a subscription entry, whose models come from its
     /// provider; it names the entry.
@@ -128,6 +135,10 @@ pub enum ProviderRefusal {
     /// A device to connect through that is none of the entry owner's.
     #[error("throughDevice: no such device of the provider's owner")]
     UnknownDevice,
+    /// A device for an entry whose family's requests the backend does not
+    /// make with the entry's client; it names the entry.
+    #[error("throughDevice: {0} makes its requests another way; it can’t connect through a device")]
+    ConnectsDirectly(String),
     /// A prompt cache lifetime the entry's provider does not take.
     #[error("cacheTtl: {entry} can’t ask for a prompt cache lifetime of {ttl}")]
     CacheTtl { entry: String, ttl: String },
@@ -208,9 +219,10 @@ impl Services {
             .ok_or(ProviderRefusal::Busy)
     }
 
-    /// Creates an API-key entry: a vendor entry from the vendor list, or from a
-    /// family alone for its own vendor; or a compatible entry, Anthropic Messages
-    /// unless the body names another protocol.
+    /// Creates an entry: an API-key entry, a vendor entry from the vendor list,
+    /// or from a family alone for its own vendor, or a compatible entry,
+    /// Anthropic Messages unless the body names another protocol; or a
+    /// subscription entry with no account.
     ///
     /// Its label is the vendor's or the family's name, or *Compatible API*, unless
     /// the body gives one. What the body leaves out leaves it incomplete.
@@ -219,8 +231,16 @@ impl Services {
         user: &UserDto,
         body: CreateProvider,
     ) -> Result<ProviderEntry, ProviderRefusal> {
-        self.may_add(&user.id, CredentialKind::ApiKey).await?;
+        let kind = match &body {
+            CreateProvider::Subscription { .. } => CredentialKind::Subscription,
+            _ => CredentialKind::ApiKey,
+        };
+        self.may_add(&user.id, kind).await?;
         let (family, label, config) = match body {
+            CreateProvider::Subscription {
+                provider_type,
+                through_device,
+            } => return self.create_subscription(&user.id, provider_type, through_device).await,
             CreateProvider::Vendor {
                 vendor_id,
                 label,
@@ -322,6 +342,35 @@ impl Services {
             .vault
             .create_api_key(owner, family, label, config, cache_ttl)
             .await?)
+    }
+
+    /// Creates `owner`'s subscription entry of `family` with no account,
+    /// connecting through `through_device`; the user's sign-ins then add its
+    /// accounts.
+    async fn create_subscription(
+        &self,
+        owner: &UserId,
+        family: String,
+        through_device: Option<DeviceId>,
+    ) -> Result<ProviderEntry, ProviderRefusal> {
+        match self.provider_registry.families().get(&family) {
+            None => return Err(ProviderRefusal::UnknownFamily(family)),
+            Some(registered) if registered.credential() != CredentialKind::Subscription => {
+                return Err(ProviderRefusal::KeyFamily(family));
+            }
+            Some(_) => {}
+        }
+        // A login making the family's entry holds it, and makes it itself.
+        let _held = self
+            .operations
+            .hold(Held::NewEntry { owner: owner.clone(), family: family.clone() }, None)
+            .map_err(|_| ProviderRefusal::Busy)?;
+        let label = family_name(&family).to_owned();
+        let through_device = self.through_device(owner, &family, &label, through_device).await?;
+        self.vault
+            .create_subscription(owner.clone(), family.clone(), label, through_device, &MemoryCredentialPool::new())
+            .await?
+            .ok_or(ProviderRefusal::Exists(family))
     }
 
     /// Edits the entry `id`: the label of any; the key, model list and
@@ -517,7 +566,7 @@ impl Services {
         let cache_ttl = self.cache_ttl(&entry, family.as_deref(), config.as_ref(), patch.cache_ttl)?;
         let retimes = cache_ttl.is_some();
         let through_device = match patch.through_device {
-            Some(device) => Some(self.through_device(&entry, device).await?),
+            Some(device) => Some(self.through_device(&entry.owner, &entry.family, &entry.label, device).await?),
             None => None,
         };
         let reroutes = through_device.is_some();
@@ -741,19 +790,26 @@ impl Services {
             .map_err(|error| ProviderRefusal::CatalogUnavailable(error.to_string()))
     }
 
-    /// The device an edit of `entry` connects it through, none for the
-    /// server: only an API-key entry connects through one, and only through
-    /// a device of its owner's.
-    async fn through_device(&self, entry: &ProviderEntry, device: Option<DeviceId>) -> Result<Option<DeviceId>, ProviderRefusal> {
-        if !matches!(entry.credential, EntryCredential::ApiKey(_)) {
-            return Err(ProviderRefusal::SubscriptionOnly);
-        }
+    /// The device an entry of `family`, labeled `label`, connects through,
+    /// none for the server: only an entry whose family connects through
+    /// devices takes one, and only one of `owner`'s.
+    async fn through_device(
+        &self,
+        owner: &UserId,
+        family: &str,
+        label: &str,
+        device: Option<DeviceId>,
+    ) -> Result<Option<DeviceId>, ProviderRefusal> {
+        // The server is every entry's.
         let Some(device) = device else {
             return Ok(None);
         };
+        if !self.provider_registry.families().connects_through(family) {
+            return Err(ProviderRefusal::ConnectsDirectly(label.to_owned()));
+        }
         let control = self.vault.control();
-        let mut devices = control.paired_devices(entry.owner.clone()).await?;
-        devices.extend(control.managed_device(entry.owner.clone()).await?);
+        let mut devices = control.paired_devices(owner.clone()).await?;
+        devices.extend(control.managed_device(owner.clone()).await?);
         if !devices.iter().any(|owned| owned.id == device) {
             return Err(ProviderRefusal::UnknownDevice);
         }

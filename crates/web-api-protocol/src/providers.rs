@@ -151,8 +151,9 @@ impl ConfiguredModels {
 
 /// `POST /providers`: a vendor entry from the vendor list, whose family,
 /// wire and endpoint the vendor supplies; a vendor entry of a family's own
-/// vendor, such as Anthropic's; or a compatible entry, Anthropic Messages
-/// unless it names another protocol. Everything but the kind may come later:
+/// vendor, such as Anthropic's; a compatible entry, Anthropic Messages
+/// unless it names another protocol; or a subscription entry with no account
+/// yet, which its sign-ins then fill. Everything but the kind may come later:
 /// the entry is incomplete until it has what it needs, and its label is the
 /// vendor's or the family's name, or *Compatible API*, with the first free
 /// *(2)*, *(3)* when the scope has an entry of that name.
@@ -239,6 +240,17 @@ pub enum CreateProvider {
         #[garde(length(chars, min = 1))]
         label: Option<Trimmed>,
     },
+    /// The subscription of a family, named after it, which the user
+    /// configures before signing in, such as the device it connects
+    /// through; refused when the user holds the family's already.
+    Subscription {
+        #[garde(length(min = 1))]
+        provider_type: String,
+        #[serde(default, with = "unwrap_or_skip")]
+        #[schemars(with = "DeviceId")]
+        #[garde(skip)]
+        through_device: Option<DeviceId>,
+    },
 }
 
 /// `PATCH /providers/:id`: a new label for any entry; for an API-key entry
@@ -297,8 +309,9 @@ pub struct ProviderPatch {
     #[schemars(with = "Option<Nullable<CacheTtl>>")]
     #[garde(skip)]
     pub cache_ttl: Option<Option<CacheTtl>>,
-    /// An API-key entry's Connect Through: one of the owner's devices its
-    /// requests go out from, null for the server.
+    /// Connect Through, of an entry whose family connects through devices:
+    /// one of the owner's devices its requests go out from, null for the
+    /// server.
     #[serde(default, with = "double_option")]
     #[schemars(with = "Option<Nullable<DeviceId>>")]
     #[garde(skip)]
@@ -519,12 +532,14 @@ pub struct ProviderDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Vec<CacheTtl>>")]
     pub cache_ttl_presets: Option<Vec<CacheTtl>>,
-    /// The owner's device an API-key entry's requests go out from, which
-    /// reaches its endpoint on its own network; null for the server and for
-    /// a subscription.
+    /// The owner's device the entry's requests go out from, which reaches
+    /// its endpoint on its own network; null for the server.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<DeviceId>")]
     pub through_device: Option<DeviceId>,
+    /// Whether its family lets it connect through a device, which Settings
+    /// offers as Connect Through.
+    pub connects_through: bool,
     /// The headers every request of the entry carries: a compatible entry's
     /// in the user's order, and for a vendor entry each one its vendor
     /// documents, with an empty value when it sends none. Empty for a
@@ -762,6 +777,9 @@ pub struct SubscriptionFamily {
     pub provider_type: String,
     /// Its name in Settings, such as `Grok Build`.
     pub name: String,
+    /// Whether its entry may connect through one of its owner's devices,
+    /// which Settings offers as Connect Through.
+    pub connects_through: bool,
 }
 
 /// The shapes a compatible entry may choose for each kind of media it can

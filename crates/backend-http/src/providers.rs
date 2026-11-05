@@ -80,9 +80,12 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
         | ProviderRefusal::CacheTtl { .. }
         | ProviderRefusal::Headers(_)
         | ProviderRefusal::VendorHeader { .. }
+        | ProviderRefusal::ConnectsDirectly(_)
+        | ProviderRefusal::KeyFamily(_)
         | ProviderRefusal::Order => {
             return ApiError::invalid_body(message);
         }
+        ProviderRefusal::Exists(_) => (StatusCode::CONFLICT, ErrorCode::ProviderExists),
         ProviderRefusal::ShapeFixed(_) => (StatusCode::BAD_REQUEST, ErrorCode::ShapeFixed),
         ProviderRefusal::Borrowed(_)
         | ProviderRefusal::BorrowedFixed(_)
@@ -146,6 +149,7 @@ pub(super) async fn catalog(
         .map(|family| SubscriptionFamily {
             provider_type: family.to_owned(),
             name: family_name(family).to_owned(),
+            connects_through: provider_registry.families().connects_through(family),
         })
         .collect();
     let vendors = provider_registry
@@ -167,8 +171,9 @@ fn catalog_unavailable(error: impl ToString) -> ApiError {
     )
 }
 
-/// Creates an API-key entry, a vendor's or a compatible API;
-/// what the body leaves out leaves it incomplete.
+/// Creates an entry: an API key's, a vendor's or a compatible API, or a
+/// subscription with no account yet; what the body leaves out leaves it
+/// incomplete.
 pub(super) async fn create(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,

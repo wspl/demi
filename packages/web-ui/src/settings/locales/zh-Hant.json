@@ -751,6 +751,7 @@
       "throughServer": "伺服器",
       "throughServerDescription": "請求從伺服器送出。",
       "throughDevice": "請求從 {device} 送出，端點填它能連線的位址。",
+      "throughDeviceSubscription": "請求從 {device} 送出。",
       "throughOffline": "{device} 離線：連線之前請求會失敗。",
       "throughRemoved": "已移除的裝置",
       "throughRemovedDescription": "該裝置已被移除：選擇其他裝置之前請求會失敗。"

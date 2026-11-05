@@ -148,6 +148,7 @@ pub struct NewProvider {
     pub config: Option<Vec<u8>>,
     pub active: Option<CredentialId>,
     pub cache_ttl: Option<CacheTtl>,
+    pub through_device: Option<DeviceId>,
 }
 
 /// A `provider_credentials` row: one account with its secret still sealed.
@@ -184,7 +185,7 @@ pub struct CredentialWrite {
 const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation, image_generation, video_generation, audio_generation, cache_ttl, web_search, x_search, search_images, search_videos, through_device_id";
 /// The columns a new entry stores; its rotation is the default, manual, its
 /// Image Generation is on, and it joins the end of its owner's list.
-const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, cache_ttl, position";
+const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, cache_ttl, through_device_id, position";
 const CREDENTIAL_COLUMNS: &str =
     "id, identity_key, label, detail, source, secret, version, quota, updated_at, signed_out";
 const SHARE_KEY_COLUMNS: &str = "id, provider_id, created_by, created_at, used_by, used_at";
@@ -230,7 +231,7 @@ impl ControlService {
             let inserted = transaction
                 .query_row(
                     &format!(
-                        "INSERT INTO providers ({NEW_PROVIDER_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                        "INSERT INTO providers ({NEW_PROVIDER_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
                            (SELECT coalesce(max(position) + 1, 0) FROM providers WHERE owner_user_id = ?2))
                          ON CONFLICT (owner_user_id, provider_type) WHERE credential_kind = 'subscription' DO NOTHING
                          RETURNING {PROVIDER_COLUMNS}"
@@ -244,7 +245,8 @@ impl ControlService {
                         provider.config,
                         provider.active.as_ref().map(CredentialId::as_str),
                         now.as_millisecond(),
-                        provider.cache_ttl.as_ref().map(CacheTtl::as_str)
+                        provider.cache_ttl.as_ref().map(CacheTtl::as_str),
+                        provider.through_device.as_ref().map(DeviceId::as_str)
                     ],
                     |row| Ok(provider_row(row)),
                 )

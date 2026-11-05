@@ -67,6 +67,9 @@ pub(crate) struct Refusal {
 /// A WebSocket that cannot connect at all, which is how networks that block
 /// WebSockets show, sends the provider's requests over server-sent events at
 /// once for [`WEBSOCKET_RETRY_AFTER`].
+///
+/// An entry that connects through a device sends server-sent events alone,
+/// whatever its transport: the WebSocket would leave from the backend.
 pub(crate) async fn open(
     shared: &Shared,
     http: &demi_provider_common::ProviderHttp,
@@ -75,6 +78,9 @@ pub(crate) async fn open(
     cancel: &CancellationToken,
     observed: &mut Vec<QuotaWindow>,
 ) -> Result<Events, OpenError> {
+    if http.goes_through_device() {
+        return sse(shared, http, headers, body, cancel, observed).await;
+    }
     match shared.transport {
         TransportMode::Sse => sse(shared, http, headers, body, cancel, observed).await,
         TransportMode::WebSocket => websocket(shared, headers, body, cancel, observed).await,

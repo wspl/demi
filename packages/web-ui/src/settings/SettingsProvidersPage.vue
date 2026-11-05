@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formError, type ShownError } from '../infra/errors'
 import { computed, reactive, ref, watch, type Component } from 'vue'
+import { createReusableTemplate } from '@vueuse/core'
 import { effortLabel } from './efforts'
 import { t as uiText } from '../locales/text'
 import { find, t } from './locales/text'
@@ -330,6 +331,9 @@ const providerBadgeLabel = {
   },
   disabled: undefined,
 } as const
+
+/** Connect Through, which an API key's connection and a subscription's accounts both end with. */
+const [DefineThrough, ReuseThrough] = createReusableTemplate<{ provider: SettingsProviderEntry }>()
 
 /**
  * Editing waits only for a write: a test or a refresh only reads, so the
@@ -928,8 +932,10 @@ function throughDescriptions(provider: SettingsProviderEntry): { text: string; s
   if (!host) {
     return [{ text: t('providers.connection.throughServerDescription'), shown: true }]
   }
+  // A subscription has no endpoint of the user's to reach.
+  const online = provider.kind === 'subscription' ? 'providers.connection.throughDeviceSubscription' : 'providers.connection.throughDevice'
   return [
-    { text: t('providers.connection.throughDevice', { device: host.name }), shown: host.state === 'online' },
+    { text: t(online, { device: host.name }), shown: host.state === 'online' },
     { text: t('providers.connection.throughOffline', { device: host.name }), shown: host.state !== 'online' },
     { text: removed, shown: false },
   ]
@@ -977,6 +983,61 @@ function endpointDescription(provider: SettingsProviderEntry): string | undefine
 
 <template>
   <SettingsPage wide fill :title="t('providers.title')">
+    <!-- Where the requests go out from: the server, or one of the user's Hosts,
+         which then reaches the endpoint on its own network. -->
+    <DefineThrough v-slot="{ provider }">
+      <SettingsRow :label="t('providers.connection.through')">
+        <template #description>
+          <span class="grid">
+            <span
+              v-for="variant in throughDescriptions(provider)"
+              :key="variant.text"
+              class="col-start-1 row-start-1"
+              :class="{ invisible: !variant.shown }"
+              :aria-hidden="!variant.shown || undefined"
+            >{{ variant.text }}</span>
+          </span>
+        </template>
+        <Dropdown
+          size="sm"
+          :overlay-store="overlayStore"
+          variant="default"
+          :trigger-label="t('providers.connection.through')"
+          :icon="throughOf(provider) ? hostGlyph(throughOf(provider)!) : throughRemoved(provider) ? MonitorX : Server"
+          :disabled="fieldsLocked(provider)"
+        >
+          <template #trigger>{{ throughLabel(provider) }}</template>
+          <template #content="{ close }">
+            <Menu>
+              <MenuItem
+                :icon="Server"
+                :label="t('providers.connection.throughServer')"
+                choice
+                :is-selected="!provider.throughDevice"
+                @select="
+                  close();
+                  provider.throughDevice && emit('change', provider, { throughDevice: null })
+                "
+              />
+              <MenuDivider v-if="hosts?.length" />
+              <MenuItem
+                v-for="host in hosts ?? []"
+                :key="host.id"
+                :icon="hostGlyph(host)"
+                :label="host.name"
+                :value="host.state === 'online' ? undefined : DEVICE_STATE_LABEL[host.state]"
+                choice
+                :is-selected="provider.throughDevice === host.id"
+                @select="
+                  close();
+                  provider.throughDevice !== host.id && emit('change', provider, { throughDevice: host.id })
+                "
+              />
+            </Menu>
+          </template>
+        </Dropdown>
+      </SettingsRow>
+    </DefineThrough>
     <AsyncRegion
       :state="load"
       :label="t('providers.loading')"
@@ -1311,6 +1372,8 @@ function endpointDescription(provider: SettingsProviderEntry): string | undefine
                 >
                   {{ t('providers.account.none') }}
                 </div>
+                <!-- Every account's requests go out from where the provider's do. -->
+                <ReuseThrough v-if="selected.connectsThrough" :provider="selected" />
               </template>
 
               <!-- Connection (another Demi's provider): the share key alone. The endpoint,
@@ -1386,59 +1449,7 @@ function endpointDescription(provider: SettingsProviderEntry): string | undefine
                     @commit="emit('change', selected, { baseUrl: $event })"
                   />
                 </SettingsRow>
-                <!-- Where the requests go out from: the server, or one of the user's Hosts,
-                     which then reaches the endpoint on its own network. -->
-                <SettingsRow :label="t('providers.connection.through')">
-                  <template #description>
-                    <span class="grid">
-                      <span
-                        v-for="variant in throughDescriptions(selected)"
-                        :key="variant.text"
-                        class="col-start-1 row-start-1"
-                        :class="{ invisible: !variant.shown }"
-                        :aria-hidden="!variant.shown || undefined"
-                      >{{ variant.text }}</span>
-                    </span>
-                  </template>
-                  <Dropdown
-                    size="sm"
-                    :overlay-store="overlayStore"
-                    variant="default"
-                    :trigger-label="t('providers.connection.through')"
-                    :icon="throughOf(selected) ? hostGlyph(throughOf(selected)!) : throughRemoved(selected) ? MonitorX : Server"
-                    :disabled="fieldsLocked(selected)"
-                  >
-                    <template #trigger>{{ throughLabel(selected) }}</template>
-                    <template #content="{ close }">
-                      <Menu>
-                        <MenuItem
-                          :icon="Server"
-                          :label="t('providers.connection.throughServer')"
-                          choice
-                          :is-selected="!selected.throughDevice"
-                          @select="
-                            close();
-                            selected.throughDevice && emit('change', selected, { throughDevice: null })
-                          "
-                        />
-                        <MenuDivider v-if="hosts?.length" />
-                        <MenuItem
-                          v-for="host in hosts ?? []"
-                          :key="host.id"
-                          :icon="hostGlyph(host)"
-                          :label="host.name"
-                          :value="host.state === 'online' ? undefined : DEVICE_STATE_LABEL[host.state]"
-                          choice
-                          :is-selected="selected.throughDevice === host.id"
-                          @select="
-                            close();
-                            selected.throughDevice !== host.id && emit('change', selected, { throughDevice: host.id })
-                          "
-                        />
-                      </Menu>
-                    </template>
-                  </Dropdown>
-                </SettingsRow>
+                <ReuseThrough :provider="selected" />
                 <SettingsRow
                   :label="t('providers.connection.apiKey')"
                   :description="

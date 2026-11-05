@@ -269,6 +269,8 @@ export function provider(
     media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
     search: gallerySearch(partial.family),
     logo: providerLogo({ kind: partial.kind, providerType: partial.family, vendorId: partial.vendorId ?? null }),
+    // As the backend's families say: Claude Code's CLI makes its requests on another machine.
+    ...(partial.kind === 'subscription' ? { connectsThrough: partial.family !== 'claude-code' } : {}),
     ...partial,
   }
   return 'cacheTtl' in partial ? entry : { ...entry, cacheTtl: galleryCacheTtl(entry) }
@@ -759,6 +761,8 @@ export function mockProviders(): MockProvider[] {
         name: 'Grok Build',
         kind: 'subscription',
         family: 'grok-build',
+        // Its requests and sign-ins go out from alex-mbp.
+        throughDevice: 'mac',
         // Its images are turned off, so the agent's come from Codex, and Settings › Agent's
         // xAI row has no entry to offer; it makes the agent's videos, the subscription's
         // models newest first, those xAI gives no date last.

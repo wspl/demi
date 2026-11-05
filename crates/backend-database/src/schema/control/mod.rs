@@ -79,6 +79,7 @@ mod from_0_1_5960;
 mod from_0_1_5979;
 mod from_0_1_5979_reply_block_shares;
 mod from_0_1_5979_format_3;
+mod from_0_1_5979_media_jobs;
 
 pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
@@ -359,5 +360,9 @@ pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
         sql: include_str!("from_0_1_5979_format_3.sql"),
         migration: from_0_1_5979_format_3::MIGRATION,
+    },
+    Shipped {
+        sql: include_str!("from_0_1_5979_media_jobs.sql"),
+        migration: from_0_1_5979_media_jobs::MIGRATION,
     },
 ];
