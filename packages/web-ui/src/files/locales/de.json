@@ -225,6 +225,7 @@
     "seek": "Position in {name}",
     "mute": "Ton aus",
     "unmute": "Ton ein",
+    "volume": "Lautstärke",
     "speed": "Wiedergabegeschwindigkeit",
     "enterFullScreen": "Vollbildmodus aktivieren",
     "exitFullScreen": "Vollbildmodus beenden"

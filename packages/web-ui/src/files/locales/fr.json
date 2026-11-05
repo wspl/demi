@@ -225,6 +225,7 @@
     "seek": "Position dans {name}",
     "mute": "Couper le son",
     "unmute": "Réactiver le son",
+    "volume": "Volume",
     "speed": "Vitesse de lecture",
     "enterFullScreen": "Passer en plein écran",
     "exitFullScreen": "Quitter le plein écran"
