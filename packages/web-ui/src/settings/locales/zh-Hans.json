@@ -147,7 +147,7 @@
     "none": "没有端口转发",
     "select": "选择",
     "selectAll": "全选",
-    "selectLabel": "选择“{name}”",
+    "selectLabel": "选择“{forward}”",
     "selected": "已选择 {count} 个",
     "actions": "操作",
     "turnOn": "打开",
@@ -156,12 +156,10 @@
     "deleteTitle": "删除 {count} 个转发？",
     "deleteBody": "转发会停止监听，已打开的连接将结束。",
     "deleteFailed": "无法删除转发",
-    "choose": "选择…",
-    "nameOf": "“{name}”的名称",
-    "portOf": "“{name}”的端口",
-    "listenOnOf": "“{name}”的监听主机",
-    "connectToOf": "“{name}”的连接主机",
-    "addressOf": "“{name}”的地址",
+    "portOf": "“{forward}”的端口",
+    "listenOnOf": "“{forward}”的监听主机",
+    "connectToOf": "“{forward}”的连接主机",
+    "addressOf": "“{forward}”的地址",
     "unknownHost": "未知主机",
     "state": {
       "off": "关闭",
@@ -175,8 +173,6 @@
       "idle": "空闲"
     },
     "page": {
-      "name": "名称",
-      "nameProblem": "输入名称。",
       "on": "开启",
       "onDescription": "开启后，只要监听主机在线就会运行。",
       "listenOn": "监听",
@@ -192,7 +188,7 @@
       "tryAgain": "重试",
       "removeThis": "移除此转发",
       "remove": "移除转发…",
-      "removeTitle": "移除“{name}”？",
+      "removeTitle": "移除“{forward}”？",
       "removeBody": "它会停止监听，已打开的连接将结束。"
     }
   },

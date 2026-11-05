@@ -19,7 +19,7 @@ function forwardsAnswer(next: (current: PortForwardDto[]) => PortForwardDto[]): 
   return (read) => ({ type: 'port_forwards', portForwards: next(read.portForwards ?? []) })
 }
 
-/** A refusal the user fixes in the field, such as a taken name or a port out of range. */
+/** A refusal the user fixes in the field, such as a port out of range. */
 function refusedField(error: unknown): boolean {
   return error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 404
 }

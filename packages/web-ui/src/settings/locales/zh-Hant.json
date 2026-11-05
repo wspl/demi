@@ -147,7 +147,7 @@
     "none": "沒有連接埠轉送",
     "select": "選取",
     "selectAll": "全選",
-    "selectLabel": "選取「{name}」",
+    "selectLabel": "選取「{forward}」",
     "selected": "已選取 {count} 個",
     "actions": "動作",
     "turnOn": "開啟",
@@ -156,12 +156,10 @@
     "deleteTitle": "刪除 {count} 個轉送？",
     "deleteBody": "轉送會停止監聽，開啟中的連線將結束。",
     "deleteFailed": "無法刪除轉送",
-    "choose": "選擇…",
-    "nameOf": "「{name}」的名稱",
-    "portOf": "「{name}」的連接埠",
-    "listenOnOf": "「{name}」的監聽主機",
-    "connectToOf": "「{name}」的連線主機",
-    "addressOf": "「{name}」的位址",
+    "portOf": "「{forward}」的連接埠",
+    "listenOnOf": "「{forward}」的監聽主機",
+    "connectToOf": "「{forward}」的連線主機",
+    "addressOf": "「{forward}」的位址",
     "unknownHost": "未知的主機",
     "state": {
       "off": "關閉",
@@ -175,8 +173,6 @@
       "idle": "閒置"
     },
     "page": {
-      "name": "名稱",
-      "nameProblem": "請輸入名稱。",
       "on": "開啟",
       "onDescription": "開啟時，只要監聽主機在線上就會運作。",
       "listenOn": "監聽",
@@ -192,7 +188,7 @@
       "tryAgain": "再試一次",
       "removeThis": "移除此轉送",
       "remove": "移除轉送…",
-      "removeTitle": "要移除「{name}」嗎？",
+      "removeTitle": "要移除「{forward}」嗎？",
       "removeBody": "它會停止監聽，開啟中的連線將結束。"
     }
   },

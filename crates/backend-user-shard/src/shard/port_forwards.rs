@@ -117,7 +117,6 @@ pub enum PortForwardError {
 fn change_of(patch: PortForwardPatch) -> PortForwardChange {
     {
         PortForwardChange {
-            name: patch.name.map(|name| name.into_string()),
             listen_device: patch.listen_device,
             listen_port: patch.listen_port,
             connect_device: patch.connect_device,
@@ -144,7 +143,6 @@ impl Shard {
             .cloned();
         PortForwardDto {
             id: record.id,
-            name: record.name,
             listen_device: record.listen_device,
             listen_port: record.listen_port,
             connect_device: record.connect_device,

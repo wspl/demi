@@ -3,7 +3,6 @@
 //!
 //! A record holds a forward's:
 //!
-//! - name, unique among its user's;
 //! - Listen On device and port;
 //! - Connect To device, none until chosen, and address;
 //! - switch.
@@ -12,9 +11,7 @@
 
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::ids::{DeviceId, PortForwardId, UserId};
-use demi_web_api_protocol::port_forwards::{
-    DEFAULT_ADDRESS, DEFAULT_NAME, DEFAULT_PORT, ForwardAddress, name_taken,
-};
+use demi_web_api_protocol::port_forwards::{DEFAULT_ADDRESS, DEFAULT_PORT, ForwardAddress};
 use rusqlite::{OptionalExtension, Row, Transaction, params};
 
 use super::StorageError;
@@ -27,7 +24,6 @@ const TABLE: &str = "port_forwards";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortForwardRecord {
     pub id: PortForwardId,
-    pub name: String,
     pub listen_device: DeviceId,
     pub listen_port: u16,
     pub connect_device: Option<DeviceId>,
@@ -39,7 +35,6 @@ pub struct PortForwardRecord {
 /// What a change sets; a new forward takes each over its default.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PortForwardChange {
-    pub name: Option<String>,
     pub listen_device: Option<DeviceId>,
     pub listen_port: Option<u16>,
     /// `Some(None)` leaves the Connect To Host to be chosen.
@@ -53,9 +48,6 @@ pub struct PortForwardChange {
 pub enum PortForwardRefusal {
     #[error("No such port forward")]
     NotFound,
-    /// Another of the user's forwards has the name.
-    #[error("{}", name_taken(.0))]
-    NameTaken(String),
     /// A device that is not one of the user's Hosts.
     #[error("No such Host")]
     NoSuchHost,
@@ -71,7 +63,6 @@ fn record(row: &Row<'_>) -> Result<PortForwardRecord, StorageError> {
     let port: i64 = row.get("listen_port")?;
     Ok(PortForwardRecord {
         id: decode(TABLE, "id", PortForwardId::try_from(row.get::<_, String>("id")?))?,
-        name: row.get("name")?,
         listen_device: decode(
             TABLE,
             "listen_device_id",
@@ -92,7 +83,7 @@ fn record(row: &Row<'_>) -> Result<PortForwardRecord, StorageError> {
     })
 }
 
-const COLUMNS: &str = "id, name, listen_device_id, listen_port, connect_device_id, connect_address, enabled, created_at";
+const COLUMNS: &str = "id, listen_device_id, listen_port, connect_device_id, connect_address, enabled, created_at";
 
 /// The user's forward `id`.
 fn by_id(
@@ -120,20 +111,6 @@ pub(crate) fn is_host(transaction: &Transaction<'_>, user: &UserId, device: &Dev
     )?)
 }
 
-/// Whether another of `user`'s forwards than `except` is named `name`.
-fn name_used(
-    transaction: &Transaction<'_>,
-    user: &UserId,
-    name: &str,
-    except: Option<&PortForwardId>,
-) -> Result<bool, StorageError> {
-    Ok(transaction.query_row(
-        "SELECT EXISTS (SELECT 1 FROM port_forwards WHERE user_id = ?1 AND name = ?2 AND id IS NOT ?3)",
-        params![user.as_str(), name, except.map(PortForwardId::as_str)],
-        |row| row.get(0),
-    )?)
-}
-
 impl ControlService {
     /// The user's forwards, oldest first.
     pub async fn port_forwards(&self, user: UserId) -> Result<Vec<PortForwardRecord>, StorageError> {
@@ -151,10 +128,10 @@ impl ControlService {
         .await
     }
 
-    /// Makes a forward for `user` from its defaults, *Forward*, *Forward
-    /// (2)* for the second, on, listening on `first_host` on port 8080 or
-    /// the next port none of the user's forwards there uses, connecting to
-    /// `localhost:11434` on no Host yet, with `change` over them.
+    /// Makes a forward for `user` from its defaults, on, listening on
+    /// `first_host` on port 8080 or the next port none of the user's
+    /// forwards there uses, connecting to `localhost:11434` on no Host yet,
+    /// with `change` over them.
     pub async fn create_port_forward(
         &self,
         user: UserId,
@@ -165,27 +142,6 @@ impl ControlService {
             let transaction = connection.transaction()?;
             let Some(listen_device) = change.listen_device.clone().or(first_host) else {
                 return Ok(Err(PortForwardRefusal::NoHost));
-            };
-            let name = match change.name.clone() {
-                Some(name) => {
-                    if name_used(&transaction, &user, &name, None)? {
-                        return Ok(Err(PortForwardRefusal::NameTaken(name)));
-                    }
-                    name
-                }
-                None => {
-                    let mut number = 1;
-                    loop {
-                        let name = match number {
-                            1 => DEFAULT_NAME.to_owned(),
-                            n => format!("{DEFAULT_NAME} ({n})"),
-                        };
-                        if !name_used(&transaction, &user, &name, None)? {
-                            break name;
-                        }
-                        number += 1;
-                    }
-                }
             };
             let listen_port = match change.listen_port {
                 Some(port) => port,
@@ -213,13 +169,12 @@ impl ControlService {
             let id = PortForwardId::try_from(format!("fwd-{}", uuid::Uuid::new_v4().simple()))
                 .expect("a generated id is nonempty");
             transaction.execute(
-                "INSERT INTO port_forwards (id, user_id, name, listen_device_id, listen_port,
+                "INSERT INTO port_forwards (id, user_id, listen_device_id, listen_port,
                    connect_device_id, connect_address, enabled, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     id.as_str(),
                     user.as_str(),
-                    name,
                     listen_device.as_str(),
                     listen_port,
                     connect_device.as_ref().map(DeviceId::as_str),
@@ -247,12 +202,6 @@ impl ControlService {
             let Some(mut forward) = by_id(&transaction, &user, &id)? else {
                 return Ok(Err(PortForwardRefusal::NotFound));
             };
-            if let Some(name) = change.name {
-                if name_used(&transaction, &user, &name, Some(&id))? {
-                    return Ok(Err(PortForwardRefusal::NameTaken(name)));
-                }
-                forward.name = name;
-            }
             if let Some(device) = change.listen_device {
                 forward.listen_device = device;
             }
@@ -274,13 +223,12 @@ impl ControlService {
                 }
             }
             transaction.execute(
-                "UPDATE port_forwards SET name = ?3, listen_device_id = ?4, listen_port = ?5,
-                   connect_device_id = ?6, connect_address = ?7, enabled = ?8
+                "UPDATE port_forwards SET listen_device_id = ?3, listen_port = ?4,
+                   connect_device_id = ?5, connect_address = ?6, enabled = ?7
                  WHERE id = ?1 AND user_id = ?2",
                 params![
                     id.as_str(),
                     user.as_str(),
-                    forward.name,
                     forward.listen_device.as_str(),
                     forward.listen_port,
                     forward.connect_device.as_ref().map(DeviceId::as_str),

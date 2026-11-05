@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { t } from './locales/text'
 import { t as uiText } from '../locales/text'
-import { computed, nextTick, ref } from 'vue'
+import { useElementSize } from '@vueuse/core'
+import { computed, nextTick, ref, watch } from 'vue'
 import { ChevronRight, Plus, TriangleAlert } from '@lucide/vue'
 import { deviceGlyph, hostGlyph } from '../devices/device-glyphs'
 import { errorMessage, reportError } from '../infra/errors'
@@ -25,6 +26,8 @@ import { useListSelection } from './list-selection'
 import SettingsPage from './SettingsPage.vue'
 import SettingsPortForwardPage from './SettingsPortForwardPage.vue'
 import {
+  forwardConnect,
+  forwardListen,
   forwardReason,
   forwardRoute,
   forwardState,
@@ -40,9 +43,13 @@ import {
  * user's forwards as one table, each a row edited in place.
  *
  * ```
- * ☐  Name        Listen On     Port    Connect To    Address          ◯
- * ☐  ● ollama    ☁ Cloud ⌄    11434   alex-mbp ⌄   localhost:11434  ●
+ * ☐  Listen On     Port    Connect To    Address          ◯
+ * ☐  ● ☁ Cloud ⌄   11434   alex-mbp ⌄   localhost:11434  ●
  * ```
+ *
+ * A forward is its route: nothing names it, and where it is said alone, a
+ * control's accessible name or the Delete dialog's list, it is said by its
+ * route (`forwardRoute`).
  *
  * - A text cell reads as its value until the pointer or the focus is on it,
  *   and saves as it is left; a value it refuses keeps the cell red, with why
@@ -51,24 +58,26 @@ import {
  *   failed has its dot open what is wrong, with Try Again for a taken port,
  *   so no row grows when one fails.
  * - Checking rows turns the title's line into what to do with them: Turn On,
- *   Turn Off and Delete…, at the same height; on a phone, one Actions menu
+ *   Turn Off and Delete…, at the same height; in the list, one Actions menu
  *   holds them.
  * - Add Forward creates one at once with the backend's defaults.
- * - On a phone, each forward is a row of its dot, its name, its route and its
- *   switch, which opens its own page (`shown`) in the list's place; Select
- *   checks rows.
+ * - On a phone, and wherever the page is too narrow for the table's columns
+ *   to hold a Host's name, a port and an address side by side, the forwards
+ *   are a list instead: each a row of its dot, where it listens over where
+ *   it connects, and its switch, which opens its own page (`shown`) in the
+ *   list's place; Select checks rows.
  */
 const props = defineProps<{
   load?: 'loading' | 'ready' | 'failed'
   forwards: readonly SettingsPortForward[]
   /** The user's Hosts, the Cloud's included, which a forward's ends are chosen among. */
   hosts: readonly ForwardHost[]
-  /** The forward whose page a phone shows; null shows the list. */
+  /** The forward whose page the list opened; null shows the forwards. */
   shown?: string | null
   overlayStore: OverlayStore
   /** Add Forward: creates one with the defaults and answers its id, or null when it was not created. */
   onAdd?: () => Promise<string | null>
-  /** Changes a forward; a refusal the user can fix, such as a taken name, is thrown for its field to show. */
+  /** Changes a forward; a refusal the user can fix, such as a port out of range, is thrown for its field to show. */
   onChange?: (id: string, change: PortForwardChange) => Promise<void>
   /** Try Again on a taken port: the Listen On runner tries to listen again. */
   onTryAgain?: Action<[id: string]>
@@ -82,10 +91,37 @@ const emit = defineEmits<{
 }>()
 
 const phone = usePhone()
+const body = ref<HTMLElement | null>(null)
+const { width } = useElementSize(body)
+/**
+ * The page's last width, kept while a forward's page takes its place, so the
+ * forwards come back as they went rather than as a table for a frame.
+ */
+const pageWidth = ref(0)
+watch(width, (next) => {
+  if (next > 0) {
+    pageWidth.value = next
+  }
+})
+/** The narrowest page, in rem, whose table shows short Host names, a port and an address in full. */
+const TABLE_MIN_REM = 36
+/** The forwards as the list rather than the table. */
+const asList = computed(() => {
+  if (phone.value) {
+    return true
+  }
+  const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+  return pageWidth.value > 0 && pageWidth.value < TABLE_MIN_REM * rem
+})
 const page = computed(() => (props.shown ? props.forwards.find((forward) => forward.id === props.shown) ?? null : null))
 
 const ids = computed(() => props.forwards.map((forward) => forward.id))
 const selection = useListSelection(ids)
+// The rows checked stay checked across the change: the list shows them in
+// its Select mode, the table by its checkboxes, which need no mode.
+watch(asList, (list) => {
+  selection.checking.value = list && selection.selected.value.size > 0
+})
 const checked = computed(() => props.forwards.filter((forward) => selection.selected.value.has(forward.id)))
 const allChecked = computed(() => props.forwards.length > 0 && checked.value.length === props.forwards.length)
 const someChecked = computed(() => checked.value.length > 0 && !allChecked.value)
@@ -113,10 +149,6 @@ async function save(forward: SettingsPortForward, change: PortForwardChange): Pr
 /** A change no cell shows the refusal of, a switch's or a Host's: the product reports it. */
 function change(forward: SettingsPortForward, next: PortForwardChange): void {
   void props.onChange?.(forward.id, next).catch(() => undefined)
-}
-
-function nameProblem(value: string): SentenceText | null {
-  return value.trim() ? null : t('portForwards.page.nameProblem')
 }
 
 function portProblem(value: string): SentenceText | null {
@@ -161,7 +193,7 @@ async function add(): Promise<void> {
     if (!id) {
       return
     }
-    if (phone.value) {
+    if (asList.value) {
       emit('show', id)
       return
     }
@@ -206,7 +238,14 @@ async function remove(): Promise<void> {
   }
 }
 
-const COLUMNS = 'grid-cols-[1.25rem_minmax(5.25rem,1fr)_7.75rem_3.75rem_7.75rem_minmax(7rem,1.1fr)_2.25rem]'
+/**
+ * The table's columns, which every row shares as a subgrid: a Host column is
+ * as wide as its longest name, Address takes the rest, and a column short of
+ * room cuts its text short. The outer columns pad the rows, so a row's fill
+ * reaches the table's edges.
+ */
+const COLUMNS = 'grid-cols-[0.25rem_1.25rem_minmax(4.5rem,auto)_3.75rem_minmax(3.5rem,auto)_minmax(6.5rem,1fr)_2.25rem_0.25rem]'
+const ROW = 'col-span-full grid grid-cols-subgrid items-center border-b border-line [&>*:first-child]:col-start-2'
 /** A cell typed in: its value as text at rest, a fill under the pointer and with the focus, as a cell of Numbers. */
 const CELL = 'flex h-7 min-w-0 cursor-text items-center rounded-md px-2 transition-colors duration-200 ease-out hover:bg-hover focus-within:bg-hover'
 </script>
@@ -224,13 +263,13 @@ const CELL = 'flex h-7 min-w-0 cursor-text items-center rounded-md px-2 transiti
     @back="emit('show', null)"
   />
   <SettingsPage v-else :title="t('portForwards.title')" :description="t('portForwards.description')">
-    <div class="flex flex-col gap-2">
+    <div ref="body" class="flex flex-col gap-2">
       <!-- The title's line holds the title or, while rows are checked, what to do with them, at the same height. -->
       <div class="flex h-8 select-none items-center gap-2">
         <template v-if="checked.length || selection.checking.value">
           <span class="min-w-0 truncate whitespace-nowrap text-[15px] font-medium text-fg-emphasis">{{ t('portForwards.selected', { count: checked.length }) }}</span>
-          <!-- A phone's line has no room for three buttons: they are one menu, on the same line. -->
-          <span v-if="phone" class="ml-auto flex shrink-0 gap-1.5">
+          <!-- The list's line has no room for three buttons: they are one menu, on the same line. -->
+          <span v-if="asList" class="ml-auto flex shrink-0 gap-1.5">
             <Dropdown variant="default" size="sm" :overlay-store="overlayStore" :disabled="!checked.length">
               <template #trigger>{{ t('portForwards.actions') }}</template>
               <template #content="{ close }">
@@ -252,7 +291,7 @@ const CELL = 'flex h-7 min-w-0 cursor-text items-center rounded-md px-2 transiti
         <template v-else>
           <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('portForwards.yours') }}</h3>
           <span class="ml-auto flex gap-1.5">
-            <Button v-if="phone && forwards.length" size="sm" variant="ghost" @click="selection.check(true)">{{ t('portForwards.select') }}</Button>
+            <Button v-if="asList && forwards.length" size="sm" variant="ghost" @click="selection.check(true)">{{ t('portForwards.select') }}</Button>
             <Button size="sm" :loading="adding" @click="add"><Plus :size="ICON_PX.in24" /> {{ t('portForwards.add') }}</Button>
           </span>
         </template>
@@ -260,31 +299,31 @@ const CELL = 'flex h-7 min-w-0 cursor-text items-center rounded-md px-2 transiti
 
       <div class="overflow-hidden rounded-xl border border-line bg-surface-float">
         <AsyncRegion :state="load" :label="t('portForwards.loading')" @retry="emit('retry')">
-          <template v-if="phone">
+          <template v-if="asList">
             <div
               v-for="forward in forwards"
               :key="forward.id"
-              class="flex min-h-row cursor-default items-center gap-3 border-b border-line px-4 py-2 last:border-b-0"
-              :class="selection.selected.value.has(forward.id) ? 'bg-active' : ''"
+              class="flex min-h-row cursor-default items-center gap-3 border-b border-line px-4 py-2 transition-colors duration-200 ease-out last:border-b-0"
+              :class="selection.selected.value.has(forward.id) ? 'bg-active' : 'hover:bg-hover'"
               @click="selection.checking.value ? selection.toggle(forward.id) : emit('show', forward.id)"
             >
               <span v-if="selection.checking.value" class="checkbox-mark shrink-0" :data-state="selection.selected.value.has(forward.id) ? 'checked' : 'unchecked'" aria-hidden="true" />
               <span class="size-2 shrink-0 rounded-full" :class="DOT[forwardTone(forward, hosts)]" :aria-label="forwardState(forward, hosts)" />
               <span class="flex min-w-0 flex-1 flex-col">
-                <TruncatedText class="text-setting text-fg-emphasis" :text="forward.name" />
-                <TruncatedText class="text-detail text-fg-subtle" :text="forwardRoute(forward, hosts)" />
+                <TruncatedText class="text-setting text-fg-emphasis tabular-nums" :text="forwardListen(forward, hosts)" />
+                <TruncatedText class="text-detail text-fg-subtle tabular-nums" :text="forwardConnect(forward, hosts)" />
               </span>
               <template v-if="!selection.checking.value">
                 <span class="flex items-center" @click.stop>
-                  <Switch :model-value="forward.enabled" :aria-label="forward.name" @update:model-value="change(forward, { enabled: $event })" />
+                  <Switch :model-value="forward.enabled" :aria-label="forwardRoute(forward, hosts)" @update:model-value="change(forward, { enabled: $event })" />
                 </span>
                 <ChevronRight :size="ICON_PX.in24" class="shrink-0 text-fg-subtle" />
               </template>
             </div>
           </template>
 
-          <template v-else>
-            <div :class="COLUMNS" class="grid h-8 select-none items-center gap-x-2 border-b border-line px-3 text-[11px] font-medium text-fg-subtle">
+          <div v-else :class="COLUMNS" class="grid gap-x-2">
+            <div :class="ROW" class="h-8 select-none text-[11px] font-medium text-fg-subtle">
               <Checkbox
                 :model-value="allChecked"
                 :partial="someChecked"
@@ -293,23 +332,22 @@ const CELL = 'flex h-7 min-w-0 cursor-text items-center rounded-md px-2 transiti
                 class="[&>span:last-child]:sr-only"
                 @update:model-value="selection.toggleAll()"
               />
-              <span class="pl-4">{{ t('portForwards.page.name') }}</span>
-              <span class="pl-2">{{ t('portForwards.page.listenOn') }}</span>
-              <span class="pl-2">{{ t('portForwards.page.port') }}</span>
-              <span class="pl-2">{{ t('portForwards.page.connectTo') }}</span>
-              <span class="pl-2">{{ t('portForwards.page.address') }}</span>
+              <span class="truncate pl-8">{{ t('portForwards.page.listenOn') }}</span>
+              <span class="truncate pl-2">{{ t('portForwards.page.port') }}</span>
+              <span class="truncate pl-2">{{ t('portForwards.page.connectTo') }}</span>
+              <span class="truncate pl-2">{{ t('portForwards.page.address') }}</span>
               <span />
             </div>
             <div
               v-for="forward in forwards"
               :key="forward.id"
               :data-forward="forward.id"
-              :class="[COLUMNS, selection.selected.value.has(forward.id) ? 'bg-active' : '']"
-              class="grid h-10 items-center gap-x-2 border-b border-line px-3 last:border-b-0"
+              :class="[ROW, selection.selected.value.has(forward.id) ? 'bg-active' : '']"
+              class="h-10 last:border-b-0"
             >
               <Checkbox
                 :model-value="selection.selected.value.has(forward.id)"
-                :label="t('portForwards.selectLabel', { name: forward.name })"
+                :label="t('portForwards.selectLabel', { forward: forwardRoute(forward, hosts) })"
                 class="[&>span:last-child]:sr-only"
                 @update:model-value="selection.toggle(forward.id, $event)"
               />
@@ -326,7 +364,7 @@ const CELL = 'flex h-7 min-w-0 cursor-text items-center rounded-md px-2 transiti
                   </template>
                   <template #content="{ close }">
                     <div class="flex w-64 flex-col gap-2 rounded-xl border border-line bg-surface-float p-3 shadow-lg">
-                      <span class="text-[13px] font-medium text-fg-emphasis">{{ forward.name }}</span>
+                      <span class="text-[13px] font-medium text-fg-emphasis tabular-nums">{{ forwardRoute(forward, hosts) }}</span>
                       <span class="text-[13px] leading-5 text-fg-muted">{{ forwardState(forward, hosts) }}</span>
                       <Button v-if="portInUse(forward)" size="sm" class="self-start" @click="onTryAgain?.(forward.id); close()">
                         {{ t('portForwards.page.tryAgain') }}
@@ -337,51 +375,37 @@ const CELL = 'flex h-7 min-w-0 cursor-text items-center rounded-md px-2 transiti
                 <Tooltip v-else :content="dotText(forward)" class="flex size-4 shrink-0 items-center justify-center">
                   <span class="size-2 rounded-full" :class="DOT[forwardTone(forward, hosts)]" :aria-label="forwardState(forward, hosts)" />
                 </Tooltip>
-                <Tooltip :content="problems[`${forward.id}/name`] ?? ''" :disabled="!problems[`${forward.id}/name`]" class="-ml-2 flex min-w-0 flex-1">
-                  <span :class="[CELL, problems[`${forward.id}/name`] ? 'ring-1 ring-on-danger' : '']" class="flex-1">
-                    <CommitTextInput
-                      bare
-                      size="sm"
-                      :model-value="forward.name"
-                      :aria-label="t('portForwards.nameOf', { name: forward.name })"
-                      :validate="nameProblem"
-                      :save="(value) => save(forward, { name: value.trim() })"
-                      class="min-w-0 flex-1"
-                      @problem="problems[`${forward.id}/name`] = $event ?? undefined"
-                    />
-                  </span>
-                </Tooltip>
+                <Dropdown
+                  :overlay-store="overlayStore"
+                  variant="bare"
+                  width="shrink"
+                  class="min-w-0 max-w-full"
+                  :trigger-label="t('portForwards.listenOnOf', { forward: forwardRoute(forward, hosts) })"
+                  :icon="glyph(forward.listenDevice)"
+                >
+                  <template #trigger>{{ hostOf(forward.listenDevice)?.name ?? t('portForwards.unknownHost') }}</template>
+                  <template #content="{ close }">
+                    <Menu>
+                      <MenuItem
+                        v-for="host in hosts"
+                        :key="host.id"
+                        :icon="hostGlyph(host)"
+                        :label="host.name"
+                        choice
+                        :is-selected="forward.listenDevice === host.id"
+                        @select="close(); host.id !== forward.listenDevice && change(forward, { listenDevice: host.id })"
+                      />
+                    </Menu>
+                  </template>
+                </Dropdown>
               </span>
-              <Dropdown
-                :overlay-store="overlayStore"
-                variant="bare"
-                width="shrink"
-                class="max-w-full justify-self-start"
-                :trigger-label="t('portForwards.listenOnOf', { name: forward.name })"
-                :icon="glyph(forward.listenDevice)"
-              >
-                <template #trigger>{{ hostOf(forward.listenDevice)?.name ?? t('portForwards.unknownHost') }}</template>
-                <template #content="{ close }">
-                  <Menu>
-                    <MenuItem
-                      v-for="host in hosts"
-                      :key="host.id"
-                      :icon="hostGlyph(host)"
-                      :label="host.name"
-                      choice
-                      :is-selected="forward.listenDevice === host.id"
-                      @select="close(); host.id !== forward.listenDevice && change(forward, { listenDevice: host.id })"
-                    />
-                  </Menu>
-                </template>
-              </Dropdown>
               <Tooltip :content="problems[`${forward.id}/port`] ?? ''" :disabled="!problems[`${forward.id}/port`]" class="flex min-w-0">
                 <span :class="[CELL, problems[`${forward.id}/port`] ? 'ring-1 ring-on-danger' : '']" class="flex-1">
                   <CommitTextInput
                     bare
                     size="sm"
                     :model-value="String(forward.listenPort)"
-                    :aria-label="t('portForwards.portOf', { name: forward.name })"
+                    :aria-label="t('portForwards.portOf', { forward: forwardRoute(forward, hosts) })"
                     :validate="portProblem"
                     :save="(value) => save(forward, { listenPort: Number(value.trim()) })"
                     inputmode="numeric"
@@ -396,14 +420,14 @@ const CELL = 'flex h-7 min-w-0 cursor-text items-center rounded-md px-2 transiti
                 variant="bare"
                 width="shrink"
                 class="max-w-full justify-self-start"
-                :trigger-label="t('portForwards.connectToOf', { name: forward.name })"
+                :trigger-label="t('portForwards.connectToOf', { forward: forwardRoute(forward, hosts) })"
                 :icon="forward.connectDevice === null ? undefined : glyph(forward.connectDevice)"
               >
                 <!-- Missing, the warning takes the Host's icon's place, as the forward's page shows it. -->
                 <template v-if="forward.connectDevice === null" #icon>
                   <TriangleAlert :size="ICON_PX.in28" class="text-on-warning" aria-hidden="true" />
                 </template>
-                <template #trigger>{{ forward.connectDevice === null ? t('portForwards.choose') : hostOf(forward.connectDevice)?.name ?? t('portForwards.unknownHost') }}</template>
+                <template #trigger>{{ forward.connectDevice === null ? t('portForwards.page.chooseHost') : hostOf(forward.connectDevice)?.name ?? t('portForwards.unknownHost') }}</template>
                 <template #content="{ close }">
                   <Menu>
                     <MenuItem
@@ -424,7 +448,7 @@ const CELL = 'flex h-7 min-w-0 cursor-text items-center rounded-md px-2 transiti
                     bare
                     size="sm"
                     :model-value="forward.connectAddress"
-                    :aria-label="t('portForwards.addressOf', { name: forward.name })"
+                    :aria-label="t('portForwards.addressOf', { forward: forwardRoute(forward, hosts) })"
                     placeholder="localhost:11434"
                     :save="(value) => save(forward, { connectAddress: value.trim() })"
                     literal
@@ -434,9 +458,9 @@ const CELL = 'flex h-7 min-w-0 cursor-text items-center rounded-md px-2 transiti
                   />
                 </span>
               </Tooltip>
-              <Switch :model-value="forward.enabled" size="sm" :aria-label="forward.name" @update:model-value="change(forward, { enabled: $event })" />
+              <Switch :model-value="forward.enabled" size="sm" :aria-label="forwardRoute(forward, hosts)" @update:model-value="change(forward, { enabled: $event })" />
             </div>
-          </template>
+          </div>
           <div v-if="!forwards.length" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">
             {{ t('portForwards.none') }}
           </div>
@@ -449,7 +473,7 @@ const CELL = 'flex h-7 min-w-0 cursor-text items-center rounded-md px-2 transiti
       :overlay-store="overlayStore"
       :title="t('portForwards.deleteTitle', { count: deleting.length }, deleting.length)"
       :action="uiText('common.delete')"
-      :goes="deleting.map((forward) => forward.name)"
+      :goes="deleting.map((forward) => forwardRoute(forward, hosts))"
       :operation="{ action: 'remove', target: 'port-forwards:checked' }"
       @close="deleteOpen = false"
       @confirm="remove"

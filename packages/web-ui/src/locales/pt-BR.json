@@ -190,7 +190,6 @@
     "invalid_answer_missing": "Digite um valor para “{field}”.",
     "credential_not_found": "A credencial não foi encontrada.",
     "credential_name_taken": "Outra credencial tem este nome.",
-    "port_forward_name_taken": "Já existe um encaminhamento chamado {name}.",
     "port_forward_not_found": "Este encaminhamento de porta não existe mais.",
     "credential_fields_differ": "Uma credencial com este nome tem outros campos.",
     "passkey_expired": "A solicitação de chave-senha expirou. Tente novamente.",

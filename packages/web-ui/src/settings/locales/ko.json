@@ -147,7 +147,7 @@
     "none": "포트 전달 없음",
     "select": "선택",
     "selectAll": "모두 선택",
-    "selectLabel": "“{name}” 선택",
+    "selectLabel": "“{forward}” 선택",
     "selected": "{count}개 선택됨",
     "actions": "작업",
     "turnOn": "켜기",
@@ -156,12 +156,10 @@
     "deleteTitle": "전달 {count}개를 삭제하시겠습니까?",
     "deleteBody": "수신을 멈추고 열린 연결이 종료됩니다.",
     "deleteFailed": "전달을 삭제할 수 없음",
-    "choose": "선택…",
-    "nameOf": "“{name}”의 이름",
-    "portOf": "“{name}”의 포트",
-    "listenOnOf": "“{name}”의 수신 호스트",
-    "connectToOf": "“{name}”의 연결 대상 호스트",
-    "addressOf": "“{name}”의 주소",
+    "portOf": "“{forward}”의 포트",
+    "listenOnOf": "“{forward}”의 수신 호스트",
+    "connectToOf": "“{forward}”의 연결 대상 호스트",
+    "addressOf": "“{forward}”의 주소",
     "unknownHost": "알 수 없는 호스트",
     "state": {
       "off": "끔",
@@ -175,8 +173,6 @@
       "idle": "대기 중"
     },
     "page": {
-      "name": "이름",
-      "nameProblem": "이름을 입력하십시오.",
       "on": "켬",
       "onDescription": "켜져 있는 동안 수신 호스트가 온라인이면 실행됩니다.",
       "listenOn": "수신",
@@ -192,7 +188,7 @@
       "tryAgain": "다시 시도",
       "removeThis": "이 전달 제거",
       "remove": "전달 제거…",
-      "removeTitle": "‘{name}’을(를) 제거하시겠습니까?",
+      "removeTitle": "‘{forward}’을(를) 제거하시겠습니까?",
       "removeBody": "수신을 멈추고 열린 연결이 종료됩니다."
     }
   },

@@ -147,7 +147,7 @@
     "none": "No port forwards",
     "select": "Select",
     "selectAll": "Select All",
-    "selectLabel": "Select {name}",
+    "selectLabel": "Select {forward}",
     "selected": "{count} Selected",
     "actions": "Actions",
     "turnOn": "Turn On",
@@ -156,12 +156,10 @@
     "deleteTitle": "Delete {count} forward? | Delete {count} forwards?",
     "deleteBody": "It stops listening, and its open connections end. | They stop listening, and their open connections end.",
     "deleteFailed": "Could Not Delete the Forwards",
-    "choose": "Choose…",
-    "nameOf": "Name of {name}",
-    "portOf": "Port of {name}",
-    "listenOnOf": "Listen On Host of {name}",
-    "connectToOf": "Connect To Host of {name}",
-    "addressOf": "Address of {name}",
+    "portOf": "Port of {forward}",
+    "listenOnOf": "Listen On Host of {forward}",
+    "connectToOf": "Connect To Host of {forward}",
+    "addressOf": "Address of {forward}",
     "unknownHost": "Unknown Host",
     "state": {
       "off": "Off",
@@ -175,8 +173,6 @@
       "idle": "Idle"
     },
     "page": {
-      "name": "Name",
-      "nameProblem": "Enter a name.",
       "on": "On",
       "onDescription": "While it’s on, it runs whenever its Listen On Host is online.",
       "listenOn": "Listen On",
@@ -192,7 +188,7 @@
       "tryAgain": "Try Again",
       "removeThis": "Remove this forward",
       "remove": "Remove Forward…",
-      "removeTitle": "Remove “{name}”?",
+      "removeTitle": "Remove “{forward}”?",
       "removeBody": "It stops listening, and its open connections end."
     }
   },

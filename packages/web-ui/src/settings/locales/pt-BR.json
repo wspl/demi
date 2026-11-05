@@ -147,7 +147,7 @@
     "none": "Nenhum encaminhamento de porta",
     "select": "Selecionar",
     "selectAll": "Selecionar tudo",
-    "selectLabel": "Selecionar {name}",
+    "selectLabel": "Selecionar {forward}",
     "selected": "{count} selecionados",
     "actions": "Ações",
     "turnOn": "Ativar",
@@ -156,12 +156,10 @@
     "deleteTitle": "Excluir {count} encaminhamento? | Excluir {count} encaminhamentos?",
     "deleteBody": "Ele para de escutar e as conexões abertas são encerradas. | Eles param de escutar e as conexões abertas são encerradas.",
     "deleteFailed": "Não foi possível excluir os encaminhamentos",
-    "choose": "Escolher…",
-    "nameOf": "Nome de {name}",
-    "portOf": "Porta de {name}",
-    "listenOnOf": "Host de escuta de {name}",
-    "connectToOf": "Host de destino de {name}",
-    "addressOf": "Endereço de {name}",
+    "portOf": "Porta de {forward}",
+    "listenOnOf": "Host de escuta de {forward}",
+    "connectToOf": "Host de destino de {forward}",
+    "addressOf": "Endereço de {forward}",
     "unknownHost": "Host desconhecido",
     "state": {
       "off": "Desativado",
@@ -175,8 +173,6 @@
       "idle": "Inativo"
     },
     "page": {
-      "name": "Nome",
-      "nameProblem": "Digite um nome.",
       "on": "Ativado",
       "onDescription": "Enquanto estiver ativado, ele funciona sempre que o host de escuta estiver online.",
       "listenOn": "Escutar em",
@@ -192,7 +188,7 @@
       "tryAgain": "Tentar novamente",
       "removeThis": "Remover este encaminhamento",
       "remove": "Remover encaminhamento…",
-      "removeTitle": "Remover “{name}”?",
+      "removeTitle": "Remover “{forward}”?",
       "removeBody": "Ele para de escutar e as conexões abertas são encerradas."
     }
   },

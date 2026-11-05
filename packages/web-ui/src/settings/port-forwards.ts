@@ -23,10 +23,9 @@ export type ForwardRunState =
   | { kind: 'listening'; direct: number; relay: number; reason?: ForwardPairReason | null }
   | { kind: 'portInUse' }
 
-/** A forward as Settings › Port Forwarding shows and edits it. */
+/** A forward as Settings › Port Forwarding shows and edits it: its route, which nothing names. */
 export interface SettingsPortForward {
   id: string
-  name: string
   listenDevice: string
   listenPort: number
   /** Null until the user chooses the Host it connects on. */
@@ -39,7 +38,7 @@ export interface SettingsPortForward {
 
 /** What one edit of a forward's page changes. */
 export type PortForwardChange = Partial<
-  Pick<SettingsPortForward, 'name' | 'listenDevice' | 'listenPort' | 'connectDevice' | 'connectAddress' | 'enabled'>
+  Pick<SettingsPortForward, 'listenDevice' | 'listenPort' | 'connectDevice' | 'connectAddress' | 'enabled'>
 >
 
 /** One of the user's Hosts, as a forward's ends are chosen among them: the Cloud is named Cloud. */
@@ -56,13 +55,21 @@ function hostName(hosts: readonly ForwardHost[], id: string): string {
   return hosts.find((host) => host.id === id)?.name ?? t('portForwards.unknownHost')
 }
 
-/** The forward's ends in one line: *Cloud · 11434 → MacBook Pro · localhost:11434*. */
-export function forwardRoute(forward: SettingsPortForward, hosts: readonly ForwardHost[]): string {
-  const listen = `${hostName(hosts, forward.listenDevice)} · ${forward.listenPort}`
-  const connect = forward.connectDevice === null
+/** Where the forward listens: *Cloud · 11434*. */
+export function forwardListen(forward: SettingsPortForward, hosts: readonly ForwardHost[]): string {
+  return `${hostName(hosts, forward.listenDevice)} · ${forward.listenPort}`
+}
+
+/** Where the forward connects: *MacBook Pro · localhost:11434*, the address alone while no Host is chosen. */
+export function forwardConnect(forward: SettingsPortForward, hosts: readonly ForwardHost[]): string {
+  return forward.connectDevice === null
     ? forward.connectAddress
     : `${hostName(hosts, forward.connectDevice)} · ${forward.connectAddress}`
-  return `${listen} → ${connect}`
+}
+
+/** The forward's ends in one line, which says the forward wherever it is said alone: *Cloud · 11434 → MacBook Pro · localhost:11434*. */
+export function forwardRoute(forward: SettingsPortForward, hosts: readonly ForwardHost[]): string {
+  return `${forwardListen(forward, hosts)} → ${forwardConnect(forward, hosts)}`
 }
 
 /**
