@@ -961,9 +961,10 @@ function vendorEndpoint(provider: SettingsProviderEntry): string | null {
 }
 
 /**
- * The endpoint row's description: the vendor's endpoint as the default. A
- * vendor entry keeps the line's room while the vendors are read, so the
- * rows below do not move when it comes.
+ * The line under the endpoint row: the vendor's endpoint as the default, on
+ * the row's whole width, since an address squeezed beside the field breaks
+ * after "Default:". A vendor entry keeps the line's room while the vendors
+ * are read, so the rows below do not move when it comes.
  */
 function endpointDescription(provider: SettingsProviderEntry): string | undefined {
   const endpoint = vendorEndpoint(provider)
@@ -1365,12 +1366,12 @@ function endpointDescription(provider: SettingsProviderEntry): string | undefine
                     </Dropdown>
                   </SettingsRow>
                 </template>
-                <SettingsRow
-                  :label="t('providers.connection.endpoint')"
-                  :description="endpointDescription(selected)"
-                >
+                <SettingsRow :label="t('providers.connection.endpoint')">
                   <template v-if="endpointFault" #detail>
                     <InlineError :message="endpointFault" />
+                  </template>
+                  <template v-if="endpointDescription(selected)" #below>
+                    <p class="whitespace-pre-wrap break-words text-setting-small leading-4 text-fg-subtle phone:leading-5">{{ endpointDescription(selected) }}</p>
                   </template>
                   <CommitTextInput
                     :disabled="fieldsLocked(selected)"
