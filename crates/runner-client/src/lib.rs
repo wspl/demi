@@ -20,8 +20,7 @@
 //! ([`accept_call_sink`]). In the backend, everything but the pipe ends runs
 //! inside the user's shard.
 //!
-//! It depends on the wire's contracts alone, never on the backend: it is
-//! Apache-licensed, and no Apache crate depends on a Demi License one.
+//! It depends on the wire's contracts alone, never on the backend.
 //!
 //! Claim policy, the device registry, credentials and conversation state are
 //! not here.

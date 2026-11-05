@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, superseded in part by 0267
 ---
 
 # What one agent needs is an Apache library

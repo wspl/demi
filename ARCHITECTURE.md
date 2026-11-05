@@ -13,7 +13,7 @@ The following diagram shows the programs and how they talk to each other:
 ```text
 web app (packages/web)  --- HTTP, the page connection's lanes --->
 backend (crates/backend, backend-*)
-   |   links the Apache libraries: agent-* (the agent runtime),
+   |   links the libraries: agent-* (the agent runtime),
    |   provider-* (model providers), plugin-* (capabilities),
    |   runner-client (the runner's driving end)
    |                                    |
@@ -150,7 +150,7 @@ Inside the backend, each layer knows only the layers beneath it. A domain that
 needs another domain's state follows these rules:
 
 -   The domain defines the narrow trait of what it needs (`CloudShard`,
-    `HostShard`, `PermissionShard`), as the plugin host, an Apache library,
+    `HostShard`, `PermissionShard`), as the plugin host, a library,
     defines `ProductPort`.
 -   `backend-user-shard` implements the trait.
 -   No crate below `backend-user-shard` sees `Shard` or `Services`.

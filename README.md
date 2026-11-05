@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="#license"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20Demi%20License-blue"></a>
+  <a href="#license"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue"></a>
   <a href="https://github.com/demi-sh/demi/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/demi-sh/demi"></a>
   <a href="https://github.com/demi-sh/demi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/demi-sh/demi/actions/workflows/ci.yml/badge.svg"></a>
 </p>
@@ -267,31 +267,4 @@ Pi and herdr, feature by feature: [Demi compared](docs/comparison.md).
 
 ## License
 
-Most of Demi is released under the [Apache License 2.0](LICENSE). Use these
-parts for anything:
-
-- The agent runtime.
-- The model providers, and the library that sets them up from your
-  configuration.
-- The runner you install on your machines, and the library that drives it.
-- The commands.
-- The plugins, their SDK, and the host that runs them.
-- The UI component library and its gallery.
-- The protocols.
-- The docs.
-
-The server and the web app (`crates/backend*`, `crates/server`,
-`crates/machine-manager` and `packages/web`) are released under the
-[Demi License](LICENSE-DEMI), which is the Apache License 2.0 with additional
-conditions:
-
-- **Free to use**: Use, modify and run them, including at your company for
-  your own team.
-- **Free to support**: Charge for deploying, integrating or supporting Demi
-  that others run themselves.
-- **Not for resale as a service**: Don't offer them to others for a fee as a
-  hosted or multi-tenant service, or as a product that is substantially Demi.
-- **Keep the branding**: Don't remove or change the Demi name, logo or
-  copyright notices in the web app.
-
-For other uses, contact [support@demi.sh](mailto:support@demi.sh).
+Demi is released under the [Apache License 2.0](LICENSE).

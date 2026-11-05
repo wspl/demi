@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="#lizenz"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20Demi%20License-blue"></a>
+  <a href="#lizenz"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue"></a>
   <a href="https://github.com/demi-sh/demi/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/demi-sh/demi"></a>
   <a href="https://github.com/demi-sh/demi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/demi-sh/demi/actions/workflows/ci.yml/badge.svg"></a>
 </p>
@@ -291,33 +291,4 @@ Diese Dokumente sind auf Englisch.
 
 ## Lizenz
 
-Der größte Teil von Demi wird unter der [Apache License 2.0](LICENSE)
-veröffentlicht. Diese Teile darfst du für alles verwenden:
-
-- Die Agent-Laufzeitumgebung.
-- Die Modellanbieter und die Bibliothek, die sie aus deiner Konfiguration
-  einrichtet.
-- Den Runner, den du auf deinen Rechnern installierst, und die Bibliothek, die
-  ihn steuert.
-- Die Befehle.
-- Die Plug-ins, ihr SDK und den Host, der sie ausführt.
-- Die UI-Komponentenbibliothek und ihre Galerie.
-- Die Protokolle.
-- Die Dokumentation.
-
-Der Server und die Web-App (`crates/backend*`, `crates/server`,
-`crates/machine-manager` und `packages/web`) werden unter der [Demi
-License](LICENSE-DEMI) veröffentlicht, der Apache License 2.0 mit zusätzlichen
-Bedingungen:
-
-- **Frei nutzbar**: Nutze, verändere und betreibe sie, auch in deinem
-  Unternehmen für dein eigenes Team.
-- **Frei unterstützbar**: Berechne Geld für das Bereitstellen, Integrieren oder
-  Unterstützen von Demi, das andere selbst betreiben.
-- **Kein Weiterverkauf als Dienst**: Biete sie anderen nicht gegen Entgelt als
-  gehosteten oder mandantenfähigen Dienst an oder als Produkt, das im
-  Wesentlichen Demi ist.
-- **Marke beibehalten**: Entferne oder ändere den Namen, das Logo und die
-  Urheberrechtshinweise von Demi in der Web-App nicht.
-
-Für andere Nutzungen wende dich an [support@demi.sh](mailto:support@demi.sh).
+Demi wird unter der [Apache License 2.0](LICENSE) veröffentlicht.
