@@ -301,16 +301,7 @@ impl ModelsDevSnapshot {
             })
             .filter(|listing| listing.model.agentic() && listing.matches(&words))
             .collect();
-        // Dates are `YYYY-MM-DD`, which order as text. A stable sort keeps
-        // the document's order among equal dates, and `None` orders before
-        // any date, so a model without one comes last.
-        found.sort_by(|left, right| {
-            right
-                .model
-                .release_date
-                .as_deref()
-                .cmp(&left.model.release_date.as_deref())
-        });
+        found.sort_by(|left, right| newest_first(left.model, right.model));
         found.into_iter().map(|listing| listing.found(self.takes_effort(listing.vendor))).collect()
     }
 
@@ -359,18 +350,20 @@ impl ModelsDevSnapshot {
             .unwrap_or_default()
     }
 
-    /// The models of vendor `vendor_id` that `kept` keeps, as a catalog.
+    /// The models of vendor `vendor_id` that `kept` keeps, as a catalog,
+    /// newest first, so a conversation that names no model starts on the
+    /// vendor's newest: the document's own order says nothing.
     fn listed(
         &self,
         vendor_id: &str,
         kept: impl Fn(&ModelsDevModel) -> bool,
     ) -> Option<ProviderModelList> {
         let vendor = self.vendor(vendor_id)?;
+        let mut models: Vec<_> = vendor.models.iter().filter(|(_, model)| kept(model)).collect();
+        models.sort_by(|(_, left), (_, right)| newest_first(left, right));
         Some(ProviderModelList {
-            models: vendor
-                .models
-                .iter()
-                .filter(|(_, model)| kept(model))
+            models: models
+                .into_iter()
                 .map(|(id, model)| model.catalog(id, self.takes_effort(vendor_id)))
                 .collect(),
             default_model_id: None,
@@ -690,6 +683,14 @@ impl ModelsDevModel {
                 .collect(),
         )
     }
+}
+
+/// The order of two models, newest first. Dates are `YYYY-MM-DD`, which
+/// order as text; `None` orders before any date, so a model without one
+/// comes last, and a stable sort keeps the document's order among equal
+/// dates.
+fn newest_first(left: &ModelsDevModel, right: &ModelsDevModel) -> std::cmp::Ordering {
+    right.release_date.as_deref().cmp(&left.release_date.as_deref())
 }
 
 /// A token limit the document states as a positive whole number; zero,
