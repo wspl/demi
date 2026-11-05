@@ -78,10 +78,10 @@ pub async fn take_over(core: &Core, left: &LeftSandbox) -> io::Result<Option<Tak
     let Some(record) = record.filter(|record| record.id.as_str() == left.id && record.slot == left.slot) else {
         return Ok(None);
     };
-    let Some(sentry) = core.runsc.sentry(&record.id).await.map_err(io::Error::other)? else {
+    let Some(sentry) = core.gvisor.runsc.sentry(&record.id).await.map_err(io::Error::other)? else {
         return Ok(None);
     };
-    let lease = core.slots.reserve(record.slot).map_err(|_| io::Error::other("the sandbox's network slot is taken"))?;
+    let lease = core.gvisor.slots.reserve(record.slot).map_err(|_| io::Error::other("the sandbox's network slot is taken"))?;
     let sandbox = Sandbox::adopted(core, record, lease, left.programs.clone(), left.machine);
     let owner = Owner {
         bundle: sandbox.bundle().to_owned(),

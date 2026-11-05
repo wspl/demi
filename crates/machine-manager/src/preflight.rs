@@ -143,7 +143,7 @@ fn listener_taken() -> bool {
 /// Requires the configured runsc to report exactly the pinned version.
 pub async fn require_runsc(core: &Core) -> Result<(), PreflightError> {
     let version = RuntimeRelease::pinned().version();
-    let reported = core.runsc.version().await?;
+    let reported = core.gvisor.runsc.version().await?;
     if !reports_version(&reported, &version) {
         return Err(PreflightError::Runsc(version));
     }

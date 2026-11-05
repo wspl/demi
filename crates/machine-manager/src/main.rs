@@ -226,7 +226,7 @@ mod service {
         blocking::run(move |off| preflight::require_one_filesystem(off, &working, &images)).await?;
         preflight::probe_storage(&core).await?;
         println!("ok: storage");
-        core.network.check().await?;
+        core.gvisor.network.check().await?;
         println!("ok: network");
         preflight::probe_runtime(&core).await?;
         println!("ok: gVisor");
@@ -327,8 +327,8 @@ mod service {
         // over, which keep running. They reach no private destination until
         // the backend, as it connects, names the private network.
         let slots: Vec<_> = adopted.iter().filter_map(|(_, sandbox)| sandbox.admitted()).collect();
-        core.network.prepare(&slots, &PrivateNetwork::Off).await?;
-        let base = base::import(&core.tools, &core.config.image, &core.store.bases()).await?;
+        core.gvisor.network.prepare(&slots, &PrivateNetwork::Off).await?;
+        let base = base::import(&core.tools, &core.config.image, &core.gvisor.store.bases()).await?;
         let programs: Vec<_> = left
             .iter()
             .flat_map(|left| &left.sandboxes)
@@ -340,7 +340,7 @@ mod service {
         // this one, with its directory of network namespaces mounted.
         if left.is_none() {
             namespace.pin().await?;
-            core.network.mount_namespace_directory().await?;
+            core.gvisor.network.mount_namespace_directory().await?;
         }
         preflight::probe_storage(&core).await?;
         let socket_path = core.config.socket.clone();

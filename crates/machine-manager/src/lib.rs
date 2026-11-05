@@ -59,7 +59,7 @@
 //! ```text
 //! loop thread: LocalRuntime; owns the manager state
 //!   the socket server and its connections; one task per request
-//!   one DeviceWorker per device: owns its sandbox, runs its operations in order
+//!   one DeviceWorker per device: owns its runtime, runs its operations in order
 //!   Admission: a fair semaphore; device operations share it,
 //!     reconcile and shutdown take it whole
 //! blocking pool, through one entry point: file work and fsync, mounts, loop and
@@ -102,6 +102,8 @@ pub mod network;
 pub mod preflight;
 #[cfg(target_os = "linux")]
 pub mod recovery;
+#[cfg(target_os = "linux")]
+pub mod runtime;
 pub mod sandbox;
 pub mod server;
 pub mod storage;

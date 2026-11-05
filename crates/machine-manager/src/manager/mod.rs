@@ -28,20 +28,20 @@ mod linux {
 
     use super::{
         admission::Admission,
-        device::{DeviceCommand, DeviceOp, DeviceWorker},
+        device::{DeviceCommand, DeviceWorker},
         errors::{OpError, Parts},
     };
     use crate::{
         blocking,
         config::Config,
-        network::{
-            CloudNetwork,
-            slots::{Slot, SlotPool},
-        },
+        network::slots::Slot,
         recovery,
-        sandbox::runsc::Runsc,
+        runtime::{
+            DeviceOp, DeviceRuntime, Reports,
+            gvisor::{self, Gvisor},
+        },
         server::MachineService,
-        storage::store::{ImageStore, Retention},
+        storage::store::Retention,
         tools::Tools,
     };
 
@@ -53,25 +53,13 @@ mod linux {
     pub struct Core {
         pub config: Config,
         pub tools: Tools,
-        pub runsc: Runsc,
-        pub store: ImageStore,
-        pub network: CloudNetwork,
-        pub slots: SlotPool,
+        pub gvisor: Gvisor,
     }
 
     impl Core {
         pub fn new(config: Config, tools: Tools) -> Self {
-            let runsc = Runsc::new(tools.clone(), config.runtime(), config.limits.is_some());
-            let network = CloudNetwork::new(
-                config.subnet,
-                config.dns.clone(),
-                tools.path(crate::tools::Tool::Nft).to_owned(),
-            );
             Self {
-                store: ImageStore::new(config.images()),
-                slots: SlotPool::new(config.subnet, config.slots),
-                runsc,
-                network,
+                gvisor: Gvisor::new(&config, &tools),
                 tools,
                 config,
             }
@@ -113,6 +101,11 @@ mod linux {
             }
         }
 
+        /// Where `device`'s worker and runtime report to the server.
+        fn reports(&self, device: &DeviceId) -> Reports {
+            Reports::new(device.clone(), self.deaths.clone(), self.changes.clone())
+        }
+
         /// The worker of `device`, started on first use.
         fn worker(&self, device: &DeviceId) -> mpsc::Sender<DeviceCommand> {
             let mut devices = self.devices.borrow_mut();
@@ -120,13 +113,14 @@ mod linux {
                 return sender.clone();
             }
             let (sender, inbox) = mpsc::channel(DEVICE_QUEUE);
-            let worker = DeviceWorker::new(
+            let reports = self.reports(device);
+            let runtime = DeviceRuntime::Gvisor(gvisor::Device::new(
                 device.clone(),
                 self.core.clone(),
                 self.base.clone(),
-                self.deaths.clone(),
-                self.changes.clone(),
-            );
+                reports.clone(),
+            ));
+            let worker = DeviceWorker::new(runtime, reports);
             self.workers.borrow_mut().spawn_local(worker.run(inbox));
             devices.insert(device.clone(), sender.clone());
             sender
@@ -136,14 +130,15 @@ mod linux {
         /// before this one left running (`crate::handover`).
         pub fn adopt(&self, device: DeviceId, sandbox: crate::sandbox::Sandbox) {
             let (sender, inbox) = mpsc::channel(DEVICE_QUEUE);
-            let worker = DeviceWorker::adopted(
+            let reports = self.reports(&device);
+            let runtime = DeviceRuntime::Gvisor(gvisor::Device::adopted(
                 device.clone(),
                 self.core.clone(),
                 self.base.clone(),
-                self.deaths.clone(),
-                self.changes.clone(),
+                reports.clone(),
                 sandbox,
-            );
+            ));
+            let worker = DeviceWorker::new(runtime, reports);
             self.workers.borrow_mut().spawn_local(worker.run(inbox));
             self.devices.borrow_mut().insert(device, sender);
         }
@@ -217,7 +212,7 @@ mod linux {
                 self.running_devices().await.into_iter().unzip();
             recovery::fence_and_save(&self.core, &running).await?;
             let private = self.private.borrow().clone();
-            self.core.network.prepare(&slots, &private).await?;
+            self.core.gvisor.network.prepare(&slots, &private).await?;
             Ok(Reconciled {
                 running: running.iter().map(|device| device.as_str().to_owned()).collect(),
             })
@@ -230,7 +225,7 @@ mod linux {
             let _whole = self.admission.exclusive().await?;
             let slots: Vec<(Slot, SandboxMachine)> =
                 self.running_devices().await.into_iter().map(|(_, slot)| slot).collect();
-            self.core.network.prepare(&slots, &private).await?;
+            self.core.gvisor.network.prepare(&slots, &private).await?;
             *self.private.borrow_mut() = private;
             Ok(())
         }
@@ -340,7 +335,7 @@ mod linux {
         type Error = OpError;
 
         async fn status(&self, device: &DeviceId) -> Option<ManagerEvent> {
-            let (store, id) = (self.core.store.clone(), device.clone());
+            let (store, id) = (self.core.gvisor.store.clone(), device.clone());
             match blocking::run(move |off| store.read(off, &id)).await {
                 Ok(state) => Some(ManagerEvent::CloudStatus {
                     device_id: device.to_string(),
@@ -359,7 +354,7 @@ mod linux {
         }
 
         async fn snapshot(&self) -> Vec<ManagerEvent> {
-            let store = self.core.store.clone();
+            let store = self.core.gvisor.store.clone();
             let devices = match blocking::run(move |off| store.devices(off)).await {
                 Ok(devices) => devices,
                 Err(error) => {
@@ -386,7 +381,7 @@ mod linux {
                 }
                 MachineCall::ImageState(params) => {
                     let device = DeviceId::parse(params.device_id)?;
-                    let store = self.core.store.clone();
+                    let store = self.core.gvisor.store.clone();
                     let state = blocking::run(move |off| store.read(off, &device)).await?;
                     Ok(reply::<ImageStateParams>(state))
                 }
