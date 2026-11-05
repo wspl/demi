@@ -110,13 +110,9 @@ with the new URL and restart the backend with it.
 ### DNS
 
 The Clouds use the VM's own upstream resolver, the manager's default, unless
-`--dns <addresses>` names others.
-
-A proxy on the Mac that answers name lookups with its own addresses in
-`198.18.0.0/15`, as a proxy in fake-IP mode does, needs `--dns`. The manager's
-network policy refuses that range to the Clouds, so every name a Cloud looks up
-would be unreachable. `--dns 1.1.1.1` then gives the Clouds a resolver that
-answers with the real addresses.
+`--dns <addresses>` names others. A proxy on the Mac in fake-IP mode, which
+answers every name with an address in `198.18.0.0/15`, works as it is: the
+network policy counts that range as the internet.
 
 ### Other options
 

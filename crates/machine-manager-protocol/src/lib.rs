@@ -99,7 +99,7 @@ pub struct LeftSimple {
 /// A sandbox a manager left running: its device, the boot its working pair
 /// records, the base whose `/opt/demi` it mounts, which the next manager
 /// keeps while the sandbox runs, and which machine it is, which decides
-/// whether it reaches the private network.
+/// whether the network policy applies to it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LeftSandbox {
     pub device: DeviceId,
@@ -108,7 +108,8 @@ pub struct LeftSandbox {
     pub programs: BaseVersion,
     /// Absent from a record an earlier release wrote, which does not say
     /// whether its sandbox is the Claude Code machine: it is then taken as
-    /// one, which reaches no private destination, until its next boot.
+    /// one, which reaches the internet alone whatever the network policy,
+    /// until its next boot.
     #[serde(default = "unknown_machine")]
     pub machine: SandboxMachine,
 }
@@ -122,12 +123,12 @@ pub use state::{
     is_image_name,
 };
 pub use isolation::{Download, Enforces, Isolation, MoveStatus, Offer, RuntimeOffer, Unavailable};
-pub use network::{Destination, PrivateNetwork};
+pub use network::{Allowed, Destination, Domain, DomainName, NetworkRules};
 pub use wire::{
     Capacity, CheckpointParams, CurrentBaseVersionParams, DecodeError, HibernateParams,
     ImageStateParams, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, ManagerEvent, Message,
     Operation, ReconcileParams, Reconciled, ResetParams, RuntimeStateParams, VERSION as WIRE_VERSION,
-    SandboxMachine, SetIsolationParams, SetPrivateNetworkParams, WakeParams, decode_request, decode_response,
+    SandboxMachine, SetIsolationParams, SetNetworkRulesParams, WakeParams, decode_request, decode_response,
     encode_line,
 };
 

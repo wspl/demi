@@ -415,7 +415,7 @@
       "keywords": "contas,pessoas,admin,adicionar usuário,convidar,redefinir senha,função,desativar,sair de todos os lugares"
     },
     "cloud": {
-      "keywords": "rede,rede privada,intranet,interna,lan,firewall,proxy,git,tailscale,ip,endereço,porta,isolamento,sandbox,gvisor,segurança"
+      "keywords": "rede,rede privada,intranet,interna,lan,firewall,proxy,git,tailscale,ip,endereço,porta,isolamento,sandbox,gvisor,segurança,política,política de rede,domínio,lista de permissões,dns"
     },
     "developer": {
       "keywords": "desenvolvedor,depuração,solução de problemas",
@@ -584,30 +584,49 @@
     "unavailable": "Este servidor não consegue usá-lo: {reason}",
     "moving": "As nuvens paradas passam para {isolation} agora, e as em execução assim que pararem. Os arquivos e pacotes instalados vão junto.",
     "isolationFailed": "Não foi possível alterar o isolamento",
-    "noPrivateNetwork": "As nuvens com isolamento simples compartilham a rede do servidor, então esta configuração não se aplica.",
-    "access": "Acesso à rede privada",
-    "accessDescription": "Por padrão, as nuvens alcançam apenas a internet. Se o Demi é executado na rede da sua empresa, ative esta opção para que as nuvens alcancem os servidores Git, serviços internos e proxies dela. O próprio servidor, os serviços de metadados da nuvem e as nuvens de outras pessoas continuam inacessíveis.",
-    "entireDescription": "As nuvens alcançam todos os endereços privados, como um computador da sua rede, então uma página da web aberta pelo navegador de uma nuvem também pode tentar alcançar seus serviços internos. O próprio servidor, os serviços de metadados da nuvem e as nuvens de outras pessoas continuam inacessíveis.",
-    "addresses": "Endereços",
-    "addressesDescription": "As nuvens alcançam cada endereço ou rede listado: em todas as portas ou apenas na porta escrita depois.",
-    "add": "Adicionar endereço",
-    "placeholder": "Adicione endereços, como 10.20.0.0/16 ou 10.20.0.7:22",
+    "noNetworkPolicy": "As nuvens com isolamento simples compartilham a rede do servidor, então a política de rede não se aplica.",
+    "policy": "Política de rede",
+    "policies": {
+      "noNetwork": "Sem rede",
+      "developerServices": "Serviços para desenvolvedores",
+      "internetOnly": "Somente internet",
+      "internetAndPrivateNetwork": "Internet e rede privada",
+      "custom": "Personalizada"
+    },
+    "policyDescriptions": {
+      "noNetwork": "As nuvens não alcançam nenhuma rede.",
+      "developerServices": "As nuvens alcançam apenas os serviços de onde os builds baixam, como GitHub, npm e PyPI.",
+      "internetOnly": "As nuvens alcançam a internet, mas nada da rede privada do servidor.",
+      "internetAndPrivateNetwork": "As nuvens alcançam a internet e todos os endereços privados, como um computador da rede do servidor, então uma página da web aberta pelo navegador de uma nuvem também pode tentar alcançar seus serviços internos.",
+      "custom": "As nuvens alcançam apenas o que é permitido abaixo."
+    },
+    "allowedGroups": "Permitido",
+    "neverReachable": "O próprio servidor, os serviços de metadados da nuvem e as nuvens de outras pessoas nunca são acessíveis.",
+    "groups": {
+      "internet": "Internet",
+      "privateNetwork": "Rede privada",
+      "developerServices": "Serviços para desenvolvedores"
+    },
+    "groupDescriptions": {
+      "internet": "Todos os endereços públicos.",
+      "privateNetwork": "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 e 100.64.0.0/10.",
+      "developerServices": "GitHub, npm, PyPI e mais {count}."
+    },
+    "domainsAndAddresses": "Domínios e endereços",
+    "domainsAndAddressesDescription": "As nuvens alcançam cada item da lista: em todas as portas ou apenas na porta escrita depois. Com a internet desativada, só os nomes da lista são resolvidos.",
+    "add": "Adicionar domínio ou endereço",
+    "placeholder": "Adicione domínios ou endereços, como *.example.com ou 10.20.0.7:22",
     "remove": "Remover",
-    "empty": "Nenhum endereço ainda.",
+    "empty": "Nenhum domínio ou endereço ainda.",
     "problems": {
-      "address": "Digite um endereço ou rede IPv4, como 10.20.0.7 ou 10.20.0.0/16.",
+      "entry": "Digite um domínio, como git.example.com ou *.example.com, ou um endereço ou rede IPv4, como 10.20.0.0/16.",
       "port": "Digite uma porta de 1 a 65535.",
       "neverReachable": "As nuvens nunca podem alcançar este endereço."
     },
     "pending": "Salvo. As nuvens recebem a alteração assim que o gerenciador de máquinas estiver disponível novamente.",
-    "failed": "Não foi possível alterar o acesso à rede privada",
+    "failed": "Não foi possível alterar a política de rede",
     "loadFailed": "Não foi possível carregar as configurações da nuvem",
-    "loading": "Carregando as configurações da nuvem…",
-    "accesses": {
-      "off": "Desativado",
-      "entire": "Toda a rede privada",
-      "only": "Somente estes endereços"
-    }
+    "loading": "Carregando as configurações da nuvem…"
   },
   "addUser": {
     "title": "Adicionar usuário",

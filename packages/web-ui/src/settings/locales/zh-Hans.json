@@ -415,7 +415,7 @@
       "keywords": "账户,人员,管理员,添加用户,邀请,重置密码,角色,禁用,全部退出登录"
     },
     "cloud": {
-      "keywords": "网络,内网,局域网,私有网络,防火墙,代理,git,tailscale,ip,地址,端口,隔离,沙盒,gvisor,安全"
+      "keywords": "网络,内网,局域网,私有网络,防火墙,代理,git,tailscale,ip,地址,端口,隔离,沙盒,gvisor,安全,策略,网络策略,域名,白名单,dns"
     },
     "developer": {
       "keywords": "开发,调试,疑难解答",
@@ -584,30 +584,49 @@
     "unavailable": "这台服务器无法使用：{reason}",
     "moving": "已停止的云端现在就迁移到“{isolation}”，运行中的云端在停止后迁移。文件和已安装的软件包会一起迁移。",
     "isolationFailed": "无法更改隔离方式",
-    "noPrivateNetwork": "简易隔离的云端与服务器共用网络，因此这项设置不适用。",
-    "access": "内网访问",
-    "accessDescription": "云端默认只能访问互联网。如果 Demi 部署在公司内网，打开它，云端就能访问内网的 Git 服务器、内部服务和代理。服务器本身、云厂商的元数据服务和其他人的云端始终无法访问。",
-    "entireDescription": "云端可以访问所有内网地址，就像接入内网的一台电脑，所以云端浏览器打开的网页也可能尝试访问你的内部服务。服务器本身、云厂商的元数据服务和其他人的云端始终无法访问。",
-    "addresses": "地址",
-    "addressesDescription": "云端可以访问列出的每个地址或网段：默认所有端口，写了端口则只限该端口。",
-    "add": "添加地址",
-    "placeholder": "添加地址，例如 10.20.0.0/16 或 10.20.0.7:22",
+    "noNetworkPolicy": "简易隔离的云端与服务器共用网络，因此网络策略不适用。",
+    "policy": "网络策略",
+    "policies": {
+      "noNetwork": "不联网",
+      "developerServices": "常用开发服务",
+      "internetOnly": "仅互联网",
+      "internetAndPrivateNetwork": "互联网和内网",
+      "custom": "自定义"
+    },
+    "policyDescriptions": {
+      "noNetwork": "云端无法访问任何网络。",
+      "developerServices": "云端只能访问构建时下载代码和依赖的服务，例如 GitHub、npm、PyPI。",
+      "internetOnly": "云端可以访问互联网，不能访问服务器所在的内网。",
+      "internetAndPrivateNetwork": "云端可以访问互联网和所有内网地址，就像接入内网的一台电脑，所以云端浏览器打开的网页也可能尝试访问你的内部服务。",
+      "custom": "云端只能访问下面允许的内容。"
+    },
+    "allowedGroups": "允许访问",
+    "neverReachable": "服务器本身、云厂商的元数据服务和其他人的云端始终无法访问。",
+    "groups": {
+      "internet": "互联网",
+      "privateNetwork": "内网",
+      "developerServices": "常用开发服务"
+    },
+    "groupDescriptions": {
+      "internet": "所有公网地址。",
+      "privateNetwork": "10.0.0.0/8、172.16.0.0/12、192.168.0.0/16 和 100.64.0.0/10。",
+      "developerServices": "GitHub、npm、PyPI 及另外 {count} 个域名。"
+    },
+    "domainsAndAddresses": "域名和地址",
+    "domainsAndAddressesDescription": "云端可以访问列出的每一项：默认所有端口，写了端口则只限该端口。关闭互联网时，只有列出的域名才能解析。",
+    "add": "添加域名或地址",
+    "placeholder": "添加域名或地址，例如 *.example.com 或 10.20.0.7:22",
     "remove": "移除",
-    "empty": "还没有地址。",
+    "empty": "还没有域名或地址。",
     "problems": {
-      "address": "请输入 IPv4 地址或网段，例如 10.20.0.7 或 10.20.0.0/16。",
+      "entry": "请输入域名（例如 git.example.com 或 *.example.com），或 IPv4 地址或网段（例如 10.20.0.0/16）。",
       "port": "请输入 1 到 65535 之间的端口。",
       "neverReachable": "云端始终无法访问这个地址。"
     },
     "pending": "已保存。机器管理器恢复后，云端就会应用这项更改。",
-    "failed": "无法更改内网访问",
+    "failed": "无法更改网络策略",
     "loadFailed": "无法加载云端设置",
-    "loading": "正在加载云端设置…",
-    "accesses": {
-      "off": "关闭",
-      "entire": "整个内网",
-      "only": "仅限这些地址"
-    }
+    "loading": "正在加载云端设置…"
   },
   "addUser": {
     "title": "添加用户",

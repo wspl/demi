@@ -58,7 +58,7 @@ use demi_backend_runners::publication::{PublicationError, publish_native};
 use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::isolation as cloud_isolation;
-use demi_backend_cloud::network::{self as cloud_network, stored_private_network};
+use demi_backend_cloud::network::{self as cloud_network, stored_network_rules};
 use demi_backend_cloud::reset::recover_clouds;
 use demi_backend_database::StorageError;
 use demi_backend_database::update::Update;
@@ -192,11 +192,11 @@ const RECOVERY_RETRY: std::time::Duration = std::time::Duration::from_secs(5);
 /// recorded, which the Cloud's next hello settles. A
 /// manager that cannot be reached is asked again until it answers; any other
 /// failure ends the recovery and is logged, as a failed start step is.
-/// Gives the machine manager the isolation and the private network the
-/// master chose each time the backend connects to it: the manager keeps
-/// them in memory only, so one that restarted on its own would otherwise
-/// leave every Cloud cut off from the private network and start new ones on
-/// its own choice of isolation.
+/// Gives the machine manager the isolation and the network rules the
+/// master's choices give each time the backend connects to it: the manager
+/// keeps them in memory only, so one that restarted on its own would
+/// otherwise let every Cloud reach the internet alone, whatever the policy,
+/// and start new ones on its own choice of isolation.
 async fn send_cloud_settings(mut connections: tokio::sync::mpsc::Receiver<()>, services: Arc<Services>) {
     while connections.recv().await.is_some() {
         let sent = match services.control.isolation().await {
@@ -206,12 +206,12 @@ async fn send_cloud_settings(mut connections: tokio::sync::mpsc::Receiver<()>, s
         if let Err(error) = sent {
             tracing::warn!(event = "cloud_isolation.not_sent", %error, "the machine manager did not get the isolation Clouds run on");
         }
-        let sent = match stored_private_network(&services.control).await {
-            Ok(network) => cloud_network::apply(&services.cloud, network).await.map_err(|error| error.to_string()),
+        let sent = match stored_network_rules(&services.control).await {
+            Ok(rules) => cloud_network::apply(&services.cloud, rules).await.map_err(|error| error.to_string()),
             Err(error) => Err(error.to_string()),
         };
         if let Err(error) = sent {
-            tracing::warn!(event = "cloud_network.not_sent", %error, "the machine manager did not get the private network Clouds reach");
+            tracing::warn!(event = "cloud_network.not_sent", %error, "the machine manager did not get the network rules Clouds follow");
         }
     }
 }

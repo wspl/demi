@@ -1,66 +1,83 @@
-//! Which private destinations Clouds reach: the master's setting, which the
-//! control database stores as the master wrote it, as the machine manager
-//! applies it (`crates/machine-manager-protocol/src/network.rs`).
+//! What Clouds reach: the master's network policy, which the control
+//! database stores as the master wrote it, turned into the rules the machine
+//! manager applies (`crates/machine-manager-protocol/src/network.rs`).
 
 use demi_backend_database::StorageError;
-pub use demi_machine_manager_protocol::network::DestinationError;
-use demi_machine_manager_protocol::{Destination, PrivateNetwork, SetPrivateNetworkParams};
-use demi_web_api_protocol::settings::{CloudNetwork, PrivateNetworkAccess};
+pub use demi_machine_manager_protocol::network::AllowedError;
+use demi_machine_manager_protocol::{
+    Allowed, NetworkRules, SetNetworkRulesParams,
+    network::DEVELOPER_SERVICES,
+};
+use demi_web_api_protocol::settings::{CloudNetwork, CustomNetworkPolicy, NetworkPolicy};
 
 use crate::{CloudServices, ControlService};
 use crate::client::MachinesError;
 
-/// A destination of the setting that is not one, with the place it holds in
+/// An entry of Custom's list that is not one, with the place it holds in
 /// the list.
 #[derive(Debug, thiserror::Error)]
 #[error("{error}")]
-pub struct InvalidDestination {
+pub struct InvalidAllowed {
     pub index: usize,
-    pub error: DestinationError,
+    pub error: AllowedError,
 }
 
-/// The private network `setting` names, or the first destination it lists
-/// that is not one. The list is read whatever the access, since another
-/// access keeps it for when Only These Addresses is chosen again.
-pub fn private_network(setting: &CloudNetwork) -> Result<PrivateNetwork, InvalidDestination> {
-    let destinations = setting
-        .destinations
+/// The rules `policy` gives, or the first entry of Custom's list that is not
+/// one. The list is read whatever the policy, since a common policy keeps it
+/// for when Custom is chosen again.
+pub fn network_rules(policy: NetworkPolicy, custom: &CustomNetworkPolicy) -> Result<NetworkRules, InvalidAllowed> {
+    let allowed = custom
+        .allowed
         .iter()
         .enumerate()
-        .map(|(index, written)| {
-            written
-                .parse::<Destination>()
-                .map_err(|error| InvalidDestination { index, error })
-        })
+        .map(|(index, written)| written.parse::<Allowed>().map_err(|error| InvalidAllowed { index, error }))
         .collect::<Result<_, _>>()?;
-    Ok(match setting.access {
-        PrivateNetworkAccess::Off => PrivateNetwork::Off,
-        PrivateNetworkAccess::Entire => PrivateNetwork::Entire,
-        PrivateNetworkAccess::Only => PrivateNetwork::Only(destinations),
+    let groups = |internet, private_network, developer_services| NetworkRules {
+        internet,
+        private_network,
+        developer_services,
+        allowed: Vec::new(),
+    };
+    Ok(match policy {
+        NetworkPolicy::NoNetwork => groups(false, false, false),
+        NetworkPolicy::DeveloperServices => groups(false, false, true),
+        NetworkPolicy::InternetOnly => groups(true, false, false),
+        NetworkPolicy::InternetAndPrivateNetwork => groups(true, true, false),
+        NetworkPolicy::Custom => NetworkRules {
+            internet: custom.internet,
+            private_network: custom.private_network,
+            developer_services: custom.developer_services,
+            allowed,
+        },
     })
 }
 
-/// The private network the stored setting names. The backend stores only a
-/// setting it read, so a destination that is no longer one is left out and
-/// logged rather than keeping every Cloud from starting.
-pub async fn stored_private_network(control: &ControlService) -> Result<PrivateNetwork, StorageError> {
-    let mut setting = control.cloud_network().await?;
-    setting.destinations.retain(|written| match written.parse::<Destination>() {
+/// Settings › Cloud's network policy as the page reads it.
+pub async fn setting(control: &ControlService) -> Result<CloudNetwork, StorageError> {
+    let (policy, custom) = control.network_policy().await?;
+    Ok(CloudNetwork {
+        policy,
+        custom,
+        developer_services: DEVELOPER_SERVICES.iter().map(|name| (*name).to_owned()).collect(),
+    })
+}
+
+/// The rules the stored policy gives. The backend stores only a policy it
+/// read, so an entry that is no longer one is left out and logged rather
+/// than keeping every Cloud from starting.
+pub async fn stored_network_rules(control: &ControlService) -> Result<NetworkRules, StorageError> {
+    let (policy, mut custom) = control.network_policy().await?;
+    custom.allowed.retain(|written| match written.parse::<Allowed>() {
         Ok(_) => true,
         Err(error) => {
-            tracing::error!(event = "cloud_network.destination_ignored", destination = written, %error, "a stored private destination is not one, and Clouds do not reach it");
+            tracing::error!(event = "cloud_network.entry_ignored", entry = written, %error, "a stored entry of the network policy is not one, and Clouds do not reach it");
             false
         }
     });
-    Ok(private_network(&setting).expect("only destinations that parse are left"))
+    Ok(network_rules(policy, &custom).expect("only entries that parse are left"))
 }
 
-/// Has the manager apply `network` to every Cloud now.
-pub async fn apply(cloud: &CloudServices, network: PrivateNetwork) -> Result<(), MachinesError> {
-    cloud
-        .machines
-        .call(SetPrivateNetworkParams {
-            private_network: network,
-        })
-        .await
+/// Has the manager apply `rules` to every Cloud now.
+pub async fn apply(cloud: &CloudServices, rules: NetworkRules) -> Result<(), MachinesError> {
+    cloud.machines.call(SetNetworkRulesParams { network_rules: rules }).await
 }

@@ -415,7 +415,7 @@
       "keywords": "cuentas,personas,admin,agregar usuario,invitar,restablecer contraseña,rol,desactivar,cerrar sesión en todas partes"
     },
     "cloud": {
-      "keywords": "red,red privada,intranet,interna,lan,firewall,proxy,git,tailscale,ip,dirección,puerto,aislamiento,sandbox,gvisor,seguridad"
+      "keywords": "red,red privada,intranet,interna,lan,firewall,proxy,git,tailscale,ip,dirección,puerto,aislamiento,sandbox,gvisor,seguridad,política,política de red,dominio,lista de permitidos,dns"
     },
     "developer": {
       "keywords": "desarrollador,depuración,solución de problemas",
@@ -584,30 +584,49 @@
     "unavailable": "Este servidor no puede usarlo: {reason}",
     "moving": "Las nubes detenidas pasan a {isolation} ahora, y las que están en ejecución en cuanto se detengan. Sus archivos y paquetes instalados pasan con ellas.",
     "isolationFailed": "No se pudo cambiar el aislamiento",
-    "noPrivateNetwork": "Las nubes con aislamiento simple comparten la red del servidor, así que esta configuración no se aplica.",
-    "access": "Acceso a la red privada",
-    "accessDescription": "Por defecto, las nubes solo llegan a internet. Si Demi se ejecuta en la red de tu empresa, activa esto para que las nubes lleguen a sus servidores de Git, servicios internos y proxies. El servidor, los servicios de metadatos de la nube y las nubes de otras personas siguen inaccesibles.",
-    "entireDescription": "Las nubes llegan a todas las direcciones privadas, como una computadora de tu red, así que una página web que abra el navegador de una nube también puede intentar llegar a tus servicios internos. El servidor, los servicios de metadatos de la nube y las nubes de otras personas siguen inaccesibles.",
-    "addresses": "Direcciones",
-    "addressesDescription": "Las nubes llegan a cada dirección o red de la lista: en todos los puertos o solo en el puerto escrito después.",
-    "add": "Agregar dirección",
-    "placeholder": "Agrega direcciones, como 10.20.0.0/16 o 10.20.0.7:22",
+    "noNetworkPolicy": "Las nubes con aislamiento simple comparten la red del servidor, así que la política de red no se aplica.",
+    "policy": "Política de red",
+    "policies": {
+      "noNetwork": "Sin red",
+      "developerServices": "Servicios para desarrolladores",
+      "internetOnly": "Solo internet",
+      "internetAndPrivateNetwork": "Internet y red privada",
+      "custom": "Personalizada"
+    },
+    "policyDescriptions": {
+      "noNetwork": "Las nubes no llegan a ninguna red.",
+      "developerServices": "Las nubes solo llegan a los servicios de los que descargan las compilaciones, como GitHub, npm y PyPI.",
+      "internetOnly": "Las nubes llegan a internet, pero a nada de la red privada del servidor.",
+      "internetAndPrivateNetwork": "Las nubes llegan a internet y a todas las direcciones privadas, como una computadora de la red del servidor, así que una página web que abra el navegador de una nube también puede intentar llegar a tus servicios internos.",
+      "custom": "Las nubes solo llegan a lo que se permite abajo."
+    },
+    "allowedGroups": "Permitido",
+    "neverReachable": "El servidor, los servicios de metadatos de la nube y las nubes de otras personas nunca son accesibles.",
+    "groups": {
+      "internet": "Internet",
+      "privateNetwork": "Red privada",
+      "developerServices": "Servicios para desarrolladores"
+    },
+    "groupDescriptions": {
+      "internet": "Todas las direcciones públicas.",
+      "privateNetwork": "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 y 100.64.0.0/10.",
+      "developerServices": "GitHub, npm, PyPI y {count} más."
+    },
+    "domainsAndAddresses": "Dominios y direcciones",
+    "domainsAndAddressesDescription": "Las nubes llegan a cada elemento de la lista: en todos los puertos o solo en el puerto escrito después. Con internet desactivado, solo se resuelven los nombres de la lista.",
+    "add": "Agregar dominio o dirección",
+    "placeholder": "Agrega dominios o direcciones, como *.example.com o 10.20.0.7:22",
     "remove": "Eliminar",
-    "empty": "Aún no hay direcciones.",
+    "empty": "Aún no hay dominios ni direcciones.",
     "problems": {
-      "address": "Escribe una dirección o red IPv4, como 10.20.0.7 o 10.20.0.0/16.",
+      "entry": "Escribe un dominio, como git.example.com o *.example.com, o una dirección o red IPv4, como 10.20.0.0/16.",
       "port": "Escribe un puerto del 1 al 65535.",
       "neverReachable": "Las nubes nunca pueden llegar a esta dirección."
     },
     "pending": "Guardado. Las nubes recibirán el cambio cuando el administrador de máquinas vuelva a estar disponible.",
-    "failed": "No se pudo cambiar el acceso a la red privada",
+    "failed": "No se pudo cambiar la política de red",
     "loadFailed": "No se pudo cargar la configuración de la nube",
-    "loading": "Cargando la configuración de la nube…",
-    "accesses": {
-      "off": "Desactivado",
-      "entire": "Toda la red privada",
-      "only": "Solo estas direcciones"
-    }
+    "loading": "Cargando la configuración de la nube…"
   },
   "addUser": {
     "title": "Agregar usuario",

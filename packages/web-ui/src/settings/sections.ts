@@ -259,7 +259,7 @@ export function cloudSection(): SettingsNavItem {
     label: t('cloud.title'),
     icon: CloudCog,
     keywords: words(t('sections.cloud.keywords')),
-    settings: [{ label: t('cloud.isolation') }, { label: t('cloud.access') }],
+    settings: [{ label: t('cloud.isolation') }, { label: t('cloud.policy') }],
   }
 }
 

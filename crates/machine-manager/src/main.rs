@@ -202,7 +202,7 @@ mod service {
         tools::{Tool, Tools},
     };
     use demi_machine_manager_protocol::{
-        Download, Enforces, Isolation, LeftSandbox, LeftSimple, Offer, PrivateNetwork, RuntimeOffer, Unavailable,
+        Download, Enforces, Isolation, LeftSandbox, LeftSimple, NetworkRules, Offer, RuntimeOffer, Unavailable,
     };
     use demi_shared_types::LogLine;
     use tokio::signal::unix::{SignalKind, signal};
@@ -348,7 +348,7 @@ mod service {
     const GVISOR_ENFORCES: Enforces = Enforces {
         checkpoints: true,
         storage_limits: true,
-        private_network: true,
+        network_policy: true,
     };
 
     /// Serves until a stop; `adopting` when this process entered the saved
@@ -477,11 +477,11 @@ mod service {
             return Ok(());
         }
         // The recovery above fenced every recorded sandbox but those taken
-        // over, which keep running. They reach no private destination until
-        // the backend, as it connects, names the private network.
+        // over, which keep running. They reach the internet alone until the
+        // backend, as it connects, names the network rules.
         if let Ok(gvisor) = &core.gvisor {
             let slots: Vec<_> = adopted.iter().filter_map(|(_, sandbox)| sandbox.admitted()).collect();
-            gvisor.network.prepare(&slots, &PrivateNetwork::Off).await?;
+            gvisor.network.prepare(&slots, &NetworkRules::default()).await?;
         }
         let base = base::import(&core.tools, &core.config.image, &core.bases()).await?;
         let programs: Vec<_> = left_sandboxes
@@ -518,7 +518,7 @@ mod service {
                     Ok(()) => Offer::Runs(Enforces {
                         checkpoints: false,
                         storage_limits: false,
-                        private_network: false,
+                        network_policy: false,
                     }),
                     Err(error) => Offer::Unavailable(Unavailable { reason: error.to_string() }),
                 },

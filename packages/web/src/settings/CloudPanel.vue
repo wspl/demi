@@ -12,7 +12,9 @@ import {
   type DestinationProblem,
   type Isolation,
   type IsolationDownload,
-  type PrivateNetworkAccess,
+  type NetworkGroup,
+  type NetworkPolicy,
+  withPolicy,
 } from '@demicodes/web-ui/settings/cloud'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
@@ -20,9 +22,9 @@ import {
   cloudIsolationSchema,
   cloudNetworkSchema,
   type CloudIsolation,
-  type CloudNetwork,
   type IsolationDownload as IsolationDownloadRead,
   type SetCloudIsolation,
+  type SetCloudNetwork,
 } from '../api/generated/web-api'
 import { useHeldList, useProduct } from '../state/product'
 
@@ -30,7 +32,7 @@ import { useHeldList, useProduct } from '../state/product'
  * Settings › Cloud for the product. Only the master has the page. The
  * isolation is a list the page holds while it shows (`cloud_isolation`),
  * which the channel changes as the master chooses and as the server
- * downloads gVisor; Private Network Access is read when the page opens. A
+ * downloads gVisor; the network policy is read when the page opens. A
  * change is stored even when the machine manager cannot take it
  * (`cloud_unavailable`): the page shows it as saved and says when it applies.
  */
@@ -48,7 +50,7 @@ function shown(read: CloudIsolation): CloudIsolationSetting {
       read.runtimes?.map((runtime) => ({
         isolation: runtime.isolation,
         unavailable: runtime.unavailable ?? null,
-        privateNetwork: runtime.privateNetwork,
+        networkPolicy: runtime.networkPolicy,
         download: runtime.download ? downloadShown(runtime.download) : null,
       })) ?? null,
   }
@@ -130,7 +132,7 @@ async function setIsolation(next: Isolation): Promise<void> {
 /** Stores `next`, answering why the server refused it, or null once stored. */
 async function put(next: CloudNetworkSetting): Promise<SentenceText | null> {
   try {
-    const request: CloudNetwork = { access: next.access, destinations: next.destinations }
+    const request: SetCloudNetwork = { policy: next.policy, custom: next.custom }
     const response = await apiRequest('/settings/cloud-network', { method: 'PUT', ...jsonBody(request) })
     network.value = await readResponse(response, cloudNetworkSchema)
     return null
@@ -147,18 +149,30 @@ async function put(next: CloudNetworkSetting): Promise<SentenceText | null> {
   }
 }
 
-async function setAccess(access: PrivateNetworkAccess): Promise<void> {
-  if (!network.value) {
-    return
-  }
-  const refusal = await put({ ...network.value, access })
+/** Stores `next`, saying in a toast why the server refused it. */
+async function change(next: CloudNetworkSetting): Promise<void> {
+  const refusal = await put(next)
   if (refusal !== null) {
     showToast({ title: t('cloud.failed'), message: refusal, tone: 'danger' })
   }
 }
 
-function saveDestinations(destinations: string[]): Promise<SentenceText | null> {
-  return put({ access: 'only', destinations })
+async function setPolicy(policy: NetworkPolicy): Promise<void> {
+  if (network.value) {
+    await change(withPolicy(network.value, policy))
+  }
+}
+
+async function setGroup(group: NetworkGroup, on: boolean): Promise<void> {
+  const current = network.value
+  if (current) {
+    await change({ ...current, custom: { ...current.custom, [group]: on } })
+  }
+}
+
+function saveAllowed(allowed: string[]): Promise<SentenceText | null> {
+  const current = network.value
+  return current ? put({ ...current, custom: { ...current.custom, allowed } }) : Promise.resolve(null)
 }
 </script>
 
@@ -171,7 +185,8 @@ function saveDestinations(destinations: string[]): Promise<SentenceText | null> 
     :on-retry="retry"
     :overlay-store="appOverlayStore"
     :on-set-isolation="setIsolation"
-    :on-set-access="setAccess"
-    :save-destinations="saveDestinations"
+    :on-set-policy="setPolicy"
+    :on-set-group="setGroup"
+    :save-allowed="saveAllowed"
   />
 </template>

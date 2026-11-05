@@ -2,7 +2,7 @@
 //! enforces, and where a device's storage is.
 //!
 //! The master chooses one isolation for every Cloud; the backend names it to
-//! the manager as it names the private network, on each connection and after
+//! the manager as it names the network rules, on each connection and after
 //! each change. A device's storage is on one runtime, which the manager
 //! moves it from to the chosen one while the device is stopped.
 
@@ -77,8 +77,8 @@ pub struct Enforces {
     pub checkpoints: bool,
     /// Each user's Cloud Storage bounds the Cloud's filesystems.
     pub storage_limits: bool,
-    /// Private Network Access decides what Clouds reach.
-    pub private_network: bool,
+    /// The network policy decides what Clouds reach.
+    pub network_policy: bool,
 }
 
 /// Why a manager cannot run a runtime, such as a missing program.

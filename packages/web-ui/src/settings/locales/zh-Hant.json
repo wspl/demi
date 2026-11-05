@@ -415,7 +415,7 @@
       "keywords": "帳號,人員,管理員,新增使用者,邀請,重設密碼,角色,停用,全部登出"
     },
     "cloud": {
-      "keywords": "網路,內網,區域網路,私人網路,防火牆,代理,git,tailscale,ip,位址,連接埠,隔離,沙盒,gvisor,安全性"
+      "keywords": "網路,內網,區域網路,私人網路,防火牆,代理,git,tailscale,ip,位址,連接埠,隔離,沙盒,gvisor,安全性,原則,網路原則,網域,允許清單,dns"
     },
     "developer": {
       "keywords": "開發,除錯,疑難排解",
@@ -584,30 +584,49 @@
     "unavailable": "這台伺服器無法使用：{reason}",
     "moving": "已停止的雲端現在就移轉到「{isolation}」，執行中的雲端則在停止後移轉。檔案和已安裝的套件會一起移轉。",
     "isolationFailed": "無法變更隔離方式",
-    "noPrivateNetwork": "簡易隔離的雲端與伺服器共用網路，因此這項設定不適用。",
-    "access": "內網存取",
-    "accessDescription": "雲端預設只能存取網際網路。如果 Demi 架設在公司內網，開啟這項設定，雲端就能存取內網的 Git 伺服器、內部服務和代理伺服器。伺服器本身、雲端供應商的中繼資料服務和其他人的雲端一律無法存取。",
-    "entireDescription": "雲端可以存取所有內網位址，就像接上內網的一台電腦，所以雲端瀏覽器開啟的網頁也可能嘗試存取你的內部服務。伺服器本身、雲端供應商的中繼資料服務和其他人的雲端一律無法存取。",
-    "addresses": "位址",
-    "addressesDescription": "雲端可以存取列出的每個位址或網段：預設所有連接埠，寫了連接埠則只限該連接埠。",
-    "add": "新增位址",
-    "placeholder": "新增位址，例如 10.20.0.0/16 或 10.20.0.7:22",
+    "noNetworkPolicy": "簡易隔離的雲端與伺服器共用網路，因此網路原則不適用。",
+    "policy": "網路原則",
+    "policies": {
+      "noNetwork": "不連網",
+      "developerServices": "常用開發服務",
+      "internetOnly": "僅網際網路",
+      "internetAndPrivateNetwork": "網際網路和內網",
+      "custom": "自訂"
+    },
+    "policyDescriptions": {
+      "noNetwork": "雲端無法存取任何網路。",
+      "developerServices": "雲端只能存取建置時下載程式碼和相依套件的服務，例如 GitHub、npm、PyPI。",
+      "internetOnly": "雲端可以存取網際網路，無法存取伺服器所在的內網。",
+      "internetAndPrivateNetwork": "雲端可以存取網際網路和所有內網位址，就像接上內網的一台電腦，所以雲端瀏覽器開啟的網頁也可能嘗試存取你的內部服務。",
+      "custom": "雲端只能存取下方允許的內容。"
+    },
+    "allowedGroups": "允許存取",
+    "neverReachable": "伺服器本身、雲端供應商的中繼資料服務和其他人的雲端一律無法存取。",
+    "groups": {
+      "internet": "網際網路",
+      "privateNetwork": "內網",
+      "developerServices": "常用開發服務"
+    },
+    "groupDescriptions": {
+      "internet": "所有公開位址。",
+      "privateNetwork": "10.0.0.0/8、172.16.0.0/12、192.168.0.0/16 和 100.64.0.0/10。",
+      "developerServices": "GitHub、npm、PyPI 及另外 {count} 個網域。"
+    },
+    "domainsAndAddresses": "網域和位址",
+    "domainsAndAddressesDescription": "雲端可以存取列出的每一項：預設所有連接埠，寫了連接埠則只限該連接埠。關閉網際網路時，只有列出的網域才能解析。",
+    "add": "新增網域或位址",
+    "placeholder": "新增網域或位址，例如 *.example.com 或 10.20.0.7:22",
     "remove": "移除",
-    "empty": "尚無位址。",
+    "empty": "尚無網域或位址。",
     "problems": {
-      "address": "請輸入 IPv4 位址或網段，例如 10.20.0.7 或 10.20.0.0/16。",
+      "entry": "請輸入網域（例如 git.example.com 或 *.example.com），或 IPv4 位址或網段（例如 10.20.0.0/16）。",
       "port": "請輸入 1 到 65535 之間的連接埠。",
       "neverReachable": "雲端一律無法存取這個位址。"
     },
     "pending": "已儲存。機器管理程式恢復後，雲端就會套用這項變更。",
-    "failed": "無法變更內網存取",
+    "failed": "無法變更網路原則",
     "loadFailed": "無法載入雲端設定",
-    "loading": "正在載入雲端設定…",
-    "accesses": {
-      "off": "關閉",
-      "entire": "整個內網",
-      "only": "僅限這些位址"
-    }
+    "loading": "正在載入雲端設定…"
   },
   "addUser": {
     "title": "新增使用者",

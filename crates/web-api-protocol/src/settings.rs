@@ -73,8 +73,8 @@ pub struct IsolationRuntime {
     /// Why the server cannot run it, in its machine manager's words; none
     /// when it can.
     pub unavailable: Option<String>,
-    /// Whether Private Network Access decides what its Clouds reach.
-    pub private_network: bool,
+    /// Whether the network policy decides what its Clouds reach.
+    pub network_policy: bool,
     /// Whether each user's Cloud Storage bounds its Clouds.
     pub storage_limits: bool,
     /// The download of its release, which the server makes when the master
@@ -109,36 +109,64 @@ pub struct SetCloudIsolation {
     pub isolation: Isolation,
 }
 
-/// Which private destinations the server's Clouds reach, which the master
-/// chooses in Settings › Cloud.
+/// What the server's Clouds reach, which the master chooses in
+/// Settings › Cloud: one of the common policies, or Custom.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum PrivateNetworkAccess {
-    /// None: Clouds reach only the internet.
-    Off,
-    /// Every private network.
-    Entire,
-    /// Only the destinations listed.
-    Only,
+#[serde(rename_all = "camelCase")]
+pub enum NetworkPolicy {
+    /// Nothing.
+    NoNetwork,
+    /// Git hosts, package registries and the downloads of build tools.
+    DeveloperServices,
+    /// Every public address.
+    InternetOnly,
+    /// Every public address and every private network.
+    InternetAndPrivateNetwork,
+    /// What [`CustomNetworkPolicy`] allows.
+    Custom,
 }
 
-serde_plain::derive_display_from_serialize!(PrivateNetworkAccess);
-serde_plain::derive_fromstr_from_deserialize!(PrivateNetworkAccess);
+serde_plain::derive_display_from_serialize!(NetworkPolicy);
+serde_plain::derive_fromstr_from_deserialize!(NetworkPolicy);
 
-/// Settings › Cloud's Private Network Access, which only the master reads
-/// with `GET /settings/cloud-network` and changes with `PUT` to the same
-/// path.
-/// `destinations` are written as the master typed them, such as
-/// `10.20.0.0/16` or `10.20.0.7:22`, and kept while another access is chosen.
+/// What Custom allows: the groups switched on, and the domains and addresses
+/// as the master typed them, such as `*.example.com` or `10.20.0.7:22`. It is
+/// kept while a common policy is chosen.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct CloudNetwork {
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CustomNetworkPolicy {
     #[garde(skip)]
-    pub access: PrivateNetworkAccess,
-    /// Bounded so the setting stays one small row; a network covers many
-    /// addresses in one entry.
-    #[garde(length(max = 256), inner(length(min = 1, max = 64)))]
-    pub destinations: Vec<String>,
+    pub internet: bool,
+    #[garde(skip)]
+    pub private_network: bool,
+    #[garde(skip)]
+    pub developer_services: bool,
+    /// Bounded so the setting stays one small row; a network or a domain's
+    /// subdomains cover many addresses in one entry. A domain is 253
+    /// characters at most, a port and its colon six more.
+    #[garde(length(max = 256), inner(length(min = 1, max = 261)))]
+    pub allowed: Vec<String>,
+}
+
+/// Settings › Cloud's network policy, which only the master reads with
+/// `GET /settings/cloud-network`, with the domains of Developer Services,
+/// which the server ships.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CloudNetwork {
+    pub policy: NetworkPolicy,
+    pub custom: CustomNetworkPolicy,
+    pub developer_services: Vec<String>,
+}
+
+/// `PUT /settings/cloud-network`, which only the master sends.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetCloudNetwork {
+    #[garde(skip)]
+    pub policy: NetworkPolicy,
+    #[garde(dive)]
+    pub custom: CustomNetworkPolicy,
 }
 
 /// Whether the page follows the system's light or dark scheme or fixes one.

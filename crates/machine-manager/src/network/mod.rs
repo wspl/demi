@@ -5,17 +5,19 @@
 //!
 //! The policy:
 //!
-//! - It allows outbound public traffic, replies to established connections and
-//!   the configured resolver on TCP and UDP port 53.
-//! - It allows a Cloud, not the Claude Code machine, the private destinations
-//!   the master chose, which the backend names each time it connects and
-//!   after each change (`crates/machine-manager-protocol/src/network.rs`).
-//!   The manager keeps that choice in memory only, so it starts with none
-//!   until the backend connects.
-//! - It rejects every other private, loopback, link-local, metadata,
-//!   multicast, reserved and other-tenant destination, the host's own services
-//!   included, on forwarded traffic and on traffic addressed to the host. No
-//!   choice opens loopback, link-local, multicast, the host or another Cloud.
+//! - It allows the Claude Code machine public destinations, replies to
+//!   established connections and the configured resolver on TCP and UDP
+//!   port 53.
+//! - It allows a Cloud what the network rules allow, which the backend names
+//!   each time it connects and after each change
+//!   (`crates/machine-manager-protocol/src/network.rs`): public destinations,
+//!   private networks and addresses by the firewall, domains by the
+//!   resolver a Cloud's DNS is redirected to (`resolver`). The manager keeps
+//!   the rules in memory only, so it starts with the internet alone until
+//!   the backend connects.
+//! - It rejects every other destination, the host's own services included,
+//!   on forwarded traffic and on traffic addressed to the host. No rule opens
+//!   loopback, link-local, metadata, multicast, the host or another Cloud.
 //! - The backend is not among the allowed: a Cloud reaches it through the
 //!   runner socket, never the network.
 //!
@@ -43,6 +45,8 @@
 mod netlink;
 #[cfg(target_os = "linux")]
 mod netns;
+#[cfg(target_os = "linux")]
+mod resolver;
 pub mod ruleset;
 pub mod slots;
 
@@ -56,14 +60,16 @@ mod linux {
         net::Ipv4Addr,
         os::fd::AsRawFd,
         path::PathBuf,
+        rc::Rc,
     };
 
-    use demi_machine_manager_protocol::{PrivateNetwork, SandboxMachine};
+    use demi_machine_manager_protocol::{NetworkRules, SandboxMachine};
     use ipnet::Ipv4Net;
 
     use super::{
         netlink::{self, NetlinkError},
         netns,
+        resolver::Resolver,
         ruleset::{self, Policy},
         slots::Slot,
     };
@@ -93,7 +99,7 @@ mod linux {
 
     /// Applies `ruleset` as one `nft` transaction; a refusal carries what
     /// `nft` printed.
-    fn apply(
+    pub(super) fn apply(
         nft: &std::path::Path,
         ruleset: &nftables::schema::Nftables<'_>,
     ) -> Result<(), NetworkError> {
@@ -112,33 +118,45 @@ mod linux {
         pool: Ipv4Net,
         dns: Vec<Ipv4Addr>,
         nft: PathBuf,
+        resolver: Rc<Resolver>,
     }
 
     impl CloudNetwork {
         pub fn new(pool: Ipv4Net, dns: Vec<Ipv4Addr>, nft: PathBuf) -> Self {
-            Self { pool, dns, nft }
+            let resolver = Resolver::new(dns.clone(), nft.clone());
+            Self { pool, dns, nft, resolver }
         }
 
-        /// The resolvers the Clouds use, which the firewall lets them reach.
+        /// The resolvers a sandbox's `/etc/resolv.conf` names. The Claude
+        /// Code machine asks them; a Cloud's questions to them, as to any
+        /// other address, reach its gateway's resolver.
         pub fn dns(&self) -> &[Ipv4Addr] {
             &self.dns
         }
 
         /// Checks that the pool overlaps no host route, enables forwarding,
-        /// and installs the firewall table with the private network Clouds
-        /// reach and the pairs of `running`, the slots of the sandboxes that
-        /// keep running.
+        /// and installs the firewall table with what `rules` allows Clouds
+        /// and the pairs of `running`, the slots of the sandboxes that keep
+        /// running, each running Cloud with its resolver.
         pub async fn prepare(
             &self,
             running: &[(Slot, SandboxMachine)],
-            private: &PrivateNetwork,
+            rules: &NetworkRules,
         ) -> Result<(), NetworkError> {
             self.check().await?;
+            for (slot, machine) in running {
+                if *machine == SandboxMachine::Cloud {
+                    self.resolver.listen(slot).await?;
+                }
+            }
+            let _firewall = self.resolver.firewall().await;
+            let named = self.resolver.named(rules);
             let table = ruleset::table(
                 &Policy {
                     pool: self.pool,
                     dns: &self.dns,
-                    private,
+                    rules,
+                    named: &named,
                 },
                 running,
             );
@@ -147,7 +165,9 @@ mod linux {
                 fs_err::write("/proc/sys/net/ipv4/ip_forward", "1")?;
                 apply(&nft, &table)
             })
-            .await
+            .await?;
+            self.resolver.set_rules(rules);
+            Ok(())
         }
 
         /// Mounts the directory of the slots' namespace files, private to
@@ -236,12 +256,17 @@ mod linux {
             .await?;
             let element = ruleset::add_slot(slot, machine);
             let nft = self.nft.clone();
-            blocking::run(move |_| apply(&nft, &element)).await
+            blocking::run(move |_| apply(&nft, &element)).await?;
+            if machine == SandboxMachine::Cloud {
+                self.resolver.listen(slot).await?;
+            }
+            Ok(())
         }
 
-        /// Removes `slot`'s firewall pair, veth pair and namespace, each only
-        /// if it exists.
+        /// Removes `slot`'s resolver, firewall pair, veth pair and namespace,
+        /// each only if it exists.
         pub async fn detach(&self, slot: &Slot) -> Result<(), NetworkError> {
+            self.resolver.stop(slot);
             let removal = ruleset::remove_slot(slot);
             let nft = self.nft.clone();
             blocking::run(move |_| apply(&nft, &removal)).await?;
