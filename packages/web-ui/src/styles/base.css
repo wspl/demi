@@ -948,13 +948,14 @@ html[data-theme="light"] .file-pill {
   }
 }
 
-/* Menu: hug content up to half the viewport, or the space left around
-   the anchor when Popover sets --overlay-available-height. */
+/* Menu: hug content up to the room left between its anchor and the screen's
+   edge, which Popover sets as --overlay-available-height, as a macOS menu
+   grows to the screen before it scrolls. */
 .overlay-menu {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  max-height: min(50vh, var(--overlay-available-height, 50vh));
+  max-height: var(--overlay-available-height, calc(100dvh - 2rem));
 }
 
 /* A menu in a phone's bottom sheet (`Sheet.vue`) is the sheet's list: as
