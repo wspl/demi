@@ -151,7 +151,7 @@ defineExpose({ open, close })
           :icon="props.icon"
           :indicator="props.indicator"
           :indicator-label="props.indicatorLabel"
-          class="w-full"
+          :class="props.variant === 'bare' ? '' : 'w-full'"
         >
           <template v-if="$slots.icon" #icon><slot name="icon" /></template>
           <slot name="trigger" :is-open="isOpen" />

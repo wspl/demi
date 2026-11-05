@@ -99,6 +99,11 @@
   "archived": {
     "title": "Arquivadas",
     "description": "Conversas removidas da barra lateral.",
+    "count": "{count} conversa | {count} conversas",
+    "select": "Selecionar",
+    "selectAll": "Selecionar tudo",
+    "selectLabel": "Selecionar {title}",
+    "selected": "{count} selecionadas",
     "search": "Buscar arquivadas",
     "searchLabel": "Buscar conversas arquivadas",
     "loading": "Carregando conversas arquivadas…",
@@ -139,6 +144,23 @@
     "add": "Adicionar encaminhamento",
     "loading": "Carregando encaminhamentos de porta…",
     "none": "Nenhum encaminhamento de porta",
+    "select": "Selecionar",
+    "selectAll": "Selecionar tudo",
+    "selectLabel": "Selecionar {name}",
+    "selected": "{count} selecionados",
+    "actions": "Ações",
+    "turnOn": "Ativar",
+    "turnOff": "Desativar",
+    "delete": "Excluir…",
+    "deleteTitle": "Excluir {count} encaminhamento? | Excluir {count} encaminhamentos?",
+    "deleteBody": "Ele para de escutar e as conexões abertas são encerradas. | Eles param de escutar e as conexões abertas são encerradas.",
+    "deleteFailed": "Não foi possível excluir os encaminhamentos",
+    "choose": "Escolher…",
+    "nameOf": "Nome de {name}",
+    "portOf": "Porta de {name}",
+    "listenOnOf": "Host de escuta de {name}",
+    "connectToOf": "Host de destino de {name}",
+    "addressOf": "Endereço de {name}",
     "unknownHost": "Host desconhecido",
     "state": {
       "off": "Desativado",
@@ -250,7 +272,11 @@
     "signOutLabel": "Desconectar {name}",
     "signOutTitle": "Desconectar {name}?",
     "signOutAction": "Desconectar",
-    "signOutBody": "As páginas abertas dele voltam para a página de login. As conversas permanecem no servidor."
+    "signOutBody": "As páginas abertas dele voltam para a página de login. As conversas permanecem no servidor.",
+    "signOutOthers": "Desconectar outros navegadores…",
+    "noOthers": "Nenhum outro navegador está conectado.",
+    "signOutOthersTitle": "Desconectar {count} outro navegador? | Desconectar {count} outros navegadores?",
+    "signOutOthersBody": "As páginas abertas deles voltam para a página de login. Este navegador continua conectado, e as conversas permanecem no servidor."
   },
   "instructions": {
     "title": "Instruções",
@@ -398,6 +424,7 @@
       "keywords": "atualização,upgrade,versão,lançamento,canary,beta"
     }
   },
+  "andMore": "{names} e mais {count}",
   "changeEmail": {
     "title": "Alterar e-mail",
     "formHint": "A partir de agora você entra com o novo endereço.",
@@ -421,11 +448,6 @@
     "confirm": "Confirmar nova senha",
     "unchanged": "Essa é a sua senha atual.",
     "done": "Senha alterada"
-  },
-  "changeRole": {
-    "title": "Alterar função",
-    "current": "A função de {name} é {role}.",
-    "role": "Função"
   },
   "cloudStorage": {
     "title": "Armazenamento na nuvem",
@@ -454,7 +476,34 @@
   "users": {
     "title": "Usuários",
     "description": "Todas as pessoas que podem entrar neste servidor.",
-    "accounts": "Contas",
+    "general": "Configurações gerais",
+    "accountsCount": "Contas · {count}",
+    "search": "Buscar",
+    "searchLabel": "Buscar usuários",
+    "noMatch": "Nenhuma conta corresponde a “{query}”.",
+    "role": "Função",
+    "cloudStorage": "Armazenamento na nuvem",
+    "cloudStorageDescription": "Os discos da nuvem dessa pessoa.",
+    "storageSizes": "{system} GB · {home} GB",
+    "signIn": "Login",
+    "signInCode": "Código de login",
+    "signInCodeDescription": "Faz login em um novo dispositivo sem senha.",
+    "showCode": "Mostrar código…",
+    "password": "Senha",
+    "passwordDescription": "Cria uma nova senha; as sessões continuam abertas.",
+    "resetShort": "Redefinir…",
+    "sessions": "Sessões",
+    "sessionsDescription": "Encerra todas as sessões dessa pessoa, em todos os dispositivos.",
+    "disableAccount": "Desativar conta",
+    "disableDescription": "A pessoa não consegue mais entrar; nada dela é removido.",
+    "disableShort": "Desativar…",
+    "enableAccount": "Ativar conta",
+    "enableDescription": "A pessoa pode entrar novamente.",
+    "enable": "Ativar",
+    "roleChange": {
+      "title": "Alterar a função de {name} para {role}?",
+      "action": "Alterar função"
+    },
     "sharing": {
       "group": "Provedores de modelos",
       "label": "Provedores",
@@ -480,16 +529,8 @@
     "choosesPassword": "Ainda não escolheu uma senha",
     "lastActive": "Última atividade",
     "neverSignedIn": "Ainda não entrou",
-    "actions": "Ações",
-    "actionsFor": "Ações para {name}",
     "action": {
-      "resetPassword": "Redefinir senha…",
-      "changeRole": "Alterar função…",
-      "cloudStorage": "Armazenamento na nuvem…",
-      "signInCode": "Código de login…",
-      "signOutEverywhere": "Sair de todos os lugares…",
-      "disable": "Desativar conta…",
-      "enable": "Ativar conta"
+      "signOutEverywhere": "Sair de todos os lugares…"
     },
     "confirm": {
       "add": "Confirme que é você para adicionar uma conta.",
@@ -514,7 +555,7 @@
       "title": "Desativar a conta de {name}?",
       "action": "Desativar conta",
       "body": "{name} é desconectado de todos os lugares e não consegue entrar. A nuvem dessa pessoa para e os dispositivos dela se desconectam.",
-      "note": "Nada é removido. Ativar conta restaura o acesso."
+      "note": "Nada é removido. Ativar restaura o acesso."
     }
   },
   "cloudNetwork": {
@@ -526,7 +567,7 @@
     "addresses": "Endereços",
     "addressesDescription": "As nuvens alcançam cada endereço ou rede listado: em todas as portas ou apenas na porta escrita depois.",
     "add": "Adicionar endereço",
-    "placeholder": "Adicione um endereço, como 10.20.0.0/16 ou 10.20.0.7:22",
+    "placeholder": "Adicione endereços, como 10.20.0.0/16 ou 10.20.0.7:22",
     "remove": "Remover",
     "empty": "Nenhum endereço ainda.",
     "problems": {
@@ -554,37 +595,70 @@
   },
   "credentials": {
     "title": "Credenciais",
-    "yours": "Suas credenciais",
-    "new": "Nova credencial…",
-    "secret": "Secreta",
-    "visible": "Visível",
-    "keptUntil": "Mantida até",
-    "always": "Sempre",
-    "lastUsed": "Último uso",
-    "never": "Nunca",
-    "delete": "Excluir…",
-    "deleteLabel": "Excluir {name}",
-    "none": "Nenhuma credencial",
-    "saveFailed": "Não foi possível salvar a credencial",
-    "deleteFailed": "Não foi possível excluir a credencial",
-    "deleteTitle": "Excluir “{name}”?",
-    "deleteBody": "Os agentes não poderão mais lê-la em nenhuma conversa. Não é possível desfazer."
-  },
-  "credentialDialog": {
+    "count": "1 credencial | {count} credenciais",
+    "matches": "{shown} de {count}",
+    "selected": "{count} selecionadas",
+    "sortBy": "Ordenar por",
+    "sorts": {
+      "name": "Nome",
+      "recent": "Usadas recentemente",
+      "stale": "Usadas há mais tempo",
+      "added": "Data de adição"
+    },
+    "groups": {
+      "today": "Hoje",
+      "week": "Esta semana",
+      "month": "Este mês",
+      "year": "Antes neste ano",
+      "older": "Mais antigas",
+      "never": "Nunca usadas"
+    },
     "new": "Nova credencial",
+    "newName": "Nova credencial",
+    "newNameNumbered": "Nova credencial ({n})",
+    "password": "Senha",
+    "search": "Buscar",
+    "searchLabel": "Buscar credenciais",
+    "noMatch": "Nenhuma credencial corresponde a “{query}”.",
+    "none": "Nenhuma credencial",
+    "noneSelected": "Nenhuma credencial selecionada",
+    "several": "{count} credenciais selecionadas",
+    "select": "Selecionar",
+    "deleteShort": "Excluir",
+    "deleteSeveral": "Excluir {count} credenciais…",
     "name": "Nome",
+    "nameMissing": "Digite um nome.",
     "note": "Nota",
-    "notePlaceholder": "Por que um agente precisa dela",
+    "noteDescription": "Para que os agentes a leem.",
     "fields": "Campos",
     "addField": "Adicionar campo",
-    "labelPlaceholder": "Chave de API",
-    "labelOf": "Rótulo do campo {n}",
-    "needsField": "Uma credencial precisa de um campo.",
-    "deleteField": "Excluir campo",
-    "actions": "Ações",
-    "fieldActions": "Ações do campo {n}",
-    "valueOf": "Valor do campo {n}",
-    "create": "Criar credencial"
+    "visibleField": "Campo visível",
+    "secretField": "Campo secreto",
+    "fieldName": "Campo {n}",
+    "fieldLabel": "Nome do campo",
+    "labelMissing": "Digite um nome para o campo.",
+    "secret": "Secreta",
+    "missing": "Ausente",
+    "removeField": "Remover campo",
+    "removeFieldLabel": "Remover {label}",
+    "kept": "Mantida",
+    "keeps": {
+      "1h": "Por 1 hora",
+      "1d": "Por 1 dia",
+      "30d": "Por 30 dias",
+      "always": "Até você removê-la"
+    },
+    "keptUntil": "Até {date}",
+    "lastUsed": "Último uso",
+    "never": "Nunca",
+    "added": "Adicionada em",
+    "delete": "Excluir…",
+    "deleteLabel": "Excluir {name}",
+    "deleteTitle": "Excluir “{name}”?",
+    "deleteSeveralTitle": "Excluir {count} credenciais?",
+    "deleteBody": "Os agentes não poderão mais lê-la em nenhuma conversa. Não é possível desfazer. | Os agentes não poderão mais lê-las em nenhuma conversa. Não é possível desfazer.",
+    "saveFailed": "Não foi possível salvar a credencial",
+    "deleteFailed": "Não foi possível excluir a credencial"
   },
   "credentialFields": {
     "required": "Obrigatório"
@@ -879,7 +953,8 @@
     "adding": "Adicionando…",
     "list": "Modelos",
     "search": "Buscar",
-    "custom": "Personalizado"
+    "custom": "Personalizado",
+    "several": "Adicionar {count} modelos"
   },
   "modelDialog": {
     "edit": "Editar modelo",

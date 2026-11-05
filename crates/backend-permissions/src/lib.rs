@@ -613,6 +613,9 @@ pub async fn read_credential(
         CredentialRead::NoCredential => Err(RpcError::Failed(format!(
             "\u{201c}{name}\u{201d}: the user has no credential of that name; `demi credentials list` lists them"
         ))),
+        CredentialRead::Missing => Err(RpcError::Failed(format!(
+            "\u{201c}{name}\u{201d}: the field \u{201c}{field}\u{201d} has no value yet; the user fills it in Settings \u{203a} Credentials"
+        ))),
         CredentialRead::NoField(fields) => Err(RpcError::Failed(format!(
             "\u{201c}{name}\u{201d}: no field \u{201c}{field}\u{201d}; its fields are {}",
             fields

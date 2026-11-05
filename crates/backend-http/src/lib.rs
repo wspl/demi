@@ -592,7 +592,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/port-forwards/{id}/retry", post(port_forwards::retry))
         .route("/credentials", get(credentials::list).post(credentials::create))
-        .route("/credentials/{id}", delete(credentials::delete))
+        .route(
+            "/credentials/{id}",
+            patch(credentials::change).delete(credentials::delete),
+        )
         .route("/subagents", put(subagents::switch))
         .route("/subagents/profiles", post(subagents::create))
         .route(

@@ -281,6 +281,8 @@ const fieldHosts: HostMenuHost[] = [
 ]
 const fieldHostChoice = ref('mac')
 const fieldHost = computed(() => fieldHosts.find((host) => host.id === fieldHostChoice.value)!)
+const bareHostChoice = ref('mac')
+const bareHost = computed(() => fieldHosts.find((host) => host.id === bareHostChoice.value)!)
 /** What Automatic resolves to, in brackets that stay whole while the name inside truncates. */
 const detailAutomatic = { text: 'Codex', open: '(', close: ')' }
 const detailHaiku = { text: 'Claude Haiku 5.5', open: '(', close: ')' }
@@ -946,6 +948,29 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
                 </template>
               </Dropdown>
             </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="bare · Host, a table's cell">
+            <Dropdown
+              variant="bare"
+              trigger-label="Host"
+              :icon="hostGlyph(bareHost)"
+              :overlay-store="appOverlayStore"
+            >
+              <template #trigger>{{ bareHost.name }}</template>
+              <template #content="{ close }">
+                <Menu>
+                  <MenuItem
+                    v-for="host in fieldHosts"
+                    :key="host.id"
+                    :icon="hostGlyph(host)"
+                    :label="host.name"
+                    choice
+                    :is-selected="host.id === bareHostChoice"
+                    @select="bareHostChoice = host.id; close()"
+                  />
+                </Menu>
+              </template>
+            </Dropdown>
           </GallerySpecimen>
           <GallerySpecimen variant="custom trigger">
             <Dropdown :overlay-store="appOverlayStore">

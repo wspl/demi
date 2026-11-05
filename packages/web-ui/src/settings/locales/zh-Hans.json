@@ -99,6 +99,11 @@
   "archived": {
     "title": "已归档",
     "description": "已从侧边栏移除的对话。",
+    "count": "{count} 个对话",
+    "select": "选择",
+    "selectAll": "全选",
+    "selectLabel": "选择“{title}”",
+    "selected": "已选择 {count} 个",
     "search": "搜索已归档",
     "searchLabel": "搜索已归档的对话",
     "loading": "正在加载已归档的对话…",
@@ -139,6 +144,23 @@
     "add": "添加转发",
     "loading": "正在载入端口转发…",
     "none": "没有端口转发",
+    "select": "选择",
+    "selectAll": "全选",
+    "selectLabel": "选择“{name}”",
+    "selected": "已选择 {count} 个",
+    "actions": "操作",
+    "turnOn": "打开",
+    "turnOff": "关闭",
+    "delete": "删除…",
+    "deleteTitle": "删除 {count} 个转发？",
+    "deleteBody": "转发会停止监听，已打开的连接将结束。",
+    "deleteFailed": "无法删除转发",
+    "choose": "选择…",
+    "nameOf": "“{name}”的名称",
+    "portOf": "“{name}”的端口",
+    "listenOnOf": "“{name}”的监听主机",
+    "connectToOf": "“{name}”的连接主机",
+    "addressOf": "“{name}”的地址",
     "unknownHost": "未知主机",
     "state": {
       "off": "关闭",
@@ -250,7 +272,11 @@
     "signOutLabel": "让“{name}”退出登录",
     "signOutTitle": "让“{name}”退出登录？",
     "signOutAction": "退出登录",
-    "signOutBody": "它已打开的页面会返回登录页面。对话保留在服务器上。"
+    "signOutBody": "它已打开的页面会返回登录页面。对话保留在服务器上。",
+    "signOutOthers": "让其他浏览器退出登录…",
+    "noOthers": "没有其他已登录的浏览器。",
+    "signOutOthersTitle": "让其他 {count} 个浏览器退出登录？",
+    "signOutOthersBody": "它们已打开的页面会返回登录页面。此浏览器保持登录，对话保留在服务器上。"
   },
   "instructions": {
     "title": "指令",
@@ -398,6 +424,7 @@
       "keywords": "更新,升级,版本,发布,canary,beta"
     }
   },
+  "andMore": "{names} 等 {count} 个",
   "changeEmail": {
     "title": "更改电子邮件",
     "formHint": "今后使用新地址登录。",
@@ -421,11 +448,6 @@
     "confirm": "确认新密码",
     "unchanged": "这是你当前的密码。",
     "done": "密码已更改"
-  },
-  "changeRole": {
-    "title": "更改角色",
-    "current": "{name} 当前的角色是{role}。",
-    "role": "角色"
   },
   "cloudStorage": {
     "title": "云端存储",
@@ -454,7 +476,34 @@
   "users": {
     "title": "用户",
     "description": "所有可以登录此服务器的人。",
-    "accounts": "账户",
+    "general": "通用设置",
+    "accountsCount": "账户 · {count}",
+    "search": "搜索",
+    "searchLabel": "搜索用户",
+    "noMatch": "没有与“{query}”匹配的账户。",
+    "role": "角色",
+    "cloudStorage": "云端存储",
+    "cloudStorageDescription": "对方云端的磁盘。",
+    "storageSizes": "{system} GB · {home} GB",
+    "signIn": "登录",
+    "signInCode": "登录代码",
+    "signInCodeDescription": "无需密码，让对方在新设备上登录。",
+    "showCode": "显示代码…",
+    "password": "密码",
+    "passwordDescription": "生成新密码；对方的会话保持不变。",
+    "resetShort": "重置…",
+    "sessions": "会话",
+    "sessionsDescription": "结束对方在所有设备上的全部会话。",
+    "disableAccount": "禁用账户",
+    "disableDescription": "对方将无法登录；不会移除对方的任何内容。",
+    "disableShort": "禁用…",
+    "enableAccount": "启用账户",
+    "enableDescription": "对方可以重新登录。",
+    "enable": "启用",
+    "roleChange": {
+      "title": "将“{name}”的角色更改为{role}？",
+      "action": "更改角色"
+    },
     "sharing": {
       "group": "模型供应商",
       "label": "供应商",
@@ -480,16 +529,8 @@
     "choosesPassword": "尚未设置密码",
     "lastActive": "上次活动",
     "neverSignedIn": "尚未登录",
-    "actions": "操作",
-    "actionsFor": "“{name}”的操作",
     "action": {
-      "resetPassword": "重置密码…",
-      "changeRole": "更改角色…",
-      "cloudStorage": "云端存储…",
-      "signInCode": "登录代码…",
-      "signOutEverywhere": "在所有位置退出登录…",
-      "disable": "禁用账户…",
-      "enable": "启用账户"
+      "signOutEverywhere": "在所有位置退出登录…"
     },
     "confirm": {
       "add": "请确认是你本人，以添加账户。",
@@ -514,7 +555,7 @@
       "title": "禁用“{name}”的账户？",
       "action": "禁用账户",
       "body": "“{name}”会在所有位置退出登录，且无法登录。对方的云端会停止，设备会断开连接。",
-      "note": "不会移除任何内容。“启用账户”可恢复访问。"
+      "note": "不会移除任何内容。“启用”可恢复访问。"
     }
   },
   "cloudNetwork": {
@@ -554,37 +595,70 @@
   },
   "credentials": {
     "title": "凭据",
-    "yours": "你的凭据",
-    "new": "新建凭据…",
-    "secret": "机密",
-    "visible": "可见",
-    "keptUntil": "保留至",
-    "always": "始终",
-    "lastUsed": "上次使用",
-    "never": "从未",
-    "delete": "删除…",
-    "deleteLabel": "删除“{name}”",
-    "none": "没有凭据",
-    "saveFailed": "无法保存凭据",
-    "deleteFailed": "无法删除凭据",
-    "deleteTitle": "删除“{name}”？",
-    "deleteBody": "智能体将无法在任何对话中再读取它。此操作无法撤销。"
-  },
-  "credentialDialog": {
+    "count": "{count} 个凭据",
+    "matches": "{shown} / {count}",
+    "selected": "已选择 {count} 个",
+    "sortBy": "排序方式",
+    "sorts": {
+      "name": "名称",
+      "recent": "最近使用",
+      "stale": "最久未用",
+      "added": "添加日期"
+    },
+    "groups": {
+      "today": "今天",
+      "week": "本周",
+      "month": "本月",
+      "year": "今年早些时候",
+      "older": "更早",
+      "never": "从未使用"
+    },
     "new": "新建凭据",
+    "newName": "新凭据",
+    "newNameNumbered": "新凭据 ({n})",
+    "password": "密码",
+    "search": "搜索",
+    "searchLabel": "搜索凭据",
+    "noMatch": "没有与“{query}”匹配的凭据。",
+    "none": "没有凭据",
+    "noneSelected": "未选择凭据",
+    "several": "已选择 {count} 个凭据",
+    "select": "选择",
+    "deleteShort": "删除",
+    "deleteSeveral": "删除 {count} 个凭据…",
     "name": "名称",
+    "nameMissing": "请输入名称。",
     "note": "备注",
-    "notePlaceholder": "智能体为何需要它",
+    "noteDescription": "智能体读取它的用途。",
     "fields": "字段",
     "addField": "添加字段",
-    "labelPlaceholder": "API 密钥",
-    "labelOf": "字段 {n} 的标签",
-    "needsField": "凭据至少需要一个字段。",
-    "deleteField": "删除字段",
-    "actions": "操作",
-    "fieldActions": "字段 {n} 的操作",
-    "valueOf": "字段 {n} 的值",
-    "create": "创建凭据"
+    "visibleField": "可见字段",
+    "secretField": "机密字段",
+    "fieldName": "字段 {n}",
+    "fieldLabel": "字段名称",
+    "labelMissing": "请输入字段名称。",
+    "secret": "机密",
+    "missing": "缺失",
+    "removeField": "移除字段",
+    "removeFieldLabel": "移除“{label}”",
+    "kept": "保留",
+    "keeps": {
+      "1h": "1 小时",
+      "1d": "1 天",
+      "30d": "30 天",
+      "always": "直到你移除"
+    },
+    "keptUntil": "至 {date}",
+    "lastUsed": "上次使用",
+    "never": "从未",
+    "added": "添加于",
+    "delete": "删除…",
+    "deleteLabel": "删除“{name}”",
+    "deleteTitle": "删除“{name}”？",
+    "deleteSeveralTitle": "删除 {count} 个凭据？",
+    "deleteBody": "删除后，智能体将无法在任何对话中读取。此操作无法撤销。",
+    "saveFailed": "无法保存凭据",
+    "deleteFailed": "无法删除凭据"
   },
   "credentialFields": {
     "required": "必填"
@@ -879,7 +953,8 @@
     "adding": "正在添加…",
     "list": "模型",
     "search": "搜索",
-    "custom": "自定义"
+    "custom": "自定义",
+    "several": "添加 {count} 个模型"
   },
   "modelDialog": {
     "edit": "编辑模型",

@@ -99,6 +99,11 @@
   "archived": {
     "title": "已封存",
     "description": "從側邊欄移除的對話。",
+    "count": "{count} 個對話",
+    "select": "選取",
+    "selectAll": "全選",
+    "selectLabel": "選取「{title}」",
+    "selected": "已選取 {count} 個",
     "search": "搜尋已封存項目",
     "searchLabel": "搜尋已封存的對話",
     "loading": "正在載入已封存的對話…",
@@ -139,6 +144,23 @@
     "add": "加入轉送",
     "loading": "正在載入連接埠轉送…",
     "none": "沒有連接埠轉送",
+    "select": "選取",
+    "selectAll": "全選",
+    "selectLabel": "選取「{name}」",
+    "selected": "已選取 {count} 個",
+    "actions": "動作",
+    "turnOn": "開啟",
+    "turnOff": "關閉",
+    "delete": "刪除…",
+    "deleteTitle": "刪除 {count} 個轉送？",
+    "deleteBody": "轉送會停止監聽，開啟中的連線將結束。",
+    "deleteFailed": "無法刪除轉送",
+    "choose": "選擇…",
+    "nameOf": "「{name}」的名稱",
+    "portOf": "「{name}」的連接埠",
+    "listenOnOf": "「{name}」的監聽主機",
+    "connectToOf": "「{name}」的連線主機",
+    "addressOf": "「{name}」的位址",
     "unknownHost": "未知的主機",
     "state": {
       "off": "關閉",
@@ -250,7 +272,11 @@
     "signOutLabel": "登出「{name}」",
     "signOutTitle": "登出「{name}」？",
     "signOutAction": "登出",
-    "signOutBody": "它已開啟的頁面會返回登入頁面。對話會保留在伺服器上。"
+    "signOutBody": "它已開啟的頁面會返回登入頁面。對話會保留在伺服器上。",
+    "signOutOthers": "登出其他瀏覽器…",
+    "noOthers": "沒有其他已登入的瀏覽器。",
+    "signOutOthersTitle": "登出其他 {count} 個瀏覽器？",
+    "signOutOthersBody": "它們已開啟的頁面會返回登入頁面。此瀏覽器維持登入，對話會保留在伺服器上。"
   },
   "instructions": {
     "title": "指示",
@@ -398,6 +424,7 @@
       "keywords": "更新,升級,版本,發布,canary,beta"
     }
   },
+  "andMore": "{names} 等 {count} 個",
   "changeEmail": {
     "title": "變更電子郵件",
     "formHint": "之後請使用新地址登入。",
@@ -421,11 +448,6 @@
     "confirm": "確認新密碼",
     "unchanged": "這是你目前的密碼。",
     "done": "密碼已變更"
-  },
-  "changeRole": {
-    "title": "變更角色",
-    "current": "{name} 目前的角色是{role}。",
-    "role": "角色"
   },
   "cloudStorage": {
     "title": "雲端儲存空間",
@@ -454,7 +476,34 @@
   "users": {
     "title": "使用者",
     "description": "所有可以登入此伺服器的人。",
-    "accounts": "帳號",
+    "general": "一般設定",
+    "accountsCount": "帳號 · {count}",
+    "search": "搜尋",
+    "searchLabel": "搜尋使用者",
+    "noMatch": "沒有符合「{query}」的帳號。",
+    "role": "角色",
+    "cloudStorage": "雲端儲存空間",
+    "cloudStorageDescription": "對方雲端的磁碟。",
+    "storageSizes": "{system} GB · {home} GB",
+    "signIn": "登入",
+    "signInCode": "登入代碼",
+    "signInCodeDescription": "不需密碼，讓對方在新裝置上登入。",
+    "showCode": "顯示代碼…",
+    "password": "密碼",
+    "passwordDescription": "產生新密碼；對方的工作階段維持不變。",
+    "resetShort": "重設…",
+    "sessions": "工作階段",
+    "sessionsDescription": "結束對方在所有裝置上的全部工作階段。",
+    "disableAccount": "停用帳號",
+    "disableDescription": "對方將無法登入；不會移除對方的任何內容。",
+    "disableShort": "停用…",
+    "enableAccount": "啟用帳號",
+    "enableDescription": "對方可以重新登入。",
+    "enable": "啟用",
+    "roleChange": {
+      "title": "將「{name}」的角色變更為{role}？",
+      "action": "變更角色"
+    },
     "sharing": {
       "group": "模型供應商",
       "label": "供應商",
@@ -480,16 +529,8 @@
     "choosesPassword": "尚未設定密碼",
     "lastActive": "上次活動",
     "neverSignedIn": "尚未登入",
-    "actions": "動作",
-    "actionsFor": "「{name}」的動作",
     "action": {
-      "resetPassword": "重設密碼…",
-      "changeRole": "變更角色…",
-      "cloudStorage": "雲端儲存空間…",
-      "signInCode": "登入代碼…",
-      "signOutEverywhere": "登出所有瀏覽器…",
-      "disable": "停用帳號…",
-      "enable": "啟用帳號"
+      "signOutEverywhere": "登出所有瀏覽器…"
     },
     "confirm": {
       "add": "請確認是你本人，以新增帳號。",
@@ -514,7 +555,7 @@
       "title": "停用「{name}」的帳號？",
       "action": "停用帳號",
       "body": "「{name}」的所有瀏覽器都會登出，且無法再登入。對方的雲端會停止，裝置會中斷連線。",
-      "note": "不會移除任何內容。「啟用帳號」可恢復存取。"
+      "note": "不會移除任何內容。「啟用」可恢復存取。"
     }
   },
   "cloudNetwork": {
@@ -554,37 +595,70 @@
   },
   "credentials": {
     "title": "憑證",
-    "yours": "你的憑證",
-    "new": "新增憑證…",
-    "secret": "機密",
-    "visible": "可見",
-    "keptUntil": "保留至",
-    "always": "一律",
-    "lastUsed": "上次使用",
-    "never": "從未",
-    "delete": "刪除…",
-    "deleteLabel": "刪除「{name}」",
-    "none": "沒有憑證",
-    "saveFailed": "無法儲存憑證",
-    "deleteFailed": "無法刪除憑證",
-    "deleteTitle": "刪除「{name}」？",
-    "deleteBody": "智慧體將無法在任何對話中再讀取它。此操作無法復原。"
-  },
-  "credentialDialog": {
+    "count": "{count} 個憑證",
+    "matches": "{shown} / {count}",
+    "selected": "已選取 {count} 個",
+    "sortBy": "排序方式",
+    "sorts": {
+      "name": "名稱",
+      "recent": "最近使用",
+      "stale": "最久未用",
+      "added": "加入日期"
+    },
+    "groups": {
+      "today": "今天",
+      "week": "本週",
+      "month": "本月",
+      "year": "今年稍早",
+      "older": "更早",
+      "never": "從未使用"
+    },
     "new": "新增憑證",
+    "newName": "新憑證",
+    "newNameNumbered": "新憑證 ({n})",
+    "password": "密碼",
+    "search": "搜尋",
+    "searchLabel": "搜尋憑證",
+    "noMatch": "沒有符合「{query}」的憑證。",
+    "none": "沒有憑證",
+    "noneSelected": "未選取憑證",
+    "several": "已選取 {count} 個憑證",
+    "select": "選取",
+    "deleteShort": "刪除",
+    "deleteSeveral": "刪除 {count} 個憑證…",
     "name": "名稱",
+    "nameMissing": "請輸入名稱。",
     "note": "備註",
-    "notePlaceholder": "智慧體為何需要它",
+    "noteDescription": "智慧體讀取它的用途。",
     "fields": "欄位",
     "addField": "新增欄位",
-    "labelPlaceholder": "API 金鑰",
-    "labelOf": "欄位 {n} 的標籤",
-    "needsField": "憑證至少需要一個欄位。",
-    "deleteField": "刪除欄位",
-    "actions": "動作",
-    "fieldActions": "欄位 {n} 的動作",
-    "valueOf": "欄位 {n} 的值",
-    "create": "建立憑證"
+    "visibleField": "可見欄位",
+    "secretField": "機密欄位",
+    "fieldName": "欄位 {n}",
+    "fieldLabel": "欄位名稱",
+    "labelMissing": "請輸入欄位名稱。",
+    "secret": "機密",
+    "missing": "缺少",
+    "removeField": "移除欄位",
+    "removeFieldLabel": "移除「{label}」",
+    "kept": "保留",
+    "keeps": {
+      "1h": "1 小時",
+      "1d": "1 天",
+      "30d": "30 天",
+      "always": "直到你移除"
+    },
+    "keptUntil": "至 {date}",
+    "lastUsed": "上次使用",
+    "never": "從未",
+    "added": "加入於",
+    "delete": "刪除…",
+    "deleteLabel": "刪除「{name}」",
+    "deleteTitle": "刪除「{name}」？",
+    "deleteSeveralTitle": "刪除 {count} 個憑證？",
+    "deleteBody": "刪除後，智慧體將無法在任何對話中讀取。此操作無法復原。",
+    "saveFailed": "無法儲存憑證",
+    "deleteFailed": "無法刪除憑證"
   },
   "credentialFields": {
     "required": "必填"
@@ -879,7 +953,8 @@
     "adding": "正在新增…",
     "list": "模型",
     "search": "搜尋",
-    "custom": "自訂"
+    "custom": "自訂",
+    "several": "新增 {count} 個模型"
   },
   "modelDialog": {
     "edit": "編輯模型",

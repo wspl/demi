@@ -125,6 +125,9 @@ pub struct ListedField {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
     pub value: Option<String>,
+    /// Whether it has no value yet, as a field added in Settings has until
+    /// the user types one. An agent's read of it is refused.
+    pub missing: bool,
 }
 
 /// A credential's name: trimmed, then at least one character.
@@ -194,6 +197,45 @@ pub struct NewCredential {
     pub keep: Keep,
 }
 
+/// `PATCH /credentials/{id}`: what changes; an absent member stays as it is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CredentialPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "CredentialName")]
+    #[garde(dive)]
+    pub name: Option<CredentialName>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub note: Option<String>,
+    /// The fields as they now are, in order. A field that keeps its name and
+    /// its kind keeps its value; a new one, or one whose kind changed, has
+    /// none until `values` gives it one.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "CredentialFields")]
+    #[garde(dive)]
+    pub fields: Option<CredentialFields>,
+    /// A new value for each field it names, a secret one's included; an empty
+    /// one leaves the field missing. A value is written, never answered.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[garde(skip)]
+    pub values: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Keep")]
+    #[garde(skip)]
+    pub keep: Option<Keep>,
+}
+
+/// A credential's fields: at least one, each with its own name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(transparent)]
+#[schemars(inline)]
+#[garde(transparent)]
+pub struct CredentialFields(
+    #[garde(length(min = 1), dive, custom(distinct_fields))] pub Vec<CredentialField>,
+);
+
 /// The answer to a credential request: every field's value by its name.
 /// The credential is kept as the request's `keep` says, which the agent
 /// chose.
@@ -219,6 +261,10 @@ pub fn distinct<'a>(names: impl IntoIterator<Item = &'a str>) -> garde::Result {
 }
 
 fn distinct_new(fields: &[NewField], _: &()) -> garde::Result {
+    distinct(fields.iter().map(|field| field.name.as_str()))
+}
+
+fn distinct_fields(fields: &[CredentialField], _: &()) -> garde::Result {
     distinct(fields.iter().map(|field| field.name.as_str()))
 }
 

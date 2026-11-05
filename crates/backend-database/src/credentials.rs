@@ -84,6 +84,7 @@ impl StoredCredential {
                         FieldKind::Visible => values.get(&field.name).cloned(),
                         FieldKind::Secret => None,
                     },
+                    missing: !values.contains_key(&field.name),
                 })
                 .collect(),
             keep_until: self.keep_until,
@@ -107,7 +108,7 @@ fn shape(fields: &[CredentialField]) -> BTreeSet<(&str, &'static str)> {
         .collect()
 }
 
-/// A new credential.
+/// A new credential. A field `values` does not name is missing.
 #[derive(Debug, Clone)]
 pub struct NewCredential {
     pub name: String,
@@ -115,6 +116,20 @@ pub struct NewCredential {
     pub fields: Vec<CredentialField>,
     pub values: BTreeMap<String, String>,
     pub keep_until: Option<Timestamp>,
+}
+
+/// A change of a credential: an absent member stays as it is.
+#[derive(Debug, Clone, Default)]
+pub struct CredentialChange {
+    pub name: Option<String>,
+    pub note: Option<String>,
+    /// The fields as they now are; a field that keeps its name keeps its
+    /// value, and one that goes takes its value with it.
+    pub fields: Option<Vec<CredentialField>>,
+    /// A new value for each field named; an empty one leaves it missing.
+    pub values: BTreeMap<String, String>,
+    /// The new removal time, none for always; absent, it stays.
+    pub keep_until: Option<Option<Timestamp>>,
 }
 
 /// Why a credential was not saved or changed, in words for the user, who
@@ -232,6 +247,76 @@ impl ControlService {
             transaction.commit()?;
             Ok(Ok(Saved {
                 credential: stored.dto(&new.values),
+                conversations: conversations.into_iter().collect(),
+            }))
+        })
+        .await
+    }
+
+    /// Changes the user's credential `id` as `change` says, unless another of
+    /// theirs has its new name, and answers it as Settings lists it. Its
+    /// values are sealed again under its name, as it now is.
+    pub async fn change_user_credential(
+        &self,
+        user: UserId,
+        id: UserCredentialId,
+        change: CredentialChange,
+        seal: Arc<dyn CredentialSeal>,
+    ) -> Result<Result<Saved, CredentialRefusal>, StorageError> {
+        self.call(move |connection, now| {
+            let transaction = connection.transaction()?;
+            let Some(stored) = by_id(&transaction, &user, &id)? else {
+                return Ok(Err(CredentialRefusal::NotFound));
+            };
+            if let Some(name) = &change.name
+                && let Some(other) = named(&transaction, &user, name)?
+                && other.id != stored.id
+            {
+                return Ok(Err(CredentialRefusal::NameTaken(other.name)));
+            }
+            let mut values = values_of(&transaction, &stored, &*seal)?;
+            let fields = change.fields.unwrap_or_else(|| stored.fields.clone());
+            // A field keeps its value while it keeps its name and its kind: a
+            // secret made visible starts missing, so no list ever shows it.
+            values.retain(|name, _| {
+                let was = stored.fields.iter().find(|field| &field.name == name);
+                fields
+                    .iter()
+                    .any(|field| &field.name == name && was.is_some_and(|was| was.kind == field.kind))
+            });
+            for (name, value) in change.values {
+                if !fields.iter().any(|field| field.name == name) {
+                    continue;
+                }
+                if value.is_empty() {
+                    values.remove(&name);
+                } else {
+                    values.insert(name, value);
+                }
+            }
+            let name = change.name.unwrap_or_else(|| stored.name.clone());
+            let note = change.note.unwrap_or_else(|| stored.note.clone());
+            let keep_until = change.keep_until.unwrap_or(stored.keep_until);
+            let sealed = seal.seal(&user, &name, to_json(&values).as_bytes());
+            transaction.execute(
+                "UPDATE user_credentials
+                 SET name = ?2, note = ?3, fields = ?4, sealed = ?5, keep_until = ?6, updated_at = ?7
+                 WHERE id = ?1",
+                params![
+                    stored.id.as_str(),
+                    name,
+                    note,
+                    to_json(&fields),
+                    sealed,
+                    keep_until.map(Timestamp::as_millisecond),
+                    now.as_millisecond()
+                ],
+            )?;
+            let changed = by_id(&transaction, &user, &id)?.expect("the credential was just written");
+            let conversations = waiting_for(&transaction, &user, &[&stored.name, &name])?;
+            transaction.commit()?;
+            Ok(Ok(Saved {
+                credential: changed.dto(&values),
                 conversations: conversations.into_iter().collect(),
             }))
         })

@@ -18,7 +18,7 @@ import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
 import type { WebState } from '@demicodes/plugin-web'
 import { commitOf } from './plugins'
 import { DAY_SECONDS, HOUR_SECONDS, WEEK_SECONDS, windowNamed } from './usage-limits'
-import { createCredentialState } from './credentials'
+import { createCredentialState, demoCredentials, manyCredentials } from './credentials'
 import { createUsersState } from './users'
 import type { SettingsCompatibleShapes, SettingsPasskey, SettingsSession } from '@demicodes/web-ui/settings/types'
 
@@ -1250,7 +1250,7 @@ export function createSettingsState() {
     ] as SettingsPlugin[],
     subagents: createSubagentState(),
     smallModel: createSmallModelState(),
-    credentials: createCredentialState(),
+    credentials: createCredentialState([...demoCredentials(), ...manyCredentials()].sort((a, b) => a.name.localeCompare(b.name))),
     instructions: DEMO_PERSONAL_INSTRUCTIONS,
     skills: {
       sources: [
@@ -1318,17 +1318,18 @@ export function createSettingsState() {
     } as SkillsState,
     web: { account: null, key: null, inUse: 'anonymous' } as WebState,
     archived: [
-      {
-        id: 'oauth',
-        title: 'OAuth refresh token rotation',
-        detail: 'Archived Aug 2'
-      },
-      { id: 'icons', title: 'Holiday schedule survey', detail: 'Archived Jul 21' },
-      {
-        id: 'perf',
-        title: 'Spreadsheet formula cleanup',
-        detail: 'Archived Jul 3'
-      },
+      { id: 'oauth', title: 'OAuth refresh token rotation', updatedAt: '2026-09-02T16:42:00Z', project: 'api' },
+      { id: 'holiday', title: 'Holiday schedule survey', updatedAt: '2026-08-21T02:05:00Z', project: null },
+      { id: 'sheet', title: 'Spreadsheet formula cleanup', updatedAt: '2026-08-03T09:31:00Z', project: 'finance-reports' },
+      { id: 'landing', title: 'Landing page copy review', updatedAt: '2026-07-28T21:18:00Z', project: 'website' },
+      { id: 'ci', title: 'Migrate CI to the new runners', updatedAt: '2026-07-14T13:07:00Z', project: 'api' },
+      { id: 'charts', title: 'Quarterly report charts', updatedAt: '2026-06-30T06:54:00Z', project: 'finance-reports' },
+      { id: 'upload', title: 'Fix flaky upload test', updatedAt: '2026-06-11T18:26:00Z', project: 'api' },
+      { id: 'onboarding', title: 'Draft the onboarding email', updatedAt: '2026-05-19T11:49:00Z', project: null },
+      { id: 'vectors', title: 'Compare vector databases', updatedAt: '2026-04-02T23:12:00Z', project: 'search-service' },
+      { id: 'billing', title: 'Rename the billing tables', updatedAt: '2026-02-17T04:38:00Z', project: 'api' },
+      { id: 'help', title: 'Translate the help center', updatedAt: '2025-12-08T15:03:00Z', project: 'website' },
+      { id: 'search', title: 'Investigate slow search', updatedAt: '2025-10-23T08:57:00Z', project: 'search-service' },
     ] satisfies SettingsArchivedConversation[],
     deviceProjects: galleryDeviceProjects(),
     // The product's shortcuts with their own keys: the gallery changes them as the product does.

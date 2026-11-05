@@ -24,6 +24,7 @@ import SettingsRow from './SettingsRow.vue'
 import {
   forwardReason,
   forwardState,
+  forwardTone,
   type ForwardHost,
   type PortForwardChange,
   type SettingsPortForward,
@@ -89,14 +90,8 @@ const state = computed(() => forwardState(props.forward, props.hosts))
 const reason = computed(() => forwardReason(props.forward))
 /** The dot before the state: green while it works, amber while it cannot, grey while off. */
 const tone = computed<StatusDotTone>(() => {
-  const forward = props.forward
-  if (!forward.enabled) {
-    return 'muted'
-  }
-  const offline = [forward.listenDevice, forward.connectDevice].some(
-    (id) => id === null || props.hosts.find((host) => host.id === id)?.state !== 'online',
-  )
-  return offline || forward.state?.kind === 'portInUse' ? 'warning' : 'success'
+  const fares = forwardTone(props.forward, props.hosts)
+  return fares === 'off' ? 'muted' : fares === 'failed' || fares === 'waiting' ? 'warning' : 'success'
 })
 const portInUse = computed(() => props.forward.enabled && props.forward.state?.kind === 'portInUse')
 

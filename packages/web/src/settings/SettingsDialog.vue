@@ -387,6 +387,10 @@ const archived = computed(() =>
     .map((conversation) => ({
       id: conversation.id,
       title: conversation.title,
+      updatedAt: conversation.updatedAt,
+      project: conversation.projectId === null
+        ? null
+        : resources.projects.find((project) => project.id === conversation.projectId)?.name ?? null,
     })),
 )
 /** Restores the conversation, which shows at once, and opens it. */
@@ -503,7 +507,8 @@ function resetShortcuts(): void {
       @retry="conversations.reloadList"
       @open="openConversation"
       @restore="restore"
-      @delete="(id) => void conversations.remove([id])"
+      @restore-checked="(ids) => void conversations.restore(ids)"
+      @delete="(ids) => void conversations.remove(ids)"
     />
     <SettingsKeyboard
       v-else-if="section === 'keyboard'"

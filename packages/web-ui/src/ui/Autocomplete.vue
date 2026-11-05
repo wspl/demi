@@ -158,6 +158,8 @@ defineExpose({
   focus() {
     field.value?.focus()
   },
+  /** Opens the list, as typing does, for a value the caller wrote itself, such as a paste it reshaped. */
+  show,
   select() {
     field.value?.select()
   },

@@ -61,16 +61,32 @@ async function save(next: string[]): Promise<SentenceText | null> {
   }
 }
 
+/**
+ * Adds every address the field holds: one typed, or several pasted or typed apart by
+ * lines, spaces or commas, as a list copied from a document or a firewall's rules
+ * comes. One save carries them all, so the server refuses or takes them together.
+ */
 async function add(): Promise<void> {
-  const written = draft.value.trim()
   const listed = props.network?.destinations ?? []
-  if (written === '' || saving.value) {
+  const written = [...new Set(draft.value.split(/[\s,]+/).filter(Boolean))].filter((address) => !listed.includes(address))
+  if (saving.value || draft.value.trim() === '') {
     return
   }
-  problem.value = listed.includes(written) ? null : await save([...listed, written])
+  problem.value = written.length ? await save([...listed, ...written]) : null
   if (problem.value === null) {
     draft.value = ''
   }
+}
+
+/** A paste of several addresses adds them at once; a single one stays in the field to edit. */
+function paste(event: ClipboardEvent): void {
+  const text = event.clipboardData?.getData('text') ?? ''
+  if (text.trim().split(/[\s,]+/).length < 2) {
+    return
+  }
+  event.preventDefault()
+  draft.value = text.trim().split(/[\s,]+/).join(', ')
+  void add()
 }
 
 /** Removes the row at `index`; a refusal is the setting's, not the field's, so it is a toast. */
@@ -136,6 +152,7 @@ async function remove(index: number): Promise<void> {
           :aria-label="t('cloudNetwork.add')"
           class="min-w-0"
           @keydown.enter.prevent="add()"
+          @paste="paste"
           @update:model-value="problem = null"
         >
           <template #prefix><Plus :size="ICON_PX.in24" /></template>

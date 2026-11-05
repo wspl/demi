@@ -12,10 +12,10 @@ import { slow } from '../fixtures/slow'
  * table. Every control acts on the specimen's own forwards as the product's
  * do:
  *
- * - Add Forward makes one and opens it.
+ * - Add Forward makes one, a row of the table, or on a phone its page.
  * - A taken name is refused.
  * - Try Again finds the port free.
- * - Remove Forward drops it.
+ * - Delete… and Remove Forward drop them.
  */
 const hosts = ref<ForwardHost[]>(shownAmong([
   { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null },
@@ -34,7 +34,7 @@ const shown = ref<string | null>(null)
 let made = 0
 
 /** The first free name, *Forward*, *Forward (2)*, and port, from 8080, as the backend picks them. */
-async function add(): Promise<void> {
+async function add(): Promise<string> {
   await slow()
   const names = new Set(forwards.value.map((forward) => forward.name))
   let name = 'Forward'
@@ -47,7 +47,7 @@ async function add(): Promise<void> {
   made += 1
   const id = `new${made}`
   forwards.value = [...forwards.value, { id, name, listenDevice: 'cloud', listenPort: port, connectDevice: null, connectAddress: 'localhost:11434', enabled: true, state: { kind: 'listening', direct: 0, relay: 0 } }]
-  shown.value = id
+  return id
 }
 
 /** A change lands as the backend's answer does; a name another forward has is refused in the field. */

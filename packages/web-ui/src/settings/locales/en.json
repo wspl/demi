@@ -99,6 +99,11 @@
   "archived": {
     "title": "Archived",
     "description": "Conversations removed from the sidebar.",
+    "count": "{count} Conversation | {count} Conversations",
+    "select": "Select",
+    "selectAll": "Select All",
+    "selectLabel": "Select {title}",
+    "selected": "{count} Selected",
     "search": "Search archived",
     "searchLabel": "Search archived conversations",
     "loading": "Loading archived conversations…",
@@ -139,6 +144,23 @@
     "add": "Add Forward",
     "loading": "Loading port forwards…",
     "none": "No port forwards",
+    "select": "Select",
+    "selectAll": "Select All",
+    "selectLabel": "Select {name}",
+    "selected": "{count} Selected",
+    "actions": "Actions",
+    "turnOn": "Turn On",
+    "turnOff": "Turn Off",
+    "delete": "Delete…",
+    "deleteTitle": "Delete {count} forward? | Delete {count} forwards?",
+    "deleteBody": "It stops listening, and its open connections end. | They stop listening, and their open connections end.",
+    "deleteFailed": "Could Not Delete the Forwards",
+    "choose": "Choose…",
+    "nameOf": "Name of {name}",
+    "portOf": "Port of {name}",
+    "listenOnOf": "Listen On Host of {name}",
+    "connectToOf": "Connect To Host of {name}",
+    "addressOf": "Address of {name}",
     "unknownHost": "Unknown Host",
     "state": {
       "off": "Off",
@@ -250,7 +272,11 @@
     "signOutLabel": "Sign out {name}",
     "signOutTitle": "Sign out {name}?",
     "signOutAction": "Sign Out",
-    "signOutBody": "Its open pages return to the sign-in page. Conversations stay on the server."
+    "signOutBody": "Its open pages return to the sign-in page. Conversations stay on the server.",
+    "signOutOthers": "Sign Out Other Browsers…",
+    "noOthers": "No other browser is signed in.",
+    "signOutOthersTitle": "Sign out {count} other browser? | Sign out {count} other browsers?",
+    "signOutOthersBody": "Their open pages return to the sign-in page. This browser stays signed in, and conversations stay on the server."
   },
   "instructions": {
     "title": "Instructions",
@@ -398,6 +424,7 @@
       "keywords": "update,upgrade,version,release,canary,beta"
     }
   },
+  "andMore": "{names}, and {count} more",
   "changeEmail": {
     "title": "Change Email",
     "formHint": "You sign in with the new address from now on.",
@@ -421,11 +448,6 @@
     "confirm": "Confirm new password",
     "unchanged": "That is your current password.",
     "done": "Password changed"
-  },
-  "changeRole": {
-    "title": "Change Role",
-    "current": "{name}’s role is {role}.",
-    "role": "Role"
   },
   "cloudStorage": {
     "title": "Cloud Storage",
@@ -454,7 +476,34 @@
   "users": {
     "title": "Users",
     "description": "Everyone who can sign in to this server.",
-    "accounts": "Accounts",
+    "general": "General Settings",
+    "accountsCount": "Accounts · {count}",
+    "search": "Search",
+    "searchLabel": "Search Users",
+    "noMatch": "No account matches “{query}”.",
+    "role": "Role",
+    "cloudStorage": "Cloud storage",
+    "cloudStorageDescription": "The disks of their Cloud.",
+    "storageSizes": "{system} GB · {home} GB",
+    "signIn": "Sign-In",
+    "signInCode": "Sign-in code",
+    "signInCodeDescription": "Signs them in on a new device without a password.",
+    "showCode": "Show Code…",
+    "password": "Password",
+    "passwordDescription": "Makes a new password; their sessions stay.",
+    "resetShort": "Reset…",
+    "sessions": "Sessions",
+    "sessionsDescription": "Ends every session of theirs, on every device.",
+    "disableAccount": "Disable account",
+    "disableDescription": "They can no longer sign in; nothing of theirs is removed.",
+    "disableShort": "Disable…",
+    "enableAccount": "Enable account",
+    "enableDescription": "They can sign in again.",
+    "enable": "Enable",
+    "roleChange": {
+      "title": "Change {name}’s role to {role}?",
+      "action": "Change Role"
+    },
     "sharing": {
       "group": "Model Providers",
       "label": "Providers",
@@ -480,16 +529,8 @@
     "choosesPassword": "Hasn’t chosen a password",
     "lastActive": "Last active",
     "neverSignedIn": "Not signed in yet",
-    "actions": "Actions",
-    "actionsFor": "Actions for {name}",
     "action": {
-      "resetPassword": "Reset Password…",
-      "changeRole": "Change Role…",
-      "cloudStorage": "Cloud Storage…",
-      "signInCode": "Sign-In Code…",
-      "signOutEverywhere": "Sign Out Everywhere…",
-      "disable": "Disable Account…",
-      "enable": "Enable Account"
+      "signOutEverywhere": "Sign Out Everywhere…"
     },
     "confirm": {
       "add": "Confirm it’s you to add an account.",
@@ -514,7 +555,7 @@
       "title": "Disable {name}’s account?",
       "action": "Disable Account",
       "body": "{name} is signed out everywhere and can’t sign in. Their Cloud stops and their devices disconnect.",
-      "note": "Nothing is removed. Enable Account restores access."
+      "note": "Nothing is removed. Enable restores access."
     }
   },
   "cloudNetwork": {
@@ -526,7 +567,7 @@
     "addresses": "Addresses",
     "addressesDescription": "Clouds reach each address or network listed: on every port, or only on the port written after it.",
     "add": "Add Address",
-    "placeholder": "Add an address, such as 10.20.0.0/16 or 10.20.0.7:22",
+    "placeholder": "Add addresses, such as 10.20.0.0/16 or 10.20.0.7:22",
     "remove": "Remove",
     "empty": "No addresses yet.",
     "problems": {
@@ -554,37 +595,70 @@
   },
   "credentials": {
     "title": "Credentials",
-    "yours": "Your Credentials",
-    "new": "New Credential…",
-    "secret": "Secret",
-    "visible": "Visible",
-    "keptUntil": "Kept until",
-    "always": "Always",
-    "lastUsed": "Last used",
-    "never": "Never",
-    "delete": "Delete…",
-    "deleteLabel": "Delete {name}",
-    "none": "No credentials",
-    "saveFailed": "Could Not Save the Credential",
-    "deleteFailed": "Could Not Delete the Credential",
-    "deleteTitle": "Delete “{name}”?",
-    "deleteBody": "Agents can no longer read it in any conversation. This cannot be undone."
-  },
-  "credentialDialog": {
+    "count": "1 Credential | {count} Credentials",
+    "matches": "{shown} of {count}",
+    "selected": "{count} Selected",
+    "sortBy": "Sort By",
+    "sorts": {
+      "name": "Name",
+      "recent": "Recently Used",
+      "stale": "Least Recently Used",
+      "added": "Date Added"
+    },
+    "groups": {
+      "today": "Today",
+      "week": "This Week",
+      "month": "This Month",
+      "year": "Earlier This Year",
+      "older": "Older",
+      "never": "Never Used"
+    },
     "new": "New Credential",
+    "newName": "New Credential",
+    "newNameNumbered": "New Credential ({n})",
+    "password": "Password",
+    "search": "Search",
+    "searchLabel": "Search Credentials",
+    "noMatch": "No credential matches “{query}”.",
+    "none": "No Credentials",
+    "noneSelected": "No Credential Selected",
+    "several": "{count} Credentials Selected",
+    "select": "Select",
+    "deleteShort": "Delete",
+    "deleteSeveral": "Delete {count} Credentials…",
     "name": "Name",
+    "nameMissing": "Enter a name.",
     "note": "Note",
-    "notePlaceholder": "Why an agent needs it",
+    "noteDescription": "What agents read it for.",
     "fields": "Fields",
     "addField": "Add Field",
-    "labelPlaceholder": "API key",
-    "labelOf": "Label of field {n}",
-    "needsField": "A credential needs a field.",
-    "deleteField": "Delete Field",
-    "actions": "Actions",
-    "fieldActions": "Actions for field {n}",
-    "valueOf": "Value of field {n}",
-    "create": "Create Credential"
+    "visibleField": "Visible Field",
+    "secretField": "Secret Field",
+    "fieldName": "Field {n}",
+    "fieldLabel": "Field name",
+    "labelMissing": "Enter a name for the field.",
+    "secret": "Secret",
+    "missing": "Missing",
+    "removeField": "Remove Field",
+    "removeFieldLabel": "Remove {label}",
+    "kept": "Kept",
+    "keeps": {
+      "1h": "For 1 Hour",
+      "1d": "For 1 Day",
+      "30d": "For 30 Days",
+      "always": "Until You Remove It"
+    },
+    "keptUntil": "Until {date}",
+    "lastUsed": "Last used",
+    "never": "Never",
+    "added": "Added",
+    "delete": "Delete…",
+    "deleteLabel": "Delete {name}",
+    "deleteTitle": "Delete “{name}”?",
+    "deleteSeveralTitle": "Delete {count} credentials?",
+    "deleteBody": "Agents can no longer read it in any conversation. This cannot be undone. | Agents can no longer read them in any conversation. This cannot be undone.",
+    "saveFailed": "Could Not Save the Credential",
+    "deleteFailed": "Could Not Delete the Credential"
   },
   "credentialFields": {
     "required": "Required"
@@ -879,7 +953,8 @@
     "adding": "Adding…",
     "list": "Models",
     "search": "Search",
-    "custom": "Custom"
+    "custom": "Custom",
+    "several": "Add {count} Models"
   },
   "modelDialog": {
     "edit": "Edit Model",

@@ -1,8 +1,13 @@
 import { computed } from 'vue'
 import { defineStore } from 'pinia'
-import type { SettingsCredential, SettingsCredentialDraft } from '@demicodes/web-ui/settings/types'
+import type { SettingsCredential, SettingsCredentialDraft, SettingsCredentialPatch } from '@demicodes/web-ui/settings/types'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
-import { credentialAnswerSchema, type CredentialDto, type NewCredential } from '../api/generated/web-api'
+import {
+  credentialAnswerSchema,
+  type CredentialDto,
+  type CredentialPatch,
+  type NewCredential,
+} from '../api/generated/web-api'
 import { useHeldList, useProduct, type Answer } from '../state/product'
 
 /** The credentials in name order, as the backend lists them: `credential` in its place by id. */
@@ -17,8 +22,8 @@ function credentialsAnswer(next: (current: CredentialDto[]) => CredentialDto[]):
 }
 
 /**
- * The user's credentials as Settings › Credentials changes them: a created or
- * deleted credential shows its answer, and the synchronization channel's
+ * The user's credentials as Settings › Credentials changes them: a created,
+ * changed or deleted credential shows its answer, and the synchronization channel's
  * `credentials` part brings the same to every other page, each visible field
  * with its value and never a secret one's, which no route answers a page.
  */
@@ -32,14 +37,29 @@ const useCredentialStore = defineStore('credential-settings', () => {
       fields: credential.fields.map(({ value, ...field }) => ({ ...field, value: value ?? null })),
       keepUntil: credential.keepUntil,
       lastUsedAt: credential.lastUsedAt,
+      createdAt: credential.createdAt,
     })),
   )
 
-  /** Creates a credential, kept always as one the user adds is; a refusal is thrown for New Credential to show. */
-  async function createCredential(draft: SettingsCredentialDraft): Promise<void> {
+  /** Creates a credential with no values yet, kept always as one the user adds is, and answers its id. */
+  async function createCredential(draft: SettingsCredentialDraft): Promise<string> {
     const at = product.sent()
-    const body: NewCredential = { name: draft.name, note: draft.note, keep: 'always', fields: draft.fields }
+    const body: NewCredential = {
+      name: draft.name,
+      keep: 'always',
+      fields: draft.fields.map((field) => ({ ...field, value: '' })),
+    }
     const response = await apiRequest('/credentials', { method: 'POST', ...jsonBody(body) })
+    const { credential } = await readResponse(response, credentialAnswerSchema)
+    product.answered(at, credentialsAnswer((current) => withCredential(current, credential)))
+    return credential.id
+  }
+
+  /** Changes a credential; a refusal is thrown, in words for the user. */
+  async function changeCredential(id: string, patch: SettingsCredentialPatch): Promise<void> {
+    const at = product.sent()
+    const body: CredentialPatch = patch
+    const response = await apiRequest(`/credentials/${encodeURIComponent(id)}`, { method: 'PATCH', ...jsonBody(body) })
     const { credential } = await readResponse(response, credentialAnswerSchema)
     product.answered(at, credentialsAnswer((current) => withCredential(current, credential)))
   }
@@ -50,7 +70,7 @@ const useCredentialStore = defineStore('credential-settings', () => {
     product.answered(at, credentialsAnswer((current) => current.filter((credential) => credential.id !== id)))
   }
 
-  return { credentials, createCredential, deleteCredential }
+  return { credentials, createCredential, changeCredential, deleteCredential }
 })
 
 /** The credential settings, which hold the user's credentials while a view shows them. */

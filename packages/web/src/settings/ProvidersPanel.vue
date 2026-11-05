@@ -39,6 +39,7 @@ const {
   reorderAccounts,
   reorderProviders,
   saveModel,
+  addModels,
   saveModels,
   searchModels,
   submitCode,
@@ -128,6 +129,7 @@ watch(
     @multi-account-warned="preferences.update({ multiAccountWarned: true })"
     @remove-account="removeAccount"
     :save-model="saveModel"
+    :add-models="addModels"
     :search-models="searchModels"
     @remove-model="
       (provider, model) =>

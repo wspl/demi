@@ -205,8 +205,10 @@ export interface SettingsArchivedConversation {
   id: string
   /** Null for the placeholder, which shows as New conversation in the reader's language. */
   title: string | null
-  /** When it was archived or last active, formatted by the host. */
-  detail?: string
+  /** When it was last active, which its row's end shows to the minute. */
+  updatedAt: string
+  /** The name of the project it ran in; null for one in none. */
+  project: string | null
 }
 
 /** A shortcut the keyboard page lists and rebinds. */
@@ -672,24 +674,35 @@ export interface SettingsCredential {
   keepUntil: string | null
   /** When an agent last read it; null before. */
   lastUsedAt: string | null
+  createdAt: string
 }
 
 /** A field as the list shows it: a visible field with its value, a secret one without, whose value never reaches the page. */
 export interface SettingsCredentialField extends CredentialFieldView {
   /** A visible field's value; null for a secret one. */
   value: string | null
+  /** It has no value yet, so an agent cannot read it. */
+  missing: boolean
 }
 
-/** A field as New Credential saves it, with its value. */
-export interface SettingsCredentialDraftField extends CredentialFieldView {
-  value: string
-}
+/** How long a credential is kept from a change of it: a time, or until the user removes it. */
+export type SettingsCredentialKeep = '1h' | '1d' | '30d' | 'always'
 
-/** What New Credential saves. */
+/** What New Credential saves: a credential with no values yet, kept always. */
 export interface SettingsCredentialDraft {
   name: string
-  note: string
-  fields: SettingsCredentialDraftField[]
+  fields: CredentialFieldView[]
+}
+
+/** A change of a credential: an absent member stays as it is. */
+export interface SettingsCredentialPatch {
+  name?: string
+  note?: string
+  /** The fields as they now are, in order; a field that keeps its name keeps its value. */
+  fields?: CredentialFieldView[]
+  /** A new value for each field named, a secret one's included; an empty one leaves it missing. */
+  values?: Record<string, string>
+  keep?: SettingsCredentialKeep
 }
 
 /** A passkey of the account, as Settings › Account lists it. */

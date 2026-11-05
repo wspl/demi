@@ -152,6 +152,8 @@ const props = defineProps<{
     draft: SettingsModelDraft,
     original: SettingsProviderModel | null,
   ) => Promise<void>
+  /** Adds several new models to the entry's list in one write, their ids already free. */
+  addModels: (provider: SettingsProviderEntry, drafts: SettingsModelDraft[]) => Promise<void>
   /** The saved providers, which the list shows. */
   providers: SettingsProviderEntry[]
   /** Searches models.dev for the Add Model dialog of the entry `providerId`, filled from that entry's vendor. */
@@ -749,6 +751,44 @@ const searchModelsOf = computed<SettingsModelSearch | undefined>(() => {
 function openAddModel(kind: NonNullable<SettingsModelDraft['kind']> = 'text'): void {
   if (selected.value) {
     modelSearch.value = { providerId: selected.value.id, kind, open: true, adding: false, error: null }
+  }
+}
+
+/**
+ * Adds every model Add Model was given at once, one after another, each ID that is
+ * taken with the first free suffix, then closes it; none opens in Edit Model, as a
+ * list is pasted to be used as it is. The first refusal stops the rest and shows in
+ * the dialog, which keeps the text.
+ */
+async function addModels(drafts: SettingsModelDraft[]): Promise<void> {
+  const search = modelSearch.value
+  const provider = props.providers.find((entry) => entry.id === search?.providerId)
+  if (!search || !provider || search.adding) {
+    return
+  }
+  search.adding = true
+  let added = false
+  try {
+    await answerInDialog(
+      () => (modelSearch.value === search && search.open ? search : null),
+      'providers.addModelFailed', t('providers.addModelFailed'),
+      (error) => formError(error, { invalid_body: null, duplicate_model: t('providers.duplicateModel') }),
+      async () => {
+        const taken = provider.models.map((m) => m.id)
+        const models = drafts.map((draft) => {
+          const id = provider.modelSource === 'manual' ? freeModelId(taken, draft.id) : draft.id
+          taken.push(id)
+          return { ...draft, kind: search.kind, id, extensions: search.kind === 'text' ? draft.extensions : null }
+        })
+        await props.addModels(provider, models)
+        added = true
+      },
+    )
+  } finally {
+    search.adding = false
+  }
+  if (added) {
+    search.open = false
   }
 }
 
@@ -2079,6 +2119,7 @@ a vendor entry's switch and its vendor's
       :title="modelSearch.kind === 'text' ? undefined : t('providers.media.addAudio')"
       @close="modelSearch.open = false"
       @add="addModel"
+      @add-several="addModels"
     />
   </SettingsPage>
 </template>

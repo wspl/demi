@@ -488,15 +488,27 @@ export const useProviderSettings = defineStore('provider-settings', () => {
               : entry,
           )
         : [...provider.models, { ...model, enabled: original.enabled }]
-      : [
-          ...provider.models.filter((entry) => provider.modelSource !== 'catalog' || entry.id !== model.id),
-          {
-            ...model,
-            enabled: true,
-          },
-        ]
+      : withAdded(provider, [model])
     // A refusal is the dialog's own, shown under its fields; it is no toast too.
     await saveModels(provider, models)
+  }
+
+  /**
+   * Adds several models in one write: the list shows a write only once the
+   * channel brings it, so writes one after another would each start from the
+   * list before the first.
+   */
+  async function addModels(provider: SettingsProviderEntry, drafts: readonly SettingsModelDraft[]): Promise<void> {
+    await saveModels(provider, withAdded(provider, drafts))
+  }
+
+  /** The list with `drafts` at its end, enabled; the vendor's copy of each gives way to it. */
+  function withAdded(provider: SettingsProviderEntry, drafts: readonly SettingsModelDraft[]): SettingsProviderModel[] {
+    const added = new Set(drafts.map((draft) => draft.id))
+    return [
+      ...provider.models.filter((entry) => provider.modelSource !== 'catalog' || !added.has(entry.id)),
+      ...drafts.map((draft) => ({ ...draft, enabled: true })),
+    ]
   }
 
   /**
@@ -1099,6 +1111,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     reorderAccounts,
     reorderProviders,
     saveModel,
+    addModels,
     saveModels,
     searchModels,
     submitCode,

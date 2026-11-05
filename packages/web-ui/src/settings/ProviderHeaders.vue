@@ -138,6 +138,31 @@ async function add(): Promise<void> {
   names?.[names.length - 1]?.focus()
 }
 
+/**
+ * A paste into a name of several lines, each `Name: value` or `Name=value` as a curl
+ * command's or an `.env` file's are, makes a row of each in the pasted row's place;
+ * a name the list has already takes the pasted value. A single line pastes as text.
+ */
+function paste(event: ClipboardEvent, index: number): void {
+  const lines = (event.clipboardData?.getData('text') ?? '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const pasted = lines.map((line) => /^(?:-H\s+)?['"]?([^:=\s'"]+)\s*[:=]\s*(.*?)['"]?$/.exec(line))
+  if (lines.length < 2 || pasted.some((match) => !match)) return
+  event.preventDefault()
+  const kept = rows.value.map((row) => ({ ...row })).filter((row, other) => other !== index || row.name !== '' || row.value !== '')
+  const added: Row[] = []
+  for (const match of pasted) {
+    const [, name, value] = match!
+    const same = [...kept, ...added].find((row) => row.name.toLowerCase() === name!.toLowerCase())
+    if (same) {
+      same.value = value!
+    } else {
+      added.push({ name: name!, value: value!, key: nextKey++ })
+    }
+  }
+  const at = kept.length < rows.value.length ? index : index + 1
+  changeRows([...kept.slice(0, at), ...added, ...kept.slice(at)])
+}
+
 function remove(index: number): void {
   const key = rows.value[index]?.key
   if (key !== undefined) delete problems.value[key]
@@ -179,6 +204,7 @@ function report(key: number, field: 'name' | 'value', problem: SentenceText | nu
               literal
               trim
               class="font-mono"
+              @paste="paste($event, index)"
               @problem="report(row.key, 'name', $event)"
               @commit="changed(index, { name: $event })"
             />
