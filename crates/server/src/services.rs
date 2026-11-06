@@ -1,13 +1,18 @@
-//! The two services, through systemd: an upgrade stops, starts and reloads
-//! them, and nothing else, and keeps the path units of the updates running
-//! when its release has them. A start returns once the service reports ready or
-//! has failed, since both units use `Type=notify`.
+//! The two services, through systemd on a machine and through the
+//! supervisor in a container (`supervise`): an upgrade stops, starts and
+//! reloads them, and nothing else, and keeps the path units of the updates
+//! running when its release has them. A start returns once the service
+//! reports ready or has failed, since both units use `Type=notify`.
 //!
 //! While neither backend runs, the update screen answers the pages: the new
 //! release's backend in its screen's mode, a transient unit with the
 //! backend unit's user, capability and configuration.
 
-use std::{io, process::Command};
+use std::{io, path::PathBuf, process::Command};
+
+use demi_supervisor_protocol::{Answer, Request};
+
+use crate::layout::Layout;
 
 /// The update screen's transient unit.
 const SCREEN: &str = "demi-update-screen.service";
@@ -27,6 +32,17 @@ pub trait Services: Sync {
     fn screen(&self, program: &std::path::Path, config: &std::path::Path, record: &std::path::Path) -> io::Result<()>;
     /// Stops the update screen, which frees the backend's address.
     fn end_screen(&self);
+}
+
+/// What runs the services here: the supervisor where its socket exists, as
+/// in a container, and systemd elsewhere.
+pub fn of_machine(layout: &Layout) -> Box<dyn Services> {
+    let socket = layout.supervisor_socket();
+    if socket.exists() {
+        Box::new(Supervisor { socket })
+    } else {
+        Box::new(Systemd)
+    }
 }
 
 /// systemd's own commands.
@@ -96,6 +112,56 @@ impl Services for Systemd {
             Ok(output) => String::from_utf8_lossy(&output.stdout).into_owned(),
             Err(error) => format!("the log of {unit} could not be read: {error}"),
         }
+    }
+}
+
+/// The supervisor of a container, through its socket.
+pub struct Supervisor {
+    socket: PathBuf,
+}
+
+impl Supervisor {
+    fn ask(&self, request: Request) -> io::Result<Answer> {
+        match demi_supervisor_protocol::ask(&self.socket, &request)? {
+            Answer::Failed { error } => Err(io::Error::other(error)),
+            answer => Ok(answer),
+        }
+    }
+}
+
+impl Services for Supervisor {
+    fn stop(&self, unit: &str) -> io::Result<()> {
+        self.ask(Request::Stop { unit: unit.to_owned() }).map(drop)
+    }
+
+    fn start(&self, unit: &str) -> io::Result<()> {
+        self.ask(Request::Start { unit: unit.to_owned() }).map(drop)
+    }
+
+    fn reload(&self, paths: &[&str]) -> io::Result<()> {
+        let paths = paths.iter().map(|&unit| unit.to_owned()).collect();
+        self.ask(Request::Reload { paths }).map(drop)
+    }
+
+    fn log(&self, unit: &str) -> String {
+        match self.ask(Request::Log { unit: unit.to_owned() }) {
+            Ok(Answer::Log { text }) => text,
+            Ok(_) => String::new(),
+            Err(error) => format!("the log of {unit} could not be read: {error}"),
+        }
+    }
+
+    fn screen(&self, program: &std::path::Path, config: &std::path::Path, record: &std::path::Path) -> io::Result<()> {
+        self.ask(Request::Screen {
+            program: program.to_owned(),
+            config: config.to_owned(),
+            record: record.to_owned(),
+        })
+        .map(drop)
+    }
+
+    fn end_screen(&self) {
+        let _ = self.ask(Request::EndScreen);
     }
 }
 

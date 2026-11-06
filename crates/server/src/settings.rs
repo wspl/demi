@@ -32,6 +32,18 @@ impl Settings {
         Ok(Self { variables })
     }
 
+    /// Each setting, in the file's order.
+    #[cfg(target_os = "linux")]
+    pub fn variables(&self) -> &[(String, String)] {
+        &self.variables
+    }
+
+    /// The URL the server is reached at, when the configuration says.
+    #[cfg(target_os = "linux")]
+    pub fn public_url(&self) -> Option<&str> {
+        self.value("DEMI_BACKEND_PUBLIC_URL")
+    }
+
     fn value(&self, name: &str) -> Option<&str> {
         self.variables
             .iter()

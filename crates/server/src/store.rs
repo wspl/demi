@@ -18,6 +18,9 @@
 //!   a rollback keeps it.
 //! - A store that is a filesystem of its own, such as a disk mounted there,
 //!   stays as it is.
+//! - So does a store on a machine that systemd does not boot, such as a
+//!   container: nothing there mounts what `/etc/fstab` names before the
+//!   manager starts, so a manager would start on the directory beneath.
 //!
 //! Setup makes it before the manager first runs ([`make`]). An update moves an
 //! existing store in after its switch, while the manager is stopped and every
@@ -73,7 +76,7 @@ pub fn make(store: &Path) -> io::Result<()> {
     let file = store_file(&store);
     if !file.exists() {
         let holds_anything = fs::read_dir(&store)?.next().is_some();
-        if holds_anything || own_filesystem(&store)? || shares_extents(&store)? {
+        if holds_anything || !mounts_at_boot() || own_filesystem(&store)? || shares_extents(&store)? {
             return Ok(());
         }
         format(&file, host_size(&store)?)?;
@@ -85,7 +88,7 @@ pub fn make(store: &Path) -> io::Result<()> {
 /// Requires what a move of the store `store` runs, before anything stops:
 /// nothing for a store that needs no move.
 pub fn require_tools(store: &Path) -> io::Result<()> {
-    if !store.exists() || store_file(store).exists() || partial_file(store).exists() {
+    if !store.exists() || store_file(store).exists() || partial_file(store).exists() || !mounts_at_boot() {
         return Ok(());
     }
     if own_filesystem(store)? || shares_extents(store)? {
@@ -111,7 +114,7 @@ pub fn settled(store: &Path) -> io::Result<bool> {
     if file.exists() {
         return mounted_from(&store, &file);
     }
-    Ok(!partial_file(&store).exists() && (own_filesystem(&store)? || shares_extents(&store)?))
+    Ok(!partial_file(&store).exists() && (!mounts_at_boot() || own_filesystem(&store)? || shares_extents(&store)?))
 }
 
 /// Moves the store `store`, which no manager runs on, into its XFS file
@@ -127,7 +130,7 @@ pub fn move_in(store: &Path, progress: &mut dyn FnMut(u64, u64)) -> io::Result<M
         return Ok(Moved::Already);
     }
     if !partial.exists() {
-        if own_filesystem(&store)? || shares_extents(&store)? {
+        if !mounts_at_boot() || own_filesystem(&store)? || shares_extents(&store)? {
             return Ok(Moved::Already);
         }
         make_room(&store)?;
@@ -154,6 +157,12 @@ pub fn move_in(store: &Path, progress: &mut dyn FnMut(u64, u64)) -> io::Result<M
     sync_directory(store.parent().unwrap_or(Path::new("/")))?;
     mount(&store, &file)?;
     Ok(Moved::Moved { bytes: total })
+}
+
+/// Whether systemd booted this machine, as `sd_booted` tells, and so mounts
+/// the store's file before the manager starts.
+fn mounts_at_boot() -> bool {
+    Path::new("/run/systemd/system").exists()
 }
 
 /// Whether `store` is a filesystem of its own: another device than its

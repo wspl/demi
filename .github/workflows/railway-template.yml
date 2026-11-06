@@ -1,0 +1,34 @@
+# Compares deploy/railway/template.json with the template published on
+# Railway (deploy/railway/check.sh): when the file changes, when the
+# published one may have, once a week, and by hand. The repository variable
+# RAILWAY_TEMPLATE_CODE names the published template; until it is set, the
+# check says so and passes.
+name: Railway template
+on:
+  push:
+    branches: [main]
+    paths: [deploy/railway/**]
+  pull_request:
+    paths: [deploy/railway/**]
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Compare with the published template
+    runs-on: ubuntu-26.04
+    env:
+      CODE: ${{ vars.RAILWAY_TEMPLATE_CODE }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare
+        run: |
+          if [ -z "$CODE" ]; then
+            echo "::notice::RAILWAY_TEMPLATE_CODE names no published template yet."
+            exit 0
+          fi
+          deploy/railway/check.sh "$CODE"

@@ -25,164 +25,91 @@
 </p>
 
 Demi is a web-based AI agent you host on your own server. Open it in any
-browser. Ask it a question or hand it a job: research, operating websites,
-working with files, writing code, all in the same conversation.
-
-Every conversation lives on your server, in one place for all your devices.
-Your computers only run the work: the agent works in a cloud sandbox or
-across your own machines, and tasks keep running when you close the tab.
-
-<p align="center">
-  <img src="docs/assets/concept.webp" alt="From a computer or a phone, you reach one Demi server, which holds every conversation and works through runners on your laptop, desktop, HomeLab and VPS, or in cloud sandboxes." width="800">
-</p>
+browser and hand it anything: research, websites, files or code. Your
+conversations stay on your server, and the work runs in a cloud sandbox or on
+your own machines, even after you close the tab.
 
 > [!NOTE]
 > Demi is in early development. Expect breaking changes between releases.
 
 ## Quick start
 
-You need the following:
+Deploy Demi in a few clicks:
 
-- A Linux server you have root on, running one of these
-  ([supported distributions](docs/delivery/installation.md#distributions)):
-  - Ubuntu 22.04 or later, Debian 12 or later
-  - Fedora, RHEL 10, Rocky Linux, AlmaLinux
-  - Arch Linux
-- A domain name, served over HTTPS in front of the server
-  ([HTTPS setup](docs/delivery/installation.md#https)).
+<p>
+  <a href="docs/delivery/railway.md"><img alt="Deploy on Railway" src="https://railway.com/button.svg" height="40"></a>
+  <a href="docs/delivery/fly.md"><img alt="Deploy on Fly.io" src="docs/assets/deploy/deploy-on-fly.svg" height="40"></a>
+  <a href="docs/delivery/docker-compose.md"><img alt="Run with Docker Compose" src="docs/assets/deploy/run-with-docker-compose.svg" height="40"></a>
+</p>
 
-Run the command on the server. It installs Beta, the releases Demi
-publishes; `--canary` installs Canary, which gets every build first:
+Or install it on a Linux server of your own, with a domain name:
 
 ```sh
-# Beta
 curl -fsSL https://demi.sh/install.sh | sudo bash
-# Canary
-curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 ```
 
-Or give a coding agent such as Claude Code or Codex this prompt:
+Or ask a coding agent, such as Claude Code or Codex, to install it:
 
 ```text
 Install Demi on my server by following https://raw.githubusercontent.com/demi-sh/demi/main/docs/delivery/install-with-an-agent.md
 ```
 
-The installer asks a few questions and sets Demi up. After it finishes:
+Then open Demi, create the admin account, and add a model in
+**Settings › Providers**. The [installation guide](docs/delivery/installation.md)
+covers supported systems, HTTPS, the Canary channel and what each setup costs.
 
-1. Open your domain right away and create the admin account.
-2. Go to **Settings › Providers** and sign in with a subscription or add an
-   API key.
-3. Start a conversation. It runs in your cloud sandbox.
-4. To work on your own computer, choose **Add Device** from the conversation's
-   host menu and run the command it shows on that computer.
-
-See the [installation guide](docs/delivery/installation.md) for every option,
-including installing without questions, and [upgrades](docs/delivery/upgrades.md)
-for moving to a new release.
+<p align="center">
+  <img src="docs/assets/concept.webp" alt="From a computer or a phone, you reach one Demi server, which holds every conversation and works through runners on your laptop, desktop, HomeLab and VPS, or in cloud sandboxes." width="800">
+</p>
 
 ## Key features
 
-Demi's features fall into four groups.
-
 ### Chat, work and code
 
-- **One conversation for everything**: Ask a quick question or hand off a
-  multi-step job in the same place. No modes to switch.
-- **Coding**: Edit repositories, run builds and tests, and review every change
-  as a diff.
-- **Research**: Search the web and read pages, PDFs and documents.
-- **Real browser**: Demi drives Chrome to sign in, fill in forms and download
-  files. Watch it in the side panel and take over at any time.
-- **Phone apps**: Demi drives iOS Simulators and Android Emulators to install,
-  run and test an app, and records the screen. Watch them in the side panel and
-  take over at any time.
-- **Files and data**: Work with documents, spreadsheets and images, and get the
-  results back as attachments.
-- **Images, video and audio**: Make and edit images, and make videos, speech,
-  music and sound effects through the model providers you add.
-- **Share**: Share a conversation, or a single answer, as a read-only link.
-- **Comments and questions**: Select words in a reply to comment on them or ask
-  about them, without interrupting the task.
-- **Search**: Find any message in every conversation, or in the one you are
-  reading.
+- **One conversation for everything**: quick questions and multi-step jobs alike.
+- **Coding**: edit repositories, run builds and tests, review each change as a diff.
+- **Research**: search the web and read pages, PDFs and documents.
+- **Real browser**: Demi drives Chrome. Watch it and take over any time.
+- **Phone apps**: install and test apps on iOS Simulators and Android Emulators.
+- **Files and data**: documents, spreadsheets and images, returned as attachments.
+- **Images, video and audio**: made through the model providers you add.
+- **Comments and questions**: select words in a reply to ask about them.
+- **Share and search**: share a read-only link, and search every message.
 
 ### Anywhere, on any machine
 
-- **Works in any browser**: Desktop, tablet or phone, with nothing to install.
-  Add it to your Home Screen, and it adapts to phones, tablets and foldables.
-- **Nine languages**: English, German, Spanish, French, Portuguese, Simplified
-  Chinese, Traditional Chinese, Japanese and Korean.
-- **Always on**: Tasks keep running on the server after you close the tab.
-- **Notifications**: Get notified on your phone and computers when a task
-  finishes or needs you, even with Demi closed.
-- **One place for every conversation**: The server stores conversations
-  instead of scattering them across the machines the agent worked on. Start on
-  your laptop and continue on your phone, live. Change AI providers and keep
-  your history.
-- **QR code and passkey sign-in**: Scan a code to sign in on your phone, or use
-  Touch ID, Face ID or Windows Hello.
-- **Private cloud sandbox**: Every user gets their own Linux sandbox on your
-  server. It runs under gVisor, can't reach your server's services or your
-  private network, and can't see other users' sandboxes.
-- **Bring your own computers**: Connect macOS, Windows and Linux machines with
-  a single command. No open ports needed.
-- **Multi-machine tasks**: Use several machines in one conversation, for
-  example to build on a Mac and test on Windows.
-- **Switch machines mid-task**: Move a conversation between the cloud and your
-  computers without starting over.
-- **Files on every machine**: Browse the files of the sandbox and each of your
-  computers, preview images, videos, audio, PDFs and Markdown, upload and
-  download, and search file names and text.
-- **Port forwarding**: Reach a port of one machine from another.
+- **Any browser**: computer, tablet, phone or foldable, with nothing to install.
+- **Always on**: tasks keep running after you close the tab, and notify you.
+- **One home for conversations**: start on your laptop, continue on your phone.
+- **Private cloud sandbox**: each user gets their own Linux sandbox.
+- **Your own computers**: connect macOS, Windows and Linux with one command.
+- **Many machines, one task**: build on a Mac, test on Windows, switch mid-task.
+- **Files everywhere**: browse, preview and search every machine's files.
+- **Port forwarding**: reach a port of one machine from another.
+- **Sign in your way**: QR code or passkey, in nine languages.
 
 ### Agent
 
-- **Multi-agent**: Demi splits a large task across a team of agents that work
-  in parallel, then combines their results.
-- **Agent profiles**: Define specialist agents, such as a researcher or a
-  reviewer, each with its own model, reasoning effort, instructions and
-  commands.
-- **Workflows**: Bundle a set of agent profiles with instructions for one kind
-  of work. Keep workflows in a project's `.demi/workflows/`, pick one in the
-  message box, and share them with your team through the repository.
-- **Schedules**: Wake a conversation once, on a repeating cycle, at intervals,
-  by cron, when a command's output changes or when a URL is called.
-- **Conversations work together**: A conversation sends messages to another and
-  reads other conversations' transcripts.
-- **Skills**: Install skills to teach Demi new tasks.
-- **Secure credentials**: Demi requests API keys and passwords through a
-  secure form, and they never appear in the conversation.
+- **Multi-agent**: a team of agents splits a large task and works in parallel.
+- **Profiles and workflows**: specialist agents, shared through your repository.
+- **Schedules**: wake a conversation on a timer, by cron, or on a change.
+- **Conversations work together**: one conversation messages or reads another.
+- **Skills**: teach Demi new tasks.
+- **Secure credentials**: secrets go through a form, never the conversation.
 
 ### Models and teams
 
-- **Use your subscriptions**: Sign in with Claude, ChatGPT or Grok Build
-  accounts. Add several accounts per subscription, and Demi rotates between
-  them as their usage limits run out.
-- **Coding plans**: Use a coding plan's key, such as Kimi, GLM or MiniMax.
-- **API keys**: Anthropic, OpenAI, Gemini, or any compatible endpoint.
-- **Local models**: Let your server use a model that runs on your own
-  computer, such as Ollama, through port forwarding.
-- **Switch models any time**: Change the model or reasoning effort, even in the
-  middle of a task.
-- **Usage and cost**: See how much of each subscription's limits is used and
-  when they reset, and what the work cost over the last hour, day or all time.
-- **Multi-user**: Each user has their own sandbox, devices and
-  conversations, on the admin's subscriptions or their own.
-- **Admin tools**: Add users, manage roles, reset passwords and send phone
-  sign-in codes.
-- **One-line install and upgrades**: Set up a server with one command and
-  upgrade it with another.
+- **Your subscriptions**: Claude, ChatGPT and Grok Build, rotating accounts at their limits.
+- **Any API**: Anthropic, OpenAI, Gemini, coding plans such as Kimi, GLM or MiniMax, and local models.
+- **Switch models any time**, even in the middle of a task.
+- **Usage and cost**: see each subscription's limits and what the work cost.
+- **Multi-user**: each user has their own sandbox, devices and conversations.
 
 ## An agent built on a shell
 
-Demi is both the app and the agent.
-
-It doesn't wrap Claude Code or Codex. Its own runtime drives every model, and a
-Claude or ChatGPT subscription serves only the model.
-
-Most agents give the model a long list of tools. Demi gives it one: a
-shell. Everything else, from the browser to other machines to subagents, is a
-`demi` command inside it:
+Demi doesn't wrap Claude Code or Codex: its own runtime drives every model.
+Where most agents give the model a long list of tools, Demi gives it one, a
+shell. The browser, other machines and subagents are `demi` commands in it:
 
 ```sh
 T=$(demi browser tab new) && demi browser open $T http://localhost:5173 && demi browser screenshot $T | demi file view
@@ -190,34 +117,17 @@ demi host shell --host windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```
 
-The design has these benefits:
-
-- **Composable**: Commands chain with pipes and `&&`, so the agent does in one
-  step what usually takes several tool calls.
-- **Lean prompts**: The model sees one line per command group and reads
-  `--help` when it needs more. New capabilities don't bloat every request.
-- **Same shell everywhere**: Every machine runs the same bash-compatible
-  shell, written in Rust ([brush](https://github.com/reubeno/brush)), so a
-  script that works in the cloud works on macOS and Windows too. The tools
-  that change files are GNU's on every machine
-  ([uutils](https://github.com/uutils/coreutils)), so the changes they make
-  are recorded; every other program, such as `tar` or `python`, is the
-  system's own and its changes are not recorded, and on Windows the other
-  utilities are Git for Windows', which Demi's setup installs when it is
-  missing.
-- **Same for every model**: Every provider sees the same single tool, so
-  switching models doesn't change what the agent can do.
-- **Built for long jobs**: Commands keep running in the background and report
-  back when they finish, so dev servers and test suites never block the
-  conversation.
+- **Composable**: commands chain with pipes, so one step does the work of several tool calls.
+- **Lean prompts**: the model reads a command's `--help` only when it needs it.
+- **Same shell everywhere**: one bash-compatible shell, written in Rust, on every machine.
+- **Same for every model**: switching models doesn't change what the agent can do.
+- **Built for long jobs**: commands run in the background and report back.
 
 > [!NOTE]
 > **Planned**: an OpenAPI for the Demi server, so your own programs can use
-> its conversations, agents and cloud sandboxes for the agents you need.
+> its conversations, agents and cloud sandboxes.
 
 ## Architecture
-
-The following diagram shows how the parts connect:
 
 ```text
   Browsers (computer, phone, tablet)
@@ -233,22 +143,15 @@ The following diagram shows how the parts connect:
   ┌─────┴──────────┐  ┌──┴───────────────────────────┐
   │ Runner in your │  │ Runners on your computers    │
   │ cloud sandbox  │  │ and servers (macOS, Windows, │
-  │ (gVisor)       │  │ Linux)                       │
+  │                │  │ Linux)                       │
   └────────────────┘  └──────────────────────────────┘
 ```
 
-The design has these properties:
-
-- **The server runs the agent, runners do the work**: Conversations, agents
-  and settings live on the server. A small runner on each machine only handles
-  files, commands and the browser. It connects out to the server, so it works
-  behind NAT and firewalls.
-- **One runner everywhere**: The cloud sandbox and your computers run the same
-  runner, so every feature works on every machine.
-- **Light on bandwidth**: Large outputs and files stay on the machine that made
-  them. The browser loads them only when you open them.
-- **Native**: The server, the runner and the agent's tools are written in Rust.
-  The web app is built with Vue and TypeScript.
+- **The server runs the agent, runners do the work**: each runner connects
+  out, so it works behind NAT and firewalls.
+- **One runner everywhere**: every feature works on every machine.
+- **Light on bandwidth**: large files stay where they were made until you open them.
+- **Native**: Rust for the server, runner and tools; Vue and TypeScript for the web app.
 
 Read the [design docs](docs/README.md), starting with the
 [overview](docs/overview.md).

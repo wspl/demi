@@ -22,11 +22,13 @@ demi-runner-protocol = { path = "../runner-protocol" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-shared-cli = { path = "../shared-cli" }
 demi-shared-types = { path = "../shared-types" }
+# The supervisor's socket, which a container's demi-server asks.
+demi-supervisor-protocol = { path = "../supervisor-protocol" }
 # `GET /api/update`, which an upgrade asks while the backend starts.
 demi-web-api-protocol = { path = "../web-api-protocol" }
 dotenvy = "0.15"
 jiff.workspace = true
-rustix = { version = "1", features = ["fs", "process"] }
+rustix = { version = "1", features = ["fs", "mount", "process", "thread"] }
 semver = { workspace = true, features = ["serde"] }
 serde.workspace = true
 serde_json.workspace = true

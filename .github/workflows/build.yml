@@ -53,6 +53,7 @@ on:
     branches: [main]
     paths-ignore:
       - "docs/**"
+      - "deploy/**"
       - "packages/site/src/**"
       - "packages/site/public/**"
       - "packages/site/record/**"

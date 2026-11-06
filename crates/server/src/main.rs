@@ -11,12 +11,15 @@
 //! - `status` says where the server is.
 //! - `runtime` fetches the gVisor version this release pins.
 //! - `setup` installs a first release.
+//! - `container` is the entry point of Demi's container image (`container`),
+//!   and `supervise` runs the services there, where no systemd runs
+//!   (`supervise`).
 //!
 //! A move interrupted at any step is finished by the next command. The program
 //! downloads through the artifact library, changes nothing outside the layout
-//! (`layout`), never edits the configuration, touches no data directory but
-//! `snapshots/` and a restore, and asks systemd to start and stop only Demi's
-//! two services.
+//! (`layout`), never edits the configuration but a container's, touches no
+//! data directory but `snapshots/` and a restore, and asks systemd, or a
+//! container's supervisor, to start and stop only Demi's two services.
 //!
 //! A server runs one release at a time, and every part of Demi on it follows
 //! that release. Nothing negotiates versions: the backend, the machine manager,
@@ -44,6 +47,10 @@
 //! - A pinned Cloud base: the manager boots a Cloud on the base it is pinned to,
 //!   which an earlier release built, so what it needs of a base is the base's
 //!   format.
+//! - The supervisor's socket: in a container, the next release's `demi-server`
+//!   asks the running release's supervisor to stop, start and reload the
+//!   services until it execs into the next release's, so a request's and an
+//!   answer's fields are only ever added (`demi_supervisor_protocol`).
 //! - The configuration file belongs to the installation: each program refuses a
 //!   setting it does not read, so a renamed or removed setting is reported, never
 //!   silently ignored.
@@ -55,6 +62,8 @@
 //! directory other than its home, stays until the history starts again with the
 //! first formal release.
 
+#[cfg(target_os = "linux")]
+mod container;
 mod data;
 mod fetch;
 mod gvisor;
@@ -69,6 +78,8 @@ mod services;
 mod settings;
 mod setup;
 mod store;
+#[cfg(target_os = "linux")]
+mod supervise;
 
 use std::{
     io::{self, BufRead as _, Write as _},
@@ -85,7 +96,7 @@ use demi_runner_protocol::release::{SkipReason, StepProgress, StepState, StepSum
 use demi_shared_artifacts::releases::Channel;
 use demi_web_api_protocol::server_upgrade::UpgradeChannel;
 
-use crate::{journal::Journal, layout::Layout, notices::Notices, services::Systemd, settings::Settings};
+use crate::{journal::Journal, layout::Layout, notices::Notices, settings::Settings};
 
 /// Installs, upgrades and rolls back this Demi server.
 #[derive(Parser)]
@@ -168,6 +179,16 @@ enum Action {
         #[arg(long)]
         requested: bool,
     },
+    /// The entry point of Demi's container image: sets up or upgrades the
+    /// server on its volume from the image's release, then supervises it.
+    #[command(hide = true)]
+    Container,
+    /// Runs the services where no systemd runs, as the container's PID 1.
+    #[command(hide = true)]
+    Supervise,
+    /// Sets a container's server up from the image's release.
+    #[command(hide = true)]
+    SetUpContainer,
 }
 
 fn main() -> ExitCode {
@@ -203,6 +224,11 @@ fn main() -> ExitCode {
                 Ok(())
             }
         }),
+        Action::Container => in_container(&layout),
+        Action::Supervise => supervise(&layout),
+        Action::SetUpContainer => {
+            require_root(&layout).and_then(|()| locked(&layout, false, |layout| set_up_container(layout)))
+        }
         // An administrator's update, and a move handed over, wait for the
         // run that holds the lock, such as the work ahead of the update or
         // the run that handed over and let go of it.
@@ -314,8 +340,38 @@ fn require_root(layout: &Layout) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+fn in_container(layout: &Layout) -> Result<(), Box<dyn std::error::Error>> {
+    container::start(layout)
+}
+
+#[cfg(target_os = "linux")]
+fn supervise(layout: &Layout) -> Result<(), Box<dyn std::error::Error>> {
+    supervise::run(layout, None)
+}
+
+#[cfg(target_os = "linux")]
+fn set_up_container(layout: &Layout) -> Result<(), Box<dyn std::error::Error>> {
+    setup::run_in_container(layout, &*services::of_machine(layout))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn in_container(_: &Layout) -> Result<(), Box<dyn std::error::Error>> {
+    Err("a container runs Demi only on Linux".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn supervise(layout: &Layout) -> Result<(), Box<dyn std::error::Error>> {
+    in_container(layout)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn set_up_container(layout: &Layout) -> Result<(), Box<dyn std::error::Error>> {
+    in_container(layout)
+}
+
 fn setup(layout: &Layout, options: setup::Options) -> Result<(), Box<dyn std::error::Error>> {
-    match setup::run(layout, &Systemd, options)? {
+    match setup::run(layout, &*services::of_machine(layout), options)? {
         setup::Outcome::SetUp => Ok(()),
         setup::Outcome::Guide { missing } => {
             let mut command = <Cli as clap::CommandFactory>::command();
@@ -371,7 +427,7 @@ fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error
         Action::Rollback { yes } => rollback(layout, yes),
         Action::Move => {
             let mut notices = Notices::new(layout);
-            if let Err(failure) = moving::start(layout, &Systemd, &own_version(), &mut notices) {
+            if let Err(failure) = moving::start(layout, &*services::of_machine(layout), &own_version(), &mut notices) {
                 notices.failed(failure.reason(), matches!(failure, moving::Failure::Stopped(_)));
                 return Err(failure.into());
             }
@@ -382,14 +438,20 @@ fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error
             let journal = Journal::read(&layout.journal())?.ok_or("no move to finish")?;
             let mut notices = Notices::new(layout);
             notices.moving(&journal.from, &journal.to);
-            if let Err(failure) = moving::carry_out(layout, &Systemd, journal, &mut notices) {
+            if let Err(failure) = moving::carry_out(layout, &*services::of_machine(layout), journal, &mut notices) {
                 notices.failed(failure.reason(), matches!(failure, moving::Failure::Stopped(_)));
                 return Err(failure.into());
             }
             println!("The server runs {}", own_version());
             Ok(())
         }
-        Action::Status | Action::Setup(_) | Action::Runtime | Action::Prepare { .. } => {
+        Action::Status
+        | Action::Setup(_)
+        | Action::Runtime
+        | Action::Prepare { .. }
+        | Action::Container
+        | Action::Supervise
+        | Action::SetUpContainer => {
             unreachable!("runs without act")
         }
     }

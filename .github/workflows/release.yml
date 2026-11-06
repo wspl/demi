@@ -11,6 +11,7 @@
 #   (the npm packages' tags name their package, so the two never collide).
 # - canary.yml starts it for a push to main whose build and checks passed.
 #   Nothing else starts it.
+# - Once the release is published, image.yml publishes its container image.
 # - With `prerelease`, as a deploy and canary.yml start it
 #   (docs/delivery/upgrades.md), it publishes a pre-release, which no installer
 #   takes as the newest and which a later `gh release edit` publishes.
@@ -254,3 +255,15 @@ jobs:
           fi
           gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" \
             --target "$COMMIT" --title "Demi $VERSION" --generate-notes "${kind[@]}" ./*
+
+  # The container image of the release, from the assets just published.
+  image:
+    name: Image
+    needs: [find, publish]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/image.yml
+    with:
+      version: ${{ needs.find.outputs.version }}
+      channel: ${{ inputs.prerelease && 'canary' || 'beta' }}

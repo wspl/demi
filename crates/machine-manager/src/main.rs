@@ -61,7 +61,11 @@ fn main() -> std::process::ExitCode {
     // (`crates/xtask/src/native/build.rs`).
     demi_shared_cli::install_panic_hook();
     use demi_shared_types::{LogOrigin, log_layer::LineLayer};
-    use tracing_subscriber::{filter::LevelFilter, fmt, prelude::*};
+    use tracing_subscriber::{
+        filter::{LevelFilter, Targets},
+        fmt,
+        prelude::*,
+    };
 
     let config = match demi_machine_manager::config::Invocation::from_env() {
         Ok(demi_machine_manager::config::Invocation::Manage(config)) => config,
@@ -75,14 +79,17 @@ fn main() -> std::process::ExitCode {
     // The journal records the service's standard error and the time. The
     // events of `info` and above also go to the backend as lines of the log,
     // on each connection the backend has open; a line made while none is
-    // open stays in the journal alone.
+    // open stays in the journal alone. The journal takes the manager's own
+    // `debug` events too, but only `info` and above of its libraries: the
+    // HTTP client's `trace` events of one gVisor download are 130,000 lines.
     let (lines, forwarded) = tokio::sync::mpsc::channel(LOG_LINES);
     tracing_subscriber::registry()
         .with(
             fmt::layer()
                 .with_writer(std::io::stderr)
                 .without_time()
-                .with_target(false),
+                .with_target(false)
+                .with_filter(Targets::new().with_target("demi_machine_manager", LevelFilter::DEBUG).with_default(LevelFilter::INFO)),
         )
         .with(
             LineLayer::new(LogOrigin::MachineManager, move |line| {

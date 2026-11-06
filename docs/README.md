@@ -21,7 +21,10 @@ The documents here cover only what is not about one module.
 ## Running a server
 
 - [Installation](delivery/installation.md): installing a server with one
-  command, its parameters, the HTTPS shapes and the distributions
+  command, its parameters, the HTTPS shapes and the distributions, and
+  running it from Demi's container image:
+  [on Railway](delivery/railway.md), [on Fly.io](delivery/fly.md) and
+  [with Docker Compose](delivery/docker-compose.md)
 - [Upgrades](delivery/upgrades.md): upgrading a server, rolling back, and
   [a development build on a server](delivery/upgrades.md#a-development-build-on-a-server)
 - [Cloud setup](cloud/setup.md): deploying the machine manager on Linux

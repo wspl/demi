@@ -25,9 +25,9 @@
 //! of a manager that left its sandboxes.
 //!
 //! A manager that fetched the gVisor release restarts the same way
-//! ([`restart`]): it writes the leave request itself and asks systemd to
-//! restart its unit, so the next manager runs gVisor and takes over the
-//! Clouds this one runs.
+//! ([`restart`]): it writes the leave request itself and asks what runs it,
+//! systemd or a container's supervisor, to restart its unit, so the next
+//! manager runs gVisor and takes over the Clouds this one runs.
 //!
 //! systemd's stop no longer ends the unit's leftover processes, so every
 //! start and stop-post recovery ends them first ([`sweep`]) and waits until
@@ -95,15 +95,43 @@ pub async fn take_over(core: &Core, left: &LeftSandbox) -> io::Result<Option<Tak
     Ok(Some(Taken { sandbox, owner }))
 }
 
-/// Has systemd restart this manager, which leaves its running Clouds to the
-/// next one; the restart comes after this returns. A manager that systemd
-/// doesn't run, which `INVOCATION_ID` tells, can't be restarted, and the
-/// error says so.
-pub async fn restart() -> Result<(), String> {
-    if std::env::var_os("INVOCATION_ID").is_none() {
-        return Err("gVisor is downloaded, and runs once the Cloud manager restarts".into());
+/// What runs this manager as its service, as the unit's
+/// `DEMI_SERVICE_MANAGER` says; none for a manager started by hand.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ServiceManager {
+    Systemd,
+    /// `demi-server supervise`, in a container.
+    Supervisor,
+}
+
+fn service_manager() -> Option<ServiceManager> {
+    match std::env::var("DEMI_SERVICE_MANAGER").ok()?.as_str() {
+        "systemd" => Some(ServiceManager::Systemd),
+        "supervisor" => Some(ServiceManager::Supervisor),
+        _ => None,
     }
+}
+
+/// Has the service manager restart this manager, which leaves its running
+/// Clouds to the next one; the restart comes after this returns. A manager
+/// that no service manager runs can't be restarted, and the error says so.
+pub async fn restart() -> Result<(), String> {
+    let Some(manager) = service_manager() else {
+        return Err("gVisor is downloaded, and runs once the Cloud manager restarts".into());
+    };
     blocking::run(|_| fs_err::write(LEAVE_REQUEST, b"")).await.map_err(|error| error.to_string())?;
+    let asked = match manager {
+        ServiceManager::Systemd => ask_systemd().await,
+        ServiceManager::Supervisor => ask_supervisor().await,
+    };
+    if asked.is_err() {
+        // A request no restart takes would keep the Clouds of a later stop.
+        let _ = take_request().await;
+    }
+    asked
+}
+
+async fn ask_systemd() -> Result<(), String> {
     // `--no-block` queues the restart and returns: the stop it starts
     // signals this process, which must not wait for it.
     let status = tokio::process::Command::new("systemctl")
@@ -114,9 +142,21 @@ pub async fn restart() -> Result<(), String> {
     if status.success() {
         return Ok(());
     }
-    // A request no restart takes would keep the Clouds of a later stop.
-    let _ = take_request().await;
     Err(format!("systemctl could not restart {MANAGER_UNIT}: {status}"))
+}
+
+/// The supervisor answers before its stop signals this process.
+async fn ask_supervisor() -> Result<(), String> {
+    use demi_supervisor_protocol::{Answer, Request, SOCKET, ask};
+    let request = Request::Restart { unit: MANAGER_UNIT.to_owned() };
+    let answer = tokio::task::spawn_blocking(move || ask(Path::new(SOCKET), &request))
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| format!("the supervisor could not be asked to restart {MANAGER_UNIT}: {error}"))?;
+    match answer {
+        Answer::Done | Answer::Log { .. } => Ok(()),
+        Answer::Failed { error } => Err(format!("the supervisor could not restart {MANAGER_UNIT}: {error}")),
+    }
 }
 
 /// Whether an upgrade asked this manager to leave its sandboxes; the request
@@ -184,8 +224,9 @@ pub fn enter_saved_namespace(handle: &Path) -> io::Result<()> {
 /// descriptor of the Sentry's process. With the resource limits on, the
 /// Sentry and Gofer run in the sandbox's own cgroup and only the fd-parking
 /// process is in the unit's, so the Sentry's process id comes from `runsc`,
-/// not from the unit. A manager outside a service unit of its own, as one
-/// started by hand is, ends nothing: its cgroup holds other programs.
+/// not from the unit. A manager outside a systemd unit of its own, as one
+/// started by hand or by a container's supervisor is, ends nothing: its
+/// cgroup holds other programs.
 ///
 /// The proots `proots` names, of the Simple Isolation Clouds it took over,
 /// are kept with their descendants too.
@@ -198,7 +239,7 @@ fn sweep_blocking(keep: &[Owner], proots: &[i32]) -> io::Result<()> {
     let Some(path) = own.lines().find_map(|line| line.strip_prefix("0::")) else {
         return Ok(());
     };
-    if std::env::var_os("INVOCATION_ID").is_none() || !path.ends_with(".service") {
+    if service_manager() != Some(ServiceManager::Systemd) || !path.ends_with(".service") {
         return Ok(());
     }
     let procs_path = Path::new("/sys/fs/cgroup").join(path.trim_start_matches('/')).join("cgroup.procs");
