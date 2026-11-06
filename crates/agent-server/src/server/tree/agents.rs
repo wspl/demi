@@ -87,6 +87,9 @@ pub(crate) struct Agents {
     /// Where the conversation worked when last read, which a child's entry
     /// names its directory by (`crates/agent-server/src/node/mod.rs`).
     placement: RefCell<Option<Placement>>,
+    /// The product resumes the root's turn a restart interrupted, as it
+    /// told: the root's entry says so until the root works, which ends it.
+    resuming: Cell<bool>,
     /// The entries the step under way changed, announced when it ends.
     staged: RefCell<Vec<AgentEntry>>,
     /// How deep the steps under way nest.
@@ -106,6 +109,7 @@ impl Agents {
             announced: RefCell::default(),
             charted: RefCell::default(),
             placement: RefCell::new(None),
+            resuming: Cell::new(false),
             staged: RefCell::default(),
             depth: Cell::new(0),
             sink,
@@ -129,6 +133,15 @@ impl Agents {
             let card = self.cards.borrow().get(&entry.id).cloned().unwrap_or_default();
             side.title = card.title;
             side.folded = card.folded;
+        }
+        if entry.role == AgentRole::Root {
+            // The root's first step of work ends the resume, in the entry
+            // that tells its phase. A compaction of an idle root is no work,
+            // as the turn is still to resume after it.
+            if matches!(entry.phase, SessionPhase::Running | SessionPhase::Compacting) {
+                self.resuming.set(false);
+            }
+            entry.resuming = self.resuming.get();
         }
         if self.depth.get() > 0 {
             let mut staged = self.staged.borrow_mut();
@@ -225,6 +238,21 @@ impl Agents {
             self.cards.borrow_mut().extend(kept.cards);
         }
         self.refresh_all();
+    }
+
+    /// The product resumes by itself the root's turn a restart interrupted,
+    /// as it tells when the agents are made, before the root's entry is.
+    pub(crate) fn set_resuming(&self, resuming: bool) {
+        self.resuming.set(resuming);
+    }
+
+    /// The product began to resume the root's turn after the agents were
+    /// made, or stopped without running it, which then shows as the restart
+    /// left it.
+    pub(crate) fn resuming_changed(&self, root: &NodeId, resuming: bool) {
+        if self.resuming.replace(resuming) != resuming {
+            self.change(root, |_| {});
+        }
     }
 
     /// The charts the product kept when the tree opened: a chart a turn
@@ -400,6 +428,7 @@ pub(crate) fn resting(id: NodeId, role: AgentRole) -> AgentEntry {
         pending_steers: Vec::new(),
         starting: None,
         deleted: false,
+        resuming: false,
     }
 }
 

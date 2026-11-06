@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0281
 ---
 
 # A turn Demi resumes after a restart shows as running until it runs

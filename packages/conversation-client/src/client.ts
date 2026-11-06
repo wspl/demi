@@ -313,6 +313,14 @@ export class ConversationClient {
   private readonly tags: Partial<ConversationTags> = {}
   /** Whether the agents are being read, which drops what the lane brings of them. */
   private agentsReading = false
+  /** Settles once the first try of the latest read a stale version asked for ended. */
+  private agentsAttempted: Promise<void> = Promise.resolve()
+  /**
+   * The first tries of the reads that the latest open's answers asked for, of
+   * the agents and of each node the page shows, as a backend that restarted
+   * asks every one.
+   */
+  private reopenReads: Promise<void>[] = []
   /** The revision of the draft the page holds, which the open names. */
   private draft: number | undefined
   /** Ends the reads when the client is disposed. */
@@ -377,6 +385,7 @@ export class ConversationClient {
       this.hold(options.holding)
     }
     const nodes = [root, ...(options.nodes ?? [])].filter((node, at, all) => all.indexOf(node) === at)
+    this.reopenReads = []
     const reads: Promise<void>[] = []
     if (this.agentsVersion === null) {
       reads.push(this.readConversation(false))
@@ -760,6 +769,18 @@ export class ConversationClient {
       subscription.ready.catch(() => {})
     }
     return subscription
+  }
+
+  /**
+   * Resolves once every read the latest open's answers asked for has ended
+   * its first try: what the page shows of the conversation is then all of the
+   * backend's same moment, unless a read failed, which goes on trying behind
+   * the page. The backend sends those answers in the message that says the
+   * session opened, ahead of it (`Connection::open`), so `open` has heard
+   * them all when it resolves.
+   */
+  async reopened(): Promise<void> {
+    await Promise.allSettled(this.reopenReads)
   }
 
   /**
@@ -1174,11 +1195,15 @@ export class ConversationClient {
     switch (value.kind) {
       case 'agents':
         this.readConversationAgain(null)
+        this.reopenReads.push(this.agentsAttempted)
         return
       case 'transcript': {
         const subscription = this.subscriptions.get(value.node)
         if (subscription) {
           this.readAgain(value.node, subscription, null)
+          if (value.node === this.root || this.shows(value.node)) {
+            this.reopenReads.push(subscription.attempted)
+          }
         }
         return
       }
@@ -1298,7 +1323,11 @@ export class ConversationClient {
       this.sendFrame({ type: 'unfollow', value: { kind: 'agents' } })
     }
     this.agentsReading = true
-    this.readConversation(true, reason === null).catch(() => {})
+    const attempted = Promise.withResolvers<void>()
+    this.agentsAttempted = attempted.promise
+    this.readConversation(true, reason === null, attempted.resolve)
+      .finally(attempted.resolve)
+      .catch(() => {})
   }
 
   /**
@@ -1311,7 +1340,7 @@ export class ConversationClient {
     return this.shows(node) ? 0 : Math.random() * STALE_SPREAD_MS
   }
 
-  private async readConversation(retrying: boolean, staled = false): Promise<void> {
+  private async readConversation(retrying: boolean, staled = false, attempted: () => void = () => {}): Promise<void> {
     const reader = this.reader!
     this.agentsReading = true
     if (staled) {
@@ -1325,6 +1354,7 @@ export class ConversationClient {
       try {
         read = await reader.conversation(this.detached.signal, { whole: this.agentsVersion === null })
       } catch (error) {
+        attempted()
         if (this.disposed) {
           return
         }
@@ -1509,7 +1539,9 @@ export class ConversationClient {
       this.sendFrame({ type: 'unfollow', value: { kind: 'transcript', node } })
     }
     subscription.state = { status: 'reading', frames: [] }
-    subscription.ready = this.readNode(node, subscription, true, reason === null)
+    const attempted = Promise.withResolvers<void>()
+    subscription.attempted = attempted.promise
+    subscription.ready = this.readNode(node, subscription, true, reason === null, attempted.resolve)
     subscription.ready.catch(() => {})
   }
 

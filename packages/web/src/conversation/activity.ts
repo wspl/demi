@@ -7,7 +7,6 @@ import {
   type ClientSessionEvent,
 } from '@demicodes/web-ui/transport/protocol'
 import type { AgentEntry, ConversationAttachment, ReplyBlockFacts, Version } from '@demicodes/protocol'
-import type { ConversationStatus } from '@/api/generated/web-api'
 import { boundedHistory, latestBlocks } from '@demicodes/web-ui/agent/history'
 import type { Conversation, SideRecord } from '../state/types'
 import { settleSent, sideRecord } from './side-records'
@@ -37,14 +36,6 @@ export function updateLiveStatus(conversation: Conversation): void {
         : conversation.history.length
           ? 'done'
           : 'idle'
-}
-
-/**
- * Takes from the summary's `status` whether Demi resumes the conversation's
- * turn a restart of the backend interrupted.
- */
-export function takeResuming(conversation: Conversation, status: ConversationStatus): void {
-  conversation.resuming = status === 'resuming'
 }
 
 /**

@@ -236,6 +236,14 @@ pub trait AgentsSource {
     /// turn call, by its number; what it cannot read it leaves out, having
     /// logged why.
     fn charts<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, HashMap<u64, CacheChart>>;
+
+    /// Whether the product resumes by itself the turn of the conversation
+    /// `root` a restart interrupted, which the root's entry tells until the
+    /// root works. The product says when it changes for a live tree
+    /// (`AgentServer::resuming_changed`).
+    fn resuming(&self, _root: &NodeId) -> bool {
+        false
+    }
 }
 
 /// The conversation's tree works, which a reload does not interrupt.
@@ -340,6 +348,15 @@ impl<H: HostResolver> AgentServer<H> {
         self.trees.borrow().get(root).cloned()
     }
 
+    /// `AgentsSource::resuming` changed for the conversation `root`: the live
+    /// tree's root entry says so at once, beside its phase. A tree not live
+    /// reads it at its next open.
+    pub fn resuming_changed(&self, root: &NodeId) {
+        if let Some(tree) = self.tree(root) {
+            tree.resuming_changed(self.deps.agents.resuming(root));
+        }
+    }
+
     /// The agents of the conversation `root` as its metadata lists them, and
     /// their version: the live tree's own, or, with no tree live, as its store
     /// keeps them while the conversation works at `placement`, at the stored
@@ -370,6 +387,7 @@ impl<H: HostResolver> AgentServer<H> {
             sides,
             placement,
             kept,
+            self.deps.agents.resuming(root),
             saved,
         ))
     }

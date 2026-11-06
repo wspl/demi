@@ -409,6 +409,12 @@ pub(crate) struct ShardAgents {
 }
 
 impl demi_agent_server::AgentsSource for ShardAgents {
+    fn resuming(&self, root: &NodeId) -> bool {
+        self.shard
+            .upgrade()
+            .is_some_and(|shard| shard.restart_resumes().contains(&demi_backend_host_access::conversation_of(root)))
+    }
+
     fn kept<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, demi_agent_server::KeptAgents> {
         Box::pin(async move {
             let mut kept = demi_agent_server::KeptAgents::default();

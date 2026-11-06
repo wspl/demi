@@ -1,6 +1,7 @@
 import { withAdded } from '../infra/keep-same'
 import { shallowRef, triggerRef } from 'vue'
 import { errorCode, shownError } from '../infra/errors'
+import { pageLog } from '../infra/log'
 import {
   ActionOutlivedError,
   SavedGoneError,
@@ -90,6 +91,7 @@ export type RuntimeState = Pick<
   | 'lastError'
   | 'load'
   | 'pendingAction'
+  | 'resuming'
   | 'failures'
   | 'contextUsage'
 >
@@ -141,6 +143,17 @@ export function waitingSince(entry: Pick<AgentEntry, 'waitedMs'>, receivedAt: nu
 
 const OPEN_TIMEOUT_MS = 30_000
 
+/** Resolves when `signal` aborts. */
+function aborted(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve()
+    } else {
+      signal.addEventListener('abort', () => resolve(), { once: true })
+    }
+  })
+}
+
 /**
  * Owns one reconnectable client. Disposing a view leaves its server task alive.
  *
@@ -181,6 +194,14 @@ export class ConversationRuntime {
    */
   private opened = false
   private disposed = false
+  /**
+   * The events a reconnection brings, held until the reads its open asked for
+   * landed, then taken in one step: the page never shows the transcript of
+   * one moment beside the agents of another, as a red record of a turn the
+   * restart interrupted beside a root that still runs, before the entry
+   * that says Demi resumes it. Null while no reconnection opens.
+   */
+  private gathering: ClientSessionEvent[] | null = null
 
   constructor(options: ConversationRuntimeOptions) {
     this.options = options
@@ -196,9 +217,26 @@ export class ConversationRuntime {
       if ((event.type === 'disconnected' || event.type === 'error') && this.attempting) {
         return
       }
+      if (this.gathering) {
+        this.gathering.push(event)
+        return
+      }
       this.applyEvent(event)
       triggerRef(this.client)
     })
+  }
+
+  /** Takes the events a reconnection held, in the order they came. */
+  private takeGathered(): void {
+    const held = this.gathering
+    this.gathering = null
+    if (!held?.length) {
+      return
+    }
+    for (const event of held) {
+      this.applyEvent(event)
+    }
+    triggerRef(this.client)
   }
 
   get connected(): boolean {
@@ -704,6 +742,7 @@ export class ConversationRuntime {
     // An attempt released before it opens leaves the client alone: the
     // client it shares may be another attempt's by now.
     let opening = false
+    let gathered: ClientSessionEvent[] | null = null
     try {
       const holding = await this.options.holding?.(attempt.signal)
       attempt.signal.throwIfAborted()
@@ -711,6 +750,8 @@ export class ConversationRuntime {
       // The nodes the page shows now, whose latest pages the open reads.
       const root = this.options.state.id
       const named = this.shownNodes()
+      gathered = this.opened ? [] : null
+      this.gathering = gathered
       await client.open({
         root,
         nodes: named,
@@ -720,6 +761,25 @@ export class ConversationRuntime {
         signal: attempt.signal,
       })
       attempt.signal.throwIfAborted()
+      if (this.gathering) {
+        const waited = performance.now()
+        // The reads do not use the connection, so its end is watched apart:
+        // it fails the attempt, which connects again. The attempt's deadline
+        // bounds this wait as it does the open's.
+        const stopWatching = client.subscribe((event) => {
+          if (event.type === 'disconnected') {
+            attempt.abort(new ConversationLaneError('The connection closed while the conversation reopened'))
+          }
+        })
+        try {
+          await Promise.race([client.reopened(), aborted(attempt.signal)])
+        } finally {
+          stopWatching()
+        }
+        attempt.signal.throwIfAborted()
+        pageLog.info('reopen.gathered', { events: this.gathering.length, wait_ms: Math.round(performance.now() - waited) }, root)
+        this.takeGathered()
+      }
       this.client.value = client
       const shown = this.shownNodes()
       for (const node of shown) {
@@ -741,6 +801,13 @@ export class ConversationRuntime {
       }
       throw error
     } finally {
+      // What a failed attempt brought is the backend's still, unless the
+      // runtime has let the attempt go, and with it what the page shows.
+      if (this.controller === controller && !this.disposed) {
+        this.takeGathered()
+      } else if (this.gathering === gathered) {
+        this.gathering = null
+      }
       this.attempting = false
       clearTimeout(timeout)
       controller.signal.removeEventListener('abort', abortAttempt)
@@ -774,6 +841,7 @@ export class ConversationRuntime {
     }
     const moved = state.phase !== entry.phase
     state.phase = entry.phase
+    state.resuming = entry.resuming ?? false
     state.pendingCalls = entry.pendingCalls
     state.waitingSince = waitingSince(entry, receivedAt)
     state.contextUsage = entry.context

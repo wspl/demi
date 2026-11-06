@@ -43,7 +43,7 @@ use std::rc::Rc;
 use demi_agent_transcript::INTERRUPTED_CODE;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
-use demi_backend_host_access::conversation_of;
+use demi_backend_host_access::{conversation_of, root_of};
 use demi_backend_page_sync::Part;
 use demi_shared_types::{ErrorBlock, SessionPhase};
 use demi_web_api_protocol::ids::ConversationId;
@@ -70,19 +70,26 @@ impl RestartResumes {
 struct Resuming<'a> {
     shard: &'a Shard,
     conversation: ConversationId,
+    /// The resume started the turn: the root's entry stops saying it resumes
+    /// in the step its phase changes, so the guard leaves it alone.
+    started: bool,
 }
 
 impl<'a> Resuming<'a> {
     fn begin(shard: &'a Shard, conversation: &ConversationId) -> Self {
         shard.restart_resumes().0.borrow_mut().insert(conversation.clone());
+        shard.agent().resuming_changed(&root_of(conversation));
         shard.mark(Part::Conversation(conversation.clone()));
-        Self { shard, conversation: conversation.clone() }
+        Self { shard, conversation: conversation.clone(), started: false }
     }
 }
 
 impl Drop for Resuming<'_> {
     fn drop(&mut self) {
         self.shard.restart_resumes().0.borrow_mut().remove(&self.conversation);
+        if !self.started {
+            self.shard.agent().resuming_changed(&root_of(&self.conversation));
+        }
         self.shard.mark(Part::Conversation(self.conversation.clone()));
     }
 }
@@ -188,13 +195,14 @@ impl Shard {
             tracing::info!(event = "interrupted_turn.settled", %conversation, outcome = "held", reason = "user_preference", "a turn the shutdown interrupted waits for the user");
             return "held";
         }
-        let _resuming = Resuming::begin(self, &conversation);
+        let mut resuming = Resuming::begin(self, &conversation);
         let interrupted = |record: &ErrorBlock| record.code.as_deref() == Some(INTERRUPTED_CODE);
         match self
             .resume_unfinished_turn(&conversation, interrupted, Some(RESTART_REASON))
             .await
         {
             Ok(true) => {
+                resuming.started = true;
                 tracing::info!(event = "interrupted_turn.settled", %conversation, outcome = "resumed", "a turn the shutdown interrupted resumed");
                 "resumed"
             }

@@ -74,6 +74,12 @@ pub struct AgentEntry {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]
     pub deleted: bool,
+    /// The root's turn a restart of the backend interrupted is one Demi
+    /// resumes by itself, and the root has not run since: it changes with
+    /// the root's phase, in the same entry. Absent otherwise.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[garde(skip)]
+    pub resuming: bool,
 }
 
 /// What an agent is in its tree.

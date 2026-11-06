@@ -117,6 +117,12 @@ export interface ConversationState {
    */
   pendingAction: PendingAction
   /**
+   * Demi resumes by itself the root's turn a restart of the backend
+   * interrupted, as the root's entry says beside its phase: the transcript
+   * says Resuming and the dock offers no Resume.
+   */
+  resuming: boolean
+  /**
    * What the providers read out of the error blocks' failure records, by block
    * id, as the backend sends them beside the transcript.
    */
@@ -152,15 +158,10 @@ export interface ChatSessionState
     | 'load'
     | 'lastError'
     | 'pendingAction'
+    | 'resuming'
     | 'failures'
   > {
   archived: boolean
-  /**
-   * Demi resumes by itself the root's turn a restart of the backend
-   * interrupted: while the root is idle, the transcript says Resuming and
-   * the dock offers no Resume. Absent where nothing resumes, as on a share.
-   */
-  resuming?: boolean
   scroll: PersistedScrollState | null
   subagents: SubagentRecord[]
   terminals: TerminalRecord[]

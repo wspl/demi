@@ -208,6 +208,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     lastError: null,
     load: 'ready',
     pendingAction: null,
+    resuming: false,
     failures: {},
     contextUsage: options.contextUsage ?? usageAt(0.62),
     archived: false,

@@ -167,6 +167,7 @@ function state(
     load: 'ready',
     lastError: null,
     pendingAction: null,
+    resuming: false,
     failures: {},
     archived: false,
     scroll: null,
