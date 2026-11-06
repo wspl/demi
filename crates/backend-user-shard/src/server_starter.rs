@@ -17,6 +17,7 @@ use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use demi_web_api_protocol::push::PushMessage;
 use futures_util::future::LocalBoxFuture;
 
+use crate::page_notifications::PageNotifications;
 use crate::services::Services;
 use crate::shard::Shard;
 use crate::starter::{Notified, Reach, Starter};
@@ -27,11 +28,28 @@ pub struct ServerStarter {
     services: Arc<Services>,
     /// Weak: the core owns its starter.
     shard: Weak<Shard>,
+    /// The user's open pages, which decide where a notification goes.
+    pub(crate) pages: PageNotifications,
 }
 
 impl ServerStarter {
     pub fn new(user: UserId, services: Arc<Services>, shard: Weak<Shard>) -> Self {
-        Self { user, services, shard }
+        Self {
+            user,
+            services,
+            shard,
+            pages: PageNotifications::default(),
+        }
+    }
+
+    /// The user whose core it is.
+    pub(crate) fn user(&self) -> &UserId {
+        &self.user
+    }
+
+    /// The core.
+    pub(crate) fn shard(&self) -> &Weak<Shard> {
+        &self.shard
     }
 
     /// The server's side of `core`, which the server started.
@@ -117,17 +135,14 @@ impl Starter for ServerStarter {
 
     fn notify(&self, message: PushMessage) -> LocalBoxFuture<'_, Result<Notified, StorageError>> {
         Box::pin(async move {
-            let Some(shard) = self.shard.upgrade() else {
-                return Ok(Notified::Nowhere);
-            };
-            let in_use = shard.notifications().in_use();
-            let recipients = shard.recipients(&message, &in_use).await?;
+            let in_use = self.pages.in_use();
+            let recipients = self.recipients(&message, &in_use).await?;
             let notified = match (recipients.now.len(), recipients.shown) {
                 (0, 0) => Notified::Nowhere,
                 (0, _) => Notified::Shown,
                 (n, _) => Notified::Sending(n),
             };
-            shard.push(message, Some(recipients));
+            self.deliver(message, recipients);
             Ok(notified)
         })
     }

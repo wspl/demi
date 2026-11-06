@@ -37,7 +37,8 @@ use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::state::{PageMessage, SyncEvent, SyncFollow, SyncFollowed};
 
-use crate::conversation::notifications::OpenPage;
+use crate::page_notifications::OpenPage;
+use crate::server_starter::ServerStarter;
 use crate::shard::lane::PageSession;
 use crate::shard::{Lane, LaneClose, LaneEnd, LaneGone, LaneMessage, LaneReader, Shard};
 
@@ -93,7 +94,7 @@ impl Shard {
         } else {
             // What the page shows and its use count for the session's
             // notifications until the channel ends.
-            let open_page = self.notifications().page(session.id.clone());
+            let open_page = ServerStarter::of(&self).pages.page(session.id.clone());
             let registration = self.services().sync.watch(self.user());
             let follows = Follows::default();
             let mut channel = Channel {
