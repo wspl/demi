@@ -8,7 +8,7 @@ import { inject, provide, type InjectionKey } from 'vue'
 export interface SuggestedReplies {
   /** The text block the suggestions follow. */
   blockId: string
-  /** Null while they are being written; empty when none came. */
+  /** Null while the page knows none for the block, as while they are written; empty when none came. */
   replies: readonly string[] | null
 }
 
