@@ -351,11 +351,6 @@ impl Shard {
         &self.store
     }
 
-    /// The services, for work the shard builds that keeps them.
-    pub(crate) fn shared_services(&self) -> Arc<CoreServices> {
-        self.services.clone()
-    }
-
     /// The server's services, for the server's work on the core.
     pub(crate) fn server_services(&self) -> &Arc<Services> {
         ServerStarter::of(self).services()
