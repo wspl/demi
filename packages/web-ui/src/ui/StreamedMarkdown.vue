@@ -58,6 +58,19 @@ const props = withDefaults(defineProps<{
   pictures: undefined,
 })
 
+const emit = defineEmits<{
+  /**
+   * After each time the reply's text goes into the page, the first at mount,
+   * once its places are drawn too: its cards, players and plugins' blocks
+   * come in the next update, still before anything measures it in `nextTick`.
+   */
+  drawn: []
+}>()
+// Counts the text's renders: a post watch runs after the update that draws
+// the places a render found.
+const renders = ref(0)
+watch(renders, () => emit('drawn'), { flush: 'post' })
+
 const root = ref<HTMLElement>()
 useContentScrollers(root)
 const files = useMessageFiles()
@@ -184,6 +197,7 @@ useMarkdownBlocks({
   render: renderBlock,
   describe: placesIn,
   rendered(found) {
+    renders.value += 1
     if (root.value)
       followMathWait(root.value)
     codeBlocks.value = found.flatMap((places) => places.codeBlocks)

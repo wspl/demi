@@ -356,8 +356,14 @@ function firstLineTop(body: HTMLElement, top: number, line: number): number {
 // transcript's list, which measures its rows once their mount has run, ever
 // takes its unfolded height for its size: a row the list draws for a moment
 // would otherwise keep that height after it scrolls away, before the observer
-// below reports the fold.
-onMounted(measure)
+// below reports the fold. A brief measures once its Markdown is drawn
+// (`drawn`), its cards, players and plugins' blocks included, which come
+// after this mounted hook but still before the list measures.
+onMounted(() => {
+  if (typeof props.brief !== 'string') {
+    measure()
+  }
+})
 // Wrapping follows the width, so a narrower or wider column changes the cut.
 // The text alone is watched: it takes the box's width, while the box's height
 // is the cut itself, which would call the measure back for nothing.
@@ -463,6 +469,7 @@ watch(() => props.pending, measure, { flush: 'post' })
           <StreamedMarkdown
             v-if="typeof brief === 'string'"
             :content="brief"
+            @drawn="measure"
           />
           <template v-else>
             <!--
