@@ -22,6 +22,7 @@ import AgentMessageVirtualBlock from './blocks/AgentMessageVirtualBlock.vue'
 import SessionStatus from './SessionStatus.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import {
+  behindSession,
   sessionPaneStatus,
   type SessionFailureNotice,
   type SessionLoad,
@@ -108,6 +109,12 @@ const props = withDefaults(defineProps<{
   editTargetId?: string
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
+  /**
+   * The page does not hold yet what the conversation's session says now, as
+   * while it reads the root's transcript again; `load` tells an opening and
+   * a lost connection.
+   */
+  catchingUp?: boolean
   /**
    * A recovery the server has not acknowledged: the tail row says Requesting.
    */
@@ -469,6 +476,7 @@ const {
   useBlockVirtualizer(scrollContainer, renderBlocks, props.persistedScrollState, {
     keyOf,
     log: { conversation: () => logConversation.value, node: () => props.node ?? null },
+    behind: () => behindSession(props.load ?? 'ready', props.catchingUp ?? false),
   })
 
 onBeforeUnmount(() => {

@@ -1062,6 +1062,7 @@ watch(
             :pending-steers="conversation.pendingSteers"
             :phase="conversation.phase"
             :load="conversation.load"
+            :catching-up="catchingUp"
             :pending-action="conversation.pendingAction"
             :resuming="conversation.resuming"
             :failures="conversation.failures"
