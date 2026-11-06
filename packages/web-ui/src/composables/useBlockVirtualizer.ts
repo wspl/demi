@@ -164,6 +164,14 @@ export interface BlockVirtualizerOptions<Block extends VirtualizedBlock> {
    * than built anew and laid out at a guess for a frame.
    */
   keyOf?: (block: Block) => string
+  /**
+   * Whether what the list shows still catches up with its source, as a
+   * conversation opened from its copy on disk does until its session has
+   * told what changed since: what joins or grows meanwhile is no content
+   * arriving, and the list takes it in place, as it does its first
+   * measurements. Never, by default.
+   */
+  behind?: () => boolean
 }
 
 export function useBlockVirtualizer<Block extends VirtualizedBlock>(
@@ -895,7 +903,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         endDistance.value = distanceFromBottom(scrollContainer.value)
       return
     }
-    glideToEnd()
+    glideToEnd(!shownCaughtUp)
   }
 
   /**
@@ -909,6 +917,26 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     if (placed)
       requestAnimationFrame(() => requestAnimationFrame(() => {
         shownPlaced = isRestored.value
+      }))
+  }, { flush: 'sync' })
+
+  /**
+   * The list has been painted where it was placed, caught up with its source
+   * (`behind`): from then on, what joins it or grows at its end arrived, and
+   * the view glides to it and the rows slide for it (`moveRows`), while what
+   * catching up brings before is taken in place at once. What lands in the
+   * frame the catching up ends, as the first changes a session tells do,
+   * is taken in place too. What the reader does, such as going to the end,
+   * glides as ever.
+   */
+  let shownCaughtUp = false
+  let catchUps = 0
+  watch(() => isRestored.value && !(options.behind?.() ?? false), (caughtUp) => {
+    shownCaughtUp = false
+    const catchUp = ++catchUps
+    if (caughtUp)
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        shownCaughtUp = catchUp === catchUps
       }))
   }, { flush: 'sync' })
 
@@ -930,14 +958,14 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
    * its corrections, until the reader acts on the list (`readerTakes`).
    */
   let gliding = false
-  function glideToEnd(): void {
+  function glideToEnd(jump = false): void {
     furthestDistanceSinceDisengage = 0
     if (glideFrame !== 0)
       return
     // An end further than a view away is jumped to, as nobody follows a
     // glide that long (`moveRows` moves no row that far either).
     const el = scrollContainer.value
-    if (!el || !shownPlaced || prefersReducedMotion() || document.hidden || distanceFromBottom(el) > el.clientHeight) {
+    if (!el || jump || !shownPlaced || prefersReducedMotion() || document.hidden || distanceFromBottom(el) > el.clientHeight) {
       scrollToBottom()
       return
     }
@@ -1006,11 +1034,11 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     if (!shouldAutoScroll.value)
       remeasureReadAt()
     if (unpainted) {
-      if (!el || !isRestored.value || holdsView())
+      if (!el || !shownCaughtUp || holdsView())
         seen = null
       return
     }
-    seen = el && isRestored.value && !holdsView() ? rowsBefore(el, settled, settledTails) : null
+    seen = el && shownCaughtUp && !holdsView() ? rowsBefore(el, settled, settledTails) : null
     unpainted = true
     // The frame that follows is painted at the end of the second callback.
     requestAnimationFrame(() => requestAnimationFrame(() => {
