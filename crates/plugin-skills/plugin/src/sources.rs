@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use demi_plugin_interface::{
     DirectoryFile, HostDirectory, PluginError, PluginId, PluginPort, PortFailure, PortRefusal,
-    StoredValue, Workspaces,
+    StoredValue, UserWorkspaces,
 };
 use demi_web_api_protocol::ids::{DeviceId, WorkspaceId};
 use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
@@ -91,13 +91,13 @@ pub(crate) type Sources = BTreeMap<String, (Source, u64)>;
 
 /// The places a source may be in, as the user's workspaces are now, and the
 /// workspace of the request's conversation.
-pub(crate) struct Places(Workspaces);
+pub(crate) struct Places(UserWorkspaces);
 
 /// What the commands call the place every conversation is offered.
 const GLOBAL: &str = "Global";
 
 impl Places {
-    pub(crate) fn new(workspaces: Workspaces) -> Self {
+    pub(crate) fn new(workspaces: UserWorkspaces) -> Self {
         Self(workspaces)
     }
 

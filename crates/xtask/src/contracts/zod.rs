@@ -145,6 +145,19 @@ impl Writer<'_> {
             }
             Shape::Object(object) => Rendered::now(self.object(object, None, at, indent)?),
             Shape::Union { tag, variants, joined } => Rendered::now(self.union(tag, variants, joined, at, indent)?),
+            Shape::Untagged(shapes) => {
+                let mut forward = false;
+                let mut codes = Vec::new();
+                for (index, shape) in shapes.iter().enumerate() {
+                    let shape = self.shape(shape, &format!("{at}|{index}"), indent)?;
+                    forward |= shape.forward;
+                    codes.push(shape.code);
+                }
+                Rendered {
+                    code: format!("z.union([{}])", codes.join(", ")),
+                    forward,
+                }
+            }
             Shape::Nullable(inner) => {
                 let inner = self.shape(inner, at, indent)?;
                 Rendered {
@@ -152,6 +165,7 @@ impl Writer<'_> {
                     forward: inner.forward,
                 }
             }
+            Shape::Bytes => Rendered::now("z.instanceof(Uint8Array)".into()),
             Shape::Json => Rendered::now("z.json()".into()),
         };
         Ok(rendered)

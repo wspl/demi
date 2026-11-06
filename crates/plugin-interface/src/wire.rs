@@ -15,33 +15,70 @@
 //! A port message may follow its request's reply, as a page call's task
 //! keeps its port ([`crate::Plugin`]).
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+use demi_shared_types::MAX_SAFE_INTEGER;
 
 use crate::{PluginError, PortAnswer, PortMessage, Reply, Request};
 
 /// What the plugin host sends.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged, deny_unknown_fields)]
 pub enum HostMessage {
     /// A request, by its number.
-    Call { request: u64, call: Request },
+    Call {
+        #[schemars(range(max = MAX_SAFE_INTEGER))]
+        request: u64,
+        call: Request,
+    },
     /// The answer to the request's port message `port`.
-    Answer { request: u64, port: u64, answer: PortAnswer },
+    Answer {
+        #[schemars(range(max = MAX_SAFE_INTEGER))]
+        request: u64,
+        #[schemars(range(max = MAX_SAFE_INTEGER))]
+        port: u64,
+        answer: PortAnswer,
+    },
     /// The request's port message `port` got no answer, for the reason
     /// `error` says: the request is over, or the host failed.
-    Unanswered { request: u64, port: u64, error: String },
+    Unanswered {
+        #[schemars(range(max = MAX_SAFE_INTEGER))]
+        request: u64,
+        #[schemars(range(max = MAX_SAFE_INTEGER))]
+        port: u64,
+        error: String,
+    },
     /// The request is stopped: the plugin ends its work and replies.
-    Cancel { request: u64, cancel: bool },
+    Cancel {
+        #[schemars(range(max = MAX_SAFE_INTEGER))]
+        request: u64,
+        cancel: bool,
+    },
 }
 
 /// What the plugin sends.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged, deny_unknown_fields)]
 pub enum PluginMessage {
     /// The request's reply.
-    Reply { request: u64, reply: Reply },
+    Reply {
+        #[schemars(range(max = MAX_SAFE_INTEGER))]
+        request: u64,
+        reply: Reply,
+    },
     /// The request failed.
-    Error { request: u64, error: PluginError },
+    Error {
+        #[schemars(range(max = MAX_SAFE_INTEGER))]
+        request: u64,
+        error: PluginError,
+    },
     /// A message of the request's port, by its number among the request's.
-    Port { request: u64, port: u64, message: PortMessage },
+    Port {
+        #[schemars(range(max = MAX_SAFE_INTEGER))]
+        request: u64,
+        #[schemars(range(max = MAX_SAFE_INTEGER))]
+        port: u64,
+        message: PortMessage,
+    },
 }

@@ -18,13 +18,14 @@ use crate::{
     VideoAsk, VideoStep, WebFailure, WebRequest, WebResponse,
 };
 use futures_util::future::LocalBoxFuture;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 
 /// One operation a plugin asks of Demi.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -49,6 +50,7 @@ pub enum PortMessage {
         key: String,
         value: Value,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
         revision: Option<u64>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         blobs: Vec<BlobRef>,
@@ -56,6 +58,7 @@ pub enum PortMessage {
     /// Removes `key` if its revision is still `revision`.
     RemoveValue {
         key: String,
+        #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
         revision: u64,
     },
     /// Stores `bytes` in the user's blob namespace.
@@ -98,6 +101,7 @@ pub enum PortMessage {
     /// reported of the request's conversation, at the package's `revision`.
     WriteReport {
         device: String,
+        #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
         revision: u64,
         value: Value,
     },
@@ -124,7 +128,9 @@ pub enum PortMessage {
         device: DeviceId,
         url: String,
         marker: String,
+        #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
         repository_max: u64,
+        #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
         files_max: u64,
     },
     /// Creates a tab of one of the plugin's panel kinds.
@@ -149,11 +155,13 @@ pub enum PortMessage {
         name: SecretName,
         value: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
         revision: Option<u64>,
     },
     /// Removes the secret `name` if its revision is still `revision`.
     RemoveSecret {
         name: SecretName,
+        #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
         revision: u64,
     },
     /// Sends one outbound HTTPS request.
@@ -211,7 +219,7 @@ pub enum PortMessage {
 }
 
 /// The answer to one [`PortMessage`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -231,6 +239,7 @@ pub enum PortAnswer {
     },
     /// The value's new revision.
     Written {
+        #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
         revision: u64,
     },
     /// The name of a blob the plugin put.
@@ -270,7 +279,7 @@ pub enum PortAnswer {
         panel: WorkPanel,
     },
     Workspaces {
-        workspaces: Workspaces,
+        workspaces: UserWorkspaces,
     },
     Devices {
         devices: Vec<DeviceName>,
@@ -283,6 +292,7 @@ pub enum PortAnswer {
     },
     /// The panel's revision once a change is in it.
     PanelRevision {
+        #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
         revision: u64,
     },
     /// A secret; none for one the plugin does not have.
@@ -360,26 +370,28 @@ impl PortAnswer {
 }
 
 /// What a plugin's package on a Host last reported of a conversation.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StoredReport {
     /// The package's own count of its changes.
+    #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub revision: u64,
     pub value: Value,
 }
 
 /// A stored value and the revision a write of it names.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StoredValue {
     pub value: Value,
+    #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub revision: u64,
 }
 
 /// A directory the plugin keeps on every Host its user's jobs run on, or
 /// only on those the jobs of one workspace's conversations run on
 /// (`crates/core-host-access/src/plugin_files.rs`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostDirectory {
     /// 1 to 64 lowercase letters, digits and hyphens, unique in the set.
@@ -393,9 +405,9 @@ pub struct HostDirectory {
 
 /// The user's workspaces, in the user's order, and the one a request's
 /// conversation is in.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Workspaces {
+pub struct UserWorkspaces {
     pub workspaces: Vec<WorkspaceName>,
     /// None for a request of no conversation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -403,7 +415,7 @@ pub struct Workspaces {
 }
 
 /// A paired device of the user's.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeviceName {
     pub id: DeviceId,
@@ -413,7 +425,7 @@ pub struct DeviceName {
 }
 
 /// A commit's tree as a device's `git` read it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GitTree {
     pub commit: String,
@@ -423,7 +435,7 @@ pub struct GitTree {
     pub files: Vec<GitFile>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GitEntry {
     /// In the repository, with `/` between its parts.
@@ -431,7 +443,7 @@ pub struct GitEntry {
     pub executable: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GitFile {
     pub path: String,
@@ -439,7 +451,7 @@ pub struct GitFile {
 }
 
 /// Why a device's `git` answered nothing.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error, JsonSchema)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -454,16 +466,22 @@ pub enum GitRefusal {
     #[error("the device is offline")]
     Offline,
     #[error("the repository is larger than {limit} bytes")]
-    RepositoryTooLarge { limit: u64 },
+    RepositoryTooLarge {
+        #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
+        limit: u64,
+    },
     #[error("the files are larger than {limit} bytes")]
-    FilesTooLarge { limit: u64 },
+    FilesTooLarge {
+        #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
+        limit: u64,
+    },
     /// `git` or the device failed, in their words.
     #[error("{message}")]
     Failed { message: String },
 }
 
 /// A workspace and its name as Demi's commands say it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceName {
     pub id: WorkspaceId,
@@ -535,7 +553,7 @@ impl HostDirectory {
 }
 
 /// A file of a [`HostDirectory`], whose bytes are a blob the plugin put.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DirectoryFile {
     /// Relative, with `/` between its parts.
@@ -545,7 +563,7 @@ pub struct DirectoryFile {
 }
 
 /// Where a directory of the set is on every Host.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DirectoryPath {
     pub name: String,
@@ -556,7 +574,7 @@ pub struct DirectoryPath {
 /// What a package call does on the Host, which decides whether it wakes a
 /// stopped Cloud and whether it is activity (`backend-user-shard`'s
 /// `crates/core/src/lifecycle/mod.rs`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CallKind {
     /// Work the user starts, such as opening a tab: it wakes a stopped
@@ -571,7 +589,7 @@ pub enum CallKind {
 }
 
 /// Why Demi refused a port operation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error, JsonSchema)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -885,7 +903,7 @@ impl PluginPort {
     }
 
     /// The user's workspaces, and the one the request's conversation is in.
-    pub async fn workspaces(&self) -> Result<Workspaces, PortFailure> {
+    pub async fn workspaces(&self) -> Result<UserWorkspaces, PortFailure> {
         match self.ask(PortMessage::Workspaces).await? {
             PortAnswer::Workspaces { workspaces } => Ok(workspaces),
             answer => Err(unexpected("workspaces", &answer)),

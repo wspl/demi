@@ -115,13 +115,16 @@ media a plugin passes whole, where every other lane takes 1 MiB.
 
 ## Spike
 
-None: every message of the contract is serializable, which its crate's
-rules require of each type, so what crosses the lane is what the types say;
-the lane carries binary messages already.
+None: every message of the contract is serializable and has a JSON Schema,
+which its crate's rules require of each type, so what crosses the lane is
+what the types say; the lane carries binary messages already.
 
-The record also brings the entry comment of `plugin-interface` up to date:
-it names a loopback that no longer exists, and a JSON Schema of every
-message type, which only some of them derive.
+The record also brings `plugin-interface` up to its entry comment: the
+comment names a loopback that no longer exists, and only some of the
+message types derived the JSON Schema its rules require. Each now does, and
+`bun run contracts` generates the program's side of the contract from
+them, the manifest and the lane's messages, as it generates the web app's:
+an untagged enum becomes a union, and bytes a `Uint8Array`.
 
 ## Prior art
 

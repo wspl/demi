@@ -11,6 +11,7 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 use bytes::Bytes;
+use schemars::JsonSchema;
 use demi_shared_types::{TurnId, 
     BinaryStdout, CommandId, EditedFile, NodeId, OutputView, PathChange, Sequence, StreamKind,
     StreamView,
@@ -183,7 +184,7 @@ pub struct ExecRequest {
 /// The agent node a job runs for, whose commands its `rpc` calls reach
 /// (`crates/core/src/policy.rs`), and the call of
 /// it that started the job, which a message the job sends comes from.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JobCaller {
     pub node: NodeId,

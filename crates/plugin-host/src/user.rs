@@ -36,7 +36,7 @@ use demi_plugin_interface::{
     AskedVideo, AudioAsk, AudioVoices, Feature, ImageAsk, MadeAudio, MadeImage, MediaListing, MediaRefusal, VideoAsk,
     VideoStep, CallKind, DirectoryPath, HostDirectory, Plugin, PluginError, PluginId, PluginPort,
     PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal, Reply, Request, Scope, StoredReport,
-    StoredValue, Workspaces, DeviceName, GitTree,
+    StoredValue, UserWorkspaces, DeviceName, GitTree,
 };
 use demi_host_interface::{HostFile, HostRead};
 use demi_shared_types::{B64Bytes, BlobRef, MediaKind, NodeId, Timestamp, TurnId};
@@ -1764,7 +1764,7 @@ impl RequestPort {
                     None => None,
                 };
                 PortAnswer::Workspaces {
-                    workspaces: Workspaces { workspaces, current },
+                    workspaces: UserWorkspaces { workspaces, current },
                 }
             }
             PortMessage::PanelTabs => {

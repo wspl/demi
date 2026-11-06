@@ -33,8 +33,9 @@
 //!
 //! Three rules keep the two transports the same:
 //!
-//! - Every message type is serializable (serde), so a type that could not
-//!   cross a wire does not compile into the contract.
+//! - Every message type is serializable and has a JSON Schema (serde and
+//!   schemars), so a type that could not cross a wire does not compile into the
+//!   contract, and a program's side of it is generated (`bun run contracts`).
 //! - A plugin crate depends on this crate and on contract crates, never on a
 //!   backend crate, so it cannot reach past the port.
 //! - A service joins the port when a plugin needs it, as Hosts did, and never
@@ -64,7 +65,7 @@ pub use web::{
 pub use plugin::{CommandPlugin, NoRequests, Plugin, PluginFactory, PluginFile, PortHandled};
 pub use port::{
     CallKind, DirectoryFile, DirectoryPath, HostDirectory, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal,
-    WorkspaceName, Workspaces, DeviceName, GitEntry, GitFile, GitRefusal, GitTree,
+    WorkspaceName, UserWorkspaces, DeviceName, GitEntry, GitFile, GitRefusal, GitTree,
     StoredReport, StoredValue,
 };
 pub use providers::{

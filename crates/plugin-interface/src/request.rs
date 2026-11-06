@@ -7,12 +7,13 @@ use demi_shared_types::{NodeId, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use demi_web_api_protocol::panel::PanelTab;
 use demi_web_api_protocol::workflows::WatchSubject;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::{PortFailure, PortRefusal};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -154,7 +155,7 @@ pub enum Request {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -192,7 +193,7 @@ pub enum Reply {
 }
 
 /// Why a plugin gave up on a request.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, thiserror::Error, JsonSchema)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",

@@ -64,10 +64,10 @@ fn sends<T: JsonSchema>() -> Root {
     }
 }
 
-/// `@demicodes/protocol`: core's types, the conversation lane's frames
-/// and the live view's own messages. Core's types are listed whether or not a
-/// frame refers to them, so that they are declared here and `web` imports
-/// them.
+/// `@demicodes/protocol`: core's types, the conversation lane's frames,
+/// the live view's own messages and a program's plugins' contract. Core's
+/// types are listed whether or not a frame refers to them, so that they are
+/// declared here and `web` imports them.
 pub fn protocol() -> Vec<Root> {
     vec![
         // The page connection's own messages, and a lane's open and refusal
@@ -111,6 +111,11 @@ pub fn protocol() -> Vec<Root> {
         receives::<live::LiveNotice>(),
         receives::<live::LiveInputs>(),
         receives::<live::LiveActivity>(),
+        // A program's plugins: the manifests it declares and the messages of
+        // their lanes (`crates/plugin-interface/src/wire.rs`).
+        sends::<demi_plugin_interface::Manifest>(),
+        receives::<demi_plugin_interface::wire::HostMessage>(),
+        sends::<demi_plugin_interface::wire::PluginMessage>(),
     ]
 }
 

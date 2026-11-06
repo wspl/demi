@@ -12,5 +12,6 @@ doctest = false
 bench = false
 
 [dependencies]
+schemars.workspace = true
 serde.workspace = true
 typed-path = "0.12"

@@ -12,7 +12,7 @@
 //! (`runner-protocol`) use it.
 
 /// The path form of a Host's system.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HostPaths {
     /// Linux and macOS: `/` separates, and `/` is the root.

@@ -106,7 +106,7 @@ pub struct MenuWorkflow {
 /// A subject a project search watches on the Host's file watch: what makes
 /// the backend read it again.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WatchSubject {
     pub kind: SubscriptionKind,
     pub path: String,

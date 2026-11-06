@@ -66,8 +66,15 @@ pub enum Shape {
         variants: Vec<Variant>,
         joined: Vec<String>,
     },
+    /// An untagged enum: the first of its shapes a value matches, as serde
+    /// tries its variants in order.
+    Untagged(Vec<Shape>),
     /// A value or `null`.
     Nullable(Box<Shape>),
+    /// Bytes (shared-types' `B64Bytes`), which the TypeScript side holds as a
+    /// `Uint8Array`: only a program's plugin lanes carry them, apart from the
+    /// JSON (`crates/shared-types/src/bytes.rs`).
+    Bytes,
     /// Any JSON value.
     Json,
 }
@@ -227,21 +234,27 @@ fn read_map(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupported>
     }
 }
 
-/// `anyOf` of a schema and `null`, as schemars writes a nullable reference.
+/// `anyOf` of a schema and `null`, as schemars writes a nullable reference,
+/// or of an untagged enum's variants, with `null` when it is optional.
 fn read_nullable_any_of(options: &Value, at: &str) -> Result<Shape, Unsupported> {
     let null = serde_json::json!({ "type": "null" });
     let options = options
         .as_array()
         .ok_or_else(|| unsupported(at, "`anyOf` that is not a list"))?;
-    match options.as_slice() {
-        [value, other] | [other, value] if *other == null && *value != null => Ok(Shape::Nullable(
-            Box::new(read(value, &format!("{at}.anyOf"))?),
-        )),
-        _ => Err(unsupported(
-            at,
-            "`anyOf` other than a value or null (an untagged enum)",
-        )),
-    }
+    let nullable = options.contains(&null);
+    let values: Vec<&Value> = options.iter().filter(|option| **option != null).collect();
+    let shape = match values.as_slice() {
+        [] => return Err(unsupported(at, "`anyOf` of null alone")),
+        [value] => read(value, &format!("{at}.anyOf"))?,
+        values => Shape::Untagged(
+            values
+                .iter()
+                .enumerate()
+                .map(|(index, value)| read(value, &format!("{at}.anyOf[{index}]")))
+                .collect::<Result<_, _>>()?,
+        ),
+    };
+    Ok(if nullable { Shape::Nullable(Box::new(shape)) } else { shape })
 }
 
 /// `"type": [T, "null"]`, as schemars writes a nullable value of a simple
@@ -289,6 +302,13 @@ fn read_string(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupport
     if let Some(values) = schema.get("enum") {
         only(schema, at, &["type", "enum"])?;
         return Ok(Shape::Enum(strings(values, at)?));
+    }
+    if let Some(encoding) = schema.get("contentEncoding") {
+        only(schema, at, &["type", "contentEncoding"])?;
+        if encoding != "base64" {
+            return Err(unsupported(at, format!("the content encoding {encoding}")));
+        }
+        return Ok(Shape::Bytes);
     }
     only(
         schema,
@@ -648,13 +668,21 @@ fn read_one_of(options: &Value, at: &str) -> Result<Shape, Unsupported> {
             None => variants.push(read_variant(option, &at)?),
         }
     }
-    let tag = discriminator(&variants).ok_or_else(|| {
-        unsupported(
-            at,
-            "variants without one required string tag they all carry (an externally tagged or untagged enum)",
-        )
-    })?;
-    Ok(Shape::Union { tag, variants, joined })
+    if let Some(tag) = discriminator(&variants) {
+        return Ok(Shape::Union { tag, variants, joined });
+    }
+    // An externally tagged enum: each variant its own name, as a string or
+    // an object of one member, which a union tells apart.
+    if !joined.is_empty() {
+        return Err(unsupported(at, "a union of other unions without one tag they all carry"));
+    }
+    Ok(Shape::Untagged(
+        options
+            .iter()
+            .enumerate()
+            .map(|(index, option)| read(option, &format!("{at}[{index}]")))
+            .collect::<Result<_, _>>()?,
+    ))
 }
 
 /// The values of a `oneOf` whose every option is a string `const` or

@@ -32,6 +32,7 @@ use bytes::Bytes;
 use demi_command_protocol::{CommandContext, MediumFacts};
 use demi_shared_types::B64Bytes;
 use futures_util::future::LocalBoxFuture;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use serde_with::rust::unwrap_or_skip;
@@ -41,7 +42,7 @@ use crate::JobCaller;
 
 /// One `rpc` call: the leaf it names, its validated arguments, and the
 /// invoking process's surroundings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RpcInvocation {
     /// The leaf's path, root first.
@@ -64,6 +65,7 @@ pub struct RpcInvocation {
     pub context: CommandContext,
     /// The agent node the invoking job runs for, which a job the handler
     /// starts elsewhere carries on; none for a job no agent started.
+    #[schemars(with = "JobCaller")]
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -82,6 +84,7 @@ pub struct RpcInvocation {
     pub resumed: bool,
     /// The pipes relayed for the call's standard input and output, which a
     /// handler that starts a job elsewhere can hand to it.
+    #[schemars(with = "RelayedPipes")]
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -91,6 +94,7 @@ pub struct RpcInvocation {
     /// The host the leaf's `bringsHost` argument names, as the dispatch
     /// resolved it once and checked it; the handler acts on it and
     /// never resolves the name again.
+    #[schemars(with = "BroughtHost")]
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -100,7 +104,7 @@ pub struct RpcInvocation {
 }
 
 /// A host a call brings into its conversation, as the dispatch resolved it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BroughtHost {
     /// The device's id.
@@ -112,9 +116,10 @@ pub struct BroughtHost {
 }
 
 /// The ids of a call's relayed pipes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RelayedPipes {
+    #[schemars(with = "String")]
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -176,7 +181,7 @@ pub enum PortError {
 }
 
 /// One request of a handler through its port.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -216,7 +221,7 @@ pub enum PortRequest {
 }
 
 /// The reply to a [`PortRequest`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",

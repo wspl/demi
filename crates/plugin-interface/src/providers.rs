@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 /// The models of one kind the user's entries offer: newest first by
 /// release date, those without one last.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MediaListing {
     pub models: Vec<MediaModel>,
@@ -202,8 +202,10 @@ pub struct CustomSizeRule {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_ratio: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub min_pixels: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub max_pixels: Option<u64>,
 }
 
@@ -283,7 +285,7 @@ pub enum EntryStatus {
 
 /// An entry whose models could not be listed, and why, as a call's
 /// refusal says it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MediaUnlisted {
     pub provider: String,
@@ -292,7 +294,7 @@ pub struct MediaUnlisted {
 
 /// One image to make: from the prompt alone, or from the prompt and the
 /// images given.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageAsk {
     pub prompt: String,
@@ -312,7 +314,7 @@ pub struct ImageAsk {
 }
 
 /// A shape, such as 16:9: two positive whole numbers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageAspect {
     pub width: u32,
@@ -320,7 +322,7 @@ pub struct ImageAspect {
 }
 
 /// An image an edit sends.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageInput {
     pub kind: ImageKind,
@@ -328,7 +330,7 @@ pub struct ImageInput {
 }
 
 /// The kinds of image an edit sends, by their media types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum ImageKind {
     #[serde(rename = "image/png")]
     Png,
@@ -349,7 +351,7 @@ impl ImageKind {
 }
 
 /// The image made, with the entry, account and model that made it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MadeImage {
     /// As the vendor answered it; the plugin reads what it is.
@@ -369,7 +371,7 @@ pub struct MadeImage {
 
 /// One video to make: from the prompt, with the frames and references
 /// given; an option left out is the vendor's default.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VideoAsk {
     pub prompt: String,
@@ -392,6 +394,7 @@ pub struct VideoAsk {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub seed: Option<u64>,
     /// A video model `demi video models` lists.
     pub model: String,
@@ -405,7 +408,7 @@ pub struct VideoAsk {
 }
 
 /// The video an edit or an extension changes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VideoSourceAsk {
     pub change: VideoChange,
@@ -414,7 +417,7 @@ pub struct VideoSourceAsk {
 }
 
 /// What a call asks of the video it is given.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum VideoChange {
     /// `demi video edit`.
@@ -424,7 +427,7 @@ pub enum VideoChange {
 }
 
 /// How the video an edit or an extension changes went to the vendor.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
 pub enum SentSource {
     /// As the file's bytes.
@@ -437,7 +440,7 @@ pub enum SentSource {
 }
 
 /// The job the vendor took: who makes it and its id at the vendor.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AskedVideo {
     /// The vendor's id of the job.
@@ -459,7 +462,7 @@ pub struct AskedVideo {
 }
 
 /// What one wait for the job answers: its next state, or its video.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
 pub enum VideoStep {
     /// Waiting for the vendor to start it.
@@ -474,7 +477,7 @@ pub enum VideoStep {
 }
 
 /// The video a job made, as the vendor sent it, with what it cost.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MadeVideo {
     /// As the vendor sent it; the plugin reads what it is.
@@ -487,7 +490,7 @@ pub struct MadeVideo {
 
 /// One audio file to make: speech from the text, or music or a sound
 /// effect from the prompt; an option left out is the vendor's default.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AudioAsk {
     pub kind: AudioKind,
@@ -505,6 +508,7 @@ pub struct AudioAsk {
     #[serde(default)]
     pub instrumental: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub seed: Option<u64>,
     /// A sound that loops.
     #[serde(default)]
@@ -542,7 +546,7 @@ impl AudioFileFormat {
 
 /// An option of `demi audio`, as a shape that has no field for it is said
 /// not to take it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum AudioOption {
     Instructions,
@@ -554,7 +558,7 @@ pub enum AudioOption {
 }
 
 /// Raw PCM's shape: signed little-endian samples, interleaved by channel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PcmShape {
     pub sample_rate: u32,
@@ -564,7 +568,7 @@ pub struct PcmShape {
 
 /// The audio made, as the vendor sent it, with who made it, the options
 /// its shape had no field for and what it cost.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MadeAudio {
     /// As the vendor sent it; the plugin reads what it is.
@@ -596,7 +600,7 @@ pub struct MadeAudio {
 
 /// The voices of a speech model, as the entry a call of it takes lists
 /// them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AudioVoices {
     pub model: String,
@@ -626,7 +630,7 @@ pub struct VoiceInfo {
 }
 
 /// Why a named entry cannot make a model now.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
 pub enum Unable {
     /// It does not offer the model, or makes none of its kind.
@@ -641,7 +645,7 @@ pub enum Unable {
 }
 
 /// Why no image or video was made; the plugin words it for its kind.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error, JsonSchema)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -757,7 +761,12 @@ pub enum MediaRefusal {
     /// The job had not finished when the call's bound, `seconds` from the
     /// ask, passed; it still runs at the vendor under its id `job`.
     #[error("the job {job} is still running at {vendor}")]
-    StillRunning { vendor: String, job: String, seconds: u64 },
+    StillRunning {
+        vendor: String,
+        job: String,
+        #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
+        seconds: u64,
+    },
     /// The entry `--provider` names cannot make the model now, saying why,
     /// with the entries that can, in the order a call tries them.
     #[error("{provider} cannot make \"{model}\"")]

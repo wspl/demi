@@ -27,11 +27,11 @@ pub const COMMAND_LOCALE_LANGUAGES: usize = 16;
 /// model knows it, or the conversation's user through a user stream. `User`
 /// is a struct variant so that unknown fields are refused: serde ignores
 /// them for a unit variant of an internally tagged enum.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum CommandCaller {
     Agent {
-        #[garde(skip)]
+        #[garde(range(max = crate::package::MAX_SAFE_INTEGER))]
         number: u64,
     },
     User {},
@@ -168,7 +168,7 @@ pub fn is_conversation_scope(name: &str) -> bool {
 /// an opaque handle that leads the runner to the job's execution context. A
 /// job another Host starts for `demi host shell` carries its invoking job's
 /// context.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommandContext {
     #[garde(custom(conversation_name))]

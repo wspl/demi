@@ -30,7 +30,7 @@ pub const DEMI_SUMMARY: &str =
 /// A plugin's id, such as `browser`: 1 to 32 lowercase letters, digits and
 /// hyphens. It names the plugin's context blocks, values, part of the
 /// product state, directories on a Host and page route.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(try_from = "String", into = "String")]
 pub struct PluginId(String);
 
@@ -86,7 +86,7 @@ impl fmt::Display for PluginId {
 }
 
 /// A plugin's declarations.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Manifest {
     pub id: PluginId,
@@ -156,7 +156,7 @@ impl Manifest {
 
 /// A vendor that signs its users in with OAuth 2.1 (`crates/plugin-host/src/oauth.rs`): the
 /// plugin host registers Demi with its authorization server, runs the sign-in and keeps the tokens.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OAuth {
     /// The vendor's name as the user knows it, such as `Exa`, which the
@@ -164,6 +164,7 @@ pub struct OAuth {
     pub vendor: String,
     /// The authorization server's issuer, an `https` URL, whose metadata
     /// (RFC 8414) names its endpoints.
+    #[schemars(with = "String")]
     pub issuer: Url,
     /// The resource the tokens are for (RFC 8707), such as
     /// `https://mcp.exa.ai/mcp`.
@@ -175,7 +176,7 @@ pub struct OAuth {
 /// Host for as long as it keeps the stream open. Its messages and constants
 /// are declared for the page's generated types (`crates/xtask/src/contracts/pages.rs`);
 /// the backend relays the stream's bytes without reading them.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Stream {
     /// The name the page opens it by, taken once among all plugins.
@@ -222,7 +223,7 @@ impl Stream {
 }
 
 /// A value both ends of a stream use, such as `LIVE_VIDEO_FRAME = 2`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Constant {
     /// An upper-case TypeScript name.
@@ -233,7 +234,7 @@ pub struct Constant {
 
 /// A plugin's page: its package, and what it
 /// reads and calls.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Page {
     /// The page package, such as `@demicodes/plugin-browser`, which the web
@@ -270,7 +271,7 @@ pub struct Page {
 /// it has an HTML document ([`crate::Request::ReplyBlockDocument`]), which
 /// the backend serves as a page of its own in an opaque origin
 /// (`crates/backend-http/src/blocks.rs`) for the component to frame.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReplyBlock {
     pub tag: String,
@@ -344,7 +345,7 @@ impl Page {
 }
 
 /// One scope of a page's state.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct State {
     pub schema: Schema,
@@ -386,7 +387,7 @@ impl State {
 
 /// A page method: what its parameters and result look like, whom it is
 /// for, and the package operations it calls.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Method {
     /// A snake_case word, such as `navigate`.
@@ -422,7 +423,7 @@ impl Method {
 
 /// Whom a page method is called for, which decides its route, and whom a page
 /// state is of.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Scope {
     /// The user: `POST /api/plugins/:plugin/calls/:method`.
@@ -467,7 +468,7 @@ fn schema_of<T: JsonSchema>(direction: Direction) -> Schema {
 /// says is always theirs: with every feature on, the group's own summary and index
 /// entry; with some off, the sentences of those on, joined in the order
 /// the manifest lists them.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Feature {
     /// Its name in the plugin, such as `search`, which its page and the
@@ -488,7 +489,7 @@ pub struct Feature {
 
 /// One command tree of a plugin, and where it goes in the command set every
 /// node starts from.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Commands {
     pub placement: Placement,
@@ -504,7 +505,7 @@ pub struct Commands {
 }
 
 /// Where a plugin's command tree goes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Placement {
     /// A named group of the `demi` root, for a plugin of this repository.

@@ -3,15 +3,17 @@
 //! product and the agent runtime read a project's files with them.
 
 use demi_shared_types::B64Bytes;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// One path read on a Host, as the Host names it, and the most
 /// bytes of a file to answer: absolute, or, for a command, relative to its
 /// job's directory, which the Host's own rules resolve.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostRead {
     pub path: String,
+    #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub limit: u64,
     /// Whether a file within the limit is read by its content: the Host
     /// hashes it, and its bytes travel only when the user's blobs lack them
@@ -34,7 +36,7 @@ impl HostRead {
 }
 
 /// What a path on a Host is. A symbolic link is followed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -50,6 +52,7 @@ pub enum HostFile {
     /// A file's first bytes, at most the read's limit, and its size.
     File {
         bytes: B64Bytes,
+        #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
         size: u64,
     },
     /// Neither a file nor a directory.
@@ -61,7 +64,7 @@ pub enum HostFile {
 }
 
 /// An entry of a directory on a Host.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostEntry {
     pub name: String,
@@ -69,7 +72,7 @@ pub struct HostEntry {
 }
 
 /// An entry's kind, without following a symbolic link.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EntryKind {
     File,

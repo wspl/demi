@@ -5,6 +5,7 @@ use std::fmt;
 use std::time::Duration;
 
 use demi_shared_types::B64Bytes;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -12,7 +13,7 @@ use url::Url;
 /// letters, digits, hyphens and underscores. The plugin host keeps the
 /// secrets of a plugin's OAuth sign-in under names outside this rule, so a
 /// plugin never reads them.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(try_from = "String", into = "String")]
 pub struct SecretName(String);
 
@@ -65,10 +66,11 @@ impl fmt::Display for SecretName {
 
 /// A secret and the revision a write of it names. `Debug` never shows its
 /// text.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StoredSecret {
     pub value: String,
+    #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub revision: u64,
 }
 
@@ -83,10 +85,11 @@ impl fmt::Debug for StoredSecret {
 
 /// One outbound request (`crates/plugin-host/src/web.rs`): only `https`,
 /// with a deadline and a limit on the response's body the plugin names.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WebRequest {
     pub method: WebMethod,
+    #[schemars(with = "String")]
     pub url: Url,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub headers: Vec<WebHeader>,
@@ -94,9 +97,11 @@ pub struct WebRequest {
     pub body: Option<B64Bytes>,
     /// How long the request may take, the response's body included, in
     /// milliseconds: 1 to [`WebRequest::MAX_DEADLINE`].
+    #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub deadline_ms: u64,
     /// The most bytes of the response's body: 1 to
     /// [`WebRequest::MAX_BODY_BYTES`].
+    #[schemars(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub limit_bytes: u64,
 }
 
@@ -150,7 +155,7 @@ impl fmt::Debug for WebRequest {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum WebMethod {
     Get,
@@ -162,7 +167,7 @@ pub enum WebMethod {
 }
 
 /// A header of a request or a response.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WebHeader {
     pub name: String,
@@ -176,7 +181,7 @@ impl fmt::Debug for WebHeader {
 }
 
 /// The answer to a [`WebRequest`]: any status, as the vendor answered.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WebResponse {
     pub status: u16,
@@ -204,7 +209,7 @@ impl fmt::Debug for WebResponse {
 }
 
 /// Why an outbound request, or a step of an OAuth sign-in, did not answer.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error, JsonSchema)]
 #[serde(
     tag = "reason",
     rename_all = "snake_case",
