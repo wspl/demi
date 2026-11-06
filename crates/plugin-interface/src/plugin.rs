@@ -10,15 +10,15 @@ use demi_host_interface::{
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
-    Commands, DEMI_ROOT, DEMI_SUMMARY, Manifest, Placement, PluginError, PluginPort, Reply, Request,
+    Commands, DEMI_ROOT, DEMI_SUMMARY, Manifest, Placement, PluginError, PluginPort, Reply, Request, UserId,
 };
 
 /// A plugin as the backend registers it.
 pub trait PluginFactory: Send + Sync {
     fn manifest(&self) -> &Manifest;
 
-    /// The instance that serves one user's core, on its thread.
-    fn instance(&self) -> Rc<dyn Plugin>;
+    /// The instance that serves the core of `user`, on its thread.
+    fn instance(&self, user: &UserId) -> Rc<dyn Plugin>;
 
     /// A file its pages load by name, such as a library a document it serves
     /// runs, which the backend serves to anyone: a file is the same for every

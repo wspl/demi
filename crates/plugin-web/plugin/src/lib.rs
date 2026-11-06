@@ -22,6 +22,7 @@ mod web;
 
 use std::rc::Rc;
 
+use demi_plugin_interface::UserId;
 use demi_plugin_interface::{
     CommandPlugin, Manifest, OAuth, Plugin, PluginError, PluginFactory, PluginId, PluginPort,
     Reply, Request,
@@ -70,7 +71,7 @@ impl PluginFactory for Web {
         &self.manifest
     }
 
-    fn instance(&self) -> Rc<dyn Plugin> {
+    fn instance(&self, _: &UserId) -> Rc<dyn Plugin> {
         Rc::new(Instance(Rc::new(State {
             commands: web::commands(),
             mcp: mcp::Mcp::default(),

@@ -663,6 +663,13 @@ impl PluginPort {
         )
     }
 
+    /// Sends `message` as it is and answers what came back, for a plugin
+    /// that carries its port's messages elsewhere, such as a program's over
+    /// a wire.
+    pub fn relay(&self, message: PortMessage) -> LocalBoxFuture<'_, Result<PortAnswer, PortError>> {
+        self.transport.request(message)
+    }
+
     /// Completes once the request is stopped.
     pub fn cancelled(&self) -> WaitForCancellationFuture<'_> {
         self.cancel.cancelled()

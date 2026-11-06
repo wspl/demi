@@ -27,6 +27,7 @@ use super::cores::{OpenCores, Serving, not_open};
 use crate::caller::{Caller, CallerPage, Gone};
 use crate::error::ApiError;
 use crate::starter_lane::StarterLane;
+use crate::plugin_lanes::PluginLanes;
 use crate::state::StateError;
 
 /// The program, calling the serving core `principal`.
@@ -91,6 +92,10 @@ impl Caller for ProgramCaller {
 
     fn starter_lane(&self) -> Option<Arc<StarterLane>> {
         Some(self.core.starter_lane.clone())
+    }
+
+    fn plugin_lanes(&self) -> Option<Arc<PluginLanes>> {
+        Some(self.core.plugin_lanes.clone())
     }
 }
 

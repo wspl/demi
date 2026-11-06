@@ -60,11 +60,21 @@ pub mod workflows;
 pub mod projects;
 pub mod workspaces;
 
-/// The largest message a page sends on any of its lanes: a conversation's,
-/// the synchronization channel's and a user stream's. A frame
+/// The largest message a page sends on a lane other than a program's
+/// plugin's: a conversation's, the synchronization channel's and a user
+/// stream's. A frame
 /// refers to an upload and never carries its bytes, and a user stream frames
 /// its own messages, so no page needs a larger one.
 ///
 /// Bounded because a message is read whole into memory and a client sends
 /// without end.
 pub const MAX_PAGE_MESSAGE_BYTES: usize = 1024 * 1024;
+
+/// The largest message a program sends on its plugin's lane: a reply or a
+/// port message carries its bytes whole, as the plugin contract passes
+/// them, and the largest a plugin passes is a video or a fetched file of 64
+/// MiB.
+///
+/// Bounded because a message is read whole into memory and a client sends
+/// without end.
+pub const MAX_PLUGIN_MESSAGE_BYTES: usize = 64 * 1024 * 1024;

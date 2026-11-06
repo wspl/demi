@@ -26,6 +26,7 @@ use std::rc::Rc;
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::browser::{BrowserMessage, TabsChange};
 use demi_command_package_browser_protocol::{PACKAGE, live};
+use demi_plugin_interface::UserId;
 use demi_plugin_interface::{
     CommandPlugin, Manifest, Placement, Plugin, PluginError, PluginFactory,
     PluginId, PluginPort, Reply, Request, Scope, Stream,
@@ -65,7 +66,7 @@ impl PluginFactory for Browser {
         &self.manifest
     }
 
-    fn instance(&self) -> Rc<dyn Plugin> {
+    fn instance(&self, _: &UserId) -> Rc<dyn Plugin> {
         Rc::new(Instance {
             commands: commands(),
             work: panel::Work::default(),

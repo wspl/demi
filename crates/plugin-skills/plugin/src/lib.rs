@@ -88,6 +88,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use demi_plugin_interface::UserId;
 use demi_plugin_interface::{
     CommandPlugin, Manifest, Method, Page, Plugin, PluginError, PluginId, PluginPort, Reply,
     Request, Scope,
@@ -163,7 +164,7 @@ impl demi_plugin_interface::PluginFactory for Skills {
         &self.manifest
     }
 
-    fn instance(&self) -> Rc<dyn Plugin> {
+    fn instance(&self, _: &UserId) -> Rc<dyn Plugin> {
         Rc::new(Instance(Rc::new(State {
             commands: commands::commands(),
             plugin: self.manifest.id.clone(),

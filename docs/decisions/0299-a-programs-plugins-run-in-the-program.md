@@ -35,22 +35,31 @@ program                                 demi-core
 
 ### Declaring
 
-- `PUT /plugins` takes the program's manifests (`Manifest`, which is
-  serializable already) before the process's first core opens: the
-  registry is fixed when the process's services start, as the server's is
-  (`Registry::new`). After a core has opened, it answers 409.
+- `PUT /plugins { plugins: [Manifest] }` takes the program's manifests
+  (`Manifest`, which is serializable already) before the process's first
+  core opens: the registry is fixed when the process's services start, as
+  the server's is (`Registry::new`), and the process's services start as
+  its first core opens. A manifest the registry refuses, such as one whose
+  id a release's plugin has, answers 400; after a core has opened, the
+  call answers 409 `plugins_fixed`.
 - For each manifest, the process registers a plugin whose instance in a
   core passes each request to the program and each of the program's port
   messages to the core's port. The plugin host treats it as any plugin:
   its commands join the command set, the user turns it and its features on
   and off, and its context is asked before each request.
+- An instance learns whose core it serves: `PluginFactory::instance` takes
+  the core's id, so a program plugin's instance sends its requests on that
+  core's lane. A plugin linked in ignores it.
 
 ### Running
 
 - The program opens one lane on each core's connection for each of its
-  plugins, `{ plugin: "<id>" }`, a new `LaneTarget`. A request while the
-  lane is not open fails as a plugin that failed (`PluginError::Failed`);
-  the lane's end ends the requests it carried (`PluginError::Ended`).
+  plugins, `{ kind: "plugin", plugin: "<id>" }`, a new `LaneTarget`. Only
+  the program that opened the core may; a plugin it did not declare is
+  refused `unknown_plugin`, and a second lane of one `plugin_lane_open`.
+  A request while the lane is not open fails as a plugin that failed
+  (`PluginError::Failed`); the lane's end ends the requests it carried
+  (`PluginError::Ended`).
 - Each message has the number of the request it belongs to: a request and
   its reply, a port message and its answer, and a cancellation. A port
   message may follow its request's reply, as the contract allows a page
@@ -58,11 +67,16 @@ program                                 demi-core
 
 ```text
 core -> program   { request: 7, call: Request }
-program -> core   { request: 7, reply: Reply | PluginError }
+program -> core   { request: 7, reply: Reply }
+                  { request: 7, error: PluginError }
 program -> core   { request: 7, port: 1, message: PortMessage }
-core -> program   { request: 7, port: 1, answer: PortAnswer | PortRefusal }
+core -> program   { request: 7, port: 1, answer: PortAnswer }
+                  { request: 7, port: 1, error: "the request is over" }
 core -> program   { request: 7, cancel: true }
 ```
+
+A port message whose request is over, or that the core failed to pass on,
+is answered with `error` rather than left waiting.
 
 ### Bytes
 
@@ -78,28 +92,36 @@ of the JSON alone.
 u32 json length | json: { ..., "bytes": { "$$ref$$": 0 } } | u32 length | bytes
 ```
 
-`B64Bytes` already serializes as bytes to a format that is not human
-readable, which is where the encoder takes them out.
+The encoder sets a scope in which `B64Bytes` writes its buffer's index and
+keeps the bytes apart (`shared-types`'s `to_json_apart`), and the decoder
+one in which it reads them back. A format that is not human readable cannot
+take them out: serde reads an internally tagged enum's fields through a
+buffer that reports itself human readable, and every message here is one.
+
+A message is read whole into memory, so a lane bounds it: a plugin's lane
+takes messages of up to 64 MiB (`MAX_PLUGIN_MESSAGE_BYTES`), the largest
+media a plugin passes whole, where every other lane takes 1 MiB.
 
 ## Built on
 
 | What the design uses | Where it is today | New |
 | --- | --- | --- |
 | The plugin contract | `plugin-interface`: `Manifest`, `Request`, `Reply`, `PortMessage`, `PortAnswer`, `PluginError` | |
-| One instance for each core | `PluginFactory::instance` | its messages go to the program |
-| A registry fixed at the services' start | `Registry::new` | filled by `PUT /plugins` first |
-| A lane with binary messages | `shared-lanes` | `LaneTarget::Plugin` |
-| Bytes apart from text | `B64Bytes` as bytes when not human readable | the lane's buffers |
+| One instance for each core | `PluginFactory::instance` | takes the core's id; its messages go to the program |
+| A registry fixed at the services' start | `Registry::new` | the process's services start at the first open, after `PUT /plugins` |
+| A lane with binary messages | `shared-lanes` | `LaneTarget::Plugin`, and a larger message limit |
+| Bytes in JSON | `B64Bytes` as base64 | a scope that keeps them apart |
 | The contract across a wire | the entry comment's promise; the JSON loopback that kept it was deleted | first run |
 
 ## Spike
 
-None: every message of the contract is serializable and has a JSON Schema,
-which its crate's rules require of each type, so what crosses the lane is
-what the types say; the lane carries binary messages already.
+None: every message of the contract is serializable, which its crate's
+rules require of each type, so what crosses the lane is what the types say;
+the lane carries binary messages already.
 
 The record also brings the entry comment of `plugin-interface` up to date:
-it names a loopback that no longer exists.
+it names a loopback that no longer exists, and a JSON Schema of every
+message type, which only some of them derive.
 
 ## Prior art
 

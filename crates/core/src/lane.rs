@@ -46,6 +46,7 @@ pub enum LaneKind {
     Signaling,
     UserStream,
     Starter,
+    Plugin,
 }
 
 impl LaneKind {
@@ -57,6 +58,7 @@ impl LaneKind {
             Self::Signaling => "signaling",
             Self::UserStream => "user_stream",
             Self::Starter => "starter",
+            Self::Plugin => "plugin",
         }
     }
 

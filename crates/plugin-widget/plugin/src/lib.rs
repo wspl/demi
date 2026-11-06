@@ -25,6 +25,7 @@ mod widget;
 
 use std::rc::Rc;
 
+use demi_plugin_interface::UserId;
 use demi_plugin_interface::{
     CommandPlugin, Manifest, Page, Plugin, PluginError, PluginFactory, PluginFile, PluginId, PluginPort,
     Reply, Request,
@@ -66,7 +67,7 @@ impl PluginFactory for Widgets {
         &self.manifest
     }
 
-    fn instance(&self) -> Rc<dyn Plugin> {
+    fn instance(&self, _: &UserId) -> Rc<dyn Plugin> {
         Rc::new(Instance(commands::commands()))
     }
 

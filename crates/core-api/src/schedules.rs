@@ -26,7 +26,7 @@ use crate::caller::Principal;
 use crate::page_client::client_address;
 
 /// The one answer an unknown address and a wrong secret share.
-fn unauthorized() -> ApiError {
+pub(crate) fn unauthorized() -> ApiError {
     ApiError::new(
         StatusCode::UNAUTHORIZED,
         ErrorCode::Unauthenticated,

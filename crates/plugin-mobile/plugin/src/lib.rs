@@ -23,6 +23,7 @@ use std::rc::Rc;
 use demi_command_declarations::NativeOperation;
 use demi_command_package_mobile_protocol::mobile::{DevicesChange, MobileMessage};
 use demi_command_package_mobile_protocol::{PACKAGE, live};
+use demi_plugin_interface::UserId;
 use demi_plugin_interface::{
     CommandPlugin, Manifest, Placement, Plugin, PluginError, PluginFactory,
     PluginId, PluginPort, Reply, Request, Scope, Stream,
@@ -64,7 +65,7 @@ impl PluginFactory for Mobile {
         &self.manifest
     }
 
-    fn instance(&self) -> Rc<dyn Plugin> {
+    fn instance(&self, _: &UserId) -> Rc<dyn Plugin> {
         Rc::new(Instance {
             commands: commands(),
             work: panel::Work::default(),

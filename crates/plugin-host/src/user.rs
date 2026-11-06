@@ -444,7 +444,7 @@ impl Shared {
         let live = match self.live(plugin, &enabled) {
             Some(live) => live,
             None if lifecycle => Live {
-                instance: self.registry.plugins[plugin].factory.instance(),
+                instance: self.registry.plugins[plugin].factory.instance(&self.user),
                 ended: CancellationToken::new(),
             },
             None => {
@@ -472,7 +472,7 @@ impl Shared {
         }
         let mut lives = self.lives.borrow_mut();
         let live = lives[plugin].get_or_insert_with(|| Live {
-            instance: self.registry.plugins[plugin].factory.instance(),
+            instance: self.registry.plugins[plugin].factory.instance(&self.user),
             ended: CancellationToken::new(),
         });
         Some(live.clone())

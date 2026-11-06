@@ -48,6 +48,9 @@ pub enum LaneTarget {
     /// What the core asks of the program that opened it
     /// (`crates/web-api-protocol/src/starter.rs`); only that program opens it.
     Starter,
+    /// The core's requests of the program's plugin `plugin`
+    /// (`crates/plugin-interface/src/wire.rs`); only the program opens it.
+    Plugin { plugin: String },
 }
 
 /// Why the backend refused a lane's open: the status and the error answer a

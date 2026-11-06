@@ -57,7 +57,7 @@ use demi_core::lane::{
     ToConnection, open_lane,
 };
 use demi_shared_types::RequestId;
-use demi_web_api_protocol::MAX_PAGE_MESSAGE_BYTES;
+use demi_web_api_protocol::{MAX_PAGE_MESSAGE_BYTES, MAX_PLUGIN_MESSAGE_BYTES};
 use demi_shared_lanes::{Assembly, AssemblyError, Frame};
 use demi_web_api_protocol::connection::{
     BackendConnectionMessage, LANE_CREDIT, LaneRefusal, LaneTarget, MAX_LANES, PageConnectionMessage,
@@ -76,6 +76,7 @@ use tracing::Instrument as _;
 
 use crate::api::Api;
 use crate::caller::{Caller, CallerOf, Gone};
+use crate::plugin_lanes::Unclaimed;
 use crate::error::ApiError;
 use crate::page_client::PageClient;
 use crate::request_id;
@@ -223,6 +224,8 @@ struct Opening {
     messages: Vec<LaneMessage>,
     /// The message whose pieces are still coming.
     assembling: Assembly,
+    /// The largest message the lane takes.
+    limit: usize,
     /// Why the lane closes once it opens: the page sent past its credit or a
     /// message larger than one may be, and what followed was not kept.
     overrun: Option<(u16, &'static str)>,
@@ -231,9 +234,8 @@ struct Opening {
 impl Opening {
     /// Keeps a piece the page sent before the open was answered, put
     /// together into its message, within what an open lane would take: at
-    /// most the lane's credit of messages, each at most
-    /// `MAX_PAGE_MESSAGE_BYTES`, so a page holds no more here than once the
-    /// lane opens.
+    /// most the lane's credit of messages, each at most its limit, so a page
+    /// holds no more here than once the lane opens.
     fn hold(&mut self, flags: u8, piece: Bytes) {
         if self.overrun.is_some() {
             return;
@@ -242,11 +244,19 @@ impl Opening {
             self.overrun = Some((close_code::POLICY, "credit_exceeded"));
             return;
         }
-        match self.assembling.take(flags, piece, MAX_PAGE_MESSAGE_BYTES) {
+        match self.assembling.take(flags, piece, self.limit) {
             Ok(Some(message)) => self.messages.push(lane_message(message)),
             Ok(None) => {}
             Err(error) => self.overrun = Some(assembly_close(error)),
         }
+    }
+}
+
+/// The largest message a lane of `kind` takes.
+fn message_limit(kind: LaneKind) -> usize {
+    match kind {
+        LaneKind::Plugin => MAX_PLUGIN_MESSAGE_BYTES,
+        _ => MAX_PAGE_MESSAGE_BYTES,
     }
 }
 
@@ -273,6 +283,8 @@ struct OpenLane {
     held: u16,
     /// The pieces of the page's message that more pieces complete.
     assembling: Assembly,
+    /// The largest message the lane takes.
+    limit: usize,
     /// Whether the lane closed: the page's messages for it are dropped, and
     /// it waits for its owner to end it.
     closed: bool,
@@ -485,6 +497,7 @@ impl Connection {
             Ok(LaneTarget::Signaling { .. }) => LaneKind::Signaling,
             Ok(LaneTarget::UserStream { .. }) => LaneKind::UserStream,
             Ok(LaneTarget::Starter) => LaneKind::Starter,
+            Ok(LaneTarget::Plugin { .. }) => LaneKind::Plugin,
         };
         let request = request_id::generate();
         let span = request_id::lane_span(
@@ -539,6 +552,7 @@ impl Connection {
                 task: task.abort_handle(),
                 messages: Vec::new(),
                 assembling: Assembly::default(),
+                limit: message_limit(kind),
                 overrun: None,
             }),
         );
@@ -583,6 +597,7 @@ impl Connection {
                 to_owner,
                 held: 0,
                 assembling: Assembly::default(),
+                limit: message_limit(kind),
                 closed: false,
             }),
         );
@@ -615,7 +630,7 @@ impl Connection {
         if open.closed {
             return Ok(());
         }
-        match open.assembling.take(flags, piece, MAX_PAGE_MESSAGE_BYTES) {
+        match open.assembling.take(flags, piece, open.limit) {
             Ok(Some(message)) => self.deliver(lane, lane_message(message)),
             Ok(None) => {}
             Err(error) => {
@@ -760,6 +775,24 @@ async fn check_open(state: &Api, caller: &Arc<dyn Caller>, target: LaneTarget) -
                     ErrorCode::StarterLaneOpen,
                     "The core's starter lane is open already",
                 )
+            })?;
+            Ok(Opened::new(move |lane, reader| claim.serve(lane, reader)))
+        }
+        LaneTarget::Plugin { plugin } => {
+            let lanes = caller
+                .plugin_lanes()
+                .ok_or_else(|| ApiError::forbidden("Only the program that opened the core opens its plugins' lanes"))?;
+            let claim = lanes.claim(&plugin).map_err(|unclaimed| match unclaimed {
+                Unclaimed::Unknown => ApiError::new(
+                    StatusCode::NOT_FOUND,
+                    ErrorCode::UnknownPlugin,
+                    format!("The program declared no plugin \"{plugin}\""),
+                ),
+                Unclaimed::Open => ApiError::new(
+                    StatusCode::CONFLICT,
+                    ErrorCode::PluginLaneOpen,
+                    format!("The lane of the plugin \"{plugin}\" is open already"),
+                ),
             })?;
             Ok(Opened::new(move |lane, reader| claim.serve(lane, reader)))
         }

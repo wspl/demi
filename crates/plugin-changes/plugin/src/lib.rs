@@ -18,6 +18,7 @@
 
 use std::rc::Rc;
 
+use demi_plugin_interface::UserId;
 use demi_plugin_interface::{Manifest, NoRequests, Page, Plugin, PluginFactory, PluginId};
 
 /// The plugin's factory.
@@ -48,7 +49,7 @@ impl PluginFactory for Changes {
         &self.manifest
     }
 
-    fn instance(&self) -> Rc<dyn Plugin> {
+    fn instance(&self, _: &UserId) -> Rc<dyn Plugin> {
         Rc::new(NoRequests)
     }
 }

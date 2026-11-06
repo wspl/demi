@@ -9,6 +9,7 @@ mod video;
 
 use std::rc::Rc;
 
+use demi_plugin_interface::UserId;
 use demi_plugin_interface::{
     CommandPlugin, Manifest, Plugin, PluginError, PluginFactory, PluginId, PluginPort, Reply, Request,
 };
@@ -41,7 +42,7 @@ impl PluginFactory for Video {
         &self.manifest
     }
 
-    fn instance(&self) -> Rc<dyn Plugin> {
+    fn instance(&self, _: &UserId) -> Rc<dyn Plugin> {
         Rc::new(Instance(commands::commands()))
     }
 }

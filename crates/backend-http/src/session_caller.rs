@@ -13,6 +13,7 @@ use demi_backend_user_shard::services::Services;
 use demi_core::Core;
 use demi_core_api::caller::{Caller, CallerPage, Gone};
 use demi_core_api::error::ApiError;
+use demi_core_api::plugin_lanes::PluginLanes;
 use demi_core_api::starter_lane::StarterLane;
 use demi_web_api_protocol::connection::LaneTarget;
 use demi_web_api_protocol::ids::UserId;
@@ -108,6 +109,10 @@ impl Caller for SessionCaller {
     }
 
     fn starter_lane(&self) -> Option<Arc<StarterLane>> {
+        None
+    }
+
+    fn plugin_lanes(&self) -> Option<Arc<PluginLanes>> {
         None
     }
 

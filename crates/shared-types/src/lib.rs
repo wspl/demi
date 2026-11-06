@@ -113,7 +113,7 @@ pub use block::{
     TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock, client_block,
     client_blocks, WakeupPlacement,
 };
-pub use bytes::B64Bytes;
+pub use bytes::{B64Bytes, from_json_apart, to_json_apart};
 pub use comment::{Comment, CommentContent, CommentPart, CommentStage, Message, MessageComment, comments_content, markdown_quote};
 pub use cost::{Cost, Currency};
 pub use catalog::{CatalogRecord, ModelCost, ProviderModel, ProviderModelList, ServiceTier, UnavailableSetting};

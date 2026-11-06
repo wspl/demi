@@ -1,6 +1,16 @@
-//! Bytes in JSON as a base64 string, and in a binary format as bytes.
+//! Bytes in JSON as a base64 string, and in a binary format as bytes; or,
+//! in JSON whose bytes travel beside it ([`to_json_apart`]), as the index of
+//! their buffer, as VS Code's extension host passes buffers:
+//!
+//! ```text
+//! { "image": { "$$ref$$": 0 } }  +  buffers: [ <bytes of the image> ]
+//! ```
+//!
+//! The JSON is serde_json's, which is human-readable, so a value inside an
+//! internally tagged enum, which serde reads through a human-readable
+//! buffer, takes the same path as any other.
 
-use std::{borrow::Cow, fmt, ops::Deref};
+use std::{borrow::Cow, cell::RefCell, fmt, ops::Deref};
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 use bytes::Bytes;
@@ -77,7 +87,22 @@ impl Serialize for B64Bytes {
         if !serializer.is_human_readable() {
             return self.0.serialize(serializer);
         }
-        serializer.serialize_str(&STANDARD.encode(&self.0))
+        let taken = APART.with_borrow_mut(|apart| match apart {
+            Some(Apart::Taking(buffers)) => {
+                buffers.push(self.0.clone());
+                Some(buffers.len() - 1)
+            }
+            _ => None,
+        });
+        match taken {
+            Some(index) => {
+                use serde::ser::SerializeMap as _;
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(REF, &index)?;
+                map.end()
+            }
+            None => serializer.serialize_str(&STANDARD.encode(&self.0)),
+        }
     }
 }
 
@@ -86,11 +111,95 @@ impl<'de> Deserialize<'de> for B64Bytes {
         if !deserializer.is_human_readable() {
             return Bytes::deserialize(deserializer).map(Self);
         }
-        let text = Cow::<'de, str>::deserialize(deserializer)?;
+        deserializer.deserialize_any(Readable)
+    }
+}
+
+/// The key of a buffer's index in JSON whose bytes travel beside it.
+const REF: &str = "$$ref$$";
+
+thread_local! {
+    /// The buffers of the JSON this thread encodes or decodes now, while
+    /// it does.
+    static APART: RefCell<Option<Apart>> = const { RefCell::new(None) };
+}
+
+enum Apart {
+    /// The bytes taken out so far, each at its index.
+    Taking(Vec<Bytes>),
+    /// The buffers the JSON's indexes name.
+    Giving(Vec<Bytes>),
+}
+
+/// Reads bytes as base64 text, or, while JSON whose bytes travel beside it
+/// is decoded, as the index of their buffer.
+struct Readable;
+
+impl<'de> de::Visitor<'de> for Readable {
+    type Value = B64Bytes;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("base64 text, or the index of a buffer")
+    }
+
+    fn visit_str<E: de::Error>(self, text: &str) -> Result<B64Bytes, E> {
         let bytes = STANDARD
             .decode(text.as_bytes())
-            .map_err(|error| de::Error::custom(format_args!("invalid base64: {error}")))?;
-        Ok(Self(bytes.into()))
+            .map_err(|error| E::custom(format_args!("invalid base64: {error}")))?;
+        Ok(B64Bytes(bytes.into()))
+    }
+
+    fn visit_map<M: de::MapAccess<'de>>(self, mut map: M) -> Result<B64Bytes, M::Error> {
+        let Some((key, index)) = map.next_entry::<Cow<'de, str>, usize>()? else {
+            return Err(de::Error::custom("an empty object is no bytes"));
+        };
+        if key != REF || map.next_key::<de::IgnoredAny>()?.is_some() {
+            return Err(de::Error::custom(format_args!("bytes are base64 text or {{\"{REF}\": index}}")));
+        }
+        let given = APART.with_borrow(|apart| match apart {
+            Some(Apart::Giving(buffers)) => buffers.get(index).cloned(),
+            _ => None,
+        });
+        given
+            .map(B64Bytes)
+            .ok_or_else(|| de::Error::custom(format_args!("no buffer {index} came with the JSON")))
+    }
+}
+
+/// `value` as JSON whose bytes travel beside it: each [`B64Bytes`] in it as
+/// the index of its buffer, and the buffers in that order.
+pub fn to_json_apart<T: Serialize + ?Sized>(value: &T) -> serde_json::Result<(String, Vec<Bytes>)> {
+    let _scope = Scope::enter(Apart::Taking(Vec::new()));
+    let json = serde_json::to_string(value)?;
+    let buffers = match APART.take() {
+        Some(Apart::Taking(buffers)) => buffers,
+        _ => Vec::new(),
+    };
+    Ok((json, buffers))
+}
+
+/// The value of `json`, whose bytes are `buffers` at the indexes it names
+/// ([`to_json_apart`]); base64 text reads as ever.
+pub fn from_json_apart<T: de::DeserializeOwned>(json: &[u8], buffers: Vec<Bytes>) -> serde_json::Result<T> {
+    let _scope = Scope::enter(Apart::Giving(buffers));
+    serde_json::from_slice(json)
+}
+
+/// The thread's buffers while one encoding or decoding runs; dropping it
+/// ends them, a panic included.
+struct Scope(Option<Apart>);
+
+impl Scope {
+    fn enter(apart: Apart) -> Self {
+        Self(APART.replace(Some(apart)))
+    }
+}
+
+impl Drop for Scope {
+    fn drop(&mut self) {
+        // An encoding inside another's, such as a value serialized to text
+        // within it, gives the outer one its buffers back.
+        APART.set(self.0.take());
     }
 }
 

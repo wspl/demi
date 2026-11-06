@@ -19,7 +19,7 @@ use std::fs::File;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::rc::{Rc, Weak};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use axum::http::StatusCode;
 use demi_core::Core;
@@ -37,6 +37,7 @@ use demi_shared_artifacts::{Mode, Permissions, Publication};
 use demi_shared_types::ScheduleId;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::UserId;
+use demi_plugin_interface::PluginId;
 use demi_web_api_protocol::settings::InstanceMode;
 use futures_util::future::BoxFuture;
 use tokio_util::sync::CancellationToken;
@@ -45,6 +46,7 @@ use url::Url;
 use super::program::ProgramStarter;
 use crate::error::ApiError;
 use crate::schedules::ScheduleOwners;
+use crate::plugin_lanes::PluginLanes;
 use crate::starter_lane::StarterLane;
 
 /// Held while a process has the core open, so another process's open of
@@ -61,6 +63,8 @@ pub(crate) struct OpenCores {
     /// Where the program's server forwards the process's routes; a core's
     /// are under `/cores/{id}` of it.
     public_url: Option<Url>,
+    /// The program's plugins, once the services started with them.
+    plugins: OnceLock<Arc<[PluginId]>>,
 }
 
 enum Slot {
@@ -90,6 +94,8 @@ struct Held {
     closed: CancellationToken,
     /// What the core asks of the program.
     starter_lane: Arc<StarterLane>,
+    /// The program's plugins' lanes.
+    plugin_lanes: Arc<PluginLanes>,
 }
 
 /// What a call of a serving core's routes is given of it.
@@ -97,6 +103,7 @@ struct Held {
 pub(crate) struct Serving {
     pub(crate) closed: CancellationToken,
     pub(crate) starter_lane: Arc<StarterLane>,
+    pub(crate) plugin_lanes: Arc<PluginLanes>,
 }
 
 impl OpenCores {
@@ -104,7 +111,14 @@ impl OpenCores {
         Self {
             slots: Mutex::default(),
             public_url,
+            plugins: OnceLock::new(),
         }
+    }
+
+    /// Fixes the program's plugins, as the services start with them.
+    pub(crate) fn fix_plugins(&self, plugins: Arc<[PluginId]>) {
+        // The services start once.
+        let _ = self.plugins.set(plugins);
     }
 
     fn slots(&self) -> MutexGuard<'_, HashMap<UserId, Slot>> {
@@ -129,6 +143,7 @@ impl OpenCores {
             }) => Some(Serving {
                 closed: core.closed.clone(),
                 starter_lane: core.starter_lane.clone(),
+                plugin_lanes: core.plugin_lanes.clone(),
             }),
             _ => None,
         }
@@ -210,6 +225,7 @@ impl OpenCores {
                     _lock: lock,
                     closed: CancellationToken::new(),
                     starter_lane: Arc::default(),
+                    plugin_lanes: Arc::new(PluginLanes::new(self.plugins.get().cloned().unwrap_or_default())),
                 },
                 phase: Phase::TakingUp,
             },

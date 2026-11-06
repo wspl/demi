@@ -21,6 +21,7 @@ use demi_web_api_protocol::state::SyncEvent;
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 
 use crate::error::ApiError;
+use crate::plugin_lanes::PluginLanes;
 use crate::starter_lane::StarterLane;
 use crate::state::StateError;
 
@@ -56,6 +57,11 @@ pub trait Caller: Send + Sync + 'static {
     /// The starter lane of the caller's core, for the program that opened
     /// the core; none for any other caller, who may not open it.
     fn starter_lane(&self) -> Option<Arc<StarterLane>>;
+
+    /// The lanes of the program's plugins in the caller's core, for the
+    /// program that opened the core; none for any other caller, who may not
+    /// open them.
+    fn plugin_lanes(&self) -> Option<Arc<PluginLanes>>;
 }
 
 /// How a caller left.

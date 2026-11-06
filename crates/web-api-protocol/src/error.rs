@@ -430,6 +430,10 @@ pub enum ErrorCode {
     NotACoreDirectory,
     /// The core's starter lane is open already.
     StarterLaneOpen,
+    /// The lane of the program's plugin is open already.
+    PluginLaneOpen,
+    /// The process's plugins are fixed: a core has opened.
+    PluginsFixed,
 }
 
 serde_plain::derive_display_from_serialize!(ErrorCode);

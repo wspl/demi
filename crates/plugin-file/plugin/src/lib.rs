@@ -6,6 +6,7 @@ mod file;
 
 use std::rc::Rc;
 
+use demi_plugin_interface::UserId;
 use demi_plugin_interface::{CommandPlugin, Manifest, Placement, Plugin, PluginFactory, PluginId};
 
 /// The plugin's factory.
@@ -37,7 +38,7 @@ impl PluginFactory for File {
     }
 
     /// Its leaves are all native, so no request reaches the instance.
-    fn instance(&self) -> Rc<dyn Plugin> {
+    fn instance(&self, _: &UserId) -> Rc<dyn Plugin> {
         Rc::new(commands())
     }
 }
