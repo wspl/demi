@@ -349,6 +349,8 @@ const emit = defineEmits<{
   'update:messageEdit': [state: MessageEditState | null]
   /** A suggested reply's words, sent as a new message on their own. */
   sendSuggestion: [text: string]
+  /** A suggested reply's words went into the composer to edit. */
+  editSuggestion: [text: string]
   /**
    * Regenerate: the edit of the last message with its content unchanged. The
    * host sends it at once through `regenerateMessage`.
@@ -732,7 +734,10 @@ const suggested = computed<SuggestedReplies | null>(() => {
 provideSuggestedReplies({
   current: () => suggested.value,
   send: (text) => emit('sendSuggestion', text),
-  edit: (text) => composerFocus.focus(text),
+  edit: (text) => {
+    composerFocus.focus(text)
+    emit('editSuggestion', text)
+  },
 })
 // Up Arrow in an empty composer opens the editor on the offered message.
 provideEditLastMessage(() => {

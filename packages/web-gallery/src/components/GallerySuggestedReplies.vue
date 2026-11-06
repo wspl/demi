@@ -67,6 +67,7 @@ const send = (content: UserContentBlock[], message: SentMessage) => flow.turn(co
       @save-scroll="(_id, state) => (session.scroll = state)"
       @retry="flow.resume()"
       @send-suggestion="sendSuggestion"
+      @edit-suggestion="() => {}"
     >
       <template #composer>
         <GalleryComposer

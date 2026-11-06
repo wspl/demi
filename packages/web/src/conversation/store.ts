@@ -78,6 +78,7 @@ import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, logReadAnswered, log
 import { readSaved } from '../api/saved'
 import type { z } from 'zod'
 import { loadDraft } from '../api/drafts'
+import { reportSuggestedReplyUsed } from '../api/suggested-replies'
 import {
   batchAnswerSchema,
   createdConversationSchema,
@@ -104,6 +105,7 @@ import {
   type ReadRequest,
   type SidebarReorder,
   type ScheduleChange,
+  type SuggestedReplyUse,
 } from '../api/generated/web-api'
 import type { WorkflowChoice } from '@demicodes/protocol'
 import { isEmptyMessage, joinMessageContent, storedMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
@@ -3335,6 +3337,21 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
+   * Tells the backend the user took the suggested reply `text`. This only
+   * measures: a failure is logged and changes nothing the user sees.
+   */
+  function reportSuggestion(conversation: Conversation, text: string, as: SuggestedReplyUse): void {
+    const kept = conversation.suggestedReplies
+    const reply = kept?.replies.findIndex((each) => each.text === text) ?? -1
+    if (!kept || reply < 0) {
+      return
+    }
+    reportSuggestedReplyUsed(conversation.id, { blockId: kept.blockId, reply, as }).catch((error: unknown) => {
+      pageLog.warn('suggested_replies.report_failed', errorFields(error), conversation.id)
+    })
+  }
+
+  /**
    * A suggested reply's tap: its words go at once as a message of their own,
    * as the composer's Return would send one, steering or waiting in the queue
    * while the agent works; the draft, its comments and its files stay as they
@@ -3344,6 +3361,7 @@ export const useConversations = defineStore('conversations', () => {
     if (conversation.archived) {
       return
     }
+    reportSuggestion(conversation, text, 'sent')
     const way = chooseSendWay(agentWorks(conversation.phase, conversation.pendingSends), preferences.sendWhileRunning, false)
     await deliverInOrder(conversation, addPendingSend(conversation, way, text, []))
   }
@@ -4663,6 +4681,7 @@ export const useConversations = defineStore('conversations', () => {
     submissions,
     commenting,
     sendSuggestion,
+    reportSuggestion,
     clearComments,
     editVersion: (conversation: Conversation) =>
       cache.get(conversation.id)?.runtime?.transcriptVersion() ?? null,

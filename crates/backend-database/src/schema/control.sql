@@ -607,15 +607,28 @@ CREATE TABLE conversation_drafts (
   updated_at      INTEGER NOT NULL
 ) STRICT;
 
--- The replies a conversation's latest answer offers
--- (crates/agent-server/src/suggested_replies.rs): the text block of the
--- answer they follow, and replies, a JSON array of SuggestedReply, empty
--- when none was likely. A later answer's replace them.
+-- Each answer of a suggested replies request
+-- (crates/agent-server/src/suggested_replies.rs), which stays: the conversation
+-- offers its newest. The text block of the answer it follows, and replies, a
+-- JSON array of SuggestedReply, empty when none was likely.
 CREATE TABLE conversation_suggested_replies (
-  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  id              INTEGER PRIMARY KEY,
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
   block_id        TEXT NOT NULL,
-  replies         TEXT NOT NULL
+  answered_at     INTEGER NOT NULL,
+  -- The small model that answered, a hash of the instruction it read and its
+  -- whole answer; null on a row a release before them kept.
+  provider_id     TEXT,
+  model           TEXT,
+  instruction_hash TEXT,
+  response        TEXT,
+  replies         TEXT NOT NULL,
+  -- The reply the user last took, by its place in replies, and how.
+  used_reply      INTEGER,
+  used_as         TEXT CHECK (used_as IN ('sent', 'edited')),
+  used_at         INTEGER
 ) STRICT;
+CREATE INDEX conversation_suggested_replies_latest ON conversation_suggested_replies (conversation_id, id);
 
 -- The messages saved for later, each in one list: a conversation's own, or
 -- its project's, which the project's conversations share while the project
