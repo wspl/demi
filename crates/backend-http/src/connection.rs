@@ -20,7 +20,7 @@
 //!   `opened`: what comes while the open is checked is held, within the
 //!   lane's credit, and its owner takes it first once the lane opens; a
 //!   refused open drops it.
-//! - An opened lane is served by its owner: the user's shard serves the
+//! - An opened lane is served by its owner: the user's core serves the
 //!   synchronization channel and a conversation's lane, the edge the rest.
 //! - The writer writes the connection's own messages and every lane's
 //!   opened, refused, close and credit first, then one piece of each lane
@@ -37,7 +37,7 @@
 //!
 //! The connection logs one line as it opens and one as it ends, under the
 //! request ID of its upgrade; each lane logs its own (`crates/backend-user-
-//! shard/src/shard/lane.rs`) under the request ID of its open, in a span of
+//! core/src/shard/lane.rs`) under the request ID of its open, in a span of
 //! its own, with the connection's ID beside it.
 
 use std::collections::{HashMap, VecDeque};

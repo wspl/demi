@@ -16,7 +16,7 @@
 //! and so is a call that operates the Host. A stream the page keeps open
 //! unwatched (`crates/runner-protocol/src/direct.rs`, `StreamWatched`) is not,
 //! nor is a call that only looks
-//! (`crates/backend-user-shard/src/lifecycle/mod.rs`).
+//! (`crates/core/src/lifecycle/mod.rs`).
 //!
 //! Once admitted, a stream does not hold the conversation's file gate, so a
 //! transition ends it instead of waiting for it: an archive and a target or
@@ -45,7 +45,7 @@ use serde_json::{Map, Value};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use crate::HostShard;
+use crate::HostCore;
 use crate::access::{Attention, ConversationHost, HostAccessError, Refusal, Waits};
 use crate::lease::Lease;
 use crate::transfer::OpenTransfer;
@@ -161,7 +161,7 @@ pub enum UserCallError {
     Call(#[from] ResidentCallError),
 }
 
-impl dyn HostShard + '_ {
+impl dyn HostCore + '_ {
     /// Opens the user stream `binding` names on the conversation's primary
     /// Host. The stream is admitted without waking a stopped Cloud, and open
     /// until the edge drops its lease, the invocation completes, or a
@@ -198,7 +198,7 @@ impl dyn HostShard + '_ {
                 let watching = access.watching.map(|lease| Watching {
                     lease: Some(lease),
                     gate: self.conversations().slot(&access.conversation).streams.clone(),
-                    shard: Rc::downgrade(&self.this()),
+                    core: Rc::downgrade(&self.this()),
                     conversation: access.conversation.clone(),
                     watched: watching,
                 });
@@ -374,7 +374,7 @@ impl dyn HostShard + '_ {
 
     /// Hands the edge a lease on an open user stream.
     ///
-    /// The shard's owner task keeps the stream registered with the
+    /// The core's owner task keeps the stream registered with the
     /// conversation's transfers, and its lease of the stream gate, until the
     /// edge drops the lease or a transition ends the stream. Then both pipes
     /// fail, which cancels an invocation still running, and the resident stops
@@ -416,8 +416,8 @@ impl dyn HostShard + '_ {
 struct Watching {
     lease: Option<GateLease>,
     gate: ActivityGate,
-    /// Weak: the shard owns the task that holds this.
-    shard: Weak<dyn HostShard>,
+    /// Weak: the core owns the task that holds this.
+    core: Weak<dyn HostCore>,
     conversation: ConversationId,
     watched: watch::Receiver<bool>,
 }
@@ -436,8 +436,8 @@ impl Watching {
                     // Unwatched, it may have let the conversation go idle,
                     // which ended its idle watch; the activity starts one,
                     // as a Host admission does.
-                    if let Some(shard) = self.shard.upgrade() {
-                        shard.track_idle(&self.conversation);
+                    if let Some(core) = self.core.upgrade() {
+                        core.track_idle(&self.conversation);
                     }
                 }
                 (false, true) => self.lease = None,

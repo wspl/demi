@@ -4,10 +4,10 @@
 //! It gives the block:
 //!
 //! - the user's personal instructions;
-//! - the project's instruction files, which the shard keeps for each working
+//! - the project's instruction files, which the core keeps for each working
 //!   directory and reads again when a runner's watch reports a change;
 //! - for the root, the workflow the conversation chose
-//!   (`crates/backend-user-shard/src/conversation/workflows.rs`): its
+//!   (`crates/core/src/conversation/workflows.rs`): its
 //!   instructions, and its profiles as the only subagents the root can spawn,
 //!   so that work none of them is for stays the root's own without a spawn
 //!   failing first.
@@ -26,25 +26,25 @@ use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
 use super::project_files::KeptWorkflows;
-use crate::Shard;
+use crate::Core;
 
 /// The product's instructions source, asked after the execution context.
 pub(crate) struct Instructions {
-    pub(crate) shard: Weak<Shard>,
+    pub(crate) core: Weak<Core>,
 }
 
 impl Instructions {
-    pub(crate) fn new(shard: Weak<Shard>) -> Self {
-        Self { shard }
+    pub(crate) fn new(core: Weak<Core>) -> Self {
+        Self { core }
     }
 }
 
 /// The instructions and profiles of the workflow `id` the conversation
-/// chose, the worktree's with `worktree`, as the shard holds its workflows,
+/// chose, the worktree's with `worktree`, as the core holds its workflows,
 /// or that it spawns nothing while it cannot be used, as its spawns fail;
-/// none before the shard holds them.
-async fn workflow_text(shard: &Shard, conversation: &ConversationId, id: &str, worktree: bool) -> Option<WorkflowText> {
-    let found = match shard.kept_workflows(conversation, worktree).await {
+/// none before the core holds them.
+async fn workflow_text(core: &Core, conversation: &ConversationId, id: &str, worktree: bool) -> Option<WorkflowText> {
+    let found = match core.kept_workflows(conversation, worktree).await {
         Ok(KeptWorkflows::Found(found)) => found,
         Ok(KeptWorkflows::None) => return None,
         Err(error) => {
@@ -106,14 +106,14 @@ impl ContextSource for Instructions {
         seen: &'a [&'a str],
     ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, String>> {
         Box::pin(async move {
-            let Some(shard) = self.shard.upgrade() else {
+            let Some(core) = self.core.upgrade() else {
                 return Ok(None);
             };
-            let personal = shard
+            let personal = core
                 .store().instructions()
                 .await
                 .map_err(|error| format!("the personal instructions cannot be read: {error}"))?;
-            let placement = shard
+            let placement = core
                 .node_placement(node)
                 .await
                 .map_err(|error| format!("the working directory cannot be read: {error}"))?;
@@ -122,7 +122,7 @@ impl ContextSource for Instructions {
             // discovery and the files' start together, so their first
             // searches share one hold.
             let chosen = if node.node == node.root {
-                match shard.workflow_choice(&conversation).await? {
+                match core.workflow_choice(&conversation).await? {
                     WorkflowChoice::Workflow { id, worktree } => Some((id, worktree)),
                     WorkflowChoice::Default | WorkflowChoice::None => None,
                 }
@@ -131,11 +131,11 @@ impl ContextSource for Instructions {
             };
             let workflow = async {
                 match &chosen {
-                    Some((id, worktree)) => workflow_text(&shard, &conversation, id, *worktree).await,
+                    Some((id, worktree)) => workflow_text(&core, &conversation, id, *worktree).await,
                     None => None,
                 }
             };
-            let (files, workflow) = futures_util::join!(shard.kept_instructions(&conversation, &placement), workflow);
+            let (files, workflow) = futures_util::join!(core.kept_instructions(&conversation, &placement), workflow);
             let answer = match render(&personal, &files, workflow.as_ref()) {
                 Some(answer) => answer,
                 None if seen.last().is_some_and(|newest| *newest != NONE_LEFT) => {
@@ -152,17 +152,17 @@ impl ContextSource for Instructions {
 /// `device`, root first, whole, with what to watch
 /// (`crates/agent-server/src/instructions.rs`).
 pub(crate) async fn search_instructions(
-    shard: &Shard,
+    core: &Core,
     conversation: &ConversationId,
     device: &DeviceId,
     cwd: &str,
     cancel: &CancellationToken,
 ) -> Result<Found<Rc<[ProjectFile]>>, ReadFilesError> {
-    let paths = shard
+    let paths = core
         .device_paths(device)
         .await
         .map_err(|error| ReadFilesError::Access(error.into()))?;
-    let host = shard.host_shard();
+    let host = core.host_core();
     let found = instructions::search(paths, cwd, |reads| async move {
         let (answers, _) = host.read_files_on(conversation, Some(device), &reads, cancel).await?;
         Ok::<_, ReadFilesError>(answers)

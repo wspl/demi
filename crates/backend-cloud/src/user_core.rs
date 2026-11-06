@@ -1,5 +1,5 @@
 //! The Cloud's side of the user's core (`crates/core/src/lib.rs`): what the
-//! Cloud needs of the core (`CloudShard`), with what the server keeps in the
+//! Cloud needs of the core (`CloudCore`), with what the server keeps in the
 //! core for it (`CloudSide`), and the Cloud as the core's Host access sees it
 //! (`CloudHost`).
 
@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use demi_backend_database::control::ControlService;
-use demi_core::Shard;
+use demi_core::Core;
 use demi_core::holds::{IdleHold, ResetHold};
 use demi_core_host_access::cloud::{CloudAdmission, CloudError, CloudHost, MachineAccess};
 use demi_core_idle_watch::Activity;
@@ -27,21 +27,21 @@ use tokio_util::sync::WaitForCancellationFuture;
 use tokio_util::task::TaskTracker;
 
 use crate::machine::Cloud;
-use crate::{CloudServices, CloudShard, CloudSide, ConversationHold};
+use crate::{CloudServices, CloudCore, CloudSide, ConversationHold};
 
 impl ConversationHold for IdleHold {}
 
 impl ConversationHold for ResetHold {}
 
 /// What the server keeps in `core` for its Cloud.
-fn side(core: &Shard) -> &CloudSide {
+fn side(core: &Core) -> &CloudSide {
     core.extension()
         .expect("the server starts each of its cores with its Cloud's side")
 }
 
-impl CloudShard for Shard {
+impl CloudCore for Core {
     fn user(&self) -> &UserId {
-        Shard::user(self)
+        Core::user(self)
     }
 
     fn cloud(&self) -> &Cloud {
@@ -49,7 +49,7 @@ impl CloudShard for Shard {
     }
 
     fn devices(&self) -> &Devices {
-        Shard::devices(self)
+        Core::devices(self)
     }
 
     fn control(&self) -> &ControlService {
@@ -57,7 +57,7 @@ impl CloudShard for Shard {
     }
 
     fn store(&self) -> &CoreStore {
-        Shard::store(self)
+        Core::store(self)
     }
 
     fn cloud_services(&self) -> &CloudServices {
@@ -73,7 +73,7 @@ impl CloudShard for Shard {
     }
 
     fn marks(&self) -> UserMarks {
-        self.services().sync.of(Shard::user(self))
+        self.services().sync.of(Core::user(self))
     }
 
     fn vault(&self) -> &Vault {
@@ -85,15 +85,15 @@ impl CloudShard for Shard {
     }
 
     fn tasks(&self) -> &TaskTracker {
-        Shard::tasks(self)
+        Core::tasks(self)
     }
 
     fn closed(&self) -> WaitForCancellationFuture<'_> {
-        Shard::closed(self)
+        Core::closed(self)
     }
 
-    fn this(&self) -> Rc<dyn CloudShard> {
-        Shard::this(self)
+    fn this(&self) -> Rc<dyn CloudCore> {
+        Core::this(self)
     }
 
     fn activity(&self, conversation: &ConversationId) -> Activity {
@@ -101,22 +101,22 @@ impl CloudShard for Shard {
     }
 
     fn tree_providers(&self, conversation: &ConversationId) -> Vec<ProviderId> {
-        Shard::tree_providers(self, conversation)
+        Core::tree_providers(self, conversation)
     }
 
     fn attended(&self, conversation: &ConversationId) -> bool {
-        Shard::attended(self, conversation)
+        Core::attended(self, conversation)
     }
 
     fn hold_for_idle(&self, conversation: &ConversationId) -> Option<Box<dyn ConversationHold>> {
-        let held: Box<dyn ConversationHold> = Box::new(Shard::hold_for_idle(self, conversation)?);
+        let held: Box<dyn ConversationHold> = Box::new(Core::hold_for_idle(self, conversation)?);
         Some(held)
     }
 
     fn packages_lost(&self, device: &DeviceId) {
-        let core = Shard::this(self);
+        let core = Core::this(self);
         let device = device.clone();
-        Shard::tasks(self).spawn_local(async move {
+        Core::tasks(self).spawn_local(async move {
             core.package_lost(&device, Lost::Every).await;
         });
     }
@@ -129,7 +129,7 @@ impl CloudShard for Shard {
     ) -> LocalBoxFuture<'a, Option<Box<dyn ConversationHold>>> {
         Box::pin(async move {
             let held: Box<dyn ConversationHold> =
-                Box::new(Shard::hold_for_reset(self, conversation, files_on_cloud, hold).await?);
+                Box::new(Core::hold_for_reset(self, conversation, files_on_cloud, hold).await?);
             Some(held)
         })
     }
@@ -137,37 +137,37 @@ impl CloudShard for Shard {
 
 /// The core as its Cloud sees it, whose operations it is.
 pub trait CloudOfCore {
-    fn cloud_shard(&self) -> &(dyn CloudShard + 'static);
+    fn cloud_core(&self) -> &(dyn CloudCore + 'static);
 }
 
-impl CloudOfCore for Shard {
-    fn cloud_shard(&self) -> &(dyn CloudShard + 'static) {
+impl CloudOfCore for Core {
+    fn cloud_core(&self) -> &(dyn CloudCore + 'static) {
         self
     }
 }
 
 /// The user's Cloud as the core's Host access sees it.
-pub struct UserCloud(pub Rc<Shard>);
+pub struct UserCloud(pub Rc<Core>);
 
 impl CloudHost for UserCloud {
     fn cloud_device(&self) -> LocalBoxFuture<'_, Result<DeviceRecord, CloudError>> {
-        Box::pin(async move { Ok(self.0.cloud_shard().cloud_device().await?) })
+        Box::pin(async move { Ok(self.0.cloud_core().cloud_device().await?) })
     }
 
     fn admit_cloud<'a>(&'a self, device: &'a DeviceRecord) -> LocalBoxFuture<'a, Result<CloudAdmission, CloudError>> {
-        Box::pin(self.0.cloud_shard().admit_cloud(device))
+        Box::pin(self.0.cloud_core().admit_cloud(device))
     }
 
     fn operation_admission<'a>(&'a self, device: &'a DeviceRecord) -> LocalBoxFuture<'a, Result<Admission, StorageError>> {
-        Box::pin(self.0.cloud_shard().operation_admission(device))
+        Box::pin(self.0.cloud_core().operation_admission(device))
     }
 
     fn machine_access(&self) -> LocalBoxFuture<'_, Result<MachineAccess, CloudError>> {
-        Box::pin(self.0.cloud_shard().machine_access())
+        Box::pin(self.0.cloud_core().machine_access())
     }
 
     fn claude_code_access(&self) -> LocalBoxFuture<'_, Result<MachineAccess, CloudError>> {
-        Box::pin(self.0.cloud_shard().claude_code_access())
+        Box::pin(self.0.cloud_core().claude_code_access())
     }
 
     fn stop(&self) {
@@ -175,6 +175,6 @@ impl CloudHost for UserCloud {
     }
 
     fn close(&self) -> LocalBoxFuture<'_, ()> {
-        Box::pin(self.0.cloud_shard().close_cloud())
+        Box::pin(self.0.cloud_core().close_cloud())
     }
 }

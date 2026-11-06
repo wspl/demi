@@ -6,7 +6,7 @@
 //! pipe connection from the source, `GET` by the sink. An end in this process
 //! is a reader or a writer.
 //!
-//! The records live in the user's shard and hold only the byte in flight. The
+//! The records live in the user's core and hold only the byte in flight. The
 //! ends are `Send`, so the edge that serves a device's request copies the
 //! bytes.
 //!

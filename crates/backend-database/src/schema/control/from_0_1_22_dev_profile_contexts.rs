@@ -1,7 +1,7 @@
 //! From the control schema whose API-key entries sealed their bare configuration,
 //! format 1, to provider configuration format 2, which tells a compatible entry
 //! by its naming no vendor
-//! (`crates/backend-user-shard/src/provider_settings.rs`).
+//! (`crates/core/src/provider_settings.rs`).
 //!
 //! The vault opens, decodes and checks each one and seals it again. One it cannot
 //! read stops the migration, so the database stays as it was.

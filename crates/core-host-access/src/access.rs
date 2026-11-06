@@ -2,7 +2,7 @@
 //! attached Host, or to a Host one of its live subagents works on
 //! (`crates/agent-server/src/node/mod.rs`).
 //!
-//! Each conversation has one slot in its user's shard, with its file gate, its
+//! Each conversation has one slot in its user's core, with its file gate, its
 //! open transfers and the gate its open user streams hold.
 //!
 //! An operation passes through these checks:
@@ -86,10 +86,10 @@ use futures_util::future::join_all;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
-use crate::HostShard;
+use crate::HostCore;
 use crate::transfer::{OpenTransfer, TransferSet, TransfersClosed};
 
-/// Each conversation's slot, made on its first use and kept while the shard
+/// Each conversation's slot, made on its first use and kept while the core
 /// lives: a second slot for one conversation would be a second file gate.
 /// Slots are keyed by the id as the conversation's record spells it.
 #[derive(Default)]
@@ -103,7 +103,7 @@ pub struct Conversations {
     saved_lists: RefCell<HashMap<String, Rc<SerialGate>>>,
 }
 
-/// One conversation's part of its user's shard.
+/// One conversation's part of its user's core.
 pub struct ConversationSlot {
     /// Every operation on the conversation's Hosts holds a lease of it, and a
     /// transition reserves it. Only host access takes its leases, the ones a
@@ -112,7 +112,7 @@ pub struct ConversationSlot {
     files: FileGate,
     /// Every open user stream holds a demand lease of it: someone watches the
     /// conversation's Host, which is activity
-    /// (`crates/backend-user-shard/src/lifecycle/mod.rs`). Nothing reserves it,
+    /// (`crates/core/src/lifecycle/mod.rs`). Nothing reserves it,
     /// since a transition ends the streams instead of waiting for them.
     pub streams: ActivityGate,
     /// The open file transfers and user streams.
@@ -370,7 +370,7 @@ impl Conversations {
     }
 
     /// Ends every conversation's open transfers and user streams, for the
-    /// shard's close; they stay closed while the answer is held.
+    /// core's close; they stay closed while the answer is held.
     pub async fn end_transfers(&self) -> Vec<TransfersClosed> {
         let slots: Vec<Rc<ConversationSlot>> = self.slots.borrow().values().cloned().collect();
         join_all(slots.iter().map(|slot| slot.transfers.close())).await
@@ -511,7 +511,7 @@ pub struct Admitted {
 }
 
 /// What an admission that never wakes the Host is to the conversation's
-/// activity (`crates/backend-user-shard/src/lifecycle/mod.rs`).
+/// activity (`crates/core/src/lifecycle/mod.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Attention {
     /// An open user stream: someone watches the Host, and the conversation
@@ -682,9 +682,9 @@ pub enum HostRole {
     Agent,
 }
 
-impl dyn HostShard + '_ {
+impl dyn HostCore + '_ {
     /// The user's conversation of `id`, in whichever case it is spelled; a
-    /// conversation of another user answers as a missing one. Every shard
+    /// conversation of another user answers as a missing one. Every core
     /// entry that names a conversation starts here, which makes it the one
     /// check that a request reaches its owner's conversation.
     pub async fn owned_conversation(
@@ -1231,7 +1231,7 @@ impl dyn HostShard + '_ {
     /// It waits for no Host, takes no file gate and stores nothing: a runner
     /// that is away, or whose answer is lost, holds what the backend's records
     /// say it should after its next `hello`
-    /// (`crates/backend-user-shard/src/shard/adoption.rs`).
+    /// (`crates/core/src/adoption.rs`).
     pub fn tell_release(&self, conversation: &ConversationId, devices: &[DeviceId], ended: bool) {
         for device in devices {
             match self.devices().link(device) {

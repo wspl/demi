@@ -1,6 +1,6 @@
 //! A request the backend makes for the user from the device, such as a
 //! provider entry's that connects through it
-//! (`crates/backend-user-shard/src/shard/device_requests.rs`): the runner
+//! (`crates/core/src/device_requests.rs`): the runner
 //! makes it to its URL with its own HTTP client, as any program on the device
 //! reaches an address, and answers its status and headers, the body
 //! travelling as pipes each way.

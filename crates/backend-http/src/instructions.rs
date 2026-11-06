@@ -1,6 +1,6 @@
 //! The caller's personal instructions.
 //!
-//! The edge checks the text. The caller's shard writes it, and the change
+//! The edge checks the text. The caller's core writes it, and the change
 //! reaches the caller's pages as the `instructions` part.
 
 use axum::extract::State;
@@ -34,7 +34,7 @@ pub(super) async fn replace(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.set_instructions(text).await })
+        .call(move |core, _| async move { core.set_instructions(text).await })
         .await??;
     Ok(StatusCode::NO_CONTENT)
 }

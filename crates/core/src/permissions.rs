@@ -1,7 +1,7 @@
-//! The shard's side of conversation permissions.
+//! The core's side of conversation permissions.
 //!
-//! - What the check, the decisions and their messages need of the shard
-//!   (`PermissionShard`).
+//! - What the check, the decisions and their messages need of the core
+//!   (`PermissionCore`).
 //! - The delivery at start of the decisions a restart cut off.
 
 use std::rc::Rc;
@@ -13,7 +13,7 @@ use demi_core_store::permissions::AskingAgent;
 use demi_core_host_access::root_of;
 use demi_core_sync::UserMarks;
 use demi_core_sync::Revisions;
-use demi_core_permissions::{PermissionShard, Waits};
+use demi_core_permissions::{PermissionCore, Waits};
 use demi_command_declarations::{Category, Node};
 use demi_shared_types::{AgentMessage, NodeId};
 use demi_web_api_protocol::ids::ConversationId;
@@ -21,11 +21,11 @@ use demi_web_api_protocol::permissions::{PermissionRequestId, RequestingAgent};
 use demi_web_api_protocol::push::PushAsk;
 use futures_util::future::LocalBoxFuture;
 
-use super::Shard;
+use super::Core;
 
-impl PermissionShard for Shard {
+impl PermissionCore for Core {
     fn store(&self) -> &CoreStore {
-        Shard::store(self)
+        Core::store(self)
     }
 
     fn marks(&self) -> UserMarks {
@@ -93,8 +93,8 @@ impl PermissionShard for Shard {
         self.tasks().spawn_local(task);
     }
 
-    fn this(&self) -> Rc<dyn PermissionShard> {
-        Shard::this(self)
+    fn this(&self) -> Rc<dyn PermissionCore> {
+        Core::this(self)
     }
 
     fn waits(&self) -> &Waits {
@@ -119,10 +119,10 @@ impl PermissionShard for Shard {
     }
 }
 
-impl Shard {
-    /// The shard as the conversation permissions see it, whose operations
+impl Core {
+    /// The core as the conversation permissions see it, whose operations
     /// it is.
-    pub fn permission_shard(&self) -> &(dyn PermissionShard + 'static) {
+    pub fn permission_core(&self) -> &(dyn PermissionCore + 'static) {
         self
     }
 }

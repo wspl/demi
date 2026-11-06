@@ -9,7 +9,7 @@ use demi_core_store::StorageError;
 use demi_core_sync::Part;
 use demi_shared_types::is_blank;
 
-use crate::Shard;
+use crate::Core;
 
 /// The personal instructions `text` stores as: itself, or empty for a blank
 /// text, which removes them.
@@ -17,7 +17,7 @@ pub fn personal_instructions(text: String) -> String {
     if is_blank(&text) { String::new() } else { text }
 }
 
-impl Shard {
+impl Core {
     /// Replaces the user's personal instructions with `text`, which was
     /// checked; an empty text removes them.
     pub async fn set_instructions(&self, text: String) -> Result<(), StorageError> {

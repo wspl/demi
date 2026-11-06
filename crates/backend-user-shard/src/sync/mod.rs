@@ -1,5 +1,5 @@
 //! The pages' synchronization channels: the product state and its parts as a
-//! channel reads them, and the channel's task in the user's shard.
+//! channel reads them, and the channel's task in the user's core.
 //!
 //! Every change marks the parts it changed in the registry of `core-sync`,
 //! after it commits.

@@ -3,7 +3,7 @@
 //! the request began from.
 //!
 //! A side question's card is titled the same way, after its first question. An
-//! archive or the shard's close aborts them.
+//! archive or the core's close aborts them.
 //!
 //! The request runs beside the first turn instead of as a copy of the session,
 //! as a compaction's summary does. That keeps the agent's system prompt, tools
@@ -31,7 +31,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use super::small_requests::{SmallRequestFailure, SmallRequests};
-use crate::Shard;
+use crate::Core;
 
 /// What one request reads, and the state it began from.
 pub(crate) struct TitleRequest {
@@ -41,7 +41,7 @@ pub(crate) struct TitleRequest {
     pub from: String,
 }
 
-/// The title requests of a shard's conversations.
+/// The title requests of a core's conversations.
 pub(crate) struct Titles {
     small_requests: Rc<SmallRequests>,
     store: CoreStore,
@@ -165,7 +165,7 @@ impl Titles {
         }
     }
 
-    /// Aborts every request, as the shard's close does.
+    /// Aborts every request, as the core's close does.
     pub(crate) fn abort_all(&self) {
         for cancel in self.in_flight.borrow().values() {
             cancel.cancel();
@@ -239,7 +239,7 @@ async fn generate(
     Ok("set")
 }
 
-impl Shard {
+impl Core {
     /// Titles the user's conversation `record` after its first message, when
     /// its title is still the placeholder: the message's start at once, and
     /// a request beside the first turn to the user's small model.

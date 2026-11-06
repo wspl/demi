@@ -1,7 +1,7 @@
 //! The provider **Test**: one real, minimal request to the model the user names,
 //! with the account the user names or the active one.
 //!
-//! It runs on the acting user's shard, which builds the runtime with its own
+//! It runs on the acting user's core, which builds the runtime with its own
 //! HTTP client, or over the acting user's Cloud for a provider that runs a
 //! process. A test that ran and failed is a result carrying the provider's own
 //! reason.
@@ -22,10 +22,10 @@ use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
 use super::claude_cli::{CrossPlacement, ProcessWork};
-use crate::Shard;
+use crate::Core;
 use crate::media::vendor_refusal;
 
-impl Shard {
+impl Core {
     /// Tests the key of an entry of media alone, which makes no text, as its
     /// maker checks one.
     ///

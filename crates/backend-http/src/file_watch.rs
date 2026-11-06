@@ -5,7 +5,7 @@
 //! - The opens of a conversation's watch and of a device's folder dialog's,
 //!   lanes of the page connection.
 //! - The relay of the Hosts' reports to the page, and of the page's
-//!   `subscribe`, `unsubscribe` and `renew` messages to the shard, which holds
+//!   `subscribe`, `unsubscribe` and `renew` messages to the core, which holds
 //!   the Hosts' subscriptions.
 //!
 //! Only a conversation's watch takes a subscription that names a host.
@@ -31,7 +31,7 @@ pub(super) async fn open(state: &AppState, user: &UserId, id: &str) -> Result<Op
     let channel = state
         .shards
         .of(user)
-        .call(move |shard, _| async move { shard.host_shard().open_file_watch(&record.id).await })
+        .call(move |core, _| async move { core.host_core().open_file_watch(&record.id).await })
         .await??;
     // A lane that never opens drops the channel, which ends the watch.
     Ok(Opened {
@@ -53,7 +53,7 @@ pub(super) async fn open_device(state: &AppState, user: &UserId, id: &str) -> Re
         state
             .shards
             .of(user)
-            .call(move |shard, _| async move { shard.host_shard().open_device_watch(&device).await })
+            .call(move |core, _| async move { core.host_core().open_device_watch(&device).await })
             .await?
     };
     Ok(Opened {
@@ -113,7 +113,7 @@ async fn offline(mut page: Lane, page_in: LaneReader) {
 }
 
 /// Relays an open watch until either side ends it or a transition does;
-/// dropping the lease then ends it in the shard. `read` reads a page's message as
+/// dropping the lease then ends it in the core. `read` reads a page's message as
 /// the watch's route takes it.
 async fn relay(
     mut page: Lane,

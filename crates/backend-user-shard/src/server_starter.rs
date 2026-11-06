@@ -23,7 +23,7 @@ use futures_util::future::LocalBoxFuture;
 
 use crate::page_notifications::PageNotifications;
 use crate::services::Services;
-use demi_core::Shard;
+use demi_core::Core;
 use crate::lent_media::LentJobs;
 use demi_core::starter::{Notified, Reach, Starter};
 
@@ -32,12 +32,12 @@ pub struct ServerStarter {
     user: UserId,
     services: Arc<Services>,
     /// Weak: the core owns its starter.
-    shard: Weak<Shard>,
+    core: Weak<Core>,
 }
 
 impl ServerStarter {
-    pub fn new(user: UserId, services: Arc<Services>, shard: Weak<Shard>) -> Self {
-        Self { user, services, shard }
+    pub fn new(user: UserId, services: Arc<Services>, core: Weak<Core>) -> Self {
+        Self { user, services, core }
     }
 }
 
@@ -64,7 +64,7 @@ impl ServerSide {
     }
 
     /// The server's side of `core`, which the server started.
-    pub fn of(core: &Shard) -> &Self {
+    pub fn of(core: &Core) -> &Self {
         core.extension()
             .expect("the server starts each of its cores with its side")
     }
@@ -75,7 +75,7 @@ pub trait ServerCore {
     fn server_services(&self) -> &Arc<Services>;
 }
 
-impl ServerCore for Shard {
+impl ServerCore for Core {
     fn server_services(&self) -> &Arc<Services> {
         &ServerSide::of(self).services
     }
@@ -83,7 +83,7 @@ impl ServerCore for Shard {
 
 impl Starter for ServerStarter {
     fn cloud(&self) -> Option<Rc<dyn CloudHost>> {
-        Some(Rc::new(UserCloud(self.shard.upgrade()?)))
+        Some(Rc::new(UserCloud(self.core.upgrade()?)))
     }
 
     fn cloud_network_limited(&self, device: &DeviceRecord) -> bool {
@@ -92,8 +92,8 @@ impl Starter for ServerStarter {
 
     fn pair<'a>(&'a self, code: &'a str) -> LocalBoxFuture<'a, Result<DeviceDto, String>> {
         Box::pin(async move {
-            let shard = self.shard.upgrade().ok_or("the core is closing")?;
-            match self.services.claims.claim(shard.store(), &self.user, code).await {
+            let core = self.core.upgrade().ok_or("the core is closing")?;
+            match self.services.claims.claim(core.store(), &self.user, code).await {
                 Ok(device) => Ok(device),
                 Err(ClaimRefusal::UnknownCode) => Err(format!(
                     "{code}: no computer waits under this pairing code; it expired or was never issued. The installer shows a new code when one expires: read the newest one it shows and pass that."
@@ -146,10 +146,10 @@ impl Starter for ServerStarter {
 
     fn notify(&self, message: PushMessage) -> LocalBoxFuture<'_, Result<Notified, StorageError>> {
         Box::pin(async move {
-            let Some(shard) = self.shard.upgrade() else {
+            let Some(core) = self.core.upgrade() else {
                 return Ok(Notified::Nowhere);
             };
-            let side = ServerSide::of(&shard);
+            let side = ServerSide::of(&core);
             let in_use = side.pages.in_use();
             let recipients = side.recipients(&self.user, &message, &in_use).await?;
             let notified = match (recipients.now.len(), recipients.shown) {
@@ -157,7 +157,7 @@ impl Starter for ServerStarter {
                 (0, _) => Notified::Shown,
                 (n, _) => Notified::Sending(n),
             };
-            ServerSide::deliver(&shard, message, recipients);
+            ServerSide::deliver(&core, message, recipients);
             Ok(notified)
         })
     }
@@ -178,10 +178,10 @@ impl Starter for ServerStarter {
 
     fn closing(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async move {
-            let Some(shard) = self.shard.upgrade() else {
+            let Some(core) = self.core.upgrade() else {
                 return;
             };
-            let channels = &ServerSide::of(&shard).sync_channels;
+            let channels = &ServerSide::of(&core).sync_channels;
             channels.close();
             channels.wait().await;
         })

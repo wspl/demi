@@ -1,6 +1,6 @@
 //! The provider contract (`crates/provider-common/src/lib.rs`): a shared
 //! [`Provider`] for each entry and account, and a [`ProviderRuntime`] that runs
-//! one session's requests on the user's shard.
+//! one session's requests on the user's core.
 
 use std::{num::NonZeroU32, sync::Arc};
 
@@ -24,7 +24,7 @@ use crate::{
 
 /// One provider entry and account, shared by every user and request of the
 /// entry. It is used from any thread: the backend's request handlers read its
-/// status, models and quota, and each user's shard builds runtimes from it.
+/// status, models and quota, and each user's core builds runtimes from it.
 ///
 /// It is `Any`, so the part of the backend that places a provider's CLI
 /// process tells that provider's concrete type and asks it for the runtime.
@@ -114,7 +114,7 @@ pub trait Provider: std::any::Any + Send + Sync {
         None
     }
 
-    /// Builds a runtime for one session. The backend calls it on the shard
+    /// Builds a runtime for one session. The backend calls it on the core
     /// that will own the runtime.
     fn runtime(&self, env: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError>;
 }
@@ -144,10 +144,10 @@ pub struct Capabilities {
     pub cli_package: Option<&'static str>,
 }
 
-/// What the user's shard gives a runtime it builds.
+/// What the user's core gives a runtime it builds.
 #[derive(Debug, Clone)]
 pub struct RuntimeEnv {
-    /// The shard's HTTP client. A runtime never builds its own: hyper ties a
+    /// The core's HTTP client. A runtime never builds its own: hyper ties a
     /// pooled connection to the Tokio runtime that created it
     /// (`ARCHITECTURE.md`).
     pub http: crate::ProviderHttp,
@@ -182,7 +182,7 @@ pub enum CatalogError {
 
 /// A session's inference runtime. It runs one request at a time: `run`
 /// borrows the runtime until its stream is dropped. It lives on the user's
-/// shard and has no `Send` bound.
+/// core and has no `Send` bound.
 pub trait ProviderRuntime {
     /// Runs one inference attempt; see [`ProviderEvent`] for how a run ends.
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_>;

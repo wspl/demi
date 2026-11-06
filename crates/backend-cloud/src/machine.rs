@@ -1,4 +1,4 @@
-//! The user's Cloud machine in the user's shard: one phase, and the transitions
+//! The user's Cloud machine in the user's core: one phase, and the transitions
 //! that change it.
 //!
 //! The phase carries what exists only in it:
@@ -7,7 +7,7 @@
 //! - The idle watch and the maintenance loop, while the machine runs.
 //! - The reset, while one holds the machine.
 //!
-//! Each transition is a task of the shard, so a requester that goes away never
+//! Each transition is a task of the core, so a requester that goes away never
 //! cuts a boot or a save short.
 //!
 //! ```text
@@ -55,7 +55,7 @@ use futures_util::future::{LocalBoxFuture, Shared};
 use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
 
-use crate::CloudShard;
+use crate::CloudCore;
 use crate::capacity::CapacityPermit;
 use crate::client::MachinesError;
 
@@ -105,9 +105,9 @@ pub(crate) fn machines_failed(error: MachinesError) -> CloudError {
 /// waits.
 pub(crate) type Transition = Shared<LocalBoxFuture<'static, Result<(), CloudError>>>;
 
-/// The user's managed machines, in the user's shard: the Cloud, and for the
+/// The user's managed machines, in the user's core: the Cloud, and for the
 /// master the Claude Code machine, each made on the first need, and whether
-/// the shard is closing them.
+/// the core is closing them.
 #[derive(Default)]
 pub struct Cloud {
     machine: RefCell<Option<Rc<Machine>>>,
@@ -129,7 +129,7 @@ impl Cloud {
         }
     }
 
-    /// Every managed machine the shard made.
+    /// Every managed machine the core made.
     pub(crate) fn machines(&self) -> Vec<Rc<Machine>> {
         [self.machine(), self.claude_code.borrow().clone()]
             .into_iter()
@@ -142,7 +142,7 @@ impl Cloud {
     }
 
     /// Admits nothing more and ends the running machine's schedules, as the
-    /// shard's close does first; a retirement already running finishes.
+    /// core's close does first; a retirement already running finishes.
     pub fn stop(&self) {
         self.closed.set(true);
         for machine in self.machines() {
@@ -151,7 +151,7 @@ impl Cloud {
     }
 }
 
-/// The user's Cloud device and what the shard knows of its machine.
+/// The user's Cloud device and what the core knows of its machine.
 pub(crate) struct Machine {
     pub(crate) device: DeviceRecord,
     /// Every operation on the Cloud holds a lease of it; an idle stop and a
@@ -384,7 +384,7 @@ impl Machine {
     }
 }
 
-impl dyn CloudShard {
+impl dyn CloudCore {
     /// The managed machine of `device`, the user's Cloud or the Claude Code
     /// machine, made on the first need with the latest reset its records
     /// hold.
@@ -504,14 +504,14 @@ impl dyn CloudShard {
                     }
                 }
             };
-            let shard = self.this();
+            let core = self.this();
             let target = machine.clone();
             let transition = if recover {
-                self.spawn_transition(machine, async move { shard.recover(&target).await })
+                self.spawn_transition(machine, async move { core.recover(&target).await })
             } else {
                 self.spawn_transition(machine, async move {
-                    let booted = shard.boot(&target).await;
-                    shard.finish_boot(&target, &booted);
+                    let booted = core.boot(&target).await;
+                    core.finish_boot(&target, &booted);
                     booted
                 })
             };
@@ -519,7 +519,7 @@ impl dyn CloudShard {
         }
     }
 
-    /// Runs `work` as the machine's transition, a task of the shard; the
+    /// Runs `work` as the machine's transition, a task of the core; the
     /// transition is cleared in the step that ends it.
     pub(crate) fn spawn_transition(
         &self,
@@ -537,7 +537,7 @@ impl dyn CloudShard {
         transition
     }
 
-    /// A task of the shard as a transition that joiners await.
+    /// A task of the core as a transition that joiners await.
     pub(crate) fn spawn_joinable(
         &self,
         work: impl Future<Output = Result<(), CloudError>> + 'static,
@@ -754,10 +754,10 @@ impl dyn CloudShard {
                 }
             }
         }
-        let shard = self.this();
+        let core = self.this();
         let target = machine.clone();
         let save = self.spawn_transition(machine, async move {
-            let saved = shard.save(&target).await;
+            let saved = core.save(&target).await;
             let mut phase = target.phase();
             if matches!(&*phase, Phase::Saving(_)) {
                 *phase = Phase::Off;
@@ -810,7 +810,7 @@ impl dyn CloudShard {
         }
     }
 
-    /// Closes the Cloud with its shard (`crates/backend/src/backend.rs`).
+    /// Closes the Cloud with its core (`crates/backend/src/backend.rs`).
     ///
     /// No admission follows, its schedules end, and a reset or a transition
     /// under way finishes. A running machine keeps running, and the next

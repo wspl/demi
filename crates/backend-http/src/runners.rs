@@ -13,7 +13,7 @@
 //!   sends a stream pipe's over a lane of its pipe connection.
 //! - The sink's runner gets them.
 //! - The edge copies them between the requests and the pipe's ends.
-//! - The pipe records are the device owner's shard's.
+//! - The pipe records are the device owner's core's.
 //!
 //! Pipes have no size limit and no idle timeout: a quiet command's pipe stays
 //! open for as long as its command runs.
@@ -156,7 +156,7 @@ async fn updating(state: &AppState, headers: &HeaderMap) {
     let shown = state
         .shards
         .of(&device.owner)
-        .call(move |shard, _| async move { shard.runner_updating(&id) })
+        .call(move |core, _| async move { core.runner_updating(&id) })
         .await;
     // A closing backend shows nothing more.
     let _ = shown;
@@ -225,8 +225,8 @@ pub(super) async fn get(
     let claimed = state
         .shards
         .of(&owner)
-        .call_while_closing(move |shard, _| async move {
-            shard.pipes().claim_sink(&id, device.id.as_str())
+        .call_while_closing(move |core, _| async move {
+            core.pipes().claim_sink(&id, device.id.as_str())
         })
         .await;
     let sink = match claimed {
@@ -266,8 +266,8 @@ pub(super) async fn call_output(
     let sink = state
         .shards
         .of(&owner)
-        .call_while_closing(move |shard, _| async move {
-            shard.devices().session(&device.id).call_output(shard.pipes(), &id)
+        .call_while_closing(move |core, _| async move {
+            core.devices().session(&device.id).call_output(core.pipes(), &id)
         })
         .await;
     match sink {
@@ -297,8 +297,8 @@ pub(super) async fn offer(
     let offered = state
         .shards
         .of(&owner)
-        .call_while_closing(move |shard, _| async move {
-            shard.pipes().offers().bytes(&id, device.id.as_str())
+        .call_while_closing(move |core, _| async move {
+            core.pipes().offers().bytes(&id, device.id.as_str())
         })
         .await;
     match offered {
@@ -322,8 +322,8 @@ pub(super) async fn claim_source(
     let claimed = state
         .shards
         .of(&owner)
-        .call_while_closing(move |shard, _| async move {
-            shard.pipes().claim_source(&id, device.id.as_str())
+        .call_while_closing(move |core, _| async move {
+            core.pipes().claim_source(&id, device.id.as_str())
         })
         .await;
     match claimed {
@@ -349,8 +349,8 @@ pub(super) async fn head(
     let taken = state
         .shards
         .of(&owner)
-        .call_while_closing(move |shard, _| async move {
-            shard.pipes().taken_by(&id, device.id.as_str())
+        .call_while_closing(move |core, _| async move {
+            core.pipes().taken_by(&id, device.id.as_str())
         })
         .await;
     match taken {
@@ -372,8 +372,8 @@ async fn claim_chunk(
     let claimed = state
         .shards
         .of(&owner)
-        .call_while_closing(move |shard, _| async move {
-            shard.pipes().claim_chunk(&id, device.id.as_str(), offset)
+        .call_while_closing(move |core, _| async move {
+            core.pipes().claim_chunk(&id, device.id.as_str(), offset)
         })
         .await;
     match claimed {

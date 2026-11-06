@@ -1,6 +1,6 @@
 //! Runner adoption (`crates/runner-protocol/src/wire/mod.rs`).
 //!
-//! The shard of a device's owner:
+//! The core of a device's owner:
 //!
 //! - takes the socket the edge accepted, binds it to the device with the
 //!   connection's policy, and serves it until either end closes it;
@@ -28,8 +28,8 @@ use demi_web_api_protocol::ids::DeviceId;
 use tokio::sync::{oneshot, watch};
 use tokio_util::task::AbortOnDropHandle;
 
-use super::Shard;
-use super::policy::ShardPolicy;
+use super::Core;
+use super::policy::CorePolicy;
 
 /// Why a connection that did not answer its ping ended when a new one of
 /// its device arrived.
@@ -48,7 +48,7 @@ pub struct KeptJobs {
     pub resume: Option<Resume>,
 }
 
-impl Shard {
+impl Core {
     /// Takes the socket of a runner that presented `device`'s token.
     pub async fn adopt_runner(
         self: Rc<Self>,
@@ -219,16 +219,16 @@ impl Shard {
                 .map(|recorded| recorded.job.clone())
                 .collect(),
         };
-        // A closing shard takes no runner; dropping the socket closes it.
+        // A closing core takes no runner; dropping the socket closes it.
         let Some((serving, reported)) = self.bind(&device.id, runner, hello) else {
             return;
         };
         self.take_up(recorded.into_iter().map(|recorded| recorded.conversation));
         if started_anew {
-            let shard = self.clone();
+            let core = self.clone();
             let device = device.id.clone();
             self.tasks().spawn_local(async move {
-                shard.package_lost(&device, Lost::Every).await;
+                core.package_lost(&device, Lost::Every).await;
             });
         }
         // The report is recorded before the welcome: the work the
@@ -274,7 +274,7 @@ impl Shard {
         if send(&mut socket, &claimed).await.is_err() {
             return;
         }
-        // A closing shard takes no runner, and the claim that waits for the
+        // A closing core takes no runner, and the claim that waits for the
         // answer deletes the device it made. A device just paired has no
         // jobs.
         let hello = Hello {
@@ -306,7 +306,7 @@ impl Shard {
         self.forwards_presence(&id, false).await;
     }
 
-    /// Publishes a new connection of the device under the shard's policy, with
+    /// Publishes a new connection of the device under the core's policy, with
     /// what records its runner's hello: its system and release, and the advance
     /// of each execution context the report changes
     /// (`crates/core-store/src/selection.rs`).
@@ -315,7 +315,7 @@ impl Shard {
     /// caller runs while the connection serves, since the runner resolves its
     /// directories (`crates/server/src/main.rs`).
     ///
-    /// None once the shard is closing, whose close ends every connection it
+    /// None once the core is closing, whose close ends every connection it
     /// published before.
     fn bind(
         self: &Rc<Self>,
@@ -335,7 +335,7 @@ impl Shard {
             shell: runner.shell.clone(),
             memory: runner.memory,
             pipes: self.pipes().clone(),
-            policy: Rc::new(ShardPolicy::new(self, device.clone())),
+            policy: Rc::new(CorePolicy::new(self, device.clone())),
             ping: self.services().runners.ping,
             jobs: self.devices().jobs(device),
             session: self.devices().session(device),
@@ -407,13 +407,13 @@ impl Shard {
             // Counted before the open, so the close waits for it before the
             // agent shuts down.
             let opening = self.tree_openers().token();
-            let shard = self.clone();
+            let core = self.clone();
             self.tasks().spawn_local(async move {
                 let _opening = opening;
-                if shard.is_closing() {
+                if core.is_closing() {
                     return;
                 }
-                if let Err(error) = shard.restore_tree(&conversation).await {
+                if let Err(error) = core.restore_tree(&conversation).await {
                     tracing::warn!(event = "runner_adoption.tree_restore_failed", %conversation, %error, "the tree whose commands ran on the device was not restored");
                 }
             });
@@ -440,20 +440,20 @@ impl Shard {
     /// passed, which each byte its download is served moves on; the slot's
     /// drop of the update stops it, as the next hello does.
     fn update_expiry(self: &Rc<Self>, device: &DeviceId) -> AbortOnDropHandle<()> {
-        let shard = Rc::downgrade(self);
+        let core = Rc::downgrade(self);
         let device = device.clone();
         AbortOnDropHandle::new(tokio::task::spawn_local(async move {
             loop {
-                let Some(until) = shard
+                let Some(until) = core
                     .upgrade()
-                    .and_then(|shard| shard.devices().update_until(&device))
+                    .and_then(|core| core.devices().update_until(&device))
                 else {
                     return;
                 };
                 if tokio::time::Instant::now() >= until {
-                    if let Some(shard) = shard.upgrade() {
-                        shard.devices().update_abandoned(&device);
-                        shard.mark(Part::Devices);
+                    if let Some(core) = core.upgrade() {
+                        core.devices().update_abandoned(&device);
+                        core.mark(Part::Devices);
                     }
                     return;
                 }
@@ -468,8 +468,8 @@ impl Shard {
     /// update the device was sent to shows on.
     pub fn runner_downloading(self: &Rc<Self>, device: DeviceId, mut served: watch::Receiver<Download>) {
         let request = self.devices().download_request();
-        let shard = Rc::downgrade(self);
-        // A closing shard waits for its tasks, and the download may outlast it.
+        let core = Rc::downgrade(self);
+        // A closing core waits for its tasks, and the download may outlast it.
         let closing = self.closing.clone();
         self.tasks().spawn_local(async move {
             let started = std::time::Instant::now();
@@ -478,7 +478,7 @@ impl Shard {
                     () = closing.cancelled() => return,
                     changed = served.changed() => changed,
                 };
-                let Some(shard) = shard.upgrade() else {
+                let Some(core) = core.upgrade() else {
                     return;
                 };
                 let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -492,8 +492,8 @@ impl Shard {
                         ms,
                         "a runner executable's download ended"
                     );
-                    shard.devices().download_ended(&device, request, ms);
-                    shard.mark(Part::Devices);
+                    core.devices().download_ended(&device, request, ms);
+                    core.mark(Part::Devices);
                     return;
                 }
                 let download = *served.borrow_and_update();
@@ -505,12 +505,12 @@ impl Shard {
                     ms,
                     "a runner executable's download moved"
                 );
-                let until = tokio::time::Instant::now() + shard.services().runners.updating;
-                shard
+                let until = tokio::time::Instant::now() + core.services().runners.updating;
+                core
                     .devices()
-                    .download_moved(&device, request, download, until, || shard.update_expiry(&device));
-                shard.mark(Part::Devices);
-                drop(shard);
+                    .download_moved(&device, request, download, until, || core.update_expiry(&device));
+                core.mark(Part::Devices);
+                drop(core);
                 // What is served meanwhile waits for the next announcement.
                 tokio::select! {
                     () = closing.cancelled() => return,

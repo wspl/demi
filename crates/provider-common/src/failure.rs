@@ -80,7 +80,7 @@ impl ProviderFailure {
     /// but never the endpoint, which stays inside the provider.
     ///
     /// A request through a device fails in Demi's words
-    /// (`crates/backend-user-shard/src/shard/device_requests.rs`):
+    /// (`crates/core/src/device_requests.rs`):
     ///
     /// - A device its owner removed fails with `device_removed`, which
     ///   waiting cannot fix.
@@ -279,11 +279,11 @@ pub enum ErrorCode {
     /// The credential could not be refreshed.
     AuthRefreshFailed,
     /// The entry connects through a device its owner removed
-    /// (`crates/backend-user-shard/src/shard/device_requests.rs`): the agent
+    /// (`crates/core/src/device_requests.rs`): the agent
     /// does not retry it.
     DeviceRemoved,
     /// The entry connects through a device that is offline, or a Cloud
-    /// stopped (`crates/backend-user-shard/src/shard/device_requests.rs`):
+    /// stopped (`crates/core/src/device_requests.rs`):
     /// retried as an unreachable endpoint is, and the failure names the
     /// device.
     DeviceOffline,

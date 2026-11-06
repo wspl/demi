@@ -16,7 +16,7 @@ use demi_runner_client::{CommandSelection, JobOrigin};
 use demi_host_interface::CommandSet;
 use demi_web_api_protocol::ids::ConversationId;
 
-/// The registered nodes of one user's shard.
+/// The registered nodes of one user's core.
 #[derive(Default)]
 pub struct CommandRouter {
     nodes: Rc<RefCell<HashMap<String, Weak<Node>>>>,

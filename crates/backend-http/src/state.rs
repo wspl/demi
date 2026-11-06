@@ -24,8 +24,8 @@ pub(super) async fn read(
     let product = state
         .shards
         .of(&id)
-        .call(move |shard, _| async move {
-            shard
+        .call(move |core, _| async move {
+            core
                 .product_state(user)
                 .await
                 .map_err(|error| ApiError::internal(&error))

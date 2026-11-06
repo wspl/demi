@@ -29,10 +29,10 @@ use demi_web_api_protocol::panel::WorkPanel;
 use futures_util::future::try_join_all;
 use tokio_util::sync::CancellationToken;
 
-use crate::Shard;
+use crate::Core;
 use demi_core_host_access::root_of;
 
-impl Shard {
+impl Core {
     /// The entries of the user's conversations that are archived, the last
     /// archived first, or that are not, in sidebar order.
     pub async fn conversation_summaries(
@@ -72,7 +72,7 @@ impl Shard {
             .tree(&root_of(&record.id))
             .map(|tree| (tree.is_running(), tree.root().session().phase()));
         let facts = self.summary_facts(&record.id).await;
-        let resolved = self.host_shard().resolve_target(&record).await?;
+        let resolved = self.host_core().resolve_target(&record).await?;
         let archived = record.archived();
         let resuming = self.restart_resumes().contains(&record.id);
         Ok(ConversationSummary {
@@ -107,7 +107,7 @@ impl Shard {
             None => false,
         };
         let facts = self.summary_facts(&record.id).await;
-        let resolved = self.host_shard().resolve_target(&record).await?;
+        let resolved = self.host_core().resolve_target(&record).await?;
         let hosts = self.store().attached_host_listing(record.id.clone())
             .await?
             .into_iter()
@@ -123,7 +123,7 @@ impl Shard {
             .panel_states(record.id.clone(), CancellationToken::new())
             .await
             .map_err(StorageError::from)?;
-        let permissions = demi_core_permissions::read(self.permission_shard(), &record.id).await?;
+        let permissions = demi_core_permissions::read(self.permission_core(), &record.id).await?;
         let other_cost = self.store().conversation_costs(record.id.clone())
             .await?
             .into_iter()
@@ -224,7 +224,7 @@ fn last_turn(turn: &EndedTurn) -> LastTurn {
 
 /// A conversation's status: running or compacting while its live tree will
 /// go on working without the user, or a command that is not a service still
-/// runs; resuming while the shard resumes its turn a restart interrupted;
+/// runs; resuming while the core resumes its turn a restart interrupted;
 /// interrupted when its checkpoint was saved in a turn and no tree is live;
 /// else what its latest terminal block says. `live` is whether the live tree
 /// is running, and its root's phase.

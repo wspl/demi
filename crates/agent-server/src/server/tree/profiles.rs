@@ -483,7 +483,7 @@ impl<H: HostResolver> Tree<H> {
         // The chosen workflow's profile of the name first, as a spawn takes
         // it; then the user's, which `show` reads whether or not a spawn here
         // can take it
-        // (`crates/backend-user-shard/src/conversation/workflows.rs`).
+        // (`crates/core/src/conversation/workflows.rs`).
         if let ConversationProfiles::Workflow(workflow) = self.conversation_profiles(&server).await? {
             if let Some(child) = workflow.profiles.iter().find(|child| child.name == name) {
                 return Ok(workflow_answer(&workflow, child));
@@ -501,7 +501,7 @@ impl<H: HostResolver> Tree<H> {
     ///
     /// While this conversation runs a workflow that keeps the user's profiles
     /// out, it also answers why a spawn here cannot use the profile
-    /// (`crates/backend-user-shard/src/conversation/workflows.rs`).
+    /// (`crates/core/src/conversation/workflows.rs`).
     pub(crate) async fn create_profile(
         &self,
         draft: NewProfileDraft,

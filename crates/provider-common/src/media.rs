@@ -282,7 +282,7 @@ pub trait MediaMaker: Send + Sync {
     /// - For a subscription, whose vendor lists none to it, those `catalog`
     ///   lists.
     /// - For a key, what the vendor lists, read when asked with the HTTP client
-    ///   of the shard that asks.
+    ///   of the core that asks.
     /// - For a compatible entry, the models its user added.
     fn models<'a>(
         &'a self,

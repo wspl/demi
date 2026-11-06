@@ -9,11 +9,11 @@ use demi_core_store::StorageError;
 use demi_core_store::devices::{DeviceRecord, ManagedMachine};
 use demi_core_sync::Part;
 
-use crate::CloudShard;
+use crate::CloudCore;
 use crate::machine::CloudError;
 use demi_core_host_access::cloud::MachineAccess;
 
-impl dyn CloudShard {
+impl dyn CloudCore {
     /// The user's Cloud device, made on its first use, which the user's
     /// pages then show among the devices and as the Cloud.
     pub async fn cloud_device(&self) -> Result<DeviceRecord, StorageError> {
@@ -35,7 +35,7 @@ impl dyn CloudShard {
     }
 
     /// The Claude Code machine, made on its first use and woken when it is
-    /// stopped, for the shard of the instance's master, whose record it
+    /// stopped, for the core of the instance's master, whose record it
     /// is.
     pub async fn claude_code_access(&self) -> Result<MachineAccess, CloudError> {
         let device = self

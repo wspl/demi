@@ -23,14 +23,14 @@
 //!
 //! A process provider cannot build its runtime from the provider alone, since
 //! only the backend chooses the machine. So `Provider::runtime` refuses
-//! (`PlacementRequired`), and the backend's placement, the user shard's
+//! (`PlacementRequired`), and the backend's placement, the user core's
 //! Claude Code part, asks the registry for a provider of the entry's own,
 //! tells it as this crate's [`ClaudeCodeProvider`] by its `Any`, and builds
 //! the runtime over the placement. The registry and the families' trait know
 //! no placement:
 //!
 //! ```text
-//! backend (user's shard)                      this crate
+//! backend (user's core)                      this crate
 //!   registry's own provider --as Any-->       provider + placement = runtime
 //!   Placement::start <------ a run needs a process
 //!     wake or admit the machine, ensure the CLI, hand over an earlier sign-in
@@ -176,7 +176,7 @@ impl WorkLease {
 }
 
 /// Starts the CLI processes of a runtime, a sign-in or a usage probe, on a
-/// machine the placement chooses. It lives on the shard of the user whose
+/// machine the placement chooses. It lives on the core of the user whose
 /// work it serves.
 pub trait Placement {
     /// Starts a new CLI process for `work`.

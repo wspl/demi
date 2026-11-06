@@ -253,7 +253,7 @@ pub struct ConversationMetadata {
     #[schemars(with = "Nullable<ModelSettings>")]
     pub model: Option<ModelSettings>,
     /// The conversation's Workflow menu choice
-    /// (`crates/backend-user-shard/src/conversation/workflows.rs`), kept as its
+    /// (`crates/core/src/conversation/workflows.rs`), kept as its
     /// model is.
     pub workflow: WorkflowChoice,
     /// The directory the conversation's work runs in, resolved by the backend
@@ -424,7 +424,7 @@ pub struct ConversationDetail {
 }
 
 /// What the conversation's socket carries of the conversation itself, beside
-/// its agents' frames (`crates/backend-user-shard/src/conversation/lane.rs`).
+/// its agents' frames (`crates/core/src/conversation/lane.rs`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum ConversationFrame {
@@ -584,7 +584,7 @@ pub struct TranscriptQuery {
 
 /// One page of an agent's transcript: a thousand blocks, wherever requests
 /// begin and end (`PAGE_BLOCKS` in `crates/conversation-lane-protocol`), in their light form, with the failure facts of its error blocks
-/// (`crates/backend-user-shard/src/conversation/failure_facts.rs`).
+/// (`crates/core/src/conversation/failure_facts.rs`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptPage {

@@ -62,8 +62,8 @@ pub(super) async fn transcript(
         state
             .shards
             .of(&user.id)
-            .call(move |shard, _| async move {
-                shard
+            .call(move |core, _| async move {
+                core
                     .live_transcript(&conversation, &wanted, count)
                     .await
                     .map_err(ApiError::conversation_unreadable)
@@ -116,9 +116,9 @@ pub(super) async fn transcript(
                 let (commands, cache_chart) = state
                     .shards
                     .of(&user.id)
-                    .call(move |shard, _| async move {
-                        let commands = shard.stopping_commands(&conversation, &wanted);
-                        let chart = shard.cache_chart(&conversation, &wanted).await;
+                    .call(move |core, _| async move {
+                        let commands = core.stopping_commands(&conversation, &wanted);
+                        let chart = core.cache_chart(&conversation, &wanted).await;
                         (commands, chart)
                     })
                     .await?;
@@ -140,7 +140,7 @@ pub(super) async fn transcript(
         page.reply_blocks = state
             .shards
             .of(&user.id)
-            .call(move |shard, _| async move { reply_block_facts(shard.plugins(), named).await })
+            .call(move |core, _| async move { reply_block_facts(core.plugins(), named).await })
             .await?;
     }
     tracing::info!(

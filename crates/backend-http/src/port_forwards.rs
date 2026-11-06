@@ -1,6 +1,6 @@
 //! The caller's port forwards (`crates/runner-protocol/src/forward.rs`).
 //!
-//! - Each route acts in the caller's shard.
+//! - Each route acts in the caller's core.
 //! - A change reaches the caller's pages as the `portForwards` part.
 //! - Each refusal is in words for the user, which the page shows as they are.
 
@@ -32,7 +32,7 @@ pub(super) async fn list(
     let forwards = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.port_forward_list().await })
+        .call(move |core, _| async move { core.port_forward_list().await })
         .await??;
     Ok(Json(PortForwardList { forwards }))
 }
@@ -46,7 +46,7 @@ pub(super) async fn create(
     let forward = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.create_port_forward(patch).await })
+        .call(move |core, _| async move { core.create_port_forward(patch).await })
         .await?
         .map_err(refused)?;
     Ok((StatusCode::CREATED, Json(PortForwardAnswer { forward })))
@@ -63,7 +63,7 @@ pub(super) async fn patch(
     let forward = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.change_port_forward(id, patch).await })
+        .call(move |core, _| async move { core.change_port_forward(id, patch).await })
         .await?
         .map_err(refused)?;
     Ok(Json(PortForwardAnswer { forward }))
@@ -79,7 +79,7 @@ pub(super) async fn delete(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.remove_port_forward(id).await })
+        .call(move |core, _| async move { core.remove_port_forward(id).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
@@ -95,7 +95,7 @@ pub(super) async fn retry(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.retry_port_forward(id).await })
+        .call(move |core, _| async move { core.retry_port_forward(id).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)

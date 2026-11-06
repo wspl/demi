@@ -15,10 +15,10 @@ use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::DeviceId;
 
-use crate::HostShard;
+use crate::HostCore;
 use crate::transition::ChangeRefusal;
 
-impl dyn HostShard + '_ {
+impl dyn HostCore + '_ {
     /// `to` with its directory as typed, as a new conversation starts there.
     /// The Cloud's directory of a conversation, a Fork's source's or a Cloud
     /// project's is one the backend made and names as it is, and a project's

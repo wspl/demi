@@ -7,7 +7,7 @@
 //!
 //! # Marks
 //!
-//! Before the shard's close aborts the agent's turns, it marks each live root
+//! Before the core's close aborts the agent's turns, it marks each live root
 //! whose turn is running, in the control database (`interrupted_turns`), so the
 //! next start finds them without opening a conversation's database.
 //!
@@ -33,7 +33,7 @@
 //! conversation's device to come back and its running commands to be taken
 //! up. Meanwhile the conversation's status is `resuming`, from the moment its
 //! mark is taken with the preference on until its resume settles, so no page
-//! shows as failed a turn Demi is about to run. The shard holds the set in
+//! shows as failed a turn Demi is about to run. The core holds the set in
 //! memory alone, since it lasts no longer than the process.
 
 use std::cell::RefCell;
@@ -47,26 +47,26 @@ use demi_shared_types::{ErrorBlock, SessionPhase};
 use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::join_all;
 
-use crate::Shard;
+use crate::Core;
 
 /// What the resume tells the model.
 pub const RESTART_REASON: &str = "Demi resumed this turn after the backend restarted.";
 
-/// The conversations whose interrupted turn the shard is resuming.
+/// The conversations whose interrupted turn the core is resuming.
 #[derive(Default)]
 pub(crate) struct RestartResumes(RefCell<HashSet<ConversationId>>);
 
 impl RestartResumes {
-    /// Whether the shard is resuming `conversation`'s turn.
+    /// Whether the core is resuming `conversation`'s turn.
     pub(crate) fn contains(&self, conversation: &ConversationId) -> bool {
         self.0.borrow().contains(conversation)
     }
 }
 
-/// A conversation in the shard's `RestartResumes` while it lives; each entry
+/// A conversation in the core's `RestartResumes` while it lives; each entry
 /// and exit changes the conversation's summary.
 struct Resuming<'a> {
-    shard: &'a Shard,
+    core: &'a Core,
     conversation: ConversationId,
     /// The resume started the turn: the root's entry stops saying it resumes
     /// in the step its phase changes, so the guard leaves it alone.
@@ -74,25 +74,25 @@ struct Resuming<'a> {
 }
 
 impl<'a> Resuming<'a> {
-    fn begin(shard: &'a Shard, conversation: &ConversationId) -> Self {
-        shard.restart_resumes().0.borrow_mut().insert(conversation.clone());
-        shard.agent().resuming_changed(&root_of(conversation));
-        shard.mark(Part::Conversation(conversation.clone()));
-        Self { shard, conversation: conversation.clone(), started: false }
+    fn begin(core: &'a Core, conversation: &ConversationId) -> Self {
+        core.restart_resumes().0.borrow_mut().insert(conversation.clone());
+        core.agent().resuming_changed(&root_of(conversation));
+        core.mark(Part::Conversation(conversation.clone()));
+        Self { core, conversation: conversation.clone(), started: false }
     }
 }
 
 impl Drop for Resuming<'_> {
     fn drop(&mut self) {
-        self.shard.restart_resumes().0.borrow_mut().remove(&self.conversation);
+        self.core.restart_resumes().0.borrow_mut().remove(&self.conversation);
         if !self.started {
-            self.shard.agent().resuming_changed(&root_of(&self.conversation));
+            self.core.agent().resuming_changed(&root_of(&self.conversation));
         }
-        self.shard.mark(Part::Conversation(self.conversation.clone()));
+        self.core.mark(Part::Conversation(self.conversation.clone()));
     }
 }
 
-impl Shard {
+impl Core {
     /// Marks each live root whose turn runs, before the shutdown aborts it.
     /// A mark not written leaves that turn to the user's Resume.
     pub(crate) async fn mark_running_roots(&self) {
@@ -166,7 +166,7 @@ impl Shard {
     /// if that turn ended interrupted. Answers how it settled: `resumed`,
     /// `held` for the user's preference, `skipped` or `failed`.
     async fn resume_interrupted_turn(&self, conversation: ConversationId, on: bool) -> &'static str {
-        // Counted among the tree's openers, so the shard's close waits for
+        // Counted among the tree's openers, so the core's close waits for
         // it before the agent shuts down; it opens nothing once the close
         // began, and the mark stays for the next start.
         let _opening = self.tree_openers().token();

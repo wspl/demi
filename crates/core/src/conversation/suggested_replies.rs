@@ -12,7 +12,7 @@
 //! metadata offers the newest, so a page the backend's restart reconnects
 //! shows what it showed; the page shows it only under that answer. Work that
 //! starts while a request runs cancels it, as does an
-//! archive and the shard's close. The pages learn what a request kept from
+//! archive and the core's close. The pages learn what a request kept from
 //! the conversation's metadata.
 
 use std::cell::{Cell, RefCell};
@@ -34,9 +34,9 @@ use tokio_util::task::TaskTracker;
 use tracing::Instrument as _;
 
 use super::small_requests::{SmallRequestFailure, SmallRequests};
-use crate::Shard;
+use crate::Core;
 
-/// The suggested replies of a shard's conversations.
+/// The suggested replies of a core's conversations.
 pub(crate) struct SuggestedReplies {
     small_requests: Rc<SmallRequests>,
     store: CoreStore,
@@ -72,7 +72,7 @@ impl SuggestedReplies {
         }
     }
 
-    /// Stops every request, as the shard's close does.
+    /// Stops every request, as the core's close does.
     pub(crate) fn abort_all(&self) {
         for (_, cancel) in self.in_flight.borrow_mut().drain().map(|(_, request)| request) {
             cancel.cancel();
@@ -168,7 +168,7 @@ fn log(conversation: &ConversationId, small: Option<&ModelSelection>, started: s
     }
 }
 
-impl Shard {
+impl Core {
     /// Follows the conversation's status: as its tree starts to run, stops
     /// its request and notes when; as it rests, asks for suggestions when the
     /// latest turn ended with an answer written since. Called on each change

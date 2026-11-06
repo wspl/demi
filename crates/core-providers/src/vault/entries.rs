@@ -306,7 +306,7 @@ impl Vault {
     }
 
     fn announce_account_change(&self, entry: &ProviderId) {
-        // With no follower, as before any user's shard started, nobody holds
+        // With no follower, as before any user's core started, nobody holds
         // a process to close.
         let _ = self.0.account_changes.send(entry.clone());
     }

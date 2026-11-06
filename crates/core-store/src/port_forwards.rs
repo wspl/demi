@@ -1,5 +1,5 @@
 //! The users' port forwards
-//! (`crates/backend-user-shard/src/shard/port_forwards.rs`).
+//! (`crates/core/src/port_forwards.rs`).
 //!
 //! A record holds a forward's:
 //!

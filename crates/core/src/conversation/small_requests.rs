@@ -21,7 +21,7 @@ use tokio_util::sync::CancellationToken;
 use super::providers::ConversationProviders;
 use crate::services::CoreServices;
 
-/// Where a shard's small jobs send their requests.
+/// Where a core's small jobs send their requests.
 pub(crate) struct SmallRequests {
     providers: Rc<ConversationProviders>,
     user: UserId,

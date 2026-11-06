@@ -14,13 +14,13 @@
 //!
 //! - The edge (`backend-http`) accepts connections, authenticates requests
 //!   and copies bytes.
-//! - A user's shard (`backend-user-shard`) holds everything the backend
+//! - A user's core (`backend-user-shard`) holds everything the backend
 //!   decides for one user.
 //!
 //! ```text
-//! web app --- HTTP ------------> edge --> a shared service, or the user's shard
-//!         --- sync channel ----> edge --> the user's shard
-//!         --- conversation ----> edge --> the user's shard
+//! web app --- HTTP ------------> edge --> a shared service, or the user's core
+//!         --- sync channel ----> edge --> the user's core
+//!         --- conversation ----> edge --> the user's core
 //!             socket                        |  agent tree -> conversation db
 //!                         +-----------------+------------------+
 //!                         v                                    v
@@ -48,7 +48,7 @@
 //!   - the machine manager's client and Cloud capacity;
 //!   - runners waiting to be paired and login lockout;
 //!   - the registry of each user's synchronization channels.
-//! - A user's shard holds everything else the backend decides for that user:
+//! - A user's core holds everything else the backend decides for that user:
 //!   - each conversation's file gate, transfers and idle watch;
 //!   - the agent trees;
 //!   - device links and one task per runner connection;
@@ -70,7 +70,7 @@
 //! demi-backend (configuration, composition)
 //!   |-- core-providers (the credential vault)
 //!   `-- backend-http (the HTTP edge)
-//!         `-- backend-user-shard (the user's shard, conversations)
+//!         `-- backend-user-shard (the user's core, conversations)
 //!               |-- core-permissions (conversation permissions)
 //!               |-- core-host-access --> backend-cloud, backend-runners
 //!               |-- backend-cloud -------> backend-runners, core-providers,

@@ -1,4 +1,4 @@
-//! What the profile changes of `demi agent profiles` need of the user's shard
+//! What the profile changes of `demi agent profiles` need of the user's core
 //! (`crates/agent-server/src/server/tree/profiles.rs`).
 //!
 //! - A command's change is resolved into the body the settings page sends,
@@ -19,7 +19,7 @@ use demi_web_api_protocol::providers::{Availability, CatalogProvider};
 use demi_web_api_protocol::settings::Preferences;
 use demi_web_api_protocol::subagents::{NewProfile, ProfilePatch, SubagentProfile};
 
-use super::Shard;
+use super::Core;
 
 /// The user's provider entries with their catalogs, and the preferences
 /// that hide some of them, read together.
@@ -51,7 +51,7 @@ impl Scope {
     }
 }
 
-impl Shard {
+impl Core {
     /// Creates the profile a `create` command gives.
     pub(crate) async fn create_drafted_profile(
         &self,
@@ -233,7 +233,7 @@ pub(crate) fn named_entry(
 }
 
 /// The first of the user's entries, in their order, whose models the menu
-/// offers `model` of (`crates/backend-user-shard/src/conversation/workflows.rs`).
+/// offers `model` of (`crates/core/src/conversation/workflows.rs`).
 pub(crate) fn first_offering(scope: &Scope, model: &str) -> Option<ProviderId> {
     scope.entries.iter().find_map(|entry| {
         let catalog = scope.catalog_of(entry)?;

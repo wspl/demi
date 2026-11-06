@@ -26,7 +26,7 @@
 //! backend's pipes, never through a runner socket, and move to the two
 //! runners' direct channel when they may talk directly. Like the agent's own jobs,
 //! its admission installs the user's Host directories there before it starts
-//! and tells the shard when it ended.
+//! and tells the core when it ended.
 //!
 //! An agent pairs a computer it reaches without the user typing the code:
 //!
@@ -74,7 +74,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use crate::HostShard;
+use crate::HostCore;
 use crate::access::{HostRole, ReachableHost};
 use crate::transition::ChangeRefusal;
 
@@ -182,68 +182,68 @@ struct ShellArgs {
     script: Option<String>,
 }
 
-/// The `host` group, whose handlers act in `shard`.
-pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
+/// The `host` group, whose handlers act in `core`.
+pub fn host_group(core: Weak<dyn HostCore>) -> GroupBuilder {
     GroupBuilder::new("host", SUMMARY)
         .index_entry(ENTRY)
         .permission(DEVICES, DEVICES_ACTION, DEVICES_DESCRIPTION)
-        .group(crate::forward_commands::forward_group(shard.clone()))
+        .group(crate::forward_commands::forward_group(core.clone()))
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<NoArgs>()
                 .json_output::<Vec<ListedHost>>()
-                .bind(TypedRpc::new(verb(shard.clone(), list))),
+                .bind(TypedRpc::new(verb(core.clone(), list))),
         )
         .leaf(
             LeafBuilder::rpc("current", CURRENT_SUMMARY)
                 .input::<NoArgs>()
                 .json_output::<CurrentHost>()
-                .bind(TypedRpc::new(verb(shard.clone(), current))),
+                .bind(TypedRpc::new(verb(core.clone(), current))),
         )
         .leaf(
             LeafBuilder::rpc("shell", SHELL_SUMMARY)
                 .input::<ShellArgs>()
                 .positionals(["script"])
                 .failure_output("writes the reason to stderr and exits non-zero (127 when the host cannot run bash)")
-                .bind(TypedRpc::new(verb(shard.clone(), shell))),
+                .bind(TypedRpc::new(verb(core.clone(), shell))),
         )
         .leaf(
             LeafBuilder::rpc("devices", DEVICES_SUMMARY)
                 .input::<NoArgs>()
                 .json_output::<Vec<ListedDevice>>()
-                .bind(TypedRpc::new(verb(shard.clone(), devices))),
+                .bind(TypedRpc::new(verb(core.clone(), devices))),
         )
         .leaf(
             LeafBuilder::rpc("install-command", INSTALL_COMMAND_SUMMARY)
                 .input::<InstallCommandArgs>()
-                .bind(TypedRpc::new(verb(shard.clone(), install_command))),
+                .bind(TypedRpc::new(verb(core.clone(), install_command))),
         )
         .leaf(
             LeafBuilder::rpc("pair", PAIR_SUMMARY)
                 .input::<PairArgs>()
                 .positionals(["code"])
                 .permission(DEVICES)
-                .bind(TypedRpc::new(verb(shard.clone(), pair))),
+                .bind(TypedRpc::new(verb(core.clone(), pair))),
         )
         .leaf(
             LeafBuilder::rpc("attach", ATTACH_SUMMARY)
                 .input::<AttachArgs>()
                 .positionals(["device"])
                 .brings_host("device")
-                .bind(TypedRpc::new(verb(shard.clone(), attach))),
+                .bind(TypedRpc::new(verb(core.clone(), attach))),
         )
         .leaf(
             LeafBuilder::rpc("detach", DETACH_SUMMARY)
                 .input::<DetachArgs>()
                 .positionals(["host"])
-                .bind(TypedRpc::new(verb(shard.clone(), detach))),
+                .bind(TypedRpc::new(verb(core.clone(), detach))),
         )
         .leaf(
             LeafBuilder::rpc("move", MOVE_SUMMARY)
                 .input::<MoveArgs>()
                 .positionals(["host", "directory"])
                 .brings_host("host")
-                .bind(TypedRpc::new(verb(shard, move_to))),
+                .bind(TypedRpc::new(verb(core, move_to))),
         )
 }
 
@@ -267,11 +267,11 @@ pub struct NamedDevice {
 /// 3. A paired device, by its name.
 /// 4. The user's Cloud, by `Cloud`, which makes its device on its first use.
 pub async fn resolve_host(
-    shard: &dyn HostShard,
+    core: &dyn HostCore,
     conversation: &ConversationId,
     wanted: &str,
 ) -> Result<NamedDevice, RpcError> {
-    devices_named(shard, conversation, wanted)
+    devices_named(core, conversation, wanted)
         .await?
         .into_iter()
         .next()
@@ -288,12 +288,12 @@ pub fn brought(invocation: &RpcInvocation) -> Result<&BroughtHost, RpcError> {
 
 /// Each of the user's devices `wanted` may name, in [`resolve_host`]'s order.
 async fn devices_named(
-    shard: &dyn HostShard,
+    core: &dyn HostCore,
     conversation: &ConversationId,
     wanted: &str,
 ) -> Result<Vec<NamedDevice>, RpcError> {
     let failed = |error: demi_core_store::StorageError| RpcError::Failed(error.to_string());
-    let store = shard.store();
+    let store = core.store();
     let mut found: Vec<NamedDevice> = Vec::new();
     let mut push = |named: NamedDevice| {
         if !found.iter().any(|each| each.device == named.device) {
@@ -302,7 +302,7 @@ async fn devices_named(
     };
     let cloud = store.managed_device().await.map_err(failed)?;
     let is_cloud = |device: &DeviceId| cloud.as_ref().is_some_and(|cloud| cloud.id == *device);
-    for host in reachable(shard, conversation).await? {
+    for host in reachable(core, conversation).await? {
         if host.name == wanted || host.device.as_str() == wanted {
             push(NamedDevice {
                 cloud: is_cloud(&host.device),
@@ -323,7 +323,7 @@ async fn devices_named(
         Some(cloud) if cloud.id.as_str() == wanted => Some(cloud),
         _ if wanted == "Cloud" => {
             let cloud_failed = |error: crate::cloud::CloudError| RpcError::Failed(error.to_string());
-            Some(crate::cloud::cloud_of(shard).map_err(cloud_failed)?.cloud_device().await.map_err(cloud_failed)?)
+            Some(crate::cloud::cloud_of(core).map_err(cloud_failed)?.cloud_device().await.map_err(cloud_failed)?)
         }
         _ => None,
     };
@@ -337,23 +337,23 @@ async fn devices_named(
     Ok(found)
 }
 
-/// A handler over the live shard; a call after the shard closed fails.
+/// A handler over the live core; a call after the core closed fails.
 pub(crate) fn verb<A, F, Fut>(
-    shard: Weak<dyn HostShard>,
+    core: Weak<dyn HostCore>,
     run: F,
 ) -> impl Fn(Call<A>, RpcPort) -> LocalBoxFuture<'static, Result<u8, RpcError>>
 where
     A: 'static,
-    F: Fn(Rc<dyn HostShard>, Call<A>, RpcPort) -> Fut + Clone + 'static,
+    F: Fn(Rc<dyn HostCore>, Call<A>, RpcPort) -> Fut + Clone + 'static,
     Fut: Future<Output = Result<u8, RpcError>> + 'static,
 {
     move |call, port| {
-        let shard = shard.upgrade();
+        let core = core.upgrade();
         let run = run.clone();
         Box::pin(async move {
-            let shard =
-                shard.ok_or_else(|| RpcError::Failed("the backend is shutting down".into()))?;
-            run(shard, call, port).await
+            let core =
+                core.ok_or_else(|| RpcError::Failed("the backend is shutting down".into()))?;
+            run(core, call, port).await
         })
     }
 }
@@ -386,8 +386,8 @@ impl HostNames {
 }
 
 /// The user's Hosts, paired devices and the Cloud, for naming them.
-pub(crate) async fn host_names(shard: &dyn HostShard) -> Result<HostNames, RpcError> {
-    let store = shard.store();
+pub(crate) async fn host_names(core: &dyn HostCore) -> Result<HostNames, RpcError> {
+    let store = core.store();
     let failed = |error: demi_core_store::StorageError| RpcError::Failed(error.to_string());
     let mut devices = store.paired_devices().await.map_err(failed)?;
     devices.extend(store.managed_device().await.map_err(failed)?);
@@ -401,10 +401,10 @@ pub fn conversation_of(invocation: &RpcInvocation) -> Result<ConversationId, Rpc
 
 /// The Hosts the calling conversation reaches.
 pub async fn reachable(
-    shard: &dyn HostShard,
+    core: &dyn HostCore,
     conversation: &ConversationId,
 ) -> Result<Vec<ReachableHost>, RpcError> {
-    shard
+    core
         .conversation_hosts(conversation)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))
@@ -422,8 +422,8 @@ pub(crate) fn named_host<'a>(
         .or_else(|| hosts.iter().find(|host| host.device.as_str() == wanted))
 }
 
-fn online(shard: &dyn HostShard, host: &ReachableHost) -> &'static str {
-    if shard.devices().online(&host.device) {
+fn online(core: &dyn HostCore, host: &ReachableHost) -> &'static str {
+    if core.devices().online(&host.device) {
         "online"
     } else {
         "offline"
@@ -454,9 +454,9 @@ fn role_word(role: HostRole) -> &'static str {
     }
 }
 
-async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn list(core: Rc<dyn HostCore>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
-    let hosts = reachable(&*shard, &conversation).await?;
+    let hosts = reachable(&*core, &conversation).await?;
     if hosts.is_empty() {
         port.stderr(warning(&call.invocation.path.join(" "), "the Cloud has not been allocated"))
             .await?;
@@ -466,7 +466,7 @@ async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Re
         .map(|host| ListedHost {
             name: host.name.clone(),
             id: host.device.to_string(),
-            status: online(&*shard, host),
+            status: online(&*core, host),
             role: role_word(host.role),
             directory: Some(host.path.clone()).filter(|path| !path.is_empty()),
         })
@@ -507,13 +507,13 @@ fn device_state(kind: DeviceKind, state: DeviceState) -> &'static str {
 }
 
 async fn devices(
-    shard: Rc<dyn HostShard>,
+    core: Rc<dyn HostCore>,
     call: Call<NoArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
-    let hosts = reachable(&*shard, &conversation).await?;
-    let store = shard.store();
+    let hosts = reachable(&*core, &conversation).await?;
+    let store = core.store();
     let failed = |error: demi_core_store::StorageError| RpcError::Failed(error.to_string());
     let cloud = store
         .managed_device()
@@ -542,7 +542,7 @@ async fn devices(
                     DeviceKind::Managed => "cloud",
                     DeviceKind::User => "paired",
                 },
-                status: device_state(device.kind, shard.devices().state(&device.id)),
+                status: device_state(device.kind, core.devices().state(&device.id)),
                 role: host.map(|host| role_word(host.role)),
                 host: host.map(|host| host.name.clone()),
             }
@@ -585,7 +585,7 @@ struct ListedDevice {
 }
 
 async fn attach(
-    shard: Rc<dyn HostShard>,
+    core: Rc<dyn HostCore>,
     call: Call<AttachArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -599,7 +599,7 @@ async fn attach(
     }
     let device = DeviceId::try_from(host.device.clone())
         .map_err(|_| RpcError::Failed("the dispatch resolved no device".into()))?;
-    let attached = attach_device(&*shard, &conversation, &device, &host.name).await?;
+    let attached = attach_device(&*core, &conversation, &device, &host.name).await?;
     port.stdout(format!(
         "Attached {} as {attached}; run commands there with `demi host shell --host {attached} <script>`.\n",
         host.name
@@ -612,7 +612,7 @@ async fn attach(
 /// conversation, and answers the name the conversation reaches it by: the
 /// device's, with a suffix when a host attached before goes by it already.
 async fn attach_device(
-    shard: &dyn HostShard,
+    core: &dyn HostCore,
     conversation: &ConversationId,
     device: &DeviceId,
     device_name: &str,
@@ -621,7 +621,7 @@ async fn attach_device(
         device: device.clone(),
         cwd: None,
     });
-    match shard.transition(conversation, change.into()).await {
+    match core.transition(conversation, change.into()).await {
         Ok(()) => {}
         Err(ChangeRefusal::HostIsPrimary) => {
             return Err(RpcError::Failed(format!(
@@ -630,7 +630,7 @@ async fn attach_device(
         }
         Err(refusal) => return Err(RpcError::Failed(format!("{device_name}: {refusal}"))),
     }
-    let hosts = reachable(shard, conversation).await?;
+    let hosts = reachable(core, conversation).await?;
     Ok(hosts
         .iter()
         .find(|host| host.device == *device)
@@ -639,11 +639,11 @@ async fn attach_device(
 }
 
 async fn install_command(
-    shard: Rc<dyn HostShard>,
+    core: Rc<dyn HostCore>,
     call: Call<InstallCommandArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
-    let commands = shard
+    let commands = core
         .install_commands()
         .ok_or_else(|| RpcError::Failed("the backend is not listening yet".into()))?;
     let text = match call.args.system {
@@ -659,14 +659,14 @@ async fn install_command(
     Ok(0)
 }
 
-async fn pair(shard: Rc<dyn HostShard>, call: Call<PairArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn pair(core: Rc<dyn HostCore>, call: Call<PairArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let Call {
         args: PairArgs { code },
         invocation,
     } = call;
     let conversation = conversation_of(&invocation)?;
-    let device = shard.pair(&code).await.map_err(RpcError::Failed)?;
-    let attached = attach_device(&*shard, &conversation, &device.id, &device.name)
+    let device = core.pair(&code).await.map_err(RpcError::Failed)?;
+    let attached = attach_device(&*core, &conversation, &device.id, &device.name)
         .await
         .map_err(|error| {
             RpcError::Failed(format!(
@@ -683,12 +683,12 @@ async fn pair(shard: Rc<dyn HostShard>, call: Call<PairArgs>, port: RpcPort) -> 
 }
 
 async fn detach(
-    shard: Rc<dyn HostShard>,
+    core: Rc<dyn HostCore>,
     call: Call<DetachArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
-    let hosts = reachable(&*shard, &conversation).await?;
+    let hosts = reachable(&*core, &conversation).await?;
     let wanted = &call.args.host;
     let Some(host) = named_host(&hosts, wanted) else {
         return Err(RpcError::Failed(format!(
@@ -707,7 +707,7 @@ async fn detach(
             host.name
         )));
     }
-    shard
+    core
         .transition(&conversation, RecordChange::Detach(host.device.clone()).into())
         .await
         .map_err(|refusal| RpcError::Failed(format!("{}: {refusal}", host.name)))?;
@@ -719,7 +719,7 @@ async fn detach(
 /// through the one move operation, which checks the directory, and answers
 /// once it is made. A command stopped before the move's commit starts moves
 /// nothing.
-async fn move_to(shard: Rc<dyn HostShard>, call: Call<MoveArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn move_to(core: Rc<dyn HostCore>, call: Call<MoveArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let Call {
         args: MoveArgs { directory, .. },
         invocation,
@@ -739,7 +739,7 @@ async fn move_to(shard: Rc<dyn HostShard>, call: Call<MoveArgs>, port: RpcPort) 
         }
     };
     let cancel = CancellationToken::new();
-    let moving = shard.move_conversation(&conversation, target, &cancel);
+    let moving = core.move_conversation(&conversation, target, &cancel);
     tokio::pin!(moving);
     let moved = loop {
         tokio::select! {
@@ -758,17 +758,17 @@ async fn move_to(shard: Rc<dyn HostShard>, call: Call<MoveArgs>, port: RpcPort) 
 }
 
 async fn current(
-    shard: Rc<dyn HostShard>,
+    core: Rc<dyn HostCore>,
     call: Call<NoArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
-    let store = shard.store();
-    let record = shard
+    let store = core.store();
+    let record = core
         .owned_conversation(&conversation)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
-    let target = shard
+    let target = core
         .resolve_target(&record)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
@@ -800,7 +800,7 @@ async fn current(
             CurrentHost {
                 name,
                 id: Some(device.to_string()),
-                status: if shard.devices().online(device) { "online" } else { "offline" },
+                status: if core.devices().online(device) { "online" } else { "offline" },
                 project,
                 directory,
             }
@@ -835,7 +835,7 @@ struct CurrentHost {
 }
 
 async fn shell(
-    shard: Rc<dyn HostShard>,
+    core: Rc<dyn HostCore>,
     call: Call<ShellArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -855,14 +855,14 @@ async fn shell(
         None => (script_from_stdin(&port).await?, false),
     };
     let conversation = conversation_of(&invocation)?;
-    let hosts = reachable(&*shard, &conversation).await?;
+    let hosts = reachable(&*core, &conversation).await?;
     let Some(host) = named_host(&hosts, &wanted) else {
         return Err(RpcError::Failed(format!(
             "{wanted}: not reachable from this conversation (see `demi host list`)"
         )));
     };
     run_on_host(
-        &*shard,
+        &*core,
         &conversation,
         host,
         script,
@@ -899,7 +899,7 @@ async fn script_from_stdin(port: &RpcPort) -> Result<String, RpcError> {
 /// access, with the calling command's standard output, and its standard
 /// input when `streams_stdin` says the script did not come from there.
 async fn run_on_host(
-    shard: &dyn HostShard,
+    core: &dyn HostCore,
     conversation: &ConversationId,
     target: &ReachableHost,
     script: String,
@@ -912,18 +912,18 @@ async fn run_on_host(
         .as_ref()
         .map(|caller| caller.node.as_str())
         .ok_or("host shell runs for an agent")?;
-    let commands = shard.commands().selection_of(node, conversation);
+    let commands = core.commands().selection_of(node, conversation);
     let relayed = invocation
         .pipes
         .as_ref()
         .ok_or("cross-host execution requires a machine job")?;
-    let stdout = shard
+    let stdout = core
         .pipes()
         .pipe(&relayed.stdout)
         .ok_or("the command's standard output is gone")?;
     let stdin = match relayed.stdin.as_ref().filter(|_| streams_stdin) {
         Some(id) => Some(
-            shard
+            core
                 .pipes()
                 .pipe(id)
                 .ok_or("the command's standard input is gone")?,
@@ -940,7 +940,7 @@ async fn run_on_host(
     // Between two devices whose runners may talk directly, the bytes move to
     // their direct channel once it is up.
     if invocation.host != device {
-        let names = host_names(shard).await.map_err(|error| error.to_string())?;
+        let names = host_names(core).await.map_err(|error| error.to_string())?;
         let route = names.pair_route(&invocation.host, device);
         if route != PairRoute::Relay {
             stdout.may_go_direct(route);
@@ -952,7 +952,7 @@ async fn run_on_host(
     let withdrawal = Rc::new(Withdrawal::default());
     // The admission's waits end with the call.
     let cancel = CancellationToken::new();
-    shard.tasks().spawn_local({
+    core.tasks().spawn_local({
         let port = port.clone();
         let cancel = cancel.clone();
         async move {
@@ -960,7 +960,7 @@ async fn run_on_host(
             cancel.cancel();
         }
     });
-    let ran = shard
+    let ran = core
         .with_host(conversation, Some(&target.device), &cancel, async |host| {
             if port.is_cancelled() {
                 return Ok(None);
@@ -969,29 +969,29 @@ async fn run_on_host(
                 // The primary Host, admitted while its runner is away,
                 // answers with its offline error as an attached one is
                 // refused with it.
-                return Err(match shard.store().device(target.device.clone()).await {
-                    Ok(Some(record)) => shard.offline(&record).message,
+                return Err(match core.store().device(target.device.clone()).await {
+                    Ok(Some(record)) => core.offline(&record).message,
                     _ => format!("{} is offline", target.name),
                 });
             }
             // The detach of its Host ends it: the conversation holds it as
             // it holds an agent's own job there.
-            let _held = shard
+            let _held = core
                 .conversations()
                 .slot(conversation)
                 .hold_job(target.device.clone(), true, None, withdrawal.clone());
             // A detach of the Host that committed since the admission, or
             // that comes while the directories install, ends the call here,
             // before the job starts.
-            shard
+            core
                 .reaches(conversation, &target.device, &withdrawal)
                 .await
                 .map_err(|error| error.message)?;
-            shard
+            core
                 .install_directories(conversation, &target.device, host)
                 .await
                 .map_err(|error| error.message)?;
-            shard
+            core
                 .reaches(conversation, &target.device, &withdrawal)
                 .await
                 .map_err(|error| error.message)?;

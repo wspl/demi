@@ -42,12 +42,12 @@ pub(super) async fn open(state: &AppState, user: &UserId, id: &str, name: String
         state
             .shards
             .of(user)
-            .call(move |shard, cancel| async move {
-                let Some(plugin_off) = shard.plugins().stream_end(&name).await? else {
+            .call(move |core, cancel| async move {
+                let Some(plugin_off) = core.plugins().stream_end(&name).await? else {
                     return Ok(None);
                 };
-                let stream = shard
-                    .host_shard()
+                let stream = core
+                    .host_core()
                     .open_user_stream(&record.id, &binding, &cancel)
                     .await?;
                 Ok::<_, ApiError>(Some((stream, plugin_off)))
@@ -107,7 +107,7 @@ impl End {
 /// - The page's text message says whether it watches the stream.
 /// - Whichever side ends first ends the stream, and so does `plugin_off`, once
 ///   the user turns its plugin off; dropping the lease then ends it in the
-///   shard.
+///   core.
 async fn relay(
     mut to_page: Lane,
     mut from_page: LaneReader,

@@ -20,7 +20,7 @@
 //!   learns whether a page watches ([`PageFeed`]);
 //! - the text a handler prints: aligned columns ([`text`]).
 //!
-//! Everything here runs inside a user's shard, so nothing requires `Send`.
+//! Everything here runs inside a user's core, so nothing requires `Send`.
 //!
 //! The crate depends on no agent crate, no `provider-common`, no concrete
 //! provider, no plugin and no Host implementation.

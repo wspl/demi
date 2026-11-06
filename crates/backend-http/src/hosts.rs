@@ -44,7 +44,7 @@ async fn change(
     state
         .shards
         .of(user)
-        .call(move |shard, _| async move { shard.transition(&id, change).await })
+        .call(move |core, _| async move { core.transition(&id, change).await })
         .await?
         .map_err(refused)
 }

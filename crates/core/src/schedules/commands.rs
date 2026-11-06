@@ -28,7 +28,7 @@ use demi_core_store::schedules::StoredSchedule;
 
 use super::ScheduleError;
 use crate::conversation::organize::{failed, verb};
-use crate::Shard;
+use crate::Core;
 use crate::credential_commands::print_json;
 
 const SUMMARY: &str = "This conversation's schedules, which wake it: once, on a repeating cycle with tasks in it, every interval, by cron, when a command's output changes, or when a URL is called. List, show, create, change, run now and delete them.";
@@ -109,8 +109,8 @@ struct Shown {
     address: Option<String>,
 }
 
-/// The `schedule` group, whose handlers act in `shard`.
-pub(crate) fn schedule_group(shard: Weak<Shard>) -> GroupBuilder {
+/// The `schedule` group, whose handlers act in `core`.
+pub(crate) fn schedule_group(core: Weak<Core>) -> GroupBuilder {
     let parts = |leaf: LeafBuilder| {
         leaf.describe("name", "A line the user reads in the list, such as \"Failed payments every weekday\".")
             .describe("repeat", "A repeating cycle: day, week, month or year, or a count of them such as \"2 weeks\" or \"3 months\". Its tasks run in each cycle's first unit.")
@@ -135,7 +135,7 @@ pub(crate) fn schedule_group(shard: Weak<Shard>) -> GroupBuilder {
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<NoArgs>()
                 .json_output::<Vec<ScheduleDto>>()
-                .bind(TypedRpc::new(verb(shard.clone(), list))),
+                .bind(TypedRpc::new(verb(core.clone(), list))),
         )
         .leaf(
             LeafBuilder::rpc("show", SHOW_SUMMARY)
@@ -143,12 +143,12 @@ pub(crate) fn schedule_group(shard: Weak<Shard>) -> GroupBuilder {
                 .describe("id", "The schedule's id, as `list` prints it.")
                 .positionals(["id"])
                 .json_output::<Shown>()
-                .bind(TypedRpc::new(verb(shard.clone(), show))),
+                .bind(TypedRpc::new(verb(core.clone(), show))),
         )
         .leaf(
             parts(LeafBuilder::rpc("create", CREATE_SUMMARY).input::<PartsArgs>())
                 .json_output::<Shown>()
-                .bind(TypedRpc::new(verb(shard.clone(), create))),
+                .bind(TypedRpc::new(verb(core.clone(), create))),
         )
         .leaf(
             parts(LeafBuilder::rpc("edit", EDIT_SUMMARY).input::<EditArgs>())
@@ -161,7 +161,7 @@ pub(crate) fn schedule_group(shard: Weak<Shard>) -> GroupBuilder {
                 .describe("new-secret", "Make a new secret for a URL trigger and print it once; the old one stops working at once.")
                 .positionals(["id"])
                 .json_output::<Shown>()
-                .bind(TypedRpc::new(verb(shard.clone(), edit))),
+                .bind(TypedRpc::new(verb(core.clone(), edit))),
         )
         .leaf(
             LeafBuilder::rpc("run", RUN_SUMMARY)
@@ -169,14 +169,14 @@ pub(crate) fn schedule_group(shard: Weak<Shard>) -> GroupBuilder {
                 .describe("id", "The schedule's id.")
                 .describe("task", "The repeat's task to run, by its id as show prints it.")
                 .positionals(["id"])
-                .bind(TypedRpc::new(verb(shard.clone(), run))),
+                .bind(TypedRpc::new(verb(core.clone(), run))),
         )
         .leaf(
             LeafBuilder::rpc("delete", DELETE_SUMMARY)
                 .input::<IdArgs>()
                 .describe("id", "The schedule's id.")
                 .positionals(["id"])
-                .bind(TypedRpc::new(verb(shard, delete))),
+                .bind(TypedRpc::new(verb(core, delete))),
         )
 }
 
@@ -218,17 +218,17 @@ fn state_words(state: RunState) -> &'static str {
     }
 }
 
-fn address(shard: &Shard, schedule: &ScheduleDto) -> Option<String> {
+fn address(core: &Core, schedule: &ScheduleDto) -> Option<String> {
     if !matches!(schedule.trigger, Trigger::Url {}) {
         return None;
     }
-    let base = shard.services().public_url.get()?;
+    let base = core.services().public_url.get()?;
     Some(format!("{}/hooks/{}", base.as_str().trim_end_matches('/'), schedule.id))
 }
 
-async fn list(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn list(core: Rc<Core>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
-    let schedules = shard.schedule_list(&conversation).await.map_err(failed)?;
+    let schedules = core.schedule_list(&conversation).await.map_err(failed)?;
     if call.invocation.json {
         return print_json(&port, &schedules).await;
     }
@@ -248,14 +248,14 @@ async fn list(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8,
 }
 
 async fn print_shown(
-    shard: &Shard,
+    core: &Core,
     port: &RpcPort,
     command: &str,
     json: bool,
     schedule: ScheduleDto,
     secret: Option<String>,
 ) -> Result<u8, RpcError> {
-    let address = address(shard, &schedule);
+    let address = address(core, &schedule);
     if secret.is_some() {
         port.stderr(warning(command, "the secret is printed once; edit --new-secret makes a new one"))
             .await?;
@@ -333,17 +333,17 @@ async fn print_shown(
     Ok(0)
 }
 
-async fn show(shard: Rc<Shard>, call: Call<IdArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn show(core: Rc<Core>, call: Call<IdArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let id = id_of(&call.args.id)?;
     let conversation = conversation_of(&call.invocation)?;
-    let schedule = shard
+    let schedule = core
         .schedule_list(&conversation)
         .await
         .map_err(failed)?
         .into_iter()
         .find(|schedule| schedule.id == id)
         .ok_or_else(|| failed(format!("{id}: this conversation has no schedule of that id")))?;
-    print_shown(&shard, &port, &call.invocation.path.join(" "), call.invocation.json, schedule, None).await
+    print_shown(&core, &port, &call.invocation.path.join(" "), call.invocation.json, schedule, None).await
 }
 
 /// The local time `text` names in `zone`: `2026-10-18 08:00`, or an
@@ -420,7 +420,7 @@ impl TaskOps {
 /// What the options change, as a page's patch would, on `current` when
 /// they edit one.
 async fn patch(
-    shard: &Shard,
+    core: &Core,
     args: PartsArgs,
     zone: String,
     current: Option<&StoredSchedule>,
@@ -476,7 +476,7 @@ async fn patch(
     let current_prompt = current.map(|schedule| schedule.prompt.clone()).unwrap_or_default();
     let today = || {
         let zone = super::plan::zone(&zone).map_err(failed)?;
-        Ok::<_, RpcError>(shard.store().now().to_jiff().to_zoned(zone).date().to_string())
+        Ok::<_, RpcError>(core.store().now().to_jiff().to_zoned(zone).date().to_string())
     };
     let start = |every: u32, kept: Option<&str>| -> Result<Option<String>, RpcError> {
         match (&args.start, every > 1) {
@@ -737,33 +737,33 @@ fn if_busy(text: &str) -> Result<IfBusy, RpcError> {
     }
 }
 
-async fn user_zone(shard: &Shard) -> Result<String, RpcError> {
-    let reported = demi_core_hosts::command_context::reported(shard.store())
+async fn user_zone(core: &Core) -> Result<String, RpcError> {
+    let reported = demi_core_hosts::command_context::reported(core.store())
         .await
         .map_err(failed)?;
     Ok(reported.locale.time_zone)
 }
 
-async fn create(shard: Rc<Shard>, call: Call<PartsArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn create(core: Rc<Core>, call: Call<PartsArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
-    let zone = user_zone(&shard).await?;
-    let mut patch = patch(&shard, call.args, zone, None, TaskOps::default()).await?;
+    let zone = user_zone(&core).await?;
+    let mut patch = patch(&core, call.args, zone, None, TaskOps::default()).await?;
     // The user's grant is the confirmation: it is on at once.
     patch.paused = Some(false);
-    let (schedule, secret) = shard.create_schedule(&conversation, patch).await.map_err(refused)?;
-    print_shown(&shard, &port, &call.invocation.path.join(" "), call.invocation.json, schedule, secret).await
+    let (schedule, secret) = core.create_schedule(&conversation, patch).await.map_err(refused)?;
+    print_shown(&core, &port, &call.invocation.path.join(" "), call.invocation.json, schedule, secret).await
 }
 
-async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn edit(core: Rc<Core>, call: Call<EditArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
     let id = id_of(&call.args.id)?;
-    let current = shard.stored_schedule(&conversation, &id).await.map_err(refused)?;
+    let current = core.stored_schedule(&conversation, &id).await.map_err(refused)?;
     let ops = TaskOps {
         task: call.args.task,
         add: call.args.add_task == Some(true),
         delete: call.args.delete_task,
     };
-    let mut patch = patch(&shard, call.args.parts, current.time_zone.clone(), Some(&current), ops).await?;
+    let mut patch = patch(&core, call.args.parts, current.time_zone.clone(), Some(&current), ops).await?;
     patch.paused = match (call.args.paused == Some(true), call.args.on == Some(true)) {
         (true, true) => return Err(failed("--paused and --on contradict each other; give one")),
         (true, false) => Some(true),
@@ -774,23 +774,23 @@ async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u
     if patch == SchedulePatch::default() && !new_secret {
         return Err(failed("nothing to change: give an option, or the message on stdin"));
     }
-    let (schedule, secret) = shard.change_schedule(&conversation, &id, patch, new_secret).await.map_err(refused)?;
-    print_shown(&shard, &port, &call.invocation.path.join(" "), call.invocation.json, schedule, secret).await
+    let (schedule, secret) = core.change_schedule(&conversation, &id, patch, new_secret).await.map_err(refused)?;
+    print_shown(&core, &port, &call.invocation.path.join(" "), call.invocation.json, schedule, secret).await
 }
 
-async fn run(shard: Rc<Shard>, call: Call<RunArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn run(core: Rc<Core>, call: Call<RunArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
     let id = id_of(&call.args.id)?;
-    let schedule = shard.run_schedule_now(&conversation, &id, call.args.task).await.map_err(refused)?;
+    let schedule = core.run_schedule_now(&conversation, &id, call.args.task).await.map_err(refused)?;
     port.stdout(format!("Started a run of \u{201c}{}\u{201d}.\n", schedule.name)).await?;
     Ok(0)
 }
 
-async fn delete(shard: Rc<Shard>, call: Call<IdArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn delete(core: Rc<Core>, call: Call<IdArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
     let id = id_of(&call.args.id)?;
-    let schedule = shard.stored_schedule(&conversation, &id).await.map_err(refused)?;
-    shard.delete_schedule(&conversation, &id).await.map_err(refused)?;
+    let schedule = core.stored_schedule(&conversation, &id).await.map_err(refused)?;
+    core.delete_schedule(&conversation, &id).await.map_err(refused)?;
     port.stdout(format!("Deleted the schedule \u{201c}{}\u{201d}.\n", schedule.name)).await?;
     Ok(0)
 }

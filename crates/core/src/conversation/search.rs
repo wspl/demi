@@ -56,7 +56,7 @@ use demi_web_api_protocol::search::{
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::services::CoreServices;
-use crate::Shard;
+use crate::Core;
 
 /// The user's indexer: the watch of the user's changes, one indexing at a
 /// time per conversation, the conversations marked since their last look
@@ -95,8 +95,8 @@ impl SearchIndexer {
     }
 }
 
-impl Shard {
-    /// Looks at each conversation the user's changes mark, until the shard
+impl Core {
+    /// Looks at each conversation the user's changes mark, until the core
     /// closes.
     pub(crate) async fn follow_for_search(self: Rc<Self>) {
         loop {
@@ -122,12 +122,12 @@ impl Shard {
             return;
         }
         indexer.saves.borrow_mut().insert(id.clone(), VecDeque::from([change]));
-        let shard = self.this();
+        let core = self.this();
         self.tasks().spawn_local(async move {
             loop {
-                let _turn = shard.search_indexer().turns.acquire(id.clone()).await;
+                let _turn = core.search_indexer().turns.acquire(id.clone()).await;
                 let next = {
-                    let mut saves = shard.search_indexer().saves.borrow_mut();
+                    let mut saves = core.search_indexer().saves.borrow_mut();
                     let next = saves.get_mut(&id).and_then(VecDeque::pop_front);
                     if next.is_none() {
                         saves.remove(&id);
@@ -137,7 +137,7 @@ impl Shard {
                 let Some(change) = next else {
                     return;
                 };
-                let applied = shard.store().search().apply(&id, change).await;
+                let applied = core.store().search().apply(&id, change).await;
                 match applied {
                     Ok(true) => continue,
                     Ok(false) => {}
@@ -155,8 +155,8 @@ impl Shard {
                 //
                 // A failed read leaves the index behind the conversation, so the
                 // next save, or the next start, reads it whole again.
-                let caught_up = match shard.store().conversation(id.clone()).await {
-                    Ok(record) => shard.catch_up(&id, record, true).await,
+                let caught_up = match core.store().conversation(id.clone()).await {
+                    Ok(record) => core.catch_up(&id, record, true).await,
                     Err(error) => Err(error),
                 };
                 report_catch_up(&id, caught_up);
@@ -174,28 +174,28 @@ impl Shard {
         }
         let again = Rc::new(Cell::new(false));
         indexer.marked.borrow_mut().insert(id.clone(), again.clone());
-        let shard = self.this();
+        let core = self.this();
         let interval = self.services().conversation_tuning.search_interval;
         self.tasks().spawn_local(async move {
             loop {
-                let record = shard.store().conversation(id.clone()).await;
+                let record = core.store().conversation(id.clone()).await;
                 let indexed = match record {
                     Ok(record) => {
-                        let _turn = shard.search_indexer().turns.acquire(id.clone()).await;
-                        shard.catch_up(&id, record, false).await
+                        let _turn = core.search_indexer().turns.acquire(id.clone()).await;
+                        core.catch_up(&id, record, false).await
                     }
                     Err(error) => Err(error),
                 };
                 report_catch_up(&id, indexed);
                 tokio::select! {
                     () = tokio::time::sleep(interval) => {}
-                    () = shard.closed() => break,
+                    () = core.closed() => break,
                 }
                 if !again.replace(false) {
                     break;
                 }
             }
-            shard.search_indexer().marked.borrow_mut().remove(&id);
+            core.search_indexer().marked.borrow_mut().remove(&id);
         });
     }
 
@@ -322,9 +322,9 @@ fn report_catch_up(id: &ConversationId, caught_up: Result<(), StorageError>) {
 }
 
 
-impl Shard {
+impl Core {
     /// Indexes every conversation again as at start each time the user's
-    /// search index is reset, until the shard closes. A follower that fell
+    /// search index is reset, until the core closes. A follower that fell
     /// behind and missed some resets does it once.
     pub(crate) async fn follow_search_resets(self: Rc<Self>) {
         let mut resets = self.store().search().resets();

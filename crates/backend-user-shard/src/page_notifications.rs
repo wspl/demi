@@ -29,7 +29,7 @@ use demi_web_api_protocol::sessions::SessionId;
 use tokio::time::Instant;
 
 use crate::server_starter::ServerSide;
-use demi_core::Shard;
+use demi_core::Core;
 
 /// How long a session stays in use after the last input to one of its pages.
 const IN_USE_FOR: Duration = Duration::from_secs(IN_USE_MINUTES * 60);
@@ -198,10 +198,10 @@ impl ServerSide {
 
     /// Delivers `message` to `recipients` in the background, after the
     /// notifications before it. A failure is logged.
-    pub(crate) fn deliver(shard: &Rc<Shard>, message: PushMessage, recipients: Recipients) {
-        let delivering = Self::of(shard).pages.delivering.clone();
-        let this = shard.clone();
-        shard.tasks().spawn_local(async move {
+    pub(crate) fn deliver(core: &Rc<Core>, message: PushMessage, recipients: Recipients) {
+        let delivering = Self::of(core).pages.delivering.clone();
+        let this = core.clone();
+        core.tasks().spawn_local(async move {
             let _turn = delivering.lock().await;
             let started = std::time::Instant::now();
             let kind = match &message {

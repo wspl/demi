@@ -98,7 +98,7 @@ export interface Hidden {
 
 /**
  * Why an incomplete entry cannot infer yet, from its catalog's availability
- * (`crates/backend-user-shard/src/provider_settings.rs`); null once it has
+ * (`crates/core/src/provider_settings.rs`); null once it has
  * everything it needs to try.
  */
 export function setupOf(catalog: CatalogProvider | undefined): { message: string } | null {

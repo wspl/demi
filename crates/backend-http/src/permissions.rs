@@ -1,5 +1,5 @@
 //! A conversation's permission route: a decision on one of its undecided
-//! requests, in the user's shard; its metadata carries the requests.
+//! requests, in the user's core; its metadata carries the requests.
 //!
 //! An archived conversation refuses a decision.
 
@@ -35,9 +35,9 @@ pub(super) async fn decide(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move {
+        .call(move |core, _| async move {
             decide_request(
-                shard.permission_shard(),
+                core.permission_core(),
                 &conversation,
                 request,
                 decision,

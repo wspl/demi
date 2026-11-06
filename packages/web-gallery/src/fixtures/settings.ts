@@ -1070,7 +1070,7 @@ export function mockProviders(): MockProvider[] {
 
 /**
  * Entries that are not complete yet
- * (`crates/backend-user-shard/src/provider_settings.rs`), one lacking each part
+ * (`crates/core/src/provider_settings.rs`), one lacking each part
  * and one lacking two:
  *
  * - A vendor entry without its key.
@@ -1107,7 +1107,7 @@ export function incompleteProviders(): MockProvider[] {
 /**
  * Whether the entry lacks a part it cannot infer without, as the backend's
  * `ProviderEntry::missing` says and the product shows it from the catalog's
- * `setup` availability (`crates/backend-user-shard/src/provider_settings.rs`):
+ * `setup` availability (`crates/core/src/provider_settings.rs`):
  *
  * - A vendor's key.
  * - A compatible API's endpoint, whose key is optional.

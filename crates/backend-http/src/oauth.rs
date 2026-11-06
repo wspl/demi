@@ -2,7 +2,7 @@
 //! vendor sends the browser back after the user signed in.
 //!
 //! It is a session route: the browser's own navigation carries the session
-//! cookie, so the caller's shard completes only a sign-in its user started. It
+//! cookie, so the caller's core completes only a sign-in its user started. It
 //! answers a page the user reads in the tab the sign-in opened.
 
 use axum::extract::{Path, Query, State};
@@ -36,8 +36,8 @@ pub(super) async fn callback(
     let completed = state
         .shards
         .of(&user.id)
-        .call(move |shard, cancel| async move {
-            shard.plugins().oauth_callback(&plugin, callback, cancel).await
+        .call(move |core, cancel| async move {
+            core.plugins().oauth_callback(&plugin, callback, cancel).await
         })
         .await?;
     let language = page_language(&headers);

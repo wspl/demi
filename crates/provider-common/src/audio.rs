@@ -30,7 +30,7 @@ pub trait AudioMaker: MediaMaker {
     }
 
     /// Makes one file of audio for the provider's key, sending with
-    /// `http`, the client of the shard that asks; `catalog` says what the
+    /// `http`, the client of the core that asks; `catalog` says what the
     /// model makes. A maker of [`AudioMaker::jobs`] waits for the job.
     fn make<'a>(
         &'a self,

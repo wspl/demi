@@ -5,7 +5,7 @@
 //! make_video ---- ask ----> vendor          (the call)
 //!     | row: running                            |
 //!     v                                          |
-//! follower: read every few seconds <-------------+   (the shard's task)
+//! follower: read every few seconds <-------------+   (the core's task)
 //!     | the end: the usage row, then the row ended,
 //!     |          the file in the user's blobs
 //!     v
@@ -13,14 +13,14 @@
 //!            collected and deleted                   (the call)
 //! ```
 //!
-//! - A follower belongs to the shard, not to a call: a call that goes, or a
+//! - A follower belongs to the core, not to a call: a call that goes, or a
 //!   connection that drops, leaves it reading. One job has one follower,
 //!   which whoever finds the job unfollowed starts, before any wait.
-//! - A stop of the call that asked, unless the shard is closing or the
+//! - A stop of the call that asked, unless the core is closing or the
 //!   runner sends the call again, leaves the job to nobody: a video's is
 //!   cancelled at a vendor that cancels one, an image's or a sound's runs to
 //!   its end, and either records its cost and leaves no row.
-//! - A shard that closes stops its followers where they are, and their rows
+//! - A core that closes stops its followers where they are, and their rows
 //!   stay running: the next start follows them again, from the vendor's id,
 //!   on the entry and account the job was asked on.
 //! - The wait is bounded from the job's ask: a job still running then ends,
@@ -36,7 +36,7 @@ use std::time::Duration;
 
 use demi_core_store::media_jobs::{JobEnd, JobOfCall, Made, MediaJob, MediaJobStatus};
 use demi_core_store::usage::{UsageRow, merge_windows};
-use demi_core_host_access::HostShard;
+use demi_core_host_access::HostCore;
 use demi_host_interface::PortError;
 use demi_plugin_host::{MediaCall, VideoJob};
 use demi_plugin_interface::{MadeAudio, MadeImage, MadeVideo, MediaRefusal, PcmShape, PortFailure, PortRefusal, VideoStep};
@@ -55,10 +55,10 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
-use super::Shard;
+use super::Core;
 use super::media::vendor_refusal;
 
-/// The jobs the shard follows, by their calls.
+/// The jobs the core follows, by their calls.
 #[derive(Default)]
 pub(crate) struct MediaJobs(RefCell<HashMap<JobOfCall, Rc<Followed>>>);
 
@@ -103,7 +103,7 @@ fn refused(refusal: MediaRefusal) -> PortFailure {
     PortFailure::Refused(PortRefusal::Media { refusal })
 }
 
-impl Shard {
+impl Core {
     /// Follows `job` until it ends, unless it is followed already, and
     /// answers its follow. A job without its `reader`, one an earlier start
     /// kept, is read on its entry and account as they are now, unless it
@@ -116,7 +116,7 @@ impl Shard {
         let followed = Rc::new(Followed { standing: watch::Sender::new(Standing::Queued), stop: CancellationToken::new() });
         jobs.insert(job.of.clone(), followed.clone());
         drop(jobs);
-        let shard = self.this();
+        let core = self.this();
         let follow = followed.clone();
         let span = tracing::info_span!(
             "media_job",
@@ -129,13 +129,13 @@ impl Shard {
         self.tasks().spawn_local(
             async move {
                 let of = job.of.clone();
-                let closing = shard.closed();
+                let closing = core.closed();
                 tokio::select! {
-                    () = shard.follow_kept(job, reader, &follow) => {}
+                    () = core.follow_kept(job, reader, &follow) => {}
                     // The row stays running for the next start.
                     () = closing => {}
                 }
-                shard.media_jobs.0.borrow_mut().remove(&of);
+                core.media_jobs.0.borrow_mut().remove(&of);
                 follow.standing.send_replace(Standing::Ended);
             }
             .instrument(span),
@@ -143,7 +143,7 @@ impl Shard {
         followed
     }
 
-    /// Follows each of the user's running jobs, as the shard starts.
+    /// Follows each of the user's running jobs, as the core starts.
     pub(crate) async fn follow_media_jobs(self: Rc<Self>) {
         let jobs = match self.store().running_media_jobs().await {
             Ok(jobs) => jobs,
@@ -341,7 +341,7 @@ impl Shard {
             }
             _ => return Err(unreadable("its finished job made another kind of media".to_owned())),
         };
-        let blob = HostShard::blobs(self).put(bytes).await.map_err(|error| MediaFailure::Unanswered {
+        let blob = HostCore::blobs(self).put(bytes).await.map_err(|error| MediaFailure::Unanswered {
             cause: format!("the file could not be kept: {error}"),
             code: None,
             trace: Default::default(),
@@ -367,9 +367,9 @@ impl Shard {
     /// Its end deletes the job's row and so lets its file go. Dropped, it
     /// stops only the call's waiting.
     pub(crate) fn collect(&self, of: JobOfCall) -> LocalBoxStream<'static, Result<Collected, PortFailure>> {
-        let shard = self.this();
+        let core = self.this();
         async_stream::stream! {
-            let store = shard.store().clone();
+            let store = core.store().clone();
             let gone = || refused(MediaRefusal::Failed { message: "the server no longer keeps the job".to_owned() });
             let job = match store.media_job(of.clone()).await {
                 Ok(Some(job)) => job,
@@ -383,7 +383,7 @@ impl Shard {
                 }
             };
             let followed = match job.status {
-                MediaJobStatus::Running => Some(shard.follow_media_job(job, None)),
+                MediaJobStatus::Running => Some(core.follow_media_job(job, None)),
                 _ => None,
             };
             if let Some(followed) = followed {
@@ -415,7 +415,7 @@ impl Shard {
                 }
             };
             let collected = match ended.status {
-                // A shard that closes stops its followers, and the call
+                // A core that closes stops its followers, and the call
                 // answers nothing: the end of its session stops it, which
                 // the runner hears of as the session's end and sends the
                 // call again after the restart.
@@ -423,7 +423,7 @@ impl Shard {
                     std::future::pending::<()>().await;
                     return;
                 }
-                MediaJobStatus::Made { blob, made } => match HostShard::blobs(&*shard).get(&blob).await {
+                MediaJobStatus::Made { blob, made } => match HostCore::blobs(&*core).get(&blob).await {
                     Ok(Some(bytes)) => Ok(Collected::Made(with_bytes(made, bytes.into()))),
                     Ok(None) => Err(refused(MediaRefusal::Failed { message: "the file the job made is gone".to_owned() })),
                     // The row stays for a call that comes back.
@@ -443,7 +443,7 @@ impl Shard {
         .boxed_local()
     }
 
-    /// [`Shard::collect`] of a video's job, as the plugin reads its steps.
+    /// [`Core::collect`] of a video's job, as the plugin reads its steps.
     pub(crate) fn collect_video(&self, of: JobOfCall) -> VideoJob {
         self.collect(of)
             .filter_map(|collected| {
@@ -472,29 +472,29 @@ impl Shard {
     }
 
     /// Leaves the job of `call` to nobody once `cancel`, its call's stop,
-    /// comes, unless the call comes back to it: the shard is closing, as a
+    /// comes, unless the call comes back to it: the core is closing, as a
     /// restart closes it, or the runner sends the call again
     /// ([`MediaCall::comes_back`]). A job that ended uncollected goes with
     /// its row; a call that collected its job finds none.
     pub(crate) fn watch_call_stop(&self, call: &MediaCall, cancel: CancellationToken) {
         let of = JobOfCall { call: call.id.clone(), ordinal: call.ordinal };
-        let shard = self.this();
+        let core = self.this();
         let call = call.clone();
         self.tasks().spawn_local(async move {
             tokio::select! {
                 biased;
-                () = shard.closed() => return,
+                () = core.closed() => return,
                 () = cancel.cancelled() => {}
             }
             if call.comes_back() {
                 tracing::info!(event = "media_job.kept_for_call", "a stopped call's media job goes on for its call's return");
                 return;
             }
-            let followed = shard.media_jobs.0.borrow().get(&of).cloned();
+            let followed = core.media_jobs.0.borrow().get(&of).cloned();
             match followed {
                 Some(followed) => followed.abandon(),
                 None => {
-                    if let Err(error) = shard.store().delete_media_job(of).await {
+                    if let Err(error) = core.store().delete_media_job(of).await {
                         tracing::warn!(event = "media_job.delete_failed", %error, "a stopped call's media job was not deleted");
                     }
                 }

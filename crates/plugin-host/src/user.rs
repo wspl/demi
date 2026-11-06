@@ -1,4 +1,4 @@
-//! One user's plugins on the user's shard.
+//! One user's plugins on the user's core.
 //!
 //! The module holds:
 //!
@@ -6,7 +6,7 @@
 //!   conversations and which page states, page calls and user streams exist,
 //!   and which of their features, which narrows the toolset
 //!   (`crate::features`).
-//! - An instance of each plugin on, made at its first request after the shard
+//! - An instance of each plugin on, made at its first request after the core
 //!   started or the plugin was turned on, and dropped, with every task it
 //!   started, when it is turned off. A conversation's deletion or fork reaches
 //!   a plugin that keeps something of a conversation on or off, through an
@@ -99,7 +99,7 @@ impl MediaCall {
 
 /// What the product does for the plugins' port: the operations that reach
 /// a conversation's Hosts through its host access, and the user's blobs.
-/// The user's shard implements it.
+/// The user's core implements it.
 pub trait ProductPort {
     /// Runs `operation` once on the conversation's primary Host for the user,
     /// waking it or not as `kind` says, and answers its JSON result.
@@ -209,7 +209,7 @@ pub trait ProductPort {
     /// What `sealed` holds as that secret; none when it does not open.
     fn open(&self, user: &UserId, plugin: &str, name: &str, sealed: &[u8]) -> Option<Vec<u8>>;
 
-    /// The client every outbound request of the plugins goes through: the shard's, which sends only
+    /// The client every outbound request of the plugins goes through: the core's, which sends only
     /// `https` and follows no redirect away from it.
     fn web_client(&self) -> reqwest::Client;
 
@@ -220,9 +220,9 @@ pub trait ProductPort {
     /// The wall clock.
     fn now(&self) -> Timestamp;
 
-    /// Runs `work` as a task of the user's shard, which the shard's close
+    /// Runs `work` as a task of the user's core, which the core's close
     /// waits for: work that runs to its end though whoever started it went
-    /// away, such as a token renewal that asked its vendor. A shard already
+    /// away, such as a token renewal that asked its vendor. A core already
     /// gone drops `work` unstarted.
     fn spawn(&self, work: LocalBoxFuture<'static, ()>);
 }
@@ -356,7 +356,7 @@ pub(crate) struct Shared {
     pub(crate) sign_ins: SignIns,
     changes: Rc<dyn PluginChanges>,
     /// Whether the user has each plugin on, by its index, once read: every
-    /// switch goes through this shard, so the copy stays current.
+    /// switch goes through this core, so the copy stays current.
     enabled: RefCell<Option<Vec<bool>>>,
     /// Whether the user has each feature of each plugin on, by the
     /// plugin's index and the feature's, once read, as `enabled` is.
@@ -370,10 +370,10 @@ pub(crate) struct Shared {
     /// of date (`crates/runner-direct/src/lib.rs`).
     switched: RefCell<CancellationToken>,
     /// Each plugin's Host directories for the user, by its index, once
-    /// read: every change goes through this shard.
+    /// read: every change goes through this core.
     directories: RefCell<Option<Vec<Vec<HostDirectory>>>>,
     /// How many times each plugin's conversation state changed since the
-    /// shard started, by the plugin's index and the conversation; a pair
+    /// core started, by the plugin's index and the conversation; a pair
     /// without an entry has changed none.
     revisions: RefCell<HashMap<(usize, ConversationId), u64>>,
 }

@@ -22,9 +22,9 @@ use demi_web_api_protocol::conversations::{
 };
 use demi_web_api_protocol::ids::ConversationId;
 
-use crate::Shard;
+use crate::Core;
 
-impl Shard {
+impl Core {
     /// Creates the conversation as the request says, then admits the first
     /// message it carries, if any, in the session the creation opens
     /// (`admit_first_message`). The conversation exists whatever the message's
@@ -72,7 +72,7 @@ impl Shard {
     ) -> Result<Creation, ChangeRefusal> {
         let store = self.store();
         // Its directory is the one its Host names (§ Resolve a target).
-        start.target = self.host_shard().resolved_destination(start.target).await?;
+        start.target = self.host_core().resolved_destination(start.target).await?;
         let (created, made) = store.create_conversation_selecting(id, start)
             .await?;
         if made.is_some() {

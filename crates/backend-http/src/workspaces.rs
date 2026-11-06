@@ -77,7 +77,7 @@ pub(super) async fn order(
 }
 
 /// Deletes the workspace and its conversations, as one step the user's
-/// shard takes.
+/// core takes.
 pub(super) async fn delete(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -87,7 +87,7 @@ pub(super) async fn delete(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.delete_workspace(&id).await })
+        .call(move |core, _| async move { core.delete_workspace(&id).await })
         .await?
         .map_err(|refusal| match refusal {
             WorkspaceRefusal::NotFound => workspace_not_found(),
@@ -116,8 +116,8 @@ pub(super) async fn moves(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move {
-            shard.move_to_workspace(&id, request.conversations, request.projects).await
+        .call(move |core, _| async move {
+            core.move_to_workspace(&id, request.conversations, request.projects).await
         })
         .await??
         .map_err(|refusal| match refusal {

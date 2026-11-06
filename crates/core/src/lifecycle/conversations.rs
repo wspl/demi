@@ -40,7 +40,7 @@
 //!
 //! The message is an effort, never a record: a runner that is away or loses it
 //! keeps what it holds until its next connection, whose hello names the
-//! conversations it is to hold (`crates/backend-user-shard/src/shard/adoption.rs`)
+//! conversations it is to hold (`crates/core/src/adoption.rs`)
 //! and has it release every other. A Host is to hold a conversation that is not
 //! archived, deleted or detached from it, and that the idle clock did not
 //! release; a conversation used on a Host again is held there again, since its
@@ -69,7 +69,7 @@ use demi_web_api_protocol::ids::ConversationId;
 use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument as _;
 
-use crate::Shard;
+use crate::Core;
 use demi_core_host_access::root_of;
 
 /// The idle watch of each conversation that reached a Host.
@@ -82,7 +82,7 @@ pub(crate) struct ConversationWatches {
     released: RefCell<HashSet<ConversationId>>,
 }
 
-impl Shard {
+impl Core {
     /// What the conversation is doing: a turn of its tree, an operation
     /// holding its file gate, or a user stream someone has open.
     pub fn conversation_activity(&self, id: &ConversationId) -> Activity {
@@ -112,7 +112,7 @@ impl Shard {
         }
         self.idle_watches().released.borrow_mut().remove(id);
         let policy = ConversationIdle {
-            shard: Rc::downgrade(&self.this()),
+            core: Rc::downgrade(&self.this()),
             id: id.clone(),
         };
         let lifecycle = &self.services().lifecycle;
@@ -149,7 +149,7 @@ impl Shard {
         self.idle_watches().watches.borrow_mut().remove(id);
     }
 
-    /// Ends every conversation's idle watch, for the shard's close.
+    /// Ends every conversation's idle watch, for the core's close.
     pub(crate) fn stop_idle_watches(&self) {
         self.idle_watches().watches.borrow_mut().clear();
     }
@@ -157,33 +157,33 @@ impl Shard {
 
 /// The idle rule for a conversation on its paired devices.
 struct ConversationIdle {
-    shard: Weak<Shard>,
+    core: Weak<Core>,
     id: ConversationId,
 }
 
 impl ConversationIdle {
-    fn shard(&self) -> Result<Rc<Shard>, String> {
-        self.shard
+    fn core(&self) -> Result<Rc<Core>, String> {
+        self.core
             .upgrade()
-            .ok_or_else(|| "the shard is gone".to_owned())
+            .ok_or_else(|| "the core is gone".to_owned())
     }
 }
 
 impl IdlePolicy for ConversationIdle {
     async fn check(&self) -> Result<Activity, String> {
-        Ok(self.shard()?.conversation_activity(&self.id))
+        Ok(self.core()?.conversation_activity(&self.id))
     }
 
     async fn reserve(&self) -> Result<Option<Retirement>, String> {
-        let shard = self.shard()?;
-        let tree = match shard.agent().tree(&root_of(&self.id)) {
+        let core = self.core()?;
+        let tree = match core.agent().tree(&root_of(&self.id)) {
             Some(tree) => match tree.admission().try_reserve() {
                 Some(reservation) => Some(reservation),
                 None => return Ok(None),
             },
             None => None,
         };
-        let Some(files) = shard
+        let Some(files) = core
             .conversations()
             .slot(&self.id)
             .file_gate()
@@ -194,27 +194,27 @@ impl IdlePolicy for ConversationIdle {
         let id = self.id.clone();
         Ok(Some(Box::pin(async move {
             let _held = (files, tree);
-            let record = shard
-                .host_shard()
+            let record = core
+                .host_core()
                 .owned_conversation(&id)
                 .await
                 .map_err(|error| error.to_string())?;
-            shard
-                .host_shard()
+            core
+                .host_core()
                 .release_everywhere(&record)
                 .await
                 .map_err(|error| error.to_string())?;
-            shard.idle_watches().released.borrow_mut().insert(id);
+            core.idle_watches().released.borrow_mut().insert(id);
             Ok(())
         })))
     }
 
     async fn changed(&self) {
-        let Ok(shard) = self.shard() else {
+        let Ok(core) = self.core() else {
             return std::future::pending().await;
         };
-        let mut files = shard.conversations().slot(&self.id).file_gate().subscribe();
-        // The slot keeps the gate's sender while the shard lives.
+        let mut files = core.conversations().slot(&self.id).file_gate().subscribe();
+        // The slot keeps the gate's sender while the core lives.
         let _ = files.changed().await;
     }
 }

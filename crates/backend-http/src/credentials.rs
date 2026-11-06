@@ -1,7 +1,7 @@
 //! The caller's credentials, which only their owner lists, creates, changes
 //! and deletes.
 //!
-//! - Each route acts in the caller's shard.
+//! - Each route acts in the caller's core.
 //! - A change reaches the caller's pages as the `credentials` part, which
 //!   carries a visible field's value and never a secret one's. Only
 //!   `reveal` answers a secret's value, to the owner whose session's
@@ -47,7 +47,7 @@ pub(super) async fn list(
     let credentials = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.credential_list().await })
+        .call(move |core, _| async move { core.credential_list().await })
         .await??;
     Ok(Json(CredentialList { credentials }))
 }
@@ -61,7 +61,7 @@ pub(super) async fn create(
     let credential = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.create_credential(credential).await })
+        .call(move |core, _| async move { core.create_credential(credential).await })
         .await?
         .map_err(refused)?;
     Ok((StatusCode::CREATED, Json(CredentialAnswer { credential })))
@@ -78,7 +78,7 @@ pub(super) async fn change(
     let credential = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.change_credential(id, patch).await })
+        .call(move |core, _| async move { core.change_credential(id, patch).await })
         .await?
         .map_err(refused)?;
     Ok(Json(CredentialAnswer { credential }))
@@ -94,7 +94,7 @@ pub(super) async fn delete(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.remove_credential(id).await })
+        .call(move |core, _| async move { core.remove_credential(id).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
@@ -114,7 +114,7 @@ pub(super) async fn reveal(
     let value = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.reveal_credential(id, field).await })
+        .call(move |core, _| async move { core.reveal_credential(id, field).await })
         .await?
         .map_err(refused)?;
     Ok(Json(RevealedValue { value }))

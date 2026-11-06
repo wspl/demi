@@ -17,7 +17,7 @@ interface WorkflowPlace {
    * The conversation, once it has a record, whose workflows the backend
    * keeps and its metadata carries; null for a new conversation before its
    * first message, which reads them through the device
-   * (`crates/backend-user-shard/src/conversation/workflows.rs`).
+   * (`crates/core/src/conversation/workflows.rs`).
    */
   conversationId: string | null
 }

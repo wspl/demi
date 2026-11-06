@@ -61,7 +61,7 @@ pub(super) async fn open(state: &AppState, user: &UserId, id: &str) -> Result<Op
         state
             .shards
             .of(user)
-            .call(move |shard, _| async move { shard.devices().reached(&device).await })
+            .call(move |core, _| async move { core.devices().reached(&device).await })
             .await?
     };
     if !connected {
@@ -311,8 +311,8 @@ impl Signaling {
             .state
             .shards
             .of(&self.user)
-            .call(move |shard, cancel| async move {
-                let Some(link) = shard.devices().link(&device) else {
+            .call(move |core, cancel| async move {
+                let Some(link) = core.devices().link(&device) else {
                     return;
                 };
                 tokio::select! {
@@ -321,7 +321,7 @@ impl Signaling {
                 }
             })
             .await;
-        // A shard that is gone has no runner connection either.
+        // A core that is gone has no runner connection either.
         let _ = waited;
     }
 
@@ -348,14 +348,14 @@ impl Signaling {
             .state
             .shards
             .of(&self.user)
-            .call(move |shard, _| async move {
+            .call(move |core, _| async move {
                 // Taken before the streams are read, so a change while they
                 // are read is not missed.
-                let switched = shard.plugins().next_switch();
+                let switched = core.plugins().next_switch();
                 let mut bound = std::collections::BTreeMap::new();
                 for (name, binding) in streams.iter() {
                     // A stream of a plugin the user has off does not exist.
-                    if matches!(shard.plugins().stream_end(name).await, Ok(Some(_))) {
+                    if matches!(core.plugins().stream_end(name).await, Ok(Some(_))) {
                         bound.insert(name.to_owned(), binding.clone());
                     }
                 }
@@ -364,7 +364,7 @@ impl Signaling {
                     locale,
                     color_scheme,
                 };
-                let link = shard.devices().link(&device)?;
+                let link = core.devices().link(&device)?;
                 let offer = link.direct_offer(&peer, sdp, Introduced::Page { page: introduction, live }, stun);
                 let answered = match tokio::time::timeout(ANSWER_TIMEOUT, offer).await {
                     Ok(Ok(answer)) => Ok(answer),
@@ -405,7 +405,7 @@ impl Signaling {
         self.state
             .shards
             .of(&self.user)
-            .call(move |shard, _| async move { Some(shard.devices().link(&device)?.direct_peer(&peer)) })
+            .call(move |core, _| async move { Some(core.devices().link(&device)?.direct_peer(&peer)) })
             .await
             .ok()
             .flatten()
@@ -420,13 +420,13 @@ impl Signaling {
             .state
             .shards
             .of(&self.user)
-            .call(move |shard, _| async move {
-                if let Some(link) = shard.devices().link(&device) {
+            .call(move |core, _| async move {
+                if let Some(link) = core.devices().link(&device) {
                     link.direct_ping(&peer, id);
                 }
             })
             .await;
-        // A shard that is gone has no runner connection left to probe; the
+        // A core that is gone has no runner connection left to probe; the
         // page counts the probe as late.
         let _ = relayed;
     }
@@ -440,13 +440,13 @@ impl Signaling {
             .state
             .shards
             .of(&self.user)
-            .call(move |shard, _| async move {
-                if let Some(link) = shard.devices().link(&device) {
+            .call(move |core, _| async move {
+                if let Some(link) = core.devices().link(&device) {
                     link.direct_candidate(&peer, candidate);
                 }
             })
             .await;
-        // A shard that is gone has no runner connection left to tell.
+        // A core that is gone has no runner connection left to tell.
         let _ = relayed;
     }
 
@@ -458,13 +458,13 @@ impl Signaling {
             .state
             .shards
             .of(&self.user)
-            .call(move |shard, _| async move {
-                if let Some(link) = shard.devices().link(&device) {
+            .call(move |core, _| async move {
+                if let Some(link) = core.devices().link(&device) {
                     link.direct_forget(&peer);
                 }
             })
             .await;
-        // A shard that is gone holds no link to forget it in.
+        // A core that is gone holds no link to forget it in.
         let _ = forgot;
     }
 
@@ -476,13 +476,13 @@ impl Signaling {
             .state
             .shards
             .of(&self.user)
-            .call(move |shard, _| async move {
-                if let Some(link) = shard.devices().link(&device) {
+            .call(move |core, _| async move {
+                if let Some(link) = core.devices().link(&device) {
                     link.direct_close(&peer);
                 }
             })
             .await;
-        // A shard that is gone has no runner connection left to tell.
+        // A core that is gone has no runner connection left to tell.
         let _ = closed;
     }
 }

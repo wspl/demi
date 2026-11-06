@@ -2,11 +2,11 @@
 //!
 //! The crate holds:
 //!
-//! - a shared [`Provider`] per entry and account and a shard-local
+//! - a shared [`Provider`] per entry and account and a core-local
 //!   [`ProviderRuntime`] per session;
 //! - a run's events and its typed failure;
 //! - the HTTP failure record and its standard reading;
-//! - request bodies built off the shard and the endpoint rule of API-key
+//! - request bodies built off the core and the endpoint rule of API-key
 //!   entries;
 //! - the vendor-wire decoding in [`wire`], with the OpenAI-shaped streams and
 //!   their request side in [`openai_request`];
@@ -25,7 +25,7 @@
 //! Credentials, catalogs and quota serve every user of a shared instance and
 //! the backend's request handlers, so a provider is used from any thread. A run
 //! serves one turn and, for Claude Code, drives a process reached through the
-//! user's Host connection, so a runtime lives on the user's shard and never
+//! user's Host connection, so a runtime lives on the user's core and never
 //! leaves it.
 //!
 //! A provider reads its key, endpoint and options only from the typed

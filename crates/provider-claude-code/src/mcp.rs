@@ -1,5 +1,5 @@
 //! The SDK MCP channel: Demi's MCP server for one CLI process, an rmcp server
-//! in local mode on the user's shard, reached through an in-memory transport.
+//! in local mode on the user's core, reached through an in-memory transport.
 //!
 //! Before the CLI starts, the provider makes the handshake the CLI's client
 //! would make, `initialize` and the first `tools/list`, and hands the CLI the
@@ -14,7 +14,7 @@
 //! The server is built with rmcp, the official Rust MCP SDK, because the
 //! protocol's types, the `initialize` handshake and version negotiation are the
 //! library's job, and in its local mode because its state lives on the user's
-//! shard, one thread. Calls and results are matched by the original tool-use ID
+//! core, one thread. Calls and results are matched by the original tool-use ID
 //! in `_meta` (`claudecode/toolUseId`).
 //!
 //! # Parallel tool batches

@@ -10,7 +10,7 @@
 //! # Who a device serves
 //!
 //! - An entry's requests go out from its owner's device, through the owner's
-//!   shard.
+//!   core.
 //! - On a shared instance, an administrator's shared entry that connects
 //!   through the administrator's device serves every user of the entry.
 //!
@@ -41,10 +41,10 @@ use futures_util::future::BoxFuture;
 use http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use tokio_util::sync::CancellationToken;
 
-use super::Shard;
+use super::Core;
 use super::cores::Cores;
 
-impl Shard {
+impl Core {
     /// A request the backend makes for the user from `request`'s device, one
     /// of the user's Hosts, through its runner.
     async fn device_request(&self, request: DeviceRequest, cancel: CancellationToken) -> Result<DeviceAnswer, DeviceRefusal> {
@@ -132,7 +132,7 @@ impl Shard {
     }
 
     /// A pipe that carries `body` to `device`'s runner, written by a task
-    /// of the shard's that ends with the pipe.
+    /// of the core's that ends with the pipe.
     fn send_body(
         &self,
         device: &DeviceId,
@@ -176,7 +176,7 @@ pub(crate) async fn through_device(stores: &dyn VaultStores, entry: &ProviderEnt
 }
 
 /// The backend's way to its users' devices for the provider client: each
-/// request goes to the shard of the device's owner.
+/// request goes to the core of the device's owner.
 pub struct DeviceRequests {
     cores: Arc<dyn Cores>,
 }
@@ -197,7 +197,7 @@ impl DeviceRoute for DeviceRequests {
                 return Err(DeviceRefusal::Removed);
             };
             cores
-                .call(&owner, move |shard, cancel| async move { shard.device_request(request, cancel).await })
+                .call(&owner, move |core, cancel| async move { core.device_request(request, cancel).await })
                 .await
                 .unwrap_or_else(|error| Err(DeviceRefusal::Failed(error.to_string())))
         })

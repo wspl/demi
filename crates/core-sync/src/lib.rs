@@ -2,13 +2,13 @@
 //!
 //! Whoever commits a change that a page shows marks the changed part in the
 //! registry, after the commit and from any thread. Some changes come from
-//! outside the user's shard: a shared instance's provider entries serve every
+//! outside the user's core: a shared instance's provider entries serve every
 //! user, so a change of one marks the channels of every user.
 //!
 //! A mark does two things:
 //!
 //! - It adds the part to the set of each of the user's channels.
-//! - It wakes the channel's task, which reads the part in the shard when it can
+//! - It wakes the channel's task, which reads the part in the core when it can
 //!   send it.
 //!
 //! A channel holds at most one mark per part however far its page falls behind,
@@ -29,7 +29,7 @@
 //!
 //! The log is in this registry because a mark comes from any thread. A user's
 //! entry is made by the first read of the version, and freed with the user's
-//! shard ([`SyncRegistry::forget`]); a later entry has another epoch, which
+//! core ([`SyncRegistry::forget`]); a later entry has another epoch, which
 //! no version of the earlier one matches. The log holds at most
 //! [`RECENT_CHANGES`] sets of part names for each user, a few hundred bytes
 //! each at most, so some hundred kibibytes in the worst case.
@@ -321,8 +321,8 @@ impl SyncRegistry {
         }
     }
 
-    /// The marks of `user`'s changes, for a part of the user's shard that
-    /// holds no shard.
+    /// The marks of `user`'s changes, for a part of the user's core that
+    /// holds no core.
     pub fn of(&self, user: &UserId) -> UserMarks {
         UserMarks {
             registry: self.clone(),
@@ -338,7 +338,7 @@ impl SyncRegistry {
     }
 
     /// Frees what the registry keeps of `user` once nothing follows them: the
-    /// shard of `user` closed.
+    /// core of `user` closed.
     pub fn forget(&self, user: &UserId) {
         let mut users = self.lock();
         if users.get(user).is_some_and(|entry| entry.channels.is_empty()) {
@@ -492,10 +492,10 @@ impl Drop for Registration {
 }
 
 /// Counts, for each conversation, how many times one of its parts changed since
-/// its shard started, such as its permission requests.
+/// its core started, such as its permission requests.
 ///
 /// The conversation's metadata carries the count. A conversation without an
-/// entry has changed none. The counts live on the user's shard, which nothing
+/// entry has changed none. The counts live on the user's core, which nothing
 /// else reaches.
 #[derive(Default)]
 pub struct Revisions(RefCell<HashMap<ConversationId, u64>>);

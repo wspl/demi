@@ -60,7 +60,7 @@ pub(crate) struct SignIns {
     /// The sign-ins waiting for their callback, by `state`.
     pending: std::cell::RefCell<HashMap<String, Pending>>,
     /// Each plugin's turn, by its index: its renewals, sign-outs and stores
-    /// of new tokens take turns within the shard, so two token calls spend
+    /// of new tokens take turns within the core, so two token calls spend
     /// a refresh token once. A renewal holds its turn to its end, apart
     /// from the call that started it.
     turns: Vec<Arc<tokio::sync::Mutex<()>>>,
@@ -483,7 +483,7 @@ impl Shared {
             return self.signed_out(plugin, revision, "no_refresh_token").await;
         };
         let by = if forced { "401_retry" } else { "background" };
-        // From here the renewal is the shard's: it holds the turn and stores
+        // From here the renewal is the core's: it holds the turn and stores
         // the vendor's answer whether or not this call still waits, since
         // the vendor may spend the refresh token the moment it answers
         // (`crates/provider-common/src/credentials/refresh.rs`).

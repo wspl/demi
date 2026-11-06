@@ -13,7 +13,7 @@ use std::rc::Weak;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_core_host_access::HostShard;
+use demi_core_host_access::HostCore;
 use demi_core_host_access::device_git::DeviceGitError;
 use demi_plugin_interface::{DeviceName, GitEntry, GitFile, GitRefusal, GitTree};
 use demi_web_api_protocol::devices::DeviceKind;
@@ -39,7 +39,7 @@ use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
-use super::Shard;
+use super::Core;
 use crate::services::CoreServices;
 
 /// The most bytes of a package call's JSON answer.
@@ -47,24 +47,24 @@ use crate::services::CoreServices;
 /// Bounded because the answer is read into memory from a package's process.
 const CALL_ANSWER_MAX_BYTES: usize = 1024 * 1024;
 
-/// The shard as its plugins' port reaches it. Weak: the shard owns the
+/// The core as its plugins' port reaches it. Weak: the core owns the
 /// plugins that hold it.
-pub(crate) struct ShardPort {
-    pub(crate) shard: Weak<Shard>,
+pub(crate) struct CorePort {
+    pub(crate) core: Weak<Core>,
     pub(crate) services: Arc<CoreServices>,
     /// The shard thread's client of the plugins' outbound requests.
     pub(crate) web: reqwest::Client,
 }
 
-impl ShardPort {
-    fn shard(&self) -> Result<std::rc::Rc<Shard>, PortFailure> {
-        self.shard
+impl CorePort {
+    fn core(&self) -> Result<std::rc::Rc<Core>, PortFailure> {
+        self.core
             .upgrade()
             .ok_or_else(|| PortError::Ended("the backend is shutting down".into()).into())
     }
 }
 
-impl ProductPort for ShardPort {
+impl ProductPort for CorePort {
     fn package_call<'a>(
         &'a self,
         conversation: &'a ConversationId,
@@ -75,8 +75,8 @@ impl ProductPort for ShardPort {
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Value, PortFailure>> {
         Box::pin(async move {
-            let shard = self.shard()?;
-            let package = shard
+            let core = self.core()?;
+            let package = core
                 .services()
                 .packages
                 .package(&operation.package)
@@ -96,8 +96,8 @@ impl ProductPort for ShardPort {
                 CallKind::Operates => UserCallKind::Operates,
                 CallKind::Looks => UserCallKind::Looks,
             };
-            let answer: Bytes = shard
-                .host_shard()
+            let answer: Bytes = core
+                .host_core()
                 .user_call(conversation, kind, &call, cancel)
                 .await
                 .map_err(call_failure)?;
@@ -115,8 +115,8 @@ impl ProductPort for ShardPort {
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Vec<HostFile>, PortFailure>> {
         Box::pin(async move {
-            let shard = self.shard()?;
-            let hosts = shard.host_shard();
+            let core = self.core()?;
+            let hosts = core.host_core();
             let read = match on {
                 ReadOn::Primary => hosts.read_files_on(conversation, None, &reads, cancel).await.map(|(files, _)| files),
                 ReadOn::PrimaryOf(device) => hosts
@@ -137,13 +137,13 @@ impl ProductPort for ShardPort {
     }
 
     fn media_models(&self, kind: MediaKind) -> LocalBoxFuture<'_, Result<MediaListing, PortFailure>> {
-        Box::pin(async move { super::media::media_models(&*self.shard()?, kind).await })
+        Box::pin(async move { super::media::media_models(&*self.core()?, kind).await })
     }
 
     fn devices(&self) -> LocalBoxFuture<'_, Result<Vec<DeviceName>, PortFailure>> {
         Box::pin(async move {
-            let shard = self.shard()?;
-            let records = shard
+            let core = self.core()?;
+            let records = core
                 .store().paired_devices()
                 .await
                 .map_err(|error| failed(format!("the devices cannot be read: {error}")))?;
@@ -151,7 +151,7 @@ impl ProductPort for ShardPort {
                 .into_iter()
                 .filter(|record| record.kind == DeviceKind::User)
                 .map(|record| DeviceName {
-                    online: shard.host_shard().devices().link(&record.id).is_some(),
+                    online: core.host_core().devices().link(&record.id).is_some(),
                     id: record.id,
                     name: record.name,
                 })
@@ -161,8 +161,8 @@ impl ProductPort for ShardPort {
 
     fn device_git_head<'a>(&'a self, device: &'a DeviceId, url: &'a str) -> LocalBoxFuture<'a, Result<String, PortFailure>> {
         Box::pin(async move {
-            let shard = self.shard()?;
-            shard.host_shard().device_git_head(device, url).await.map_err(git_refusal)
+            let core = self.core()?;
+            core.host_core().device_git_head(device, url).await.map_err(git_refusal)
         })
     }
 
@@ -175,10 +175,10 @@ impl ProductPort for ShardPort {
         files_max: u64,
     ) -> LocalBoxFuture<'a, Result<GitTree, PortFailure>> {
         Box::pin(async move {
-            let shard = self.shard()?;
+            let core = self.core()?;
             let limit = |bytes: u64| usize::try_from(bytes).unwrap_or(usize::MAX);
-            let tree = shard
-                .host_shard()
+            let tree = core
+                .host_core()
                 .device_git_fetch(device, url, marker, limit(repository_max), limit(files_max))
                 .await
                 .map_err(git_refusal)?;
@@ -207,8 +207,8 @@ impl ProductPort for ShardPort {
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<MadeImage, PortFailure>> {
         Box::pin(async move {
-            let shard = self.shard()?;
-            super::media::make_image(&shard, conversation, caller, call, ask, cancel).await
+            let core = self.core()?;
+            super::media::make_image(&core, conversation, caller, call, ask, cancel).await
         })
     }
 
@@ -221,8 +221,8 @@ impl ProductPort for ShardPort {
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<(AskedVideo, VideoJob), PortFailure>> {
         Box::pin(async move {
-            let shard = self.shard()?;
-            super::media::make_video(&shard, conversation, caller, call, ask, cancel).await
+            let core = self.core()?;
+            super::media::make_video(&core, conversation, caller, call, ask, cancel).await
         })
     }
 
@@ -235,8 +235,8 @@ impl ProductPort for ShardPort {
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<MadeAudio, PortFailure>> {
         Box::pin(async move {
-            let shard = self.shard()?;
-            super::media::make_audio(&shard, conversation, caller, call, ask, cancel).await
+            let core = self.core()?;
+            super::media::make_audio(&core, conversation, caller, call, ask, cancel).await
         })
     }
 
@@ -248,15 +248,15 @@ impl ProductPort for ShardPort {
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<AudioVoices, PortFailure>> {
         Box::pin(async move {
-            let shard = self.shard()?;
-            super::media::audio_voices(&shard, conversation, model, search, cancel).await
+            let core = self.core()?;
+            super::media::audio_voices(&core, conversation, model, search, cancel).await
         })
     }
 
     fn put_blob(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, PortFailure>> {
         Box::pin(async move {
-            let shard = self.shard()?;
-            HostShard::blobs(&*shard)
+            let core = self.core()?;
+            HostCore::blobs(&*core)
                 .put(bytes.into_bytes())
                 .await
                 .map_err(failed)
@@ -265,8 +265,8 @@ impl ProductPort for ShardPort {
 
     fn get_blob(&self, blob: BlobRef) -> LocalBoxFuture<'_, Result<Option<B64Bytes>, PortFailure>> {
         Box::pin(async move {
-            let shard = self.shard()?;
-            let bytes = HostShard::blobs(&*shard).get(&blob).await.map_err(failed)?;
+            let core = self.core()?;
+            let bytes = HostCore::blobs(&*core).get(&blob).await.map_err(failed)?;
             Ok(bytes.map(B64Bytes::from))
         })
     }
@@ -297,10 +297,10 @@ impl ProductPort for ShardPort {
     }
 
     fn spawn(&self, work: LocalBoxFuture<'static, ()>) {
-        // A shard already gone is shutting down: the work has not started,
+        // A core already gone is shutting down: the work has not started,
         // and whoever waits for it hears that the backend is shutting down.
-        if let Some(shard) = self.shard.upgrade() {
-            shard.tasks().spawn_local(work);
+        if let Some(core) = self.core.upgrade() {
+            core.tasks().spawn_local(work);
         }
     }
 }
@@ -377,7 +377,7 @@ pub enum ReloadRefusal {
     Working,
 }
 
-impl Shard {
+impl Core {
     /// Turns `plugin` on or off for the user (`crates/plugin-host/src/lib.rs`).
     ///
     /// Every live tree takes the commands of the plugins now on, and its
@@ -399,7 +399,7 @@ impl Shard {
             tracing::error!(event = "plugin_commands.switch_failed", plugin, %error, "the open conversations could not take the plugins' commands");
         }
         if !switched.released.is_empty() {
-            self.host_shard().release_packages(&switched.released).await;
+            self.host_core().release_packages(&switched.released).await;
         }
         // Off, it keeps nothing; on, its next context request asks again.
         self.project_files().plugins.forget(|(kept, _)| kept.as_str() == plugin);
@@ -440,7 +440,7 @@ impl Shard {
     /// user's current plugins; a tree that works or an archived
     /// conversation is refused, and one with no live tree has nothing to do.
     pub async fn reload_conversation(&self, id: &ConversationId) -> Result<(), ReloadRefusal> {
-        let record = self.host_shard().owned_conversation(id).await?;
+        let record = self.host_core().owned_conversation(id).await?;
         if record.archived() {
             return Err(ReloadRefusal::Archived);
         }
@@ -451,7 +451,7 @@ impl Shard {
     }
 }
 
-impl Shard {
+impl Core {
     /// What `lost` names, kept on `device`, ended without its package
     /// saying so: each plugin of such a package with panel tabs in a
     /// conversation that reaches the device hears it, for that conversation
@@ -472,7 +472,7 @@ impl Shard {
         };
         let mut reaching = Vec::new();
         for conversation in panelled {
-            match reachable(self.host_shard(), &conversation).await {
+            match reachable(self.host_core(), &conversation).await {
                 Ok(hosts) if hosts.iter().any(|host| &host.device == device) => {
                     reaching.push(conversation);
                 }

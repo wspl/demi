@@ -24,7 +24,7 @@ use crate::media_catalog::{Catalog, ImageSize};
 /// A provider's image role.
 pub trait ImageMaker: MediaMaker {
     /// Makes one image for the provider's account or key, sending with
-    /// `http`, the client of the shard that asks; `catalog` says what the
+    /// `http`, the client of the core that asks; `catalog` says what the
     /// model takes. A maker of [`ImageMaker::jobs`] waits for the job.
     fn make<'a>(
         &'a self,

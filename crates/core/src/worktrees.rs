@@ -3,10 +3,10 @@
 //!
 //! Each connected runner is told the directories of its Host's projects when
 //! it connects and whenever they change, and reports each one's worktrees
-//! (`crates/runner-host/src/worktrees.rs`). A report reaches the shard before
-//! the runner's next message, which a move may be; the shard stores the
+//! (`crates/runner-host/src/worktrees.rs`). A report reaches the core before
+//! the runner's next message, which a move may be; the core stores the
 //! reports one after another, and a move waits for the ones that came before
-//! it ([`Shard::worktrees_stored`]), so it selects by what the Host said, never
+//! it ([`Core::worktrees_stored`]), so it selects by what the Host said, never
 //! asking the Host.
 
 use std::cell::RefCell;
@@ -20,9 +20,9 @@ use futures_util::FutureExt as _;
 use futures_util::future::{LocalBoxFuture, Shared};
 
 use demi_core_host_access::root_of;
-use crate::Shard;
+use crate::Core;
 
-/// The shard's part.
+/// The core's part.
 #[derive(Default)]
 pub(crate) struct WorktreesHeld {
     /// The project directories each runner was told last.
@@ -31,7 +31,7 @@ pub(crate) struct WorktreesHeld {
     stored: RefCell<Option<Shared<LocalBoxFuture<'static, ()>>>>,
 }
 
-impl Shard {
+impl Core {
     /// The user's projects changed: every connected runner whose projects'
     /// directories differ from what it was told hears them.
     pub(crate) async fn projects_changed(&self) {
@@ -78,7 +78,7 @@ impl Shard {
     /// stored after the reports before it, and the conversations a worktree's
     /// own project held go into the project.
     pub(crate) fn worktrees_reported(&self, device: &DeviceId, directory: String, worktrees: Vec<LinkedWorktree>) {
-        let shard = self.this();
+        let core = self.this();
         let device = device.clone();
         let before = self.worktrees.stored.borrow_mut().take();
         let store = async move {
@@ -89,7 +89,7 @@ impl Shard {
                 .into_iter()
                 .map(|worktree| Worktree { name: worktree.name, path: worktree.path })
                 .collect();
-            let stored = match shard.store().store_worktrees(device.clone(), directory, worktrees).await {
+            let stored = match core.store().store_worktrees(device.clone(), directory, worktrees).await {
                 Ok(stored) => stored,
                 Err(error) => {
                     tracing::warn!(event = "worktrees.store_failed", host_id = %device, error = &error as &dyn std::error::Error, "a project's worktrees were not stored");
@@ -97,17 +97,17 @@ impl Shard {
                 }
             };
             if stored.projects {
-                shard.mark(Part::Projects);
+                core.mark(Part::Projects);
             }
             for conversation in &stored.saved {
-                shard.mark(Part::Metadata(conversation.clone()));
+                core.mark(Part::Metadata(conversation.clone()));
             }
             for conversation in &stored.conversations {
-                shard.mark(Part::Conversation(conversation.clone()));
+                core.mark(Part::Conversation(conversation.clone()));
                 // It works in the worktree now, so what it kept of its
                 // project's files is let go, and its next request names it.
-                shard.project_files().release(conversation);
-                shard.agent().placement_changed(&root_of(conversation)).await;
+                core.project_files().release(conversation);
+                core.agent().placement_changed(&root_of(conversation)).await;
             }
         }
         .boxed_local()

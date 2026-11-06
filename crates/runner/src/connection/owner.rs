@@ -703,7 +703,7 @@ impl Owner<'_> {
                 let closed = self.live.closed.clone();
                 self.work.spawn(async move {
                     // The residents end what they hold; the runner holds no
-                    // files of the conversation (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
+                    // files of the conversation (`crates/core/src/lifecycle/conversations.rs`).
                     let result = tokio::select! {
                         _ = closed.cancelled() => return Work::Done,
                         result = residents.release_conversation(&conversation_id) => result,

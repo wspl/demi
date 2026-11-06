@@ -1,6 +1,6 @@
 //! The media jobs vendors took, kept from the vendor's answer until the call
 //! that asked for each collects what it made
-//! (`crates/backend-user-shard/src/shard/media_jobs.rs`).
+//! (`crates/core/src/media_jobs.rs`).
 //!
 //! A row is written with the job's id, before the call is told of the job;
 //! it holds the call's open usage ledger row, which whoever follows the job

@@ -23,7 +23,7 @@ use demi_web_api_protocol::ids::ConversationId;
 use demi_conversation_lane_protocol::SideQuestion;
 use demi_web_api_protocol::side_questions::AskRequest;
 
-use crate::Shard;
+use crate::Core;
 
 use super::lane::ConversationFiles;
 
@@ -65,7 +65,7 @@ impl From<AskError> for SideRefusal {
     }
 }
 
-impl Shard {
+impl Core {
     /// The user's conversation `id`, which a side question's request
     /// changes only while it is not archived.
     async fn side_conversation(&self, id: &ConversationId, change: bool) -> Result<ConversationRecord, SideRefusal> {
@@ -124,20 +124,20 @@ impl Shard {
             && let Some(selection) = &record.model
         {
             let write = {
-                let shard = self.this();
+                let core = self.this();
                 let conversation = record.id.clone();
                 let side = side.clone();
                 Box::new(move |title: String| {
                     Box::pin(async move {
                         let written = {
                             let side = side.clone();
-                            shard.store().databases()
+                            core.store().databases()
                                 .db(&conversation)
                                 .call(move |connection| side_questions::set_title(connection, &side, &title))
                                 .await?
                         };
                         if written {
-                            shard.card_changed(&conversation, &side).await?;
+                            core.card_changed(&conversation, &side).await?;
                         }
                         Ok(())
                     }) as futures_util::future::LocalBoxFuture<'static, Result<(), StorageError>>
@@ -262,12 +262,12 @@ impl Shard {
 /// questions the user asked aside, which its tree decides; nothing while
 /// the tree is not open, as a closed tree's root makes no request.
 pub(crate) struct Told {
-    shard: std::rc::Weak<Shard>,
+    core: std::rc::Weak<Core>,
 }
 
 impl Told {
-    pub(crate) fn new(shard: std::rc::Weak<Shard>) -> Self {
-        Self { shard }
+    pub(crate) fn new(core: std::rc::Weak<Core>) -> Self {
+        Self { core }
     }
 }
 
@@ -283,10 +283,10 @@ impl demi_agent_tools::ContextSource for Told {
         seen: &'a [&'a str],
     ) -> futures_util::future::LocalBoxFuture<'a, Result<Option<demi_agent_tools::ContextAnswer>, String>> {
         Box::pin(async move {
-            let Some(shard) = self.shard.upgrade() else {
+            let Some(core) = self.core.upgrade() else {
                 return Ok(None);
             };
-            let Some(tree) = shard.agent().tree(node.root) else {
+            let Some(tree) = core.agent().tree(node.root) else {
                 return Ok(None);
             };
             Ok(tree

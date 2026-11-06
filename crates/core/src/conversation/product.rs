@@ -25,7 +25,7 @@ use demi_core_host_access::host_commands::host_group;
 
 use super::organize::conversation_group;
 use crate::provider_commands::providers_group;
-use demi_core_host_access::{HostShard, conversation_of};
+use demi_core_host_access::{HostCore, conversation_of};
 use demi_plugin_host::ContextAsk;
 use demi_runner_client::RemoteHost;
 use demi_agent_store::Placement;
@@ -39,7 +39,7 @@ use demi_web_api_protocol::subagents::SubagentProfile;
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
-use crate::Shard;
+use crate::Core;
 use crate::schedules::commands::schedule_group;
 use crate::credential_commands::credentials_group;
 use crate::notify_commands::notify_group;
@@ -56,19 +56,19 @@ pub(crate) const HARNESS_GUIDE: &str = "Guidelines:\n- Commands run on the conve
 /// user has on, with the product's `demi host`, `demi attachment`, `demi
 /// conversation`, `demi credentials`, `demi providers` and `demi notify`
 /// groups.
-pub(crate) struct ShardToolsets {
-    /// Weak: the shard owns the agent server that holds the source.
-    pub(crate) shard: Weak<Shard>,
+pub(crate) struct CoreToolsets {
+    /// Weak: the core owns the agent server that holds the source.
+    pub(crate) core: Weak<Core>,
 }
 
-impl ToolsetSource for ShardToolsets {
+impl ToolsetSource for CoreToolsets {
     fn revision(&self) -> LocalBoxFuture<'_, Result<Rc<str>, String>> {
         Box::pin(async move {
-            let shard = self
-                .shard
+            let core = self
+                .core
                 .upgrade()
                 .ok_or_else(|| "the backend is shutting down".to_owned())?;
-            let revision = shard
+            let revision = core
                 .plugins()
                 .revision()
                 .await
@@ -79,21 +79,21 @@ impl ToolsetSource for ShardToolsets {
 
     fn current(&self) -> LocalBoxFuture<'_, Result<Toolset, String>> {
         Box::pin(async move {
-            let shard = self
-                .shard
+            let core = self
+                .core
                 .upgrade()
                 .ok_or_else(|| "the backend is shutting down".to_owned())?;
-            let hosts: Weak<dyn HostShard> = self.shard.clone();
-            let toolset = shard
+            let hosts: Weak<dyn HostCore> = self.core.clone();
+            let toolset = core
                 .plugins()
                 .toolset(vec![
                     host_group(hosts.clone()),
                     attachment_group(hosts),
-                    conversation_group(self.shard.clone()),
-                    credentials_group(self.shard.clone()),
-                    schedule_group(self.shard.clone()),
-                    providers_group(self.shard.clone()),
-                    notify_group(self.shard.clone()),
+                    conversation_group(self.core.clone()),
+                    credentials_group(self.core.clone()),
+                    schedule_group(self.core.clone()),
+                    providers_group(self.core.clone()),
+                    notify_group(self.core.clone()),
                 ])
                 .await
                 .map_err(|error| error.to_string())?;
@@ -108,28 +108,28 @@ impl ToolsetSource for ShardToolsets {
 /// The user's subagent settings as the control store holds them now, and
 /// the changes `demi agent profiles` makes to them through the settings
 /// page's path.
-pub(crate) struct ShardSubagents {
-    /// Weak: the shard owns the agent server that holds the source.
-    pub(crate) shard: Weak<Shard>,
+pub(crate) struct CoreSubagents {
+    /// Weak: the core owns the agent server that holds the source.
+    pub(crate) core: Weak<Core>,
 }
 
-impl ShardSubagents {
-    fn shard(&self) -> Result<Rc<Shard>, String> {
-        self.shard
+impl CoreSubagents {
+    fn core(&self) -> Result<Rc<Core>, String> {
+        self.core
             .upgrade()
             .ok_or_else(|| "the backend is shutting down".to_owned())
     }
 }
 
-impl SubagentSource for ShardSubagents {
+impl SubagentSource for CoreSubagents {
     fn current(&self) -> LocalBoxFuture<'_, Result<SubagentSettings, String>> {
         Box::pin(async move {
-            let shard = self.shard()?;
-            let settings = shard
+            let core = self.core()?;
+            let settings = core
                 .store().subagent_settings()
                 .await
                 .map_err(|error| error.to_string())?;
-            let entries = entries(&shard).await.map_err(|error| error.to_string())?;
+            let entries = entries(&core).await.map_err(|error| error.to_string())?;
             let profiles = settings
                 .profiles
                 .into_iter()
@@ -146,7 +146,7 @@ impl SubagentSource for ShardSubagents {
 
     fn runs_on<'a>(&'a self, selections: &'a [ModelSelection]) -> LocalBoxFuture<'a, Vec<JobModel>> {
         Box::pin(async move {
-            let Ok(shard) = self.shard() else {
+            let Ok(core) = self.core() else {
                 // The backend is shutting down: the frames name what the
                 // selections hold.
                 return selections
@@ -154,7 +154,7 @@ impl SubagentSource for ShardSubagents {
                     .map(|selection| job_model(selection, None, None))
                     .collect();
             };
-            runs_on(shard.services(), shard.user(), selections).await
+            runs_on(core.services(), core.user(), selections).await
         })
     }
 
@@ -163,9 +163,9 @@ impl SubagentSource for ShardSubagents {
         profile: NewProfileDraft,
     ) -> LocalBoxFuture<'_, Result<Profile, String>> {
         Box::pin(async move {
-            let shard = self.shard()?;
-            let created = shard.create_drafted_profile(profile).await?;
-            Ok(answered(&shard, created).await)
+            let core = self.core()?;
+            let created = core.create_drafted_profile(profile).await?;
+            Ok(answered(&core, created).await)
         })
     }
 
@@ -175,14 +175,14 @@ impl SubagentSource for ShardSubagents {
         edit: ProfileEdit,
     ) -> LocalBoxFuture<'a, Result<Profile, String>> {
         Box::pin(async move {
-            let shard = self.shard()?;
-            let changed = shard.edit_named_profile(name, edit).await?;
-            Ok(answered(&shard, changed).await)
+            let core = self.core()?;
+            let changed = core.edit_named_profile(name, edit).await?;
+            Ok(answered(&core, changed).await)
         })
     }
 
     fn delete_profile<'a>(&'a self, name: &'a str) -> LocalBoxFuture<'a, Result<(), String>> {
-        Box::pin(async move { self.shard()?.delete_named_profile(name).await })
+        Box::pin(async move { self.core()?.delete_named_profile(name).await })
     }
 
     fn conversation_profiles<'a>(
@@ -190,14 +190,14 @@ impl SubagentSource for ShardSubagents {
         root: &'a NodeId,
     ) -> LocalBoxFuture<'a, Result<ConversationProfiles, String>> {
         Box::pin(async move {
-            self.shard()?
+            self.core()?
                 .conversation_profiles(&conversation_of(root))
                 .await
         })
     }
 
     fn workflows<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, Result<WorkflowListing, String>> {
-        Box::pin(async move { self.shard()?.workflow_listing(&conversation_of(root)).await })
+        Box::pin(async move { self.core()?.workflow_listing(&conversation_of(root)).await })
     }
 
     fn choose_workflow<'a>(
@@ -206,7 +206,7 @@ impl SubagentSource for ShardSubagents {
         choice: WorkflowChoice,
     ) -> LocalBoxFuture<'a, Result<(WorkflowChoice, Option<String>), String>> {
         Box::pin(async move {
-            self.shard()?
+            self.core()?
                 .choose_workflow(&conversation_of(root), choice)
                 .await
         })
@@ -219,7 +219,7 @@ impl SubagentSource for ShardSubagents {
         path: &'a str,
     ) -> LocalBoxFuture<'a, Result<String, String>> {
         Box::pin(async move {
-            self.shard()?
+            self.core()?
                 .workflow_file_text(&conversation_of(root), directory, path)
                 .await
         })
@@ -227,15 +227,15 @@ impl SubagentSource for ShardSubagents {
 }
 
 /// The provider entries in the user's scope.
-pub(crate) async fn entries(shard: &Shard) -> Result<Vec<ProviderEntry>, StorageError> {
-    shard.services().vault.entries_for(shard.user()).await
+pub(crate) async fn entries(core: &Core) -> Result<Vec<ProviderEntry>, StorageError> {
+    core.services().vault.entries_for(core.user()).await
 }
 
 /// The profile a change wrote, as the agent reads it.
-async fn answered(shard: &Shard, profile: SubagentProfile) -> Profile {
+async fn answered(core: &Core, profile: SubagentProfile) -> Profile {
     // The write is done: entries that cannot be read only leave the entry's
     // name out of the answer.
-    let entries = entries(shard).await.unwrap_or_default();
+    let entries = entries(core).await.unwrap_or_default();
     profile_of(profile, &entries)
 }
 
@@ -262,53 +262,53 @@ fn profile_of(profile: SubagentProfile, entries: &[ProviderEntry]) -> Profile {
     }
 }
 
-/// Where a shard's agents run: a subagent's own Host, and each conversation's
+/// Where a core's agents run: a subagent's own Host, and each conversation's
 /// current primary Host for its root.
-pub(crate) struct ShardHosts {
-    /// Weak: the shard owns the agent server that holds the resolver.
-    pub(crate) shard: Weak<Shard>,
+pub(crate) struct CoreHosts {
+    /// Weak: the core owns the agent server that holds the resolver.
+    pub(crate) core: Weak<Core>,
 }
 
-impl HostResolver for ShardHosts {
+impl HostResolver for CoreHosts {
     type Host = RemoteHost;
 
     async fn host(&self, context: NodeContext<'_>) -> Result<Rc<RemoteHost>, HostError> {
-        let shard = self
-            .shard
+        let core = self
+            .core
             .upgrade()
             .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
         let conversation = conversation_of(context.root);
         match agent_device(context.placement) {
-            Some(device) => shard.host_shard().agent_host(&conversation, &device).await,
-            None => shard.host_shard().conversation_host(&conversation).await,
+            Some(device) => core.host_core().agent_host(&conversation, &device).await,
+            None => core.host_core().conversation_host(&conversation).await,
         }
     }
 
     async fn adopted_host(&self, context: NodeContext<'_>) -> Result<Rc<RemoteHost>, HostError> {
-        let shard = self
-            .shard
+        let core = self
+            .core
             .upgrade()
             .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
         let conversation = conversation_of(context.root);
         match agent_device(context.placement) {
-            Some(device) => shard.host_shard().adopting_agent_host(&conversation, &device).await,
-            None => shard.host_shard().adopting_host(&conversation).await,
+            Some(device) => core.host_core().adopting_agent_host(&conversation, &device).await,
+            None => core.host_core().adopting_host(&conversation).await,
         }
     }
 
     async fn host_name(&self, device: &str) -> Option<String> {
-        let shard = self.shard.upgrade()?;
+        let core = self.core.upgrade()?;
         let device = DeviceId::try_from(device.to_owned()).ok()?;
-        shard.store().device(device).await.ok().flatten().map(|record| record.name)
+        core.store().device(device).await.ok().flatten().map(|record| record.name)
     }
 
     /// The conversation's target, read without reaching the Host.
     async fn placement(&self, context: NodeContext<'_>) -> Result<Placement, HostError> {
-        let shard = self
-            .shard
+        let core = self
+            .core
             .upgrade()
             .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
-        shard
+        core
             .placement(&conversation_of(context.root))
             .await
             .map_err(|error| HostError::new(HostErrorKind::Failed { code: None }, error.to_string()))
@@ -326,7 +326,7 @@ fn agent_device(placement: Option<&Placement>) -> Option<DeviceId> {
 /// The context source that announces a change of the conversation's
 /// execution context: a target switch, attached hosts, a Cloud reset.
 pub(crate) struct ExecutionContext {
-    pub(crate) shard: Weak<Shard>,
+    pub(crate) core: Weak<Core>,
 }
 
 impl ContextSource for ExecutionContext {
@@ -341,10 +341,10 @@ impl ContextSource for ExecutionContext {
         seen: &'a [&'a str],
     ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, String>> {
         Box::pin(async move {
-            let Some(shard) = self.shard.upgrade() else {
+            let Some(core) = self.core.upgrade() else {
                 return Ok(None);
             };
-            shard
+            core
                 .execution_context(&conversation_of(node.root), seen)
                 .await
                 .map(|text| text.map(ContextAnswer::from))
@@ -356,7 +356,7 @@ impl ContextSource for ExecutionContext {
 /// A plugin that is a context source, asked while its user has it on
 /// (`crates/plugin-interface/src/manifest.rs`).
 pub(crate) struct PluginContext {
-    pub(crate) shard: Weak<Shard>,
+    pub(crate) core: Weak<Core>,
     pub(crate) plugin: PluginId,
 }
 
@@ -372,27 +372,27 @@ impl ContextSource for PluginContext {
         seen: &'a [&'a str],
     ) -> LocalBoxFuture<'a, Result<Option<ContextAnswer>, String>> {
         Box::pin(async move {
-            let Some(shard) = self.shard.upgrade() else {
+            let Some(core) = self.core.upgrade() else {
                 return Ok(None);
             };
             let conversation = conversation_of(node.root);
-            let paths = shard
+            let paths = core
                 .host_paths(&conversation)
                 .await
                 .map_err(|error| format!("the plugin {} was not asked: {error}", self.plugin))?;
-            let cwd = shard
+            let cwd = core
                 .node_placement(node)
                 .await
                 .map_err(|error| format!("the plugin {} was not asked: {error}", self.plugin))?
                 .directory;
             // A plugin the user has off keeps nothing, and is not asked.
-            let searches = shard
+            let searches = core
                 .plugins()
                 .searches_projects(&self.plugin)
                 .await
                 .map_err(|error| format!("the plugin {} was not asked: {error}", self.plugin))?;
             let project = if searches {
-                shard.kept_project_search(&self.plugin, node.root).await
+                core.kept_project_search(&self.plugin, node.root).await
             } else {
                 None
             };
@@ -407,7 +407,7 @@ impl ContextSource for PluginContext {
             };
             // The request ends with the provider request it serves, which
             // drops this future.
-            shard
+            core
                 .plugins()
                 .context(&self.plugin, asked, CancellationToken::new())
                 .await
@@ -420,26 +420,26 @@ impl ContextSource for PluginContext {
 /// What the backend keeps of a conversation's agents that the tree shows:
 /// each agent's cost and, read apart, its cache chart, from the usage ledger
 /// (`crates/core-store/src/usage.rs`), and each side question's card.
-pub(crate) struct ShardAgents {
-    /// Weak: the shard owns the agent server that holds the source.
-    pub(crate) shard: Weak<Shard>,
+pub(crate) struct CoreAgents {
+    /// Weak: the core owns the agent server that holds the source.
+    pub(crate) core: Weak<Core>,
 }
 
-impl demi_agent_server::AgentsSource for ShardAgents {
+impl demi_agent_server::AgentsSource for CoreAgents {
     fn resuming(&self, root: &NodeId) -> bool {
-        self.shard
+        self.core
             .upgrade()
-            .is_some_and(|shard| shard.restart_resumes().contains(&demi_core_host_access::conversation_of(root)))
+            .is_some_and(|core| core.restart_resumes().contains(&demi_core_host_access::conversation_of(root)))
     }
 
     fn kept<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, demi_agent_server::KeptAgents> {
         Box::pin(async move {
             let mut kept = demi_agent_server::KeptAgents::default();
-            let Some(shard) = self.shard.upgrade() else {
+            let Some(core) = self.core.upgrade() else {
                 return kept;
             };
             let conversation = demi_core_host_access::conversation_of(root);
-            match shard.store().conversation_costs(conversation.clone()).await {
+            match core.store().conversation_costs(conversation.clone()).await {
                 Ok(costs) => {
                     kept.costs = costs
                         .into_iter()
@@ -455,7 +455,7 @@ impl demi_agent_server::AgentsSource for ShardAgents {
                     "a conversation's kept costs were not read"
                 ),
             }
-            match shard
+            match core
                 .store()
                 .databases()
                 .read(&conversation, demi_core_store::side_questions::cards)
@@ -486,11 +486,11 @@ impl demi_agent_server::AgentsSource for ShardAgents {
         root: &'a NodeId,
     ) -> LocalBoxFuture<'a, std::collections::HashMap<u64, CacheChart>> {
         Box::pin(async move {
-            let Some(shard) = self.shard.upgrade() else {
+            let Some(core) = self.core.upgrade() else {
                 return std::collections::HashMap::new();
             };
             let conversation = demi_core_host_access::conversation_of(root);
-            match shard.store().conversation_charts(conversation.clone()).await {
+            match core.store().conversation_charts(conversation.clone()).await {
                 Ok(charts) => charts.into_iter().collect(),
                 // The cards show no rate and no chart until the agent's next
                 // turn call.
@@ -512,12 +512,12 @@ impl demi_agent_server::AgentsSource for ShardAgents {
 /// Which paths a complete reply names are files on its conversation's primary
 /// Host: one look for them all, admitted as a user's look is, which never
 /// wakes a stopped Cloud (`crates/core-host-access/src/stream.rs`).
-pub(crate) struct ShardReplyFiles {
-    /// Weak: the shard owns the agent server that holds the source.
-    pub(crate) shard: Weak<Shard>,
+pub(crate) struct CoreReplyFiles {
+    /// Weak: the core owns the agent server that holds the source.
+    pub(crate) core: Weak<Core>,
 }
 
-impl demi_agent_server::ReplyFiles for ShardReplyFiles {
+impl demi_agent_server::ReplyFiles for CoreReplyFiles {
     fn files<'a>(
         &'a self,
         root: &'a NodeId,
@@ -525,9 +525,9 @@ impl demi_agent_server::ReplyFiles for ShardReplyFiles {
         paths: Vec<String>,
     ) -> LocalBoxFuture<'a, Option<std::collections::HashMap<String, String>>> {
         Box::pin(async move {
-            let shard = self.shard.upgrade()?;
+            let core = self.core.upgrade()?;
             let conversation = conversation_of(root);
-            let host_paths = match shard.host_paths(&conversation).await {
+            let host_paths = match core.host_paths(&conversation).await {
                 Ok(host_paths) => host_paths,
                 Err(error) => {
                     tracing::warn!(event = "conversation_state.read_failed", %conversation, what = "reply_paths", error = &error as &dyn std::error::Error, "a reply's code paths were not looked at");
@@ -541,11 +541,11 @@ impl demi_agent_server::ReplyFiles for ShardReplyFiles {
                     (path, on_host)
                 })
                 .collect();
-            // Released with the shard's tasks' cancellation, which a look
+            // Released with the core's tasks' cancellation, which a look
             // needs only to end its wait.
             let cancel = tokio_util::sync::CancellationToken::new();
-            let looked = shard
-                .host_shard()
+            let looked = core
+                .host_core()
                 .look_at_host(&conversation, &cancel, async move |host| {
                     use demi_host_interface::HostFs as _;
                     let stats = futures_util::future::join_all(
@@ -586,26 +586,26 @@ impl demi_agent_server::ReplyFiles for ShardReplyFiles {
             // The backend closing, a conversation with no Host yet, a device
             // that is no device and a home not known are each a Host the
             // picture cannot be copied from.
-            let shard = self.shard.upgrade().ok_or(PictureFailure::HostUnavailable)?;
+            let core = self.core.upgrade().ok_or(PictureFailure::HostUnavailable)?;
             let conversation = conversation_of(root);
             let device = device
                 .and_then(|device| demi_web_api_protocol::ids::DeviceId::try_from(device).ok())
                 .ok_or(PictureFailure::HostUnavailable)?;
             // A path from the Host's home is read from the home its runner
             // reported.
-            let paths = shard
+            let paths = core
                 .host_paths(&conversation)
                 .await
                 .map_err(|_| PictureFailure::HostUnavailable)?;
             let path = match paths.home_relative(path) {
                 Some(_) => {
-                    let home = shard.devices().home(&device).ok_or(PictureFailure::HostUnavailable)?;
+                    let home = core.devices().home(&device).ok_or(PictureFailure::HostUnavailable)?;
                     paths.from_home(&home, path)
                 }
                 None => path.to_owned(),
             };
             demi_core_host_access::attachment_commands::copy_picture(
-                shard.host_shard(),
+                core.host_core(),
                 &conversation,
                 &device,
                 cwd,

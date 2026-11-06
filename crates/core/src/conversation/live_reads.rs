@@ -14,10 +14,10 @@ use demi_shared_types::NodeId;
 use demi_web_api_protocol::conversations::TranscriptPage;
 use demi_web_api_protocol::ids::ConversationId;
 
-use crate::Shard;
+use crate::Core;
 use demi_core_host_access::root_of;
 
-impl Shard {
+impl Core {
     /// The latest `count` blocks, a page at most, of the live node `node` of
     /// the conversation `id`, read from its window now, with the transcript's version and the view of each
     /// live command of the node and its cache chart, without the failure facts

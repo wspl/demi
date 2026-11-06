@@ -827,7 +827,7 @@ impl Owner {
     }
 
     fn release(&mut self, conversation: String, reply: oneshot::Sender<Result<(), String>>) {
-        // A release never starts a resident (`crates/backend-user-shard/src/lifecycle/conversations.rs`): only running ones hold conversations.
+        // A release never starts a resident (`crates/core/src/lifecycle/conversations.rs`): only running ones hold conversations.
         let running: Vec<_> = self
             .entries
             .iter()

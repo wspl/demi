@@ -1,5 +1,5 @@
 //! The `demi agent workflows` group
-//! (`crates/backend-user-shard/src/conversation/workflows.rs`).
+//! (`crates/core/src/conversation/workflows.rs`).
 //!
 //! It lists the project's workflows as the conversation's Workflow menu lists
 //! them, with those of the linked worktree the conversation works in while

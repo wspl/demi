@@ -49,7 +49,7 @@ pub(crate) fn run(
             .as_ref()
             .filter(|_| matches!(request.prompt_cache, PromptCache::Session { .. }))
             .map(CacheTtl::duration);
-        // A body with images is megabytes of base64, built off the shard.
+        // A body with images is megabytes of base64, built off the core.
         let form = shared.models.of(&request.model_id).thinking_form;
         let ttl = shared.cache_ttl.clone();
         let body = match encode_body(LABEL, move || {

@@ -1,4 +1,4 @@
-//! The work panel's route: a request of changes, which the user's shard applies
+//! The work panel's route: a request of changes, which the user's core applies
 //! whole or not at all and answers with the panel's revision; the
 //! conversation's entry in the list carries the tabs.
 //!
@@ -39,8 +39,8 @@ pub(super) async fn change(
     let (revision, changed) = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move {
-            shard.plugins().change_panel(conversation, changes).await
+        .call(move |core, _| async move {
+            core.plugins().change_panel(conversation, changes).await
         })
         .await?
         .map_err(refused)?;

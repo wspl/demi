@@ -1098,7 +1098,7 @@ struct Unstored;
 impl BlobStore for Unstored {
     fn put(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, StoreError>> {
         Box::pin(async move {
-            // Hashing a large medium would hold the shard's thread.
+            // Hashing a large medium would hold the core's thread.
             tokio::task::spawn_blocking(move || BlobRef::of(&bytes))
                 .await
                 .map_err(|error| StoreError::Failed(error.to_string()))

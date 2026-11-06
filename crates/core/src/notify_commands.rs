@@ -19,7 +19,7 @@ use demi_web_api_protocol::push::PushMessage;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::Shard;
+use super::Core;
 use crate::starter::Notified;
 use crate::conversation::organize::{failed, refused, verb};
 
@@ -69,8 +69,8 @@ struct Status {
     agent_notifies: usize,
 }
 
-/// The `notify` group, whose handlers act in `shard`.
-pub(crate) fn notify_group(shard: Weak<Shard>) -> GroupBuilder {
+/// The `notify` group, whose handlers act in `core`.
+pub(crate) fn notify_group(core: Weak<Core>) -> GroupBuilder {
     GroupBuilder::new("notify", SUMMARY)
         .index_entry(ENTRY)
         .leaf(
@@ -79,17 +79,17 @@ pub(crate) fn notify_group(shard: Weak<Shard>) -> GroupBuilder {
                 .describe("title", format!("The notification's title, 1 to {TITLE_MAX} characters, such as \"Deploy finished\"."))
                 .describe("body", format!("What it says under the title, at most {BODY_MAX} characters."))
                 .positionals(["title", "body"])
-                .bind(TypedRpc::new(verb(shard.clone(), send))),
+                .bind(TypedRpc::new(verb(core.clone(), send))),
         )
         .leaf(
             LeafBuilder::rpc("status", STATUS_SUMMARY)
                 .input::<NoArgs>()
                 .json_output::<Status>()
-                .bind(TypedRpc::new(verb(shard, status))),
+                .bind(TypedRpc::new(verb(core, status))),
         )
 }
 
-async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn send(core: Rc<Core>, call: Call<SendArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
     let SendArgs { title, body } = call.args;
     let title = title.trim().to_owned();
@@ -103,17 +103,17 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
         body: body.map(|body| body.trim().to_owned()).unwrap_or_default(),
     };
     // The run whose message this turn works for notified: it ends Notified.
-    if let Some((mark, _)) = shard.schedule_input(&conversation)
-        && shard.store().notify_run(mark.run_id).await.map_err(failed)?
+    if let Some((mark, _)) = core.schedule_input(&conversation)
+        && core.store().notify_run(mark.run_id).await.map_err(failed)?
     {
-        shard.mark(demi_core_sync::Part::Metadata(conversation.clone()));
+        core.mark(demi_core_sync::Part::Metadata(conversation.clone()));
     }
     // Counted now, so the agent is told at once; delivery goes on in the
     // background, and a browser its push service no longer knows is
     // dropped then.
-    match shard.starter().notify(message).await.map_err(failed)? {
+    match core.starter().notify(message).await.map_err(failed)? {
         Notified::Nowhere => {
-            ask_to_turn_on(&shard, &conversation).await?;
+            ask_to_turn_on(&core, &conversation).await?;
             let what = format!("no browser of the user takes the agent's notifications now; {CARD}");
             port.stderr(warning(&call.invocation.path.join(" "), &what)).await?;
         }
@@ -126,9 +126,9 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
     Ok(0)
 }
 
-async fn status(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn status(core: Rc<Core>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
-    let reach = shard.starter().reach().await.map_err(failed)?;
+    let reach = core.starter().reach().await.map_err(failed)?;
     let status = Status {
         reachable: reach.agent_notifies > 0,
         browsers: reach.browsers,
@@ -141,7 +141,7 @@ async fn status(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u
         _ => None,
     };
     if let Some(advice) = advice {
-        ask_to_turn_on(&shard, &conversation).await?;
+        ask_to_turn_on(&core, &conversation).await?;
         port.stderr(warning(&command, &format!("{advice}; {CARD}"))).await?;
     }
     if call.invocation.json {
@@ -165,12 +165,12 @@ async fn status(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u
 /// A browser that subscribes clears every card it finds; one that subscribes
 /// while the card goes up finds none, so whether a browser takes them is read
 /// again once it is up, and the card comes down then.
-async fn ask_to_turn_on(shard: &Shard, conversation: &ConversationId) -> Result<(), RpcError> {
-    let reaches = || shard.starter().agent_reaches();
+async fn ask_to_turn_on(core: &Core, conversation: &ConversationId) -> Result<(), RpcError> {
+    let reaches = || core.starter().agent_reaches();
     if reaches().await.map_err(failed)? {
         return Ok(());
     }
-    let store = shard.store();
+    let store = core.store();
     if !store.raise_notifications_card(conversation.clone()).await.map_err(failed)? {
         return Ok(());
     }
@@ -179,7 +179,7 @@ async fn ask_to_turn_on(shard: &Shard, conversation: &ConversationId) -> Result<
         changed.extend(store.clear_notifications_cards().await.map_err(failed)?);
     }
     for conversation in changed {
-        shard.mark(demi_core_sync::Part::Metadata(conversation));
+        core.mark(demi_core_sync::Part::Metadata(conversation));
     }
     Ok(())
 }

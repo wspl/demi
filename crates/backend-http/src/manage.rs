@@ -153,7 +153,7 @@ async fn announce(state: &AppState, request: &str) -> Result<Arc<NextRelease>, S
         let asked = state
             .shards
             .of(&user)
-            .call(move |shard, _| async move { shard.prefetch(next).await })
+            .call(move |core, _| async move { core.prefetch(next).await })
             .await;
         if asked.is_err() {
             return Err("the backend is shutting down".into());

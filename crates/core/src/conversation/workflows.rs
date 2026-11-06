@@ -8,7 +8,7 @@
 //!   new conversation before its first message;
 //! - parsed with the one parser (`crates/agent-tools/src/workflow.rs`).
 //!
-//! The shard keeps each conversation directory's workflows current with the
+//! The core keeps each conversation directory's workflows current with the
 //! runner's file watch (`project_files`). The spawns, `demi agent workflows`,
 //! `demi agent profiles list`, the Workflow menu and the instructions block take
 //! what it holds.
@@ -49,7 +49,7 @@ use demi_web_api_protocol::workflows::{ConversationWorkflows, KeptWorkflowList, 
 use tokio_util::sync::CancellationToken;
 
 use super::project_files::KeptWorkflows;
-use crate::Shard;
+use crate::Core;
 use crate::agent_profiles::{Scope, first_offering, named_entry};
 
 /// The workflows a working directory has now.
@@ -316,16 +316,16 @@ pub enum DeviceWorkflowsRefusal {
 /// its host access in the form that never wakes its Host. A directory that
 /// is gone has none, and is watched for coming back.
 pub(crate) async fn search_conversation_workflows(
-    shard: &Shard,
+    core: &Core,
     id: &ConversationId,
     device: &DeviceId,
     directory: &str,
 ) -> Result<ProjectWorkflows, ReadFilesError> {
-    let paths = shard
+    let paths = core
         .host_paths(id)
         .await
         .map_err(|error| ReadFilesError::Access(error.into()))?;
-    let host = shard.host_shard();
+    let host = core.host_core();
     let cancel = CancellationToken::new();
     let cancel = &cancel;
     let found = search_workflows(paths, directory, |reads| async move {
@@ -344,8 +344,8 @@ pub(crate) async fn search_conversation_workflows(
     }))
 }
 
-impl Shard {
-    /// The workflows the shard holds for the conversation `id`'s project, or
+impl Core {
+    /// The workflows the core holds for the conversation `id`'s project, or
     /// with `worktree` for the linked worktree it works in; why none are,
     /// while it holds none, as on a Host that has not run since.
     pub(crate) async fn project_workflows(&self, id: &ConversationId, worktree: bool) -> Result<Rc<ProjectWorkflows>, String> {
@@ -357,7 +357,7 @@ impl Shard {
 
     /// The workflows of the linked worktree the conversation `id` works in,
     /// while they differ from `project`'s; none in no worktree, or while the
-    /// shard holds none of them.
+    /// core holds none of them.
     pub(crate) async fn worktree_workflows(&self, id: &ConversationId, project: &ProjectWorkflows) -> Option<Rc<ProjectWorkflows>> {
         if !self.works_in_worktree(id).await {
             return None;
@@ -449,7 +449,7 @@ impl Shard {
     /// change (`apply_patch`), which announces it to the page.
     ///
     /// A workflow is chosen only as the menu offers it: listed in what the
-    /// shard holds and usable; otherwise it is refused with why, and the
+    /// core holds and usable; otherwise it is refused with why, and the
     /// choice stays. A workflow is the project's, or the worktree's when only
     /// the worktree has the id; one asked for as the worktree's that is the
     /// same as the project's is the project's, as the menu lists it. Answers
@@ -645,7 +645,7 @@ impl Shard {
         // does, following links before `..`.
         let read = HostRead::new(paths.beside(directory, path), WORKFLOW_FILE_MAX_BYTES + 1);
         let (mut found, _) = self
-            .host_shard()
+            .host_core()
             .read_files(id, std::slice::from_ref(&read), &CancellationToken::new())
             .await
             .map_err(|error| error.to_string())?;

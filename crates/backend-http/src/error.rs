@@ -28,7 +28,7 @@ use demi_shared_types::ReadAt;
 
 use demi_core_host_access::access::{HostAccessError, host_error_code};
 use demi_core_host_access::stream::StreamError;
-use demi_core::cores::ShardUnavailable;
+use demi_core::cores::CoreUnavailable;
 
 /// The header that carries the Host's number a read answer was read at.
 pub(crate) const READ_AT: HeaderName = HeaderName::from_static("x-demi-read-at");
@@ -394,11 +394,11 @@ impl IntoResponse for ApiError {
     }
 }
 
-impl From<ShardUnavailable> for ApiError {
-    fn from(error: ShardUnavailable) -> Self {
+impl From<CoreUnavailable> for ApiError {
+    fn from(error: CoreUnavailable) -> Self {
         match error {
-            ShardUnavailable::Closing => Self::backend_closing(),
-            ShardUnavailable::Failed => Self::internal(&error),
+            CoreUnavailable::Closing => Self::backend_closing(),
+            CoreUnavailable::Failed => Self::internal(&error),
         }
     }
 }

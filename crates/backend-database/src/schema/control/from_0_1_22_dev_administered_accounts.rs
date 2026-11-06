@@ -1,6 +1,6 @@
 //! From the control schema with administered accounts to the one with a
 //! conversation's Workflow menu choice
-//! (`crates/backend-user-shard/src/conversation/workflows.rs`): every
+//! (`crates/core/src/conversation/workflows.rs`): every
 //! conversation uses Global Workflow, as a new one does.
 
 use super::super::Migration;

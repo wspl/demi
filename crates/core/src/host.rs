@@ -1,8 +1,8 @@
-//! The shard's side of the conversations' host access
+//! The core's side of the conversations' host access
 //! (`crates/core-host-access/src/access.rs`).
 //!
-//! It holds what host access needs of the shard (`HostShard`), whose operations
-//! the edge and the shard's own work reach through `host_shard`.
+//! It holds what host access needs of the core (`HostCore`), whose operations
+//! the edge and the core's own work reach through `host_core`.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -17,7 +17,7 @@ use demi_core_store::projects::DirectoryNamed;
 use demi_core_host_access::{conversation_of, root_of};
 use demi_core_host_access::transition::{ChangeRefusal, Switched};
 use demi_core_sync::Part;
-use demi_core_host_access::HostShard;
+use demi_core_host_access::HostCore;
 use demi_core_host_access::access::Conversations;
 use demi_core_host_access::plugin_files::{DirectorySets, PluginInstalls};
 use demi_runner_client::Pipes;
@@ -31,9 +31,9 @@ use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::task::TaskTracker;
 
-use super::Shard;
+use super::Core;
 
-impl HostShard for Shard {
+impl HostCore for Core {
     fn user(&self) -> &UserId {
         &self.user
     }
@@ -90,8 +90,8 @@ impl HostShard for Shard {
         self.starter().cloud()
     }
 
-    fn this(&self) -> Rc<dyn HostShard> {
-        Shard::this(self)
+    fn this(&self) -> Rc<dyn HostCore> {
+        Core::this(self)
     }
 
     fn agent_placements(&self, conversation: &ConversationId) -> Vec<Placement> {
@@ -105,7 +105,7 @@ impl HostShard for Shard {
     }
 
     fn track_idle(&self, conversation: &ConversationId) {
-        Shard::track_idle(self, conversation);
+        Core::track_idle(self, conversation);
     }
 
     fn directory_sets(&self) -> LocalBoxFuture<'_, Result<DirectorySets, String>> {
@@ -126,7 +126,7 @@ impl HostShard for Shard {
         conversation: &'a ConversationId,
         change: ConversationChange,
     ) -> LocalBoxFuture<'a, Result<(), ChangeRefusal>> {
-        Box::pin(Shard::transition(self, conversation, change))
+        Box::pin(Core::transition(self, conversation, change))
     }
 
     fn summary_changed(&self, conversation: &ConversationId) {
@@ -140,17 +140,17 @@ impl HostShard for Shard {
         for sharer in &named.saved {
             self.mark(Part::Metadata(sharer.clone()));
         }
-        let shard = Shard::this(self);
+        let core = Core::this(self);
         let conversations = named.conversations;
         let first = conversation.clone();
         self.tasks().spawn_local(async move {
             for conversation in std::iter::once(&first).chain(conversations.iter().filter(|other| **other != first)) {
-                shard.mark(Part::Conversation(conversation.clone()));
+                core.mark(Part::Conversation(conversation.clone()));
                 // What it kept of its project's files and instructions where
                 // its directory was spelled otherwise is let go, and its
                 // next request names the directory as it is now.
-                shard.project_files().release(conversation);
-                shard.agent().placement_changed(&root_of(conversation)).await;
+                core.project_files().release(conversation);
+                core.agent().placement_changed(&root_of(conversation)).await;
             }
         });
     }
@@ -161,7 +161,7 @@ impl HostShard for Shard {
         to: ConversationTarget,
         cancel: &'a tokio_util::sync::CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Option<Switched>, ChangeRefusal>> {
-        Box::pin(Shard::move_to(self, conversation, to, cancel))
+        Box::pin(Core::move_to(self, conversation, to, cancel))
     }
 
     fn port_forwards(&self) -> LocalBoxFuture<'_, Result<Vec<demi_web_api_protocol::port_forwards::PortForwardDto>, String>> {
@@ -176,19 +176,19 @@ impl HostShard for Shard {
     }
 
     fn remove_port_forward(&self, id: demi_web_api_protocol::ids::PortForwardId) -> LocalBoxFuture<'_, Result<(), String>> {
-        Box::pin(async move { Shard::remove_port_forward(self, id).await.map_err(|error| error.to_string()) })
+        Box::pin(async move { Core::remove_port_forward(self, id).await.map_err(|error| error.to_string()) })
     }
 }
 
-impl Shard {
-    /// The shard as its conversations' host access sees it, whose
+impl Core {
+    /// The core as its conversations' host access sees it, whose
     /// operations it is.
-    pub fn host_shard(&self) -> &(dyn HostShard + 'static) {
+    pub fn host_core(&self) -> &(dyn HostCore + 'static) {
         self
     }
 }
 
-impl Shard {
+impl Core {
     /// The conversations with a live subagent that works on `device`
     /// (`crates/agent-server/src/node/mod.rs`): a runner's welcome names them
     /// among those the device holds, though their records may name another.

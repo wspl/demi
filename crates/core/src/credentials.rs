@@ -1,4 +1,4 @@
-//! The user's credentials in their shard.
+//! The user's credentials in their core.
 //!
 //! - What Settings › Credentials lists, creates, changes and deletes.
 //! - The sealing of their values by the product's one owner of sealing.
@@ -24,7 +24,7 @@ use demi_web_api_protocol::credentials::{
 use demi_web_api_protocol::ids::{UserCredentialId, UserId};
 use tokio::sync::Notify;
 
-use super::Shard;
+use super::Core;
 
 /// Seals and opens credentials' values under the instance's key, bound to
 /// the user and the credential's name
@@ -55,7 +55,7 @@ pub enum CredentialError {
     Storage(#[from] StorageError),
 }
 
-impl Shard {
+impl Core {
     /// What seals and opens the values of the user's credentials.
     pub(crate) fn vault_seal(&self) -> Arc<dyn CredentialSeal> {
         Arc::new(VaultSeal(self.services().vault.key().clone()))
@@ -136,7 +136,7 @@ impl Shard {
     /// requests again, whose renewal follows it.
     fn saved(&self, saved: Saved) -> CredentialDto {
         for conversation in &saved.conversations {
-            demi_core_permissions::changed(self.permission_shard(), conversation);
+            demi_core_permissions::changed(self.permission_core(), conversation);
         }
         self.mark_credentials();
         saved.credential
@@ -150,13 +150,13 @@ impl Shard {
             .await?
             .ok_or(CredentialRefusal::NotFound)?;
         for conversation in &removed {
-            demi_core_permissions::changed(self.permission_shard(), conversation);
+            demi_core_permissions::changed(self.permission_core(), conversation);
         }
         self.mark_credentials();
         Ok(())
     }
 
-    /// Removes the user's credentials as their times come, until the shard
+    /// Removes the user's credentials as their times come, until the core
     /// closes.
     ///
     /// It removes what is past due, sleeps until the nearest time left, and looks
@@ -171,7 +171,7 @@ impl Shard {
                     if expired.removed {
                         self.services().sync.mark(self.user(), Part::Credentials);
                         for conversation in &expired.conversations {
-                            demi_core_permissions::changed(self.permission_shard(), conversation);
+                            demi_core_permissions::changed(self.permission_core(), conversation);
                         }
                     }
                     expired.next

@@ -16,7 +16,7 @@
 //! A stop sends no conversation releases: what a release would end, such as a
 //! conversation's Chrome, ends with the machine, and no command's output is
 //! left on its disk to save with it. The conversations' own idle watches
-//! (`crates/backend-user-shard/src/lifecycle/conversations.rs`) find the Cloud
+//! (`crates/core/src/lifecycle/conversations.rs`) find the Cloud
 //! stopped and release the conversations on their other Hosts. The same holds
 //! for a Cloud that stops for another reason: at its lifetime cap, for a reset,
 //! at the backend's shutdown or because it died.
@@ -33,18 +33,18 @@ use tracing::Instrument as _;
 use demi_core_store::devices::ManagedMachine;
 use demi_web_api_protocol::ids::ConversationId;
 
-use crate::CloudShard;
+use crate::CloudCore;
 use crate::machine::Machine;
 use crate::uses::Role;
 
-impl dyn CloudShard {
+impl dyn CloudCore {
     /// Starts the idle watch and the maintenance loop of a machine that just
     /// started running.
     pub(crate) fn cloud_schedules(&self, machine: &Rc<Machine>) -> Vec<AbortOnDropHandle<()>> {
         let window = self.idle_window();
         let sweep = self.cloud_services().tuning.sweep;
         let idle = CloudIdle {
-            shard: Rc::downgrade(&self.this()),
+            core: Rc::downgrade(&self.this()),
             machine: machine.clone(),
         };
         let watch = demi_core_idle_watch::watch(idle, window, sweep, self.tasks().clone())
@@ -98,10 +98,10 @@ impl dyn CloudShard {
             };
             // A task of its own, so the machine leaving the running phase
             // does not cut the checkpoint short.
-            let shard = self.this();
+            let core = self.this();
             let machine = machine.clone();
             self.tasks()
-                .spawn_local(async move { shard.checkpoint(&machine, lease, now).await });
+                .spawn_local(async move { core.checkpoint(&machine, lease, now).await });
         }
     }
 
@@ -209,11 +209,11 @@ impl dyn CloudShard {
             return;
         };
         // A task of its own: leaving the running phase ends this loop.
-        let shard = self.this();
+        let core = self.this();
         let machine = machine.clone();
         self.tasks().spawn_local(async move {
             let _held = (reserved, held);
-            if let Err(error) = shard.hibernate_reserved(&machine).await {
+            if let Err(error) = core.hibernate_reserved(&machine).await {
                 tracing::warn!(event = "cloud.save_failed", host_id = %machine.device.id, step = "lifetime_cap", %error, "the Cloud was not saved at its lifetime cap");
             }
         });
@@ -224,49 +224,49 @@ impl dyn CloudShard {
 /// lifetime cap.
 const LIFETIME_CAP: &str = "the Cloud reached its lifetime cap";
 
-/// The idle rule for the Cloud (`crates/backend-user-shard/src/lifecycle/mod.rs`): no
+/// The idle rule for the Cloud (`crates/core/src/lifecycle/mod.rs`): no
 /// conversation using it, in any role, active within the window, no job
 /// running on it and no operation holding it.
 struct CloudIdle {
-    shard: Weak<dyn CloudShard>,
+    core: Weak<dyn CloudCore>,
     machine: Rc<Machine>,
 }
 
 impl CloudIdle {
-    fn shard(&self) -> Result<Rc<dyn CloudShard>, String> {
-        self.shard
+    fn core(&self) -> Result<Rc<dyn CloudCore>, String> {
+        self.core
             .upgrade()
-            .ok_or_else(|| "the shard is gone".to_owned())
+            .ok_or_else(|| "the core is gone".to_owned())
     }
 }
 
 impl IdlePolicy for CloudIdle {
     async fn check(&self) -> Result<Activity, String> {
-        let shard = self.shard()?;
+        let core = self.core()?;
         let machine = &self.machine;
         let mut activity = Activity::of(&machine.gate.state());
         activity.busy |= !machine.is_running() || machine.transition().is_some();
-        let jobs = shard
+        let jobs = core
             .devices()
             .link(&machine.device.id)
             .map_or(0, |link| link.running_jobs());
         activity.busy |= jobs > 0;
-        Ok(activity.and(shard.cloud_conversations_activity(machine).await?))
+        Ok(activity.and(core.cloud_conversations_activity(machine).await?))
     }
 
     async fn reserve(&self) -> Result<Option<Retirement>, String> {
-        let shard = self.shard()?;
+        let core = self.core()?;
         let Some(gate) = self.machine.gate.try_reserve() else {
             return Ok(None);
         };
-        let uses = shard.uses_of(&self.machine).await?;
-        let Some(held) = shard.hold_uses_for_idle(&uses) else {
+        let uses = core.uses_of(&self.machine).await?;
+        let Some(held) = core.hold_uses_for_idle(&uses) else {
             return Ok(None);
         };
         let machine = self.machine.clone();
         Ok(Some(Box::pin(async move {
             let _held = (gate, held);
-            shard
+            core
                 .hibernate_reserved(&machine)
                 .await
                 .map_err(|error| error.to_string())
@@ -281,10 +281,10 @@ impl IdlePolicy for CloudIdle {
 }
 
 /// The maintenance loop of a running machine: a round every sweep.
-async fn maintain(shard: Weak<dyn CloudShard>, machine: Rc<Machine>) {
-    let Some(sweep) = shard
+async fn maintain(core: Weak<dyn CloudCore>, machine: Rc<Machine>) {
+    let Some(sweep) = core
         .upgrade()
-        .map(|shard| shard.cloud_services().tuning.sweep)
+        .map(|core| core.cloud_services().tuning.sweep)
     else {
         return;
     };
@@ -292,9 +292,9 @@ async fn maintain(shard: Weak<dyn CloudShard>, machine: Rc<Machine>) {
     rounds.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         rounds.tick().await;
-        let Some(shard) = shard.upgrade() else {
+        let Some(core) = core.upgrade() else {
             return;
         };
-        shard.maintain_cloud(&machine).await;
+        core.maintain_cloud(&machine).await;
     }
 }

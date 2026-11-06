@@ -6,7 +6,7 @@
 //! for how they write; the two exchanges before the answer, cut short; and the
 //! answer's end, where its question or its offer is. Tool calls, their output
 //! and thinking stay out. The backend decides when a request starts and keeps
-//! what it answered (`crates/backend-user-shard/src/conversation/suggested_replies.rs`).
+//! what it answered (`crates/core/src/conversation/suggested_replies.rs`).
 
 use std::collections::HashSet;
 use std::num::NonZeroU32;

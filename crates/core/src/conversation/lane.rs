@@ -1,5 +1,5 @@
 //! The conversation lane: a conversation's lane of the page connection, which
-//! the user's shard serves once it opened.
+//! the user's core serves once it opened.
 //!
 //! The lane decodes each message into a client frame and hands it to the
 //! conversation's agent connection, one at a time in arrival order. The
@@ -94,7 +94,7 @@ use futures_util::future::LocalBoxFuture;
 use super::attachment_facts::StreamedText;
 use super::failure_facts;
 use demi_core_sync::etag_of;
-use crate::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader, Shard};
+use crate::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader, Core};
 use demi_core_host_access::remote_files::{RemoteFile, RemoteFileRefusal};
 use demi_core_host_access::root_of;
 
@@ -242,12 +242,12 @@ fn refusal(code: ErrorCode, message: impl Into<String>) -> ServerFrame {
     }
 }
 
-impl Shard {
-    /// Serves a lane of `conversation` until either end closes it or the shard
+impl Core {
+    /// Serves a lane of `conversation` until either end closes it or the core
     /// closes.
     ///
     /// - A frame the lane has handed to the agent is handled to its end, even
-    ///   when the shard closes meanwhile; until then, the outbox's frames keep
+    ///   when the core closes meanwhile; until then, the outbox's frames keep
     ///   flowing to the page.
     /// - The lane ends with its connection, which ends with the session it
     ///   opened with.
@@ -257,7 +257,7 @@ impl Shard {
         mut page: Lane,
         mut stream: LaneReader,
     ) {
-        // Counted before any wait, so the shard's close waits for this
+        // Counted before any wait, so the core's close waits for this
         // lane; one adopted as the close begins ends at once.
         let _lane = self.tree_openers().token();
         if self.is_closing() {
@@ -269,7 +269,7 @@ impl Shard {
             .sync
             .watch_conversation(self.user(), id.clone());
         let resolver = Rc::new(ConversationFiles {
-            shard: Rc::downgrade(&self),
+            core: Rc::downgrade(&self),
             conversation: id.clone(),
         });
         let (connection, mut frames) = self.agent().connect(root_of(&id), resolver.clone());
@@ -302,11 +302,11 @@ impl Shard {
                                 let Some(frame) = frame else {
                                     continue 'relay;
                                 };
-                                let shard = self.clone();
+                                let core = self.clone();
                                 let connection = &connection;
                                 let id = id.clone();
                                 handling = Some(Box::pin(async move {
-                                    shard.handle_frame(&id, connection, frame).await
+                                    core.handle_frame(&id, connection, frame).await
                                 }));
                                 continue 'relay;
                             }
@@ -327,11 +327,11 @@ impl Shard {
                     // waits for its turn in the lane's credit.
                     message = stream.next_unless_busy(busy) => match message {
                         Some(LaneMessage::Text(text)) => {
-                            let shard = self.clone();
+                            let core = self.clone();
                             let connection = &connection;
                             let id = id.clone();
                             handling = Some(Box::pin(async move {
-                                shard.handle_message(&id, connection, text.as_str()).await
+                                core.handle_message(&id, connection, text.as_str()).await
                             }));
                         }
                         Some(LaneMessage::Binary(_)) => break Ending::NotJson,
@@ -380,7 +380,7 @@ impl Shard {
                 }
             }
         };
-        // The shard's close ends the relay wherever it waits, a send to a
+        // The core's close ends the relay wherever it waits, a send to a
         // page that stopped reading included
         // (`crates/backend/src/backend.rs`).
         let ending = tokio::select! {
@@ -456,7 +456,7 @@ impl Shard {
         message: SendMessage,
     ) -> FirstMessageAnswer {
         let resolver = Rc::new(ConversationFiles {
-            shard: Rc::downgrade(self),
+            core: Rc::downgrade(self),
             conversation: conversation.clone(),
         });
         let (connection, mut frames) = self.agent().connect(root_of(conversation), resolver);
@@ -517,7 +517,7 @@ impl Shard {
     async fn handle_message(
         &self,
         conversation: &ConversationId,
-        connection: &demi_agent_server::Connection<super::ShardHosts>,
+        connection: &demi_agent_server::Connection<super::CoreHosts>,
         text: &str,
     ) -> Handled {
         match decode_client_frame(text) {
@@ -562,7 +562,7 @@ impl Shard {
     async fn handle_frame(
         &self,
         conversation: &ConversationId,
-        connection: &demi_agent_server::Connection<super::ShardHosts>,
+        connection: &demi_agent_server::Connection<super::CoreHosts>,
         frame: ClientFrame,
     ) -> Handled {
         let started = std::time::Instant::now();
@@ -787,7 +787,7 @@ impl Shard {
         let Some(tree) = self.agent().tree(&root) else {
             return Vec::new();
         };
-        let held = |stops| demi_core_permissions::held_requests(self.permission_shard(), conversation, &stops);
+        let held = |stops| demi_core_permissions::held_requests(self.permission_core(), conversation, &stops);
         // The agents below `top`, itself included, which a stop closes with it.
         let below = |top: &NodeId| {
             let parents: Vec<_> = tree.nodes().iter().map(|node| (node.id().clone(), node.record().parent)).collect();
@@ -832,7 +832,7 @@ impl Shard {
         if requests.is_empty() {
             return;
         }
-        if let Err(error) = demi_core_permissions::deny(self.permission_shard(), conversation, requests).await {
+        if let Err(error) = demi_core_permissions::deny(self.permission_core(), conversation, requests).await {
             tracing::warn!(event = "permission_requests.deny_failed", %conversation, %error, "the requests that hold an agent's calls were not denied");
         }
     }
@@ -1241,7 +1241,7 @@ fn blocks_added(patches: &[TranscriptPatch]) -> Vec<Block> {
 
 /// A frame's JSON text. A frame that may carry many blocks, a rewrite's
 /// patches, is serialized on the blocking pool, since a long one
-/// would hold the shard's thread; none when that pool is gone with its
+/// would hold the core's thread; none when that pool is gone with its
 /// runtime, which is shutting down.
 async fn serialize(frame: ServerFrame) -> Option<String> {
     let whole = match &frame {
@@ -1276,16 +1276,16 @@ fn to_text(frame: &ServerFrame) -> String {
 /// stopped Cloud never holds a message. A command that needs the file fetches it
 /// with `demi attachment download`.
 pub(super) struct ConversationFiles {
-    /// Weak: the shard owns the agent server that holds this resolver.
-    shard: Weak<Shard>,
+    /// Weak: the core owns the agent server that holds this resolver.
+    core: Weak<Core>,
     conversation: ConversationId,
 }
 
 impl ConversationFiles {
-    /// The resolver of the files of `shard`'s conversation `conversation`.
-    pub(super) fn of(shard: &Rc<Shard>, conversation: ConversationId) -> Self {
+    /// The resolver of the files of `core`'s conversation `conversation`.
+    pub(super) fn of(core: &Rc<Core>, conversation: ConversationId) -> Self {
         Self {
-            shard: Rc::downgrade(shard),
+            core: Rc::downgrade(core),
             conversation,
         }
     }
@@ -1303,7 +1303,7 @@ impl ContentResolver for ConversationFiles {
                 message,
                 code: Some(ErrorCode::SendFailed.to_string()),
             };
-            let shard = self.shard.upgrade().ok_or_else(|| ContentError {
+            let core = self.core.upgrade().ok_or_else(|| ContentError {
                 message: "The backend is shutting down".into(),
                 code: Some(ErrorCode::BackendClosing.to_string()),
             })?;
@@ -1323,11 +1323,11 @@ impl ContentResolver for ConversationFiles {
             let mut written = Vec::new().into_iter();
             if !uploads.is_empty() {
                 // One at a time, so the numbers follow the content's order.
-                let host_shard = shard.host_shard();
+                let host_core = core.host_core();
                 let mut writes = Vec::with_capacity(uploads.len());
                 for (reference, file_name) in uploads {
                     writes.push(
-                        host_shard
+                        host_core
                             .resolve_upload(&self.conversation, reference, file_name)
                             .await
                             .map_err(refused)?,
@@ -1350,8 +1350,8 @@ impl ContentResolver for ConversationFiles {
             let mut references = if remote.is_empty() {
                 Vec::new().into_iter()
             } else {
-                shard
-                    .host_shard()
+                core
+                    .host_core()
                     .reference_remote_files(&self.conversation, &remote)
                     .await
                     .map_err(remote_file_refused)?

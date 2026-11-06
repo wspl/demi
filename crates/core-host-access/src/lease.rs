@@ -1,9 +1,9 @@
-//! Leases (`crates/backend-user-shard/src/lib.rs`): a host operation the shard
+//! Leases (`crates/core/src/lib.rs`): a host operation the core
 //! admitted that outlives the call, such as a file transfer or a user stream,
 //! whose bytes the edge moves.
 //!
-//! The edge holds the lease while bytes move. Dropping it tells the shard the
-//! operation is over, which releases its admission. The shard can end the
+//! The edge holds the lease while bytes move. Dropping it tells the core the
+//! operation is over, which releases its admission. The core can end the
 //! operation first, for example when the conversation is archived: the lease's
 //! `ended` then resolves, and the edge stops.
 
@@ -17,21 +17,21 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 /// The edge's hold on an admitted operation. `Send`.
 pub struct Lease {
     ended: CancellationToken,
-    /// Dropped with the lease, which the shard's side sees.
+    /// Dropped with the lease, which the core's side sees.
     _held: oneshot::Sender<()>,
 }
 
-/// The shard's side of a lease: resolves once the edge dropped it.
+/// The core's side of a lease: resolves once the edge dropped it.
 pub struct Released(oneshot::Receiver<()>);
 
 impl Lease {
-    /// A lease that `ended` ends from the shard's side.
+    /// A lease that `ended` ends from the core's side.
     pub fn new(ended: CancellationToken) -> (Self, Released) {
         let (held, released) = oneshot::channel();
         (Self { ended, _held: held }, Released(released))
     }
 
-    /// Resolves once the shard ended the operation.
+    /// Resolves once the core ended the operation.
     pub fn ended(&self) -> WaitForCancellationFuture<'_> {
         self.ended.cancelled()
     }

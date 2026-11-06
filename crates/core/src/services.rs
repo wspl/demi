@@ -42,7 +42,7 @@ pub struct CoreServices {
     pub claude_releases: ClaudeReleases,
     /// The outcome of the CLI installs no conversation asked for.
     pub cli_installs: CliInstalls,
-    /// The Claude Code machine, set as the shards start.
+    /// The Claude Code machine, set as the cores start.
     pub claude_machine: MachineSlot,
     pub operations: Arc<ProviderOperations>,
     pub logins: Arc<LoginFlows>,
@@ -52,7 +52,7 @@ pub struct CoreServices {
     pub conversation_tuning: ConversationTuning,
     /// How a video's job is waited for.
     pub media_tuning: MediaTuning,
-    /// The same packages as the shards run them, at this backend's address.
+    /// The same packages as the cores run them, at this backend's address.
     pub packages: Arc<dyn Packages>,
     /// The backend's plugins, checked at startup (`crates/plugin-host/src/lib.rs`).
     pub plugins: Arc<Registry>,

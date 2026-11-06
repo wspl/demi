@@ -48,13 +48,13 @@ use demi_web_api_protocol::ids::{DeviceId, OperationId, UserId};
 use tokio::time::Instant;
 
 use crate::machine::{CloudError, Machine, Phase, machines_failed};
-use crate::{CloudServices, CloudShard};
+use crate::{CloudServices, CloudCore};
 
 /// What a backend that started records of a reset its disks were recovered
 /// for: the operation failed, and a retry boots the Cloud.
 const RECOVERED: &str = "Reset disks recovered. Retry to start Cloud.";
 
-impl dyn CloudShard {
+impl dyn CloudCore {
     /// Admits the reset `id` of the user's Cloud, or answers the one of that
     /// id: the same operation while it runs or once it is ready, and a failed
     /// one resumed on the base it selected.
@@ -98,7 +98,7 @@ impl dyn CloudShard {
         };
         // Checked again after the reads: from here to the phase change
         // nothing awaits, so two resets never both start and none starts
-        // beside the shard's close.
+        // beside the core's close.
         if self.cloud().is_closed() {
             return Err(CloudError::Closed);
         }
@@ -119,10 +119,10 @@ impl dyn CloudShard {
         };
         machine.operation.replace(Some(operation.clone()));
         let task = {
-            let shard = self.this();
+            let core = self.this();
             let machine = machine.clone();
             let operation = operation.clone();
-            self.spawn_joinable(async move { shard.run_reset(&machine, operation).await })
+            self.spawn_joinable(async move { core.run_reset(&machine, operation).await })
         };
         *phase = Phase::Resetting {
             permit,
@@ -274,7 +274,7 @@ fn reset_params(machine: &Machine, operation: &ManagedOperation, capacity: Capac
 /// that a retry boots the Cloud.
 ///
 /// Nothing boots here. The function answers the devices whose machines run,
-/// which their shards take over.
+/// which their cores take over.
 pub async fn recover_clouds(
     control: &ControlService,
     stores: &CoreStores,

@@ -51,7 +51,7 @@ pub struct ForkMetadata {
     #[garde(dive)]
     pub model: Option<ModelSelection>,
     /// The source's Workflow menu choice, which the destination keeps as it
-    /// keeps the model (`crates/backend-user-shard/src/conversation/workflows.rs`).
+    /// keeps the model (`crates/core/src/conversation/workflows.rs`).
     #[garde(dive)]
     pub workflow: WorkflowChoice,
     #[garde(skip)]

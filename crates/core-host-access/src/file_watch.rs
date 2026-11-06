@@ -12,7 +12,7 @@
 //!
 //! A device's folder dialog watches its one device through device access.
 //!
-//! The shard holds each page's subscriptions on each Host, which pages that
+//! The core holds each page's subscriptions on each Host, which pages that
 //! hold the same subject share (`RemoteHost::subscriber`), and renews them
 //! while the page renews them. The edge carries the messages, and holds the
 //! lease.
@@ -36,13 +36,13 @@ use futures_util::future::select_all;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::HostShard;
+use crate::HostCore;
 use crate::access::{Attention, HostAccessError, Refusal};
 use crate::lease::{Lease, Released};
 use crate::transfer::OpenTransfer;
 
-/// The page's messages that may wait for the shard: a bounded queue makes a
-/// page that outpaces the shard wait, instead of growing memory.
+/// The page's messages that may wait for the core: a bounded queue makes a
+/// page that outpaces the core wait, instead of growing memory.
 const FROM_PAGE: usize = 8;
 /// The messages for the page that may wait for the edge, bounded for the same
 /// reason.
@@ -67,7 +67,7 @@ pub enum OpenedWatch {
     Offline,
 }
 
-impl dyn HostShard + '_ {
+impl dyn HostCore + '_ {
     /// Opens a page's file watch of the conversation `id`, registered with its
     /// transfers so that a transition ends it. The watch stays open until the
     /// edge drops its lease, a Host's connection ends, or a transition ends it.
@@ -90,7 +90,7 @@ impl dyn HostShard + '_ {
             .open()
             .map_err(|_| Refusal::Busy)?;
         let reach = Reach::Conversation {
-            shard: self.this(),
+            core: self.this(),
             id: record.id,
         };
         Ok(self.relay(reach, Vec::new(), open.ended.clone(), Some(open)))
@@ -155,7 +155,7 @@ enum Reach {
     /// A conversation's: each Host admitted when a subscription first names
     /// it.
     Conversation {
-        shard: Rc<dyn HostShard>,
+        core: Rc<dyn HostCore>,
         id: ConversationId,
     },
 }
@@ -330,12 +330,12 @@ impl Relay {
     /// Admits the conversation's Host `host` names, as a user stream is: a
     /// stopped Cloud is not woken, and a Host out of reach is offline.
     async fn admit(&self, host: Option<&DeviceId>) -> Admission {
-        let Reach::Conversation { shard, id } = &self.reach else {
+        let Reach::Conversation { core, id } = &self.reach else {
             // The device's watch reads only what names no host.
             return Admission::Unavailable("This watch is of one device.".to_owned());
         };
         let cancel = self.ended.child_token();
-        let access = match shard.admit_stream(id, host, Attention::Looks, &cancel).await {
+        let access = match core.admit_stream(id, host, Attention::Looks, &cancel).await {
             Ok(access) => access,
             Err(HostAccessError::Refused(Refusal::Stopped)) => return Admission::Over(End::Offline),
             Err(HostAccessError::Host(error)) if matches!(error.kind, HostErrorKind::Offline) => {

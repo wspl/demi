@@ -12,9 +12,9 @@ use demi_web_api_protocol::cloud::{
 };
 use demi_web_api_protocol::settings::Isolation;
 
-use crate::CloudShard;
+use crate::CloudCore;
 
-impl dyn CloudShard {
+impl dyn CloudCore {
     pub async fn cloud_status(&self) -> Result<CloudStatus, StorageError> {
         let Some(device) = self.store().managed_device().await? else {
             return Ok(CloudStatus {

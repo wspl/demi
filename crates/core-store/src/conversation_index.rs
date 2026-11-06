@@ -8,7 +8,7 @@
 //! - the model selection, which is the conversation's model settings
 //!   (`crates/shared-types/src/catalog.rs`);
 //! - the Workflow menu choice
-//!   (`crates/backend-user-shard/src/conversation/workflows.rs`).
+//!   (`crates/core/src/conversation/workflows.rs`).
 //!
 //! The agent tree itself is in the conversation's own database.
 //!
@@ -52,7 +52,7 @@ pub struct ConversationRecord {
     /// The conversation's model selection; none until its first model is
     /// chosen.
     pub model: Option<ModelSelection>,
-    /// Its Workflow menu choice (`crates/backend-user-shard/src/conversation/workflows.rs`).
+    /// Its Workflow menu choice (`crates/core/src/conversation/workflows.rs`).
     pub workflow: WorkflowChoice,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
@@ -84,7 +84,7 @@ impl ConversationRecord {
     }
 }
 
-/// A change a user asks of a conversation, which `Shard::transition`
+/// A change a user asks of a conversation, which `Core::transition`
 /// applies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConversationChange {

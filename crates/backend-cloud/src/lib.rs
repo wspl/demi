@@ -2,7 +2,7 @@
 //! device, a Host behind a runner like a paired device, which the machine
 //! manager runs as a gVisor sandbox.
 //!
-//! The user's shard holds the Cloud's machine:
+//! The user's core holds the Cloud's machine:
 //!
 //! - Its phase, and the capacity permit it holds while it is not stopped.
 //! - Its gate, which every operation on it holds and which an idle stop and a
@@ -11,9 +11,9 @@
 //!   reset.
 //!
 //! The capacity across users and the machine manager's client are services
-//! every shard shares.
+//! every core shares.
 //!
-//! The Cloud's operations are methods of `dyn CloudShard`, what the Cloud needs
+//! The Cloud's operations are methods of `dyn CloudCore`, what the Cloud needs
 //! of its user's core, which this crate implements for the core
 //! (`user_core`).
 //!
@@ -79,7 +79,7 @@
 //!
 //! Its record belongs to the instance's master, as a managed machine of a
 //! second kind beside the master's Cloud (one of each per user at most, the
-//! second for the master only). So the master's shard holds it: its runner is
+//! second for the master only). So the master's core holds it: its runner is
 //! adopted there, and its phase, admission and idle watch run there.
 //!
 //! Its activity is the work in flight on it, not any conversation of the
@@ -92,10 +92,10 @@
 //! - With no lease and no operation for an idle window, the machine stops. Its
 //!   retained processes are not activity.
 //!
-//! Another user's work crosses to the master's shard once per process start,
-//! never per line. The placement asks the master's shard to start the process
+//! Another user's work crosses to the master's core once per process start,
+//! never per line. The placement asks the master's core to start the process
 //! and gets back its standard streams as `Send` pipe ends and its end as a
-//! `Send` future, which a task on the master's shard relays. Dropping them
+//! `Send` future, which a task on the master's core relays. Dropping them
 //! closes the process there, SIGTERM first.
 //!
 //! Its memory limit is its own setting, since every user's processes share it.
@@ -135,7 +135,7 @@ use self::client::MachinesClient;
 use self::machine::Cloud;
 use self::tuning::CloudTuning;
 
-/// What every shard's Cloud shares: the machine manager's client, the
+/// What every core's Cloud shares: the machine manager's client, the
 /// capacity across users, and the Cloud's settings.
 pub struct CloudServices {
     pub machines: MachinesClient,
@@ -178,10 +178,10 @@ impl CloudSide {
     }
 }
 
-/// What the Cloud needs of its user's shard: the handles its operations
+/// What the Cloud needs of its user's core: the handles its operations
 /// use, and the user's conversations, which keep the Cloud awake while they
 /// work and which an idle stop and a reset hold (`crates/backend-cloud/src/uses.rs`).
-pub trait CloudShard {
+pub trait CloudCore {
     fn user(&self) -> &UserId;
     /// The user's Cloud machine.
     fn cloud(&self) -> &Cloud;
@@ -194,7 +194,7 @@ pub trait CloudShard {
     /// Where a booting Cloud's runner reaches this backend.
     fn public_url(&self) -> &PublicUrl;
     /// How long a Cloud no conversation uses stays awake
-    /// (`crates/backend-user-shard/src/lifecycle/mod.rs`).
+    /// (`crates/core/src/lifecycle/mod.rs`).
     fn idle_window(&self) -> Duration;
     /// The user's pages, which show the Cloud and the devices.
     fn marks(&self) -> UserMarks;
@@ -202,12 +202,12 @@ pub trait CloudShard {
     /// process on the Cloud.
     fn vault(&self) -> &Vault;
     fn provider_registry(&self) -> &ProviderRegistry;
-    /// Every task the shard spawns, which its close waits for.
+    /// Every task the core spawns, which its close waits for.
     fn tasks(&self) -> &TaskTracker;
-    /// Resolves once the shard starts closing.
+    /// Resolves once the core starts closing.
     fn closed(&self) -> WaitForCancellationFuture<'_>;
-    /// The shard, for a task that outlives the call that starts it.
-    fn this(&self) -> Rc<dyn CloudShard>;
+    /// The core, for a task that outlives the call that starts it.
+    fn this(&self) -> Rc<dyn CloudCore>;
 
     /// What the conversation is doing: a turn of its tree, an operation
     /// holding its file gate, or a user stream someone has open.
@@ -241,6 +241,6 @@ pub trait CloudShard {
     fn packages_lost(&self, device: &DeviceId);
 }
 
-/// What the shard holds of one conversation for an idle stop or a reset of
+/// What the core holds of one conversation for an idle stop or a reset of
 /// the Cloud; dropping it lets the conversation go.
 pub trait ConversationHold {}

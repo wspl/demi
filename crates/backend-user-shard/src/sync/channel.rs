@@ -1,4 +1,4 @@
-//! A page's synchronization channel in the user's shard.
+//! A page's synchronization channel in the user's core.
 //!
 //! The channel:
 //!
@@ -41,7 +41,7 @@ use crate::page_notifications::OpenPage;
 use crate::server_starter::ServerSide;
 use crate::sync::StateReads;
 use demi_core::lane::PageSession;
-use demi_core::{Lane, LaneClose, LaneEnd, LaneGone, LaneMessage, LaneReader, Shard};
+use demi_core::{Lane, LaneClose, LaneEnd, LaneGone, LaneMessage, LaneReader, Core};
 
 /// How a channel ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,7 +85,7 @@ enum Woke {
 )]
 pub trait SyncChannel {
     /// Serves a page's synchronization channel on its lane until the page
-    /// leaves or the shard closes.
+    /// leaves or the core closes.
     async fn serve_sync_channel(
         self: Rc<Self>,
         page: Lane,
@@ -94,14 +94,14 @@ pub trait SyncChannel {
     );
 }
 
-impl SyncChannel for Shard {
+impl SyncChannel for Core {
     async fn serve_sync_channel(
         self: Rc<Self>,
         mut page: Lane,
         mut from_page: LaneReader,
         session: PageSession,
     ) {
-        // Counted before any wait, so the shard's close waits for this
+        // Counted before any wait, so the core's close waits for this
         // channel; one adopted as the close begins ends at once.
         let _channel = ServerSide::of(&self).sync_channels.token();
         let end = if self.is_closing() {
@@ -115,7 +115,7 @@ impl SyncChannel for Shard {
             let mut channel = Channel {
                 registration: &registration,
                 follows: &follows,
-                shard: &self,
+                core: &self,
                 page: &mut page,
                 session,
             };
@@ -253,7 +253,7 @@ struct Channel<'a> {
     /// registration on reach it.
     registration: &'a Registration,
     follows: &'a Follows,
-    shard: &'a Shard,
+    core: &'a Core,
     page: &'a mut Lane,
     session: PageSession,
 }
@@ -343,7 +343,7 @@ impl Channel<'_> {
     /// Reads `part` now, as the message that carries it; none when the
     /// page is sent nothing of it.
     async fn read_part(&mut self, part: &Part) -> Result<Option<SyncEvent>, End> {
-        self.shard
+        self.core
             .read_part(part, &self.session.user, &self.session.token)
             .await
             .map_err(|error| {

@@ -64,7 +64,7 @@ use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::Shard;
+use super::Core;
 use super::credentials::CredentialError;
 use crate::conversation::organize::{failed, verb};
 
@@ -178,8 +178,8 @@ struct Shown {
     updated_at: Timestamp,
 }
 
-/// The `credentials` group, whose handlers act in `shard`.
-pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
+/// The `credentials` group, whose handlers act in `core`.
+pub(crate) fn credentials_group(core: Weak<Core>) -> GroupBuilder {
     GroupBuilder::new("credentials", SUMMARY)
         .index_entry(ENTRY)
         .permission(CREDENTIALS, CREDENTIALS_ACTION, CREDENTIALS_DESCRIPTION)
@@ -188,7 +188,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<NoArgs>()
                 .json_output::<Vec<Listed>>()
                 .permission(CREDENTIALS)
-                .bind(TypedRpc::new(verb(shard.clone(), list))),
+                .bind(TypedRpc::new(verb(core.clone(), list))),
         )
         .leaf(
             LeafBuilder::rpc("show", SHOW_SUMMARY)
@@ -197,7 +197,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["name"])
                 .json_output::<Shown>()
                 .permission(CREDENTIALS)
-                .bind(TypedRpc::new(verb(shard.clone(), show))),
+                .bind(TypedRpc::new(verb(core.clone(), show))),
         )
         .leaf(
             LeafBuilder::rpc("request", REQUEST_SUMMARY)
@@ -216,7 +216,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .running_hint(RUNNING_HINT)
                 .json_output::<Listed>()
                 .permission(CREDENTIALS)
-                .bind(TypedRpc::new(verb(shard.clone(), request))),
+                .bind(TypedRpc::new(verb(core.clone(), request))),
         )
         .leaf(
             LeafBuilder::rpc("save", SAVE_SUMMARY)
@@ -230,7 +230,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .stdin_field("values")
                 .json_output::<Listed>()
                 .permission(CREDENTIALS)
-                .bind(TypedRpc::new(verb(shard.clone(), save))),
+                .bind(TypedRpc::new(verb(core.clone(), save))),
         )
         .leaf(
             LeafBuilder::rpc("read", READ_SUMMARY)
@@ -239,7 +239,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .describe("field", "The field's name.")
                 .positionals(["name", "field"])
                 .permission(CREDENTIALS)
-                .bind(TypedRpc::new(verb(shard.clone(), read))),
+                .bind(TypedRpc::new(verb(core.clone(), read))),
         )
         .leaf(
             LeafBuilder::rpc("remove", REMOVE_SUMMARY)
@@ -247,7 +247,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .describe("name", "The credential's name.")
                 .positionals(["name"])
                 .permission(CREDENTIALS)
-                .bind(TypedRpc::new(verb(shard, remove))),
+                .bind(TypedRpc::new(verb(core, remove))),
         )
 }
 
@@ -299,8 +299,8 @@ pub(crate) async fn print_json(port: &RpcPort, value: &impl Serialize) -> Result
     Ok(0)
 }
 
-async fn list(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let credentials = shard
+async fn list(core: Rc<Core>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let credentials = core
         .store().user_credentials()
         .await
         .map_err(failed)?;
@@ -320,8 +320,8 @@ async fn list(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8,
     Ok(0)
 }
 
-async fn show(shard: Rc<Shard>, call: Call<NameArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let store = shard.store();
+async fn show(core: Rc<Core>, call: Call<NameArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let store = core.store();
     let name = call.args.name;
     let Some(credential) = store.user_credential_named(name.clone())
         .await
@@ -332,7 +332,7 @@ async fn show(shard: Rc<Shard>, call: Call<NameArgs>, port: RpcPort) -> Result<u
         )));
     };
     // A visible value is shown; a secret one never.
-    let mut values = store.user_credential_values(credential.id.clone(), shard.vault_seal())
+    let mut values = store.user_credential_values(credential.id.clone(), core.vault_seal())
         .await
         .map_err(failed)?
         .map(|(_, values)| values)
@@ -480,7 +480,7 @@ fn piped_values(fields: &[CredentialField], input: &str) -> Result<BTreeMap<Stri
     Ok(values)
 }
 
-async fn request(shard: Rc<Shard>, call: Call<RequestArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn request(core: Rc<Core>, call: Call<RequestArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let RequestArgs {
         name,
         field,
@@ -489,7 +489,7 @@ async fn request(shard: Rc<Shard>, call: Call<RequestArgs>, port: RpcPort) -> Re
     } = call.args;
     let (name, ask) = asked(name, &field, reason, keep)?;
     let answer = ask_credential(
-        shard.permission_shard(),
+        core.permission_core(),
         &call.invocation,
         name.clone(),
         ask,
@@ -507,7 +507,7 @@ async fn request(shard: Rc<Shard>, call: Call<RequestArgs>, port: RpcPort) -> Re
     }
 }
 
-async fn save(shard: Rc<Shard>, call: Call<SaveArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn save(core: Rc<Core>, call: Call<SaveArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let SaveArgs {
         name,
         field,
@@ -518,7 +518,7 @@ async fn save(shard: Rc<Shard>, call: Call<SaveArgs>, port: RpcPort) -> Result<u
     let (name, ask) = asked(name, &field, reason, keep)?;
     let values = values.ok_or_else(|| failed("pipe the values on standard input".to_owned()))?;
     let values = piped_values(&ask.fields, &values)?;
-    let saved = save_credential(shard.permission_shard(), &call.invocation, name, ask, values).await?;
+    let saved = save_credential(core.permission_core(), &call.invocation, name, ask, values).await?;
     print_saved(&call.invocation, &port, &saved.credential).await
 }
 
@@ -532,9 +532,9 @@ async fn print_saved(invocation: &RpcInvocation, port: &RpcPort, credential: &St
     Ok(0)
 }
 
-async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn read(core: Rc<Core>, call: Call<ReadArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let value = read_credential(
-        shard.permission_shard(),
+        core.permission_core(),
         &call.invocation,
         call.args.name,
         call.args.field,
@@ -544,9 +544,9 @@ async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u
     Ok(0)
 }
 
-async fn remove(shard: Rc<Shard>, call: Call<NameArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn remove(core: Rc<Core>, call: Call<NameArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let name = call.args.name;
-    let Some(credential) = shard
+    let Some(credential) = core
         .store().user_credential_named(name.clone())
         .await
         .map_err(failed)?
@@ -557,7 +557,7 @@ async fn remove(shard: Rc<Shard>, call: Call<NameArgs>, port: RpcPort) -> Result
     };
     // Named as it is saved, whatever the case it was asked for in.
     let name = credential.name;
-    match shard.remove_credential(credential.id).await {
+    match core.remove_credential(credential.id).await {
         Ok(()) => {}
         Err(CredentialError::Refused(_)) => {
             return Err(failed(format!(

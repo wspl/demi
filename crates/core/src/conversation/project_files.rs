@@ -1,7 +1,7 @@
-//! What the shard keeps of its conversations' project files
-//! (`crates/backend-user-shard/src/conversation/workflows.rs`).
+//! What the core keeps of its conversations' project files
+//! (`crates/core/src/conversation/workflows.rs`).
 //!
-//! The shard keeps three things, per Host and directory:
+//! The core keeps three things, per Host and directory:
 //!
 //! - the instruction files of each node's working directory;
 //! - the workflows of each conversation's directory;
@@ -33,7 +33,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::instructions::search_instructions;
 use super::workflows::{ProjectWorkflows, search_conversation_workflows};
-use crate::Shard;
+use crate::Core;
 
 pub(crate) struct ProjectFiles {
     /// The instruction files of each working directory.
@@ -46,55 +46,55 @@ pub(crate) struct ProjectFiles {
 }
 
 impl ProjectFiles {
-    pub(crate) fn new(shard: &Weak<Shard>) -> Self {
+    pub(crate) fn new(core: &Weak<Core>) -> Self {
         let instructions = {
-            let searcher = shard.clone();
+            let searcher = core.clone();
             Kept::new(
                 "instruction files",
                 Box::new(move |conversation: ConversationId, device: DeviceId, cwd: String| {
-                    let shard = searcher.clone();
+                    let core = searcher.clone();
                     Box::pin(async move {
-                        let shard = shard.upgrade().ok_or_else(closing)?;
-                        let found = search_instructions(&shard, &conversation, &device, &cwd, &CancellationToken::new()).await?;
+                        let core = core.upgrade().ok_or_else(closing)?;
+                        let found = search_instructions(&core, &conversation, &device, &cwd, &CancellationToken::new()).await?;
                         Ok(found)
                     })
                 }),
-                subscribe(shard.clone()),
+                subscribe(core.clone()),
                 None,
             )
         };
         let workflows = {
-            let searcher = shard.clone();
+            let searcher = core.clone();
             Kept::new(
                 "workflows",
                 Box::new(move |conversation: ConversationId, device: DeviceId, directory: String| {
-                    let shard = searcher.clone();
+                    let core = searcher.clone();
                     Box::pin(async move {
-                        let shard = shard.upgrade().ok_or_else(closing)?;
-                        let found = search_conversation_workflows(&shard, &conversation, &device, &directory).await?;
+                        let core = core.upgrade().ok_or_else(closing)?;
+                        let found = search_conversation_workflows(&core, &conversation, &device, &directory).await?;
                         Ok(Found {
                             watch: subjects(&found.watch),
                             value: Rc::new(found),
                         })
                     })
                 }),
-                subscribe(shard.clone()),
-                Some(shown_workflows(shard.clone())),
+                subscribe(core.clone()),
+                Some(shown_workflows(core.clone())),
             )
         };
         let plugins = {
-            let searcher = shard.clone();
+            let searcher = core.clone();
             Kept::new(
                 "a plugin's project search",
                 Box::new(move |conversation, device: DeviceId, (plugin, directory): (PluginId, String)| {
-                    let shard = searcher.clone();
+                    let core = searcher.clone();
                     Box::pin(async move {
-                        let shard = shard.upgrade().ok_or_else(closing)?;
-                        let paths = shard
+                        let core = core.upgrade().ok_or_else(closing)?;
+                        let paths = core
                             .host_paths(&conversation)
                             .await
                             .map_err(|error| SearchError::Failed(error.to_string()))?;
-                        let found = shard
+                        let found = core
                             .plugins()
                             .project_search(&plugin, &conversation, &device, directory, paths, CancellationToken::new())
                             .await
@@ -114,7 +114,7 @@ impl ProjectFiles {
                         })
                     })
                 }),
-                subscribe(shard.clone()),
+                subscribe(core.clone()),
                 None,
             )
         };
@@ -171,11 +171,11 @@ impl KeptAt {
     }
 }
 
-impl Shard {
+impl Core {
     /// Where the conversation `id`'s project files are kept, read without
     /// reaching its Host.
     async fn kept_at(&self, id: &ConversationId) -> Result<KeptAt, HostAccessError> {
-        let host = self.host_shard();
+        let host = self.host_core();
         let record = host.owned_conversation(id).await?;
         let target = host.resolve_target(&record).await?;
         let project_directory = match &record.target {
@@ -277,7 +277,7 @@ impl Shard {
     }
 }
 
-impl Shard {
+impl Core {
     /// The Workflow menu's list for the conversation `id` as its metadata
     /// carries it, as the backend stored it, at once, under its revision:
     /// unknown before its first read; the refusal when the last search was
@@ -394,31 +394,31 @@ fn menus_offer_same(project: &ConversationWorkflows, own: &ConversationWorkflows
 
 /// Stores each search of a directory's workflows in the menu's form, and
 /// announces a changed one in the metadata of the conversations that use it.
-fn shown_workflows(shard: Weak<Shard>) -> Shown<String, Rc<ProjectWorkflows>> {
-    let announcer = shard.clone();
+fn shown_workflows(core: Weak<Core>) -> Shown<String, Rc<ProjectWorkflows>> {
+    let announcer = core.clone();
     Shown {
         store: Box::new(move |device: DeviceId, directory: String, found: &Rc<ProjectWorkflows>| {
-            let shard = shard.clone();
+            let core = core.clone();
             let list = found.menu();
             Box::pin(async move {
-                let shard = shard.upgrade().ok_or("the backend is shutting down")?;
-                shard
+                let core = core.upgrade().ok_or("the backend is shutting down")?;
+                core
                     .store().keep_host_workflows(device, directory, list)
                     .await
                     .map_err(|error| error.to_string())
             })
         }),
         announce: Box::new(move |conversations| {
-            if let Some(shard) = announcer.upgrade() {
+            if let Some(core) = announcer.upgrade() {
                 for conversation in conversations {
-                    shard.mark(Part::Metadata(conversation.clone()));
+                    core.mark(Part::Metadata(conversation.clone()));
                 }
             }
         }),
     }
 }
 
-/// What the shard holds of a conversation's workflows.
+/// What the core holds of a conversation's workflows.
 pub(crate) enum KeptWorkflows {
     /// What the last search found.
     Found(Rc<ProjectWorkflows>),
@@ -441,13 +441,13 @@ fn subjects(watch: &[WatchSubject]) -> Vec<Subject> {
 
 /// Subscriptions on a Host the conversation works on, its primary one or a
 /// live subagent's, through its host access.
-fn subscribe(shard: Weak<Shard>) -> Subscribe {
+fn subscribe(core: Weak<Core>) -> Subscribe {
     Box::new(move |conversation, device| {
-        let shard = shard.clone();
+        let core = core.clone();
         Box::pin(async move {
-            let shard = shard.upgrade().ok_or_else(closing)?;
-            let watching = shard
-                .host_shard()
+            let core = core.upgrade().ok_or_else(closing)?;
+            let watching = core
+                .host_core()
                 .watch_files(&conversation, &device, &CancellationToken::new())
                 .await?;
             Ok(watching)

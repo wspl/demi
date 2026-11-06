@@ -11,7 +11,7 @@
 //! ```text
 //! borrower                              lender
 //! +-------------------------+  WebSocket, one   +--------------------------+
-//! | session                 |  per session,     | the key owner's shard    |
+//! | session                 |  per session,     | the key owner's core    |
 //! |   Borrowed runtime  ----+-- Bearer key ---->|   lend::serve            |
 //! |   delta::Outbox         |                   |   delta::Inbox           |
 //! |                    <----+-- events ---------+-- the entry's runtime    |

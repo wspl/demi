@@ -18,7 +18,7 @@
 //! a lane of the runner's pipe connection ([`relay_stream_pipe`]) and a
 //! call's output over the WebSocket a pipe route accepted
 //! ([`accept_call_sink`]). In the backend, everything but the pipe ends runs
-//! inside the user's shard.
+//! inside the user's core.
 //!
 //! It depends on the wire's contracts alone, never on the backend.
 //!

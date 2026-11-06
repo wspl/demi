@@ -46,7 +46,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
 use super::runs::{Fired, Payload};
-use crate::Shard;
+use crate::Core;
 
 /// The wait each call of a burst restarts.
 pub(crate) const BURST_WAIT: Duration = Duration::from_secs(30);
@@ -163,7 +163,7 @@ pub(crate) fn verified(call: &HookCall, secret: &str) -> bool {
     false
 }
 
-impl Shard {
+impl Core {
     /// A call of the schedule `id`'s URL, which the edge found to be the
     /// user's.
     pub async fn hook_call(&self, id: &ScheduleId, call: HookCall) -> Result<HookAnswer, StorageError> {
@@ -260,7 +260,7 @@ impl Shard {
         }
     }
 
-    /// As the shard starts: the calls a run of the backend before kept
+    /// As the core starts: the calls a run of the backend before kept
     /// waiting start their bursts again, unless a run left working takes
     /// them at its end.
     pub(crate) async fn resume_pending_calls(&self) {
@@ -290,7 +290,7 @@ impl Shard {
         calls: &[Call],
     ) -> Result<Vec<Option<String>>, String> {
         let cancel = CancellationToken::new();
-        self.host_shard()
+        self.host_core()
             .with_host(conversation, None, &cancel, async |host| {
                 let identity = host.host.identity();
                 if identity.scratch_root.is_empty() {
@@ -331,7 +331,7 @@ impl Shard {
 /// call waiting, unless the schedule was paused, its trigger changed or it
 /// was deleted since `generation`.
 async fn gather_until_quiet(
-    shard: std::rc::Weak<Shard>,
+    core: std::rc::Weak<Core>,
     id: ScheduleId,
     generation: u64,
     first: Instant,
@@ -347,11 +347,11 @@ async fn gather_until_quiet(
             break;
         }
     }
-    let Some(shard) = shard.upgrade() else {
+    let Some(core) = core.upgrade() else {
         return;
     };
     {
-        let mut pending = shard.schedules().pending.borrow_mut();
+        let mut pending = core.schedules().pending.borrow_mut();
         let Some(entry) = pending.get_mut(&id).filter(|entry| entry.generation == generation) else {
             return;
         };
@@ -361,7 +361,7 @@ async fn gather_until_quiet(
             drop(burst.timer.detach());
         }
     }
-    let store = shard.store();
+    let store = core.store();
     let schedule = match store.schedule(id.clone()).await {
         Ok(Some(schedule)) if schedule.on() && matches!(schedule.trigger, Trigger::Url {}) => schedule,
         Ok(_) => return,
@@ -378,11 +378,11 @@ async fn gather_until_quiet(
         }
     };
     // A pause or an edit while the calls were read drops them.
-    if calls.is_empty() || !shard.schedule_current(&id, generation) {
+    if calls.is_empty() || !core.schedule_current(&id, generation) {
         return;
     }
     let at = store.now();
-    shard
+    core
         .fire(
             &schedule,
             Fired {

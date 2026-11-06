@@ -1,4 +1,4 @@
-//! A request body, built and serialized off the user's shard: a request with images is megabytes of
+//! A request body, built and serialized off the user's core: a request with images is megabytes of
 //! base64, which would hold up every conversation of the user.
 
 use serde::Serialize;

@@ -3,7 +3,7 @@
 //! (`crates/provider-registry/src/vendors.rs`).
 //!
 //! There is one path, with its checks and its words, for the settings page and
-//! for `demi providers` (`crates/backend-user-shard/src/shard/provider_commands.rs`).
+//! for `demi providers` (`crates/core/src/provider_commands.rs`).
 //!
 //! An entry may be added with nothing but its kind; it is incomplete until it has
 //! what it needs.

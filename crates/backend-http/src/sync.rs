@@ -1,5 +1,5 @@
 //! The page's synchronization channel, a lane of its connection, which the
-//! user's shard serves until it ends; and `WS /api/sync`, where a page of a
+//! user's core serves until it ends; and `WS /api/sync`, where a page of a
 //! build before the connection opened its channel.
 //!
 //! The old route tells every page that the product state it holds is stale,
@@ -25,11 +25,11 @@ pub(super) fn open(state: &AppState, session: PageSession) -> Opened {
     let shards = state.shards.clone();
     Opened::new(move |lane, reader| async move {
         let user = session.user.id.clone();
-        // A shard that is closing takes no channel: the lane drops, and the
+        // A core that is closing takes no channel: the lane drops, and the
         // connection closes as the backend does.
         let _ = shards
             .of(&user)
-            .adopt(move |shard| shard.serve_sync_channel(lane, reader, session))
+            .adopt(move |core| core.serve_sync_channel(lane, reader, session))
             .await;
     })
 }

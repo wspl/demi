@@ -131,7 +131,7 @@ impl ProviderRegistry {
             EntryCredential::ApiKey(config) => {
                 // The model menu's are the text models; an image model of
                 // the list is `demi image`'s
-                // (`crates/backend-user-shard/src/provider_settings.rs`).
+                // (`crates/core/src/provider_settings.rs`).
                 if let Some(models) = &config.models {
                     let text = models.0.iter().filter(|model| model.kind == ModelKind::Text);
                     return unfetched(text.map(configured_model).collect(), Vec::new());

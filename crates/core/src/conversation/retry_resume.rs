@@ -10,10 +10,10 @@
 //! - It is armed as the root comes to rest after that failure, which its phase
 //!   change announces.
 //! - It is released when the root rests with no failed turn, when it fires, and
-//!   when the shard closes.
+//!   when the core closes.
 //! - A tree evicted meanwhile keeps its conversation's timer, which opens the
 //!   tree again when it fires.
-//! - A timer is the shard's alone: a restart of the backend arms none until the
+//! - A timer is the core's alone: a restart of the backend arms none until the
 //!   conversation's tree is open again.
 
 use std::cell::RefCell;
@@ -28,7 +28,7 @@ use demi_web_api_protocol::ids::ConversationId;
 use tokio_util::task::AbortOnDropHandle;
 
 use super::failure_facts;
-use crate::Shard;
+use crate::Core;
 
 /// Each conversation's timer.
 #[derive(Default)]
@@ -41,7 +41,7 @@ struct Armed {
 }
 
 impl RetryResumes {
-    /// Ends every timer, for the shard's close.
+    /// Ends every timer, for the core's close.
     pub(crate) fn clear(&self) {
         self.0.borrow_mut().clear();
     }
@@ -62,7 +62,7 @@ impl RetryResumes {
     }
 }
 
-impl Shard {
+impl Core {
     /// The conversation's root changed its phase, or its tree opened or
     /// went: a live root at rest whose last turn failed has a timer for that
     /// failure, and one with no failed turn has none. A root that works
@@ -194,10 +194,10 @@ impl Shard {
 /// until the failure's retry time, then resumes the turn when the user's
 /// preference says so. A failure that names no time, or one that has
 /// passed, waits for nothing.
-async fn resume_at_retry(shard: Weak<Shard>, conversation: ConversationId, error: ErrorBlock) {
+async fn resume_at_retry(core: Weak<Core>, conversation: ConversationId, error: ErrorBlock) {
     let id = error.id.clone();
     let wait = {
-        let Some(live) = shard.upgrade() else {
+        let Some(live) = core.upgrade() else {
             return;
         };
         let Some(retry_at) = live.retry_at(error).await else {
@@ -219,11 +219,11 @@ async fn resume_at_retry(shard: Weak<Shard>, conversation: ConversationId, error
         }
     };
     tokio::time::sleep(wait).await;
-    let Some(live) = shard.upgrade() else {
+    let Some(live) = core.upgrade() else {
         return;
     };
     // Counted among the tree's openers before the timer lets go of its
-    // handle, which the shard's close no longer aborts: the close waits for
+    // handle, which the core's close no longer aborts: the close waits for
     // it before the agent shuts down, and it opens nothing once the close
     // began.
     let _opening = live.tree_openers().token();

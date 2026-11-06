@@ -30,7 +30,7 @@ use demi_agent_tools::duration;
 use demi_core_store::{search::{HistoryBound, HistoryQuery, SearchKind, occurrences, searchable_text}};
 use demi_core_store::{tree::{self, Transcript}};
 use demi_core_host_access::host_commands::conversation_of;
-use demi_core_host_access::{HostShard, root_of};
+use demi_core_host_access::{HostCore, root_of};
 use demi_host_interface::{
     Call, FileContents, GroupBuilder, Host as _, LeafBuilder, RpcError, RpcPort, TypedRpc, WhenExists, WriteOptions,
 };
@@ -49,7 +49,7 @@ use tokio_util::sync::CancellationToken;
 use super::organize::{failed, refused, verb};
 use super::cost_report::{CostRows, Labels, call_costs, render_calls, render_turns, turn_costs};
 use super::turn_timing::{Turn, TurnTiming, Turns, turn_of};
-use crate::Shard;
+use crate::Core;
 
 /// About how many characters a read prints, and a page of what `open`
 /// prints of a text.
@@ -185,8 +185,8 @@ struct OpenArgs {
 }
 
 /// The `history` group of `demi conversation`, whose handlers read in
-/// `shard`.
-pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
+/// `core`.
+pub(crate) fn history_group(core: Weak<Core>) -> GroupBuilder {
     GroupBuilder::new("history", GROUP_SUMMARY)
         .leaf(
             LeafBuilder::rpc("search", SEARCH_SUMMARY)
@@ -194,14 +194,14 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["words"])
                 .success_output("a table of the page's hits, each with the message before and after it; on stderr, the page and the search of the next page")
                 .json_output::<Vec<SearchRow>>()
-                .bind(TypedRpc::new(verb(shard.clone(), search))),
+                .bind(TypedRpc::new(verb(core.clone(), search))),
         )
         .leaf(
             LeafBuilder::rpc("read", READ_SUMMARY)
                 .input::<ReadArgs>()
                 .positionals(["range"])
                 .success_output("the blocks of the range as plain text; when it stopped early, a last line \"Stopped at <index> · next: <the read that goes on>\"")
-                .bind(TypedRpc::new(verb(shard.clone(), read))),
+                .bind(TypedRpc::new(verb(core.clone(), read))),
         )
         .leaf(
             LeafBuilder::rpc("timing", TIMING_SUMMARY)
@@ -209,7 +209,7 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["range"])
                 .success_output("a table of the turns that start in the range, one row per turn; on stderr, the next page when more turns follow")
                 .json_output::<Vec<TurnTiming>>()
-                .bind(TypedRpc::new(verb(shard.clone(), timing))),
+                .bind(TypedRpc::new(verb(core.clone(), timing))),
         )
         .leaf(
             LeafBuilder::rpc("cost", COST_SUMMARY)
@@ -217,14 +217,14 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["range"])
                 .success_output("a table of the turns that start in the range, one row per turn, or per call with --calls; on stderr, the next page when more turns follow")
                 .json_output::<CostRows>()
-                .bind(TypedRpc::new(verb(shard.clone(), cost))),
+                .bind(TypedRpc::new(verb(core.clone(), cost))),
         )
         .leaf(
             LeafBuilder::rpc("open", OPEN_SUMMARY)
                 .input::<OpenArgs>()
                 .positionals(["item"])
                 .success_output("what the item holds, or the path an attachment was saved to; when more pages follow, a last line naming the next")
-                .bind(TypedRpc::new(verb(shard, open))),
+                .bind(TypedRpc::new(verb(core, open))),
         )
 }
 
@@ -250,7 +250,7 @@ fn flags(conversation: &Option<ConversationId>, agent: Option<u32>) -> String {
 }
 
 impl Reader {
-    async fn of<A>(shard: &Shard, call: &Call<A>, target: &Target) -> Result<Self, RpcError> {
+    async fn of<A>(core: &Core, call: &Call<A>, target: &Target) -> Result<Self, RpcError> {
         let here = conversation_of(&call.invocation)?;
         // A zone the user's page reported that this build does not know
         // shows the times in UTC rather than refusing the read.
@@ -268,7 +268,7 @@ impl Reader {
             (other, agent) => {
                 let conversation = match other {
                     // Another user's conversation is none of the caller's.
-                    Some(id) => match shard.store().conversation(id.clone()).await.map_err(failed)? {
+                    Some(id) => match core.store().conversation(id.clone()).await.map_err(failed)? {
                         Some(record) => record.id,
                         _ => return Err(no_transcript()),
                     },
@@ -276,7 +276,7 @@ impl Reader {
                 };
                 let node = match agent {
                     None => root_of(&conversation),
-                    Some(number) => shard.store().databases()
+                    Some(number) => core.store().databases()
                         .read(&conversation, move |connection| tree::node_numbered(connection, u64::from(number)))
                         .await
                         .map_err(failed)?
@@ -303,7 +303,7 @@ impl Reader {
     }
 
     /// The agent's number in its conversation's tree, 0 for the main agent.
-    async fn number(&self, shard: &Shard) -> Result<u64, RpcError> {
+    async fn number(&self, core: &Core) -> Result<u64, RpcError> {
         if self.root {
             return Ok(0);
         }
@@ -311,7 +311,7 @@ impl Reader {
             return Ok(u64::from(agent));
         }
         let node = self.node.clone();
-        shard.store().databases()
+        core.store().databases()
             .read(&self.conversation, move |connection| tree::agent_number(connection, &node))
             .await
             .map_err(failed)?
@@ -361,11 +361,11 @@ impl Reader {
     /// fewer blocks than the range names when the transcript ends first.
     async fn blocks(
         &self,
-        shard: &Shard,
+        core: &Core,
         range: RangeInclusive<usize>,
     ) -> Result<(Vec<Block>, usize), RpcError> {
         let node = self.node.clone();
-        let read = shard.store().databases()
+        let read = core.store().databases()
             .read(&self.conversation, move |connection| {
                 let length = Transcript::Agent(node.clone()).length(connection)?.unwrap_or(0);
                 let end = (*range.end() + 1).min(length);
@@ -380,11 +380,11 @@ impl Reader {
 
 impl Reader {
     /// The turn the latest block before `index` that names one named.
-    async fn turn_before(&self, shard: &Shard, index: usize) -> Result<Option<String>, RpcError> {
+    async fn turn_before(&self, core: &Core, index: usize) -> Result<Option<String>, RpcError> {
         let mut end = index;
         while end > 0 {
             let start = end.saturating_sub(BATCH);
-            let (blocks, _) = self.blocks(shard, start..=end - 1).await?;
+            let (blocks, _) = self.blocks(core, start..=end - 1).await?;
             if let Some(turn) = blocks.iter().rev().find_map(turn_of) {
                 return Ok(Some(turn.to_owned()));
             }
@@ -427,8 +427,8 @@ const AROUND: usize = 8;
 const HIT_CHARS: usize = 400;
 const BESIDE_CHARS: usize = 100;
 
-async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let reader = Reader::of(&shard, &call, &call.args.target).await?;
+async fn search(core: Rc<Core>, call: Call<SearchArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let reader = Reader::of(&core, &call, &call.args.target).await?;
     let mut words: Vec<String> = Vec::new();
     for word in call.args.words.iter().flat_map(|words| words.split_whitespace()) {
         if !words.iter().any(|seen| seen == word) {
@@ -473,13 +473,13 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
         limit: None,
     };
     let node = reader.node.clone();
-    let agent = shard.store().databases()
+    let agent = core.store().databases()
         .read(&reader.conversation, move |connection| tree::agent_number(connection, &node))
         .await
         .map_err(failed)?
         .flatten()
         .ok_or_else(|| failed("the transcript has no blocks yet"))?;
-    let hits: Vec<usize> = shard.store().search().find_in(&reader.conversation, agent, query)
+    let hits: Vec<usize> = core.store().search().find_in(&reader.conversation, agent, query)
         .await
         .map_err(failed)?
         .into_iter()
@@ -493,7 +493,7 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
     }
     let mut rows = Vec::new();
     for &at in hits.iter().skip((page - 1) * HITS_PER_PAGE).take(HITS_PER_PAGE) {
-        let (blocks, _) = reader.blocks(&shard, at.saturating_sub(AROUND)..=at + AROUND).await?;
+        let (blocks, _) = reader.blocks(&core, at.saturating_sub(AROUND)..=at + AROUND).await?;
         let first = at.saturating_sub(AROUND);
         let Some(hit) = blocks.get(at - first) else {
             // The transcript no longer holds it, as after an edit the
@@ -681,8 +681,8 @@ fn range(text: &str) -> Option<(usize, Option<usize>)> {
     (to.is_none_or(|to| from <= to)).then_some((from, to))
 }
 
-async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let reader = Reader::of(&shard, &call, &call.args.target).await?;
+async fn read(core: Rc<Core>, call: Call<ReadArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let reader = Reader::of(&core, &call, &call.args.target).await?;
     let Some((from, to)) = range(&call.args.range) else {
         return Err(refused(format!(
             "{}: a range is <from>..<to>, <from>.. or ..<to>, block indices such as 4213..4260",
@@ -690,7 +690,7 @@ async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u
         )));
     };
     let first_end = to.map_or(from + BATCH - 1, |to| to.min(from + BATCH - 1));
-    let (mut blocks, length) = reader.blocks(&shard, from..=first_end).await?;
+    let (mut blocks, length) = reader.blocks(&core, from..=first_end).await?;
     if length == 0 {
         return Err(failed("the transcript has no blocks yet"));
     }
@@ -733,7 +733,7 @@ async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u
         if blocks.is_empty() || at > end {
             break;
         }
-        blocks = reader.blocks(&shard, at..=end.min(at + BATCH - 1)).await?.0;
+        blocks = reader.blocks(&core, at..=end.min(at + BATCH - 1)).await?.0;
     }
     if printed.is_empty() {
         printed.push(match from_side {
@@ -774,9 +774,9 @@ async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u
 /// which the vendor limits.
 const TURNS_PER_PAGE: usize = 50;
 
-async fn timing(shard: Rc<Shard>, call: Call<TimingArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let reader = Reader::of(&shard, &call, &call.args.target).await?;
-    let page = turn_page(&shard, &reader, &call.args.range).await?;
+async fn timing(core: Rc<Core>, call: Call<TimingArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let reader = Reader::of(&core, &call, &call.args.target).await?;
+    let page = turn_page(&core, &reader, &call.args.range).await?;
     let timings: Vec<TurnTiming> = page.turns.into_iter().map(|turn| turn.timing()).collect();
     let command = "demi conversation history timing";
     let mut notes = Vec::new();
@@ -831,17 +831,17 @@ async fn timing(shard: Rc<Shard>, call: Call<TimingArgs>, port: RpcPort) -> Resu
     Ok(0)
 }
 
-async fn cost(shard: Rc<Shard>, call: Call<CostArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let reader = Reader::of(&shard, &call, &call.args.target).await?;
-    let page = turn_page(&shard, &reader, &call.args.range).await?;
-    let agent = reader.number(&shard).await?;
+async fn cost(core: Rc<Core>, call: Call<CostArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let reader = Reader::of(&core, &call, &call.args.target).await?;
+    let page = turn_page(&core, &reader, &call.args.range).await?;
+    let agent = reader.number(&core).await?;
     let turns: Vec<(String, usize, Timestamp)> = page
         .turns
         .iter()
         .map(|turn| (turn.id().to_owned(), turn.index(), turn.started_at()))
         .collect();
     let ids = turns.iter().map(|(id, _, _)| id.clone()).collect();
-    let calls = shard
+    let calls = core
         .store().turn_calls(reader.conversation.clone(), agent, ids)
         .await
         .map_err(failed)?;
@@ -857,7 +857,7 @@ async fn cost(shard: Rc<Shard>, call: Call<CostArgs>, port: RpcPort) -> Result<u
         port.stderr(output::note(command, &notes.join("; "))).await?;
     }
     let rows = if by_call {
-        CostRows::Calls(call_costs(&turns, &calls, &Labels::of(&shard, &calls).await))
+        CostRows::Calls(call_costs(&turns, &calls, &Labels::of(&core, &calls).await))
     } else {
         CostRows::Turns(turn_costs(&turns, &calls))
     };
@@ -888,14 +888,14 @@ struct TurnPage {
 
 /// The page of the turns that start in `range` of `reader`'s transcript,
 /// fifty at most.
-async fn turn_page(shard: &Shard, reader: &Reader, range_text: &str) -> Result<TurnPage, RpcError> {
+async fn turn_page(core: &Core, reader: &Reader, range_text: &str) -> Result<TurnPage, RpcError> {
     let Some((from, to)) = range(range_text) else {
         return Err(refused(format!(
             "{range_text}: a range is <from>..<to>, <from>.. or ..<to>, block indices such as 4213..4260"
         )));
     };
     let first_end = to.map_or(from + BATCH - 1, |to| to.min(from + BATCH - 1));
-    let (mut blocks, length) = reader.blocks(shard, from..=first_end).await?;
+    let (mut blocks, length) = reader.blocks(core, from..=first_end).await?;
     if length == 0 {
         return Err(failed("the transcript has no blocks yet"));
     }
@@ -906,7 +906,7 @@ async fn turn_page(shard: &Shard, reader: &Reader, range_text: &str) -> Result<T
         )));
     }
     let end = to.map_or(length - 1, |to| to.min(length - 1));
-    let mut turns = Turns::after(reader.turn_before(shard, from).await?);
+    let mut turns = Turns::after(reader.turn_before(core, from).await?);
     let mut next = None;
     let mut at = from;
     'reading: loop {
@@ -925,7 +925,7 @@ async fn turn_page(shard: &Shard, reader: &Reader, range_text: &str) -> Result<T
         if blocks.is_empty() || at >= length {
             break;
         }
-        blocks = reader.blocks(shard, at..=(at + BATCH - 1).min(length - 1)).await?.0;
+        blocks = reader.blocks(core, at..=(at + BATCH - 1).min(length - 1)).await?.0;
     }
     Ok(TurnPage {
         turns: turns.into_turns(),
@@ -1128,8 +1128,8 @@ fn open_item(text: &str) -> Option<Item> {
     Some(Item { at: index(block)?, file })
 }
 
-async fn open(shard: Rc<Shard>, call: Call<OpenArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let reader = Reader::of(&shard, &call, &call.args.target).await?;
+async fn open(core: Rc<Core>, call: Call<OpenArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let reader = Reader::of(&core, &call, &call.args.target).await?;
     let Some(named) = open_item(&call.args.item) else {
         return Err(refused(format!(
             "{}: an item is a block index, such as 4214, or a file of a message, such as 4213/a1",
@@ -1138,7 +1138,7 @@ async fn open(shard: Rc<Shard>, call: Call<OpenArgs>, port: RpcPort) -> Result<u
     };
     let page = call.args.page.unwrap_or(1);
     let at = named.at;
-    let (mut blocks, length) = reader.blocks(&shard, at..=at).await?;
+    let (mut blocks, length) = reader.blocks(&core, at..=at).await?;
     let Some(block) = blocks.pop() else {
         return Err(failed(match length {
             0 => "the transcript has no blocks yet".to_owned(),
@@ -1154,7 +1154,7 @@ async fn open(shard: Rc<Shard>, call: Call<OpenArgs>, port: RpcPort) -> Result<u
         let Some((_, part)) = files(content).into_iter().find(|(number, _)| *number == file) else {
             return Err(failed(format!("{at} has no file a{file}")));
         };
-        let saved = save(&shard, &call, &format!("{at}-a{file}"), part, &port.cancellation()).await?;
+        let saved = save(&core, &call, &format!("{at}-a{file}"), part, &port.cancellation()).await?;
         port.stdout(format!("[{at}/a{file} {}] saved to {saved}\n", file_kind(part)))
             .await?;
         return Ok(0);
@@ -1164,7 +1164,7 @@ async fn open(shard: Rc<Shard>, call: Call<OpenArgs>, port: RpcPort) -> Result<u
             (Some(ToolView::Shell(view)), Some(script)) => {
                 // The script and the output are paged together, with room
                 // on each page for the line that names the next.
-                let (printed, pages) = shard
+                let (printed, pages) = core
                     .agent()
                     .command_page(
                         &root_of(&reader.conversation),
@@ -1262,7 +1262,7 @@ fn next_line(reader: &Reader, at: usize, page: u64, pages: u64) -> String {
 /// `<name>-<file name>` or the first free name after it. A call stopped before
 /// the file is written, `cancel`, writes nothing.
 async fn save<A>(
-    shard: &Shard,
+    core: &Core,
     call: &Call<A>,
     name: &str,
     part: &UserContentBlock,
@@ -1282,7 +1282,7 @@ async fn save<A>(
         UserContentBlock::Text { .. } | UserContentBlock::Reference { .. } => unreachable!("not a file"),
     };
     let invocation = &call.invocation;
-    let hosts: &dyn HostShard = shard;
+    let hosts: &dyn HostCore = core;
     let bytes = hosts
         .blobs()
         .get(blob)

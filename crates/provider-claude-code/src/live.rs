@@ -321,7 +321,7 @@ pub(crate) struct Written {
 }
 
 impl Written {
-    /// Writes the session of `request`'s blocks, off the shard.
+    /// Writes the session of `request`'s blocks, off the core.
     pub(crate) async fn of(
         shared: &Shared,
         request: &InferenceRequest,
@@ -853,7 +853,7 @@ impl LiveCli {
 
     /// Writes the SDK MCP server's `reply` as the answer to control request
     /// `request_id`. A reply may carry a tool's images, so it is serialized
-    /// off the shard.
+    /// off the core.
     async fn reply(
         &mut self,
         request_id: String,
@@ -1202,7 +1202,7 @@ async fn close(parts: Parts) {
 /// SIGKILL five seconds later, and waits for its end.
 ///
 /// It is how anything that holds a CLI process closes it, a sign-in or the
-/// backend's relay of a process to another user's shard.
+/// backend's relay of a process to another user's core.
 pub async fn close_process(
     control: Box<dyn ProcessControl>,
     exit: SharedFuture<LocalBoxFuture<'static, ProcessEnd>>,

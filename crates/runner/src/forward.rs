@@ -1,5 +1,5 @@
 //! The user's port forwards on this runner
-//! (`crates/backend-user-shard/src/shard/port_forwards.rs`), for as long as its
+//! (`crates/core/src/port_forwards.rs`), for as long as its
 //! connection to the backend lasts: the backend tells it every forward it is an
 //! end of as the connection begins and whenever one changes.
 //!

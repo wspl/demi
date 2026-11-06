@@ -32,7 +32,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::message::{CUT_BYTES, Output, last_bytes};
 use super::runs::{Fired, Payload, Unrunnable};
-use crate::Shard;
+use crate::Core;
 
 /// How long a watch's command may run.
 pub(crate) const COMMAND_TIME: Duration = Duration::from_secs(60);
@@ -158,7 +158,7 @@ async fn run_command(
     checked
 }
 
-impl Shard {
+impl Core {
     /// Whether the watch's check runs now, which the scheduler does not
     /// start again.
     pub(crate) fn schedule_checking(&self, id: &demi_shared_types::ScheduleId) -> bool {
@@ -182,13 +182,13 @@ impl Shard {
         let stop = CancellationToken::new();
         entry.check = Some(stop.clone().drop_guard());
         drop(pending);
-        let shard = self.this();
+        let core = self.this();
         self.tasks().spawn_local(async move {
-            shard.check_watch(&schedule, generation, &stop).await;
-            let now = shard.store().now();
-            shard.schedules().tried.borrow_mut().insert(schedule.id.clone(), now);
+            core.check_watch(&schedule, generation, &stop).await;
+            let now = core.store().now();
+            core.schedules().tried.borrow_mut().insert(schedule.id.clone(), now);
             let done = {
-                let mut pending = shard.schedules().pending.borrow_mut();
+                let mut pending = core.schedules().pending.borrow_mut();
                 pending
                     .get_mut(&schedule.id)
                     .filter(|entry| entry.generation == generation)
@@ -198,7 +198,7 @@ impl Shard {
             if let Some(done) = done {
                 done.disarm();
             }
-            shard.rearm_schedules();
+            core.rearm_schedules();
         });
     }
 
@@ -307,7 +307,7 @@ impl Shard {
             Err(error) => return failed(&error),
         };
         let cancel = CancellationToken::new();
-        self.host_shard()
+        self.host_core()
             .with_host(&schedule.conversation, None, &cancel, async |host| {
                 run_command(host.host.clone(), None, context, script, stop).await
             })

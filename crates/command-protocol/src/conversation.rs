@@ -11,7 +11,7 @@
 //!   invocation's context, which a script cannot change, so it cannot select
 //!   another conversation's state.
 //! - The backend supplies the one policy, the conversation idle rule
-//!   (`crates/backend-user-shard/src/lifecycle/mod.rs`).
+//!   (`crates/core/src/lifecycle/mod.rs`).
 //!
 //! A package that needs more than this port shows that a generic capability is
 //! missing here, not that the package deserves a path of its own through the

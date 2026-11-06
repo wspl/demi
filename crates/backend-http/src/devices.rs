@@ -41,7 +41,7 @@ pub(super) async fn list(
     let devices = state
         .shards
         .of(&user.id)
-        .call(|shard, _| async move { shard.device_list().await })
+        .call(|core, _| async move { core.device_list().await })
         .await??;
     let devices = devices
         .into_iter()
@@ -52,7 +52,7 @@ pub(super) async fn list(
 
 /// Pairs the runner waiting under the code with the caller: the device is
 /// made, its token goes to that runner alone, and the runner's socket moves
-/// into the caller's shard.
+/// into the caller's core.
 pub(super) async fn claim(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -98,7 +98,7 @@ pub(super) async fn change(
     let changed = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.change_device(device.id, change).await })
+        .call(move |core, _| async move { core.change_device(device.id, change).await })
         .await??;
     // A revocation between the lookup and the change took the device.
     let device = changed.ok_or_else(device_not_found)?;
@@ -116,7 +116,7 @@ pub(super) async fn revoke(
     let removal = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.revoke_device(device.id).await })
+        .call(move |core, _| async move { core.revoke_device(device.id).await })
         .await??;
     let removed = removal
         .projects
@@ -140,13 +140,13 @@ pub(super) async fn browse(
     let listed = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move {
-            let host = shard
+        .call(move |core, _| async move {
+            let host = core
                 .devices()
                 .device_access(&device.id)
                 .await
                 .ok_or_else(ApiError::device_offline)?;
-            let home = shard.devices().home(&device.id);
+            let home = core.devices().home(&device.id);
             let path = requested
                 .or_else(|| home.clone())
                 .ok_or_else(|| ApiError::invalid_query("Missing path query parameter"))?;
@@ -168,7 +168,7 @@ pub(super) async fn browse(
 /// `GET /devices/:id/workflows?directory=`: the Workflow menu's list for a new
 /// conversation that works in `directory` of a paired device, before its first
 /// message gives it a record
-/// (`crates/backend-user-shard/src/conversation/workflows.rs`).
+/// (`crates/core/src/conversation/workflows.rs`).
 pub(super) async fn workflows(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -184,8 +184,8 @@ pub(super) async fn workflows(
     let workflows = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move {
-            shard
+        .call(move |core, _| async move {
+            core
                 .device_workflows(&device.id, query.directory.as_str())
                 .await
                 .map_err(|refusal| match refusal {
@@ -215,8 +215,8 @@ pub(super) async fn make_directory(
     let made = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move {
-            let host = shard
+        .call(move |core, _| async move {
+            let host = core
                 .devices()
                 .device_access(&device.id)
                 .await

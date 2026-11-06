@@ -18,7 +18,7 @@
 //!   the previous account's directory.
 //!
 //! ```text
-//! runtime (user's shard)        IdleProcesses (the machine's, any shard)
+//! runtime (user's core)        IdleProcesses (the machine's, any core)
 //!   action ends:  Kept ---seat---> [oldest ... newest]  <= memory / 4 / 128 MB
 //!   prepare:  Prepared --seat--->      | five idle minutes, or beyond the
 //!   next run takes it: seat freed      v limit: the holder closes it
@@ -164,8 +164,8 @@ impl IdleProcesses {
     /// account's directory than `active`'s, the entry's active account, as
     /// when that changed.
     ///
-    /// Every user's shard follows the change, so one prepared again in the
-    /// active account's directory, by a shard that followed it first, stays.
+    /// Every user's core follows the change, so one prepared again in the
+    /// active account's directory, by a core that followed it first, stays.
     pub fn close_prepared_of(&self, entry: &str, active: Option<&str>) {
         self.close_prepared_where(|seat| seat.entry == entry && seat.account.as_deref() != active);
     }

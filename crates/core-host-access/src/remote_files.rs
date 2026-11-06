@@ -16,7 +16,7 @@ use demi_core_store::devices::DeviceRecord;
 use demi_shared_types::UserContentBlock;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
-use crate::HostShard;
+use crate::HostCore;
 
 /// A file a message names on one of the user's devices.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,7 +39,7 @@ pub enum RemoteFileRefusal {
     Storage(#[from] StorageError),
 }
 
-impl dyn HostShard + '_ {
+impl dyn HostCore + '_ {
     /// The reference each of `files` stands for, in their order.
     pub async fn reference_remote_files(
         &self,

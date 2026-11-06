@@ -1,7 +1,7 @@
 //! The caller's subagent settings: the Subagents switch, the limits and the
 //! profiles.
 //!
-//! The caller's shard checks a profile's name, texts and model, as it does for
+//! The caller's core checks a profile's name, texts and model, as it does for
 //! `demi agent profiles`, and writes. The change reaches the caller's pages as
 //! the `subagents` part.
 
@@ -38,7 +38,7 @@ pub(super) async fn switch(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.patch_subagents(patch).await })
+        .call(move |core, _| async move { core.patch_subagents(patch).await })
         .await??;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -52,7 +52,7 @@ pub(super) async fn create(
     let profile = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.create_profile(profile, true).await })
+        .call(move |core, _| async move { core.create_profile(profile, true).await })
         .await?
         .map_err(refused)?;
     Ok((StatusCode::CREATED, Json(ProfileAnswer { profile })))
@@ -69,7 +69,7 @@ pub(super) async fn patch(
     let profile = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.patch_profile(id, patch).await })
+        .call(move |core, _| async move { core.patch_profile(id, patch).await })
         .await?
         .map_err(refused)?;
     Ok(Json(ProfileAnswer { profile }))
@@ -85,7 +85,7 @@ pub(super) async fn delete(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.delete_profile(id).await })
+        .call(move |core, _| async move { core.delete_profile(id).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)

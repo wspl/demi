@@ -120,7 +120,7 @@ pub struct Notices {
 
 /// A handle on the machine manager's socket.
 ///
-/// It is `Send + Sync`: a service every shard shares.
+/// It is `Send + Sync`: a service every core shares.
 pub struct MachinesClient {
     commands: mpsc::Sender<Command>,
     statuses: Arc<Mutex<HashMap<DeviceId, ImageStatus>>>,

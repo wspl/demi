@@ -37,7 +37,7 @@ use demi_shared_types::{B64Bytes, ReadAt};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, WorkspaceId};
 use tokio_util::sync::CancellationToken;
 
-use crate::HostShard;
+use crate::HostCore;
 use crate::access::{Attention, ConversationHost, HostAccessError, Refusal, Waits};
 
 /// The Host directories of the user's plugins: every plugin with its set,
@@ -45,7 +45,7 @@ use crate::access::{Attention, ConversationHost, HostAccessError, Refusal, Waits
 /// loses at its next installation.
 pub type DirectorySets = Vec<(PluginId, Vec<HostDirectory>)>;
 
-/// What the shard remembers of its users' Hosts' directories.
+/// What the core remembers of its users' Hosts' directories.
 #[derive(Default)]
 pub struct PluginInstalls {
     /// Per device, the connection its Host was last brought to the user's
@@ -89,7 +89,7 @@ impl From<HostAccessError> for ReadFilesError {
     }
 }
 
-impl dyn HostShard + '_ {
+impl dyn HostCore + '_ {
     /// Reads `reads` on the conversation's primary Host, admitted as a look. A
     /// stopped Cloud or an offline device is not running and is not woken, the
     /// read is no activity, and a transition ends it instead of waiting for it.

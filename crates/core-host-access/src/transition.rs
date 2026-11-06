@@ -4,7 +4,7 @@
 //! An archive runs while the conversation is held for it
 //! (`hold_for_transition`):
 //!
-//! - The shard reserves the idle tree.
+//! - The core reserves the idle tree.
 //! - The file transfers, user streams and the one-shot calls admitted like them
 //!   end.
 //! - The file gate is reserved.
@@ -12,7 +12,7 @@
 //! It commits, then tells the connected Hosts it leaves to let go of the
 //! conversation and answers: nothing waits for them and nothing is stored, as
 //! the Hosts hold what the records say after their next `hello`
-//! (`crates/core-host-access/src/access.rs`). The shard's `transition` is
+//! (`crates/core-host-access/src/access.rs`). The core's `transition` is
 //! the one entry every change of a conversation goes through.
 //!
 //! A detach holds nothing and waits for no work and no Host, whatever the
@@ -35,7 +35,7 @@
 //! without starting: each registers with the conversation, then checks that
 //! its device is still one of its Hosts. The release is sent once no job is
 //! left, as every release is
-//! (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
+//! (`crates/core/src/lifecycle/conversations.rs`).
 //!
 //! A move stops and waits for nothing, in order:
 //!
@@ -84,7 +84,7 @@ use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
-use crate::HostShard;
+use crate::HostCore;
 use crate::access::HostAccessError;
 use crate::transfer::TransfersClosed;
 
@@ -223,8 +223,8 @@ fn wait_ended(conversation: &ConversationId, what: &'static str, waited: std::ti
     );
 }
 
-impl dyn HostShard + '_ {
-    /// Holds the conversation for an archive once the shard
+impl dyn HostCore + '_ {
+    /// Holds the conversation for an archive once the core
     /// reserved its idle tree, `tree`: its transfers and streams ended and
     /// their release awaited, and its file gate reserved. A busy file gate
     /// refuses.

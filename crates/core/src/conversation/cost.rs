@@ -3,8 +3,8 @@
 //!
 //! 1. The control store keeps each agent's cost as it writes a ledger row, and
 //!    announces the row with what its agent costs now.
-//! 2. The backend hands the row to its user's shard.
-//! 3. The shard tells the conversation's live tree, whose agent entry of that
+//! 2. The backend hands the row to its user's core.
+//! 3. The core tells the conversation's live tree, whose agent entry of that
 //!    agent changes, with its cache chart for a turn call
 //!    (`crates/agent-server/src/server/tree/agents.rs`); a row of no agent,
 //!    such as a title's, changes the conversation's metadata, as does the
@@ -21,9 +21,9 @@ use demi_core_host_access::root_of;
 use demi_core_sync::Part;
 use tokio::sync::broadcast::error::RecvError;
 
-use crate::Shard;
+use crate::Core;
 
-impl Shard {
+impl Core {
     /// Tells the conversation of the row `written` what its agent costs now.
     pub(crate) async fn announce_cost(self: Rc<Self>, written: UsageWritten) {
         if written.agent.is_none() || written.first {
@@ -37,9 +37,9 @@ impl Shard {
     }
 }
 
-impl Shard {
+impl Core {
     /// Announces each ledger row of the user's to the conversation's pages,
-    /// until the shard closes. A follower that fell behind misses the rows it
+    /// until the core closes. A follower that fell behind misses the rows it
     /// lost, which it logs.
     pub(crate) async fn follow_usage(self: Rc<Self>) {
         let mut written = self.store().usage_written();

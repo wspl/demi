@@ -1,7 +1,7 @@
 //! The media of an entry lent to another server
 //! (`crates/provider-relay/src/wire/media.rs`).
 //!
-//! A borrower's call runs on the shard of the key's maker as a call of theirs
+//! A borrower's call runs on the core of the key's maker as a call of theirs
 //! does, on the entry's key or its accounts in turn (`super::media`), and is
 //! answered by the maker's own methods ([`serve`]), with no usage ledger row:
 //! the usage is the borrower's. What crosses back is what the types let cross
@@ -15,7 +15,7 @@
 //! the jobs it served, and the borrower is told the job is lost. A handle
 //! outlives its job's last read for as long as the borrower may read it.
 //!
-//! A call runs in a task of the shard until its reply, its key's revoke or
+//! A call runs in a task of the core until its reply, its key's revoke or
 //! the borrower's going, which drops it. Only the borrower's cancel cancels a
 //! job at the vendor; its going cancels only a job whose handle it could not
 //! be sent.
@@ -37,7 +37,7 @@ use demi_shared_types::{MediaKind, VendorTrace};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 
-use demi_core::Shard;
+use demi_core::Core;
 use demi_core::media::{Route, Unmade, model_of, on_accounts, route};
 use crate::provider_sharing::Borrowing;
 use crate::server_starter::{ServerCore, ServerSide};
@@ -158,7 +158,7 @@ pub trait LentMedia {
     );
 }
 
-impl LentMedia for Shard {
+impl LentMedia for Core {
     async fn lent_media(
         self: Rc<Self>,
         borrowing: Borrowing,
@@ -179,11 +179,11 @@ impl LentMedia for Shard {
                 return Ok(receiver);
             };
             let handle = handle.clone();
-            let shard = self.clone();
+            let core = self.clone();
             let revoked = services.lent.open(&key);
             self.tasks().spawn_local(async move {
-                shard.lend_job_call(lent, &handle, call, sender, &revoked).await;
-                shard.server_services().lent.ended(&key, &revoked);
+                core.lend_job_call(lent, &handle, call, sender, &revoked).await;
+                core.server_services().lent.ended(&key, &revoked);
             });
             return Ok(receiver);
         }
@@ -218,10 +218,10 @@ impl LentMedia for Shard {
             services.lent.ended(&key, &revoked);
             return Err(Unlent::Revoked);
         }
-        let shard = self.clone();
+        let core = self.clone();
         self.tasks().spawn_local(async move {
-            shard.lend_call(&borrowing, route, call, sender, &revoked).await;
-            shard.server_services().lent.ended(&key, &revoked);
+            core.lend_call(&borrowing, route, call, sender, &revoked).await;
+            core.server_services().lent.ended(&key, &revoked);
         });
         Ok(receiver)
     }

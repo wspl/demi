@@ -1,5 +1,5 @@
 //! A process provider's command-line tool
-//! (`crates/backend-user-shard/src/conversation/claude_cli.rs`).
+//! (`crates/core/src/conversation/claude_cli.rs`).
 //!
 //! The routes:
 //!

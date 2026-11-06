@@ -31,7 +31,7 @@ use demi_host_paths::HostPaths;
 use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
-use crate::Shard;
+use crate::Core;
 
 /// Why the conversation's agents could not be listed.
 #[derive(Debug, thiserror::Error)]
@@ -89,7 +89,7 @@ const STARTS_IN: &str = ", shells start in ";
 /// What a node learns once the user's Cloud was reset.
 const CLOUD_RESET: &str = "Cloud was reset: system packages and configuration were rebuilt from the base image. Files under /home remain. Running processes, temporary files, and previous shell state are gone; check the environment before continuing.";
 
-impl Shard {
+impl Core {
     /// The context block for a node of the conversation `id` whose
     /// transcript holds the context texts `seen`, oldest first; none when
     /// the node saw the current revision.
@@ -106,7 +106,7 @@ impl Shard {
         if seen.iter().any(|text| text.contains(&marker)) {
             return Ok(None);
         }
-        let primary = self.host_shard().resolve_target(&record).await?;
+        let primary = self.host_core().resolve_target(&record).await?;
         let attached = store.attached_hosts(record.id.clone()).await?;
         let mut lines = vec![marker, self.primary_host_line(&primary).await?];
         // A Cloud reset is announced to a node once
@@ -182,8 +182,8 @@ impl Shard {
     /// none for a Cloud not made yet, and its directory there, read without
     /// reaching the Host.
     pub async fn placement(&self, id: &ConversationId) -> Result<Placement, HostAccessError> {
-        let record = self.host_shard().owned_conversation(id).await?;
-        let target = self.host_shard().resolve_target(&record).await?;
+        let record = self.host_core().owned_conversation(id).await?;
+        let target = self.host_core().resolve_target(&record).await?;
         Ok(Placement {
             device: target.device().map(ToString::to_string),
             directory: target.path().to_owned(),
@@ -215,7 +215,7 @@ impl Shard {
         let Some(record) = self.store().conversation(id.clone()).await? else {
             return Ok(HostPaths::Posix);
         };
-        let target = self.host_shard().resolve_target(&record).await?;
+        let target = self.host_core().resolve_target(&record).await?;
         let (device, _) = self.primary_host(&target).await?;
         Ok(device.map_or(HostPaths::Posix, |record| record.platform.paths()))
     }

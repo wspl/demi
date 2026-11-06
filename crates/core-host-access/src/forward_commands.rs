@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use demi_shared_types::output::{Cell, Fields, MISSING, Table};
 
-use crate::HostShard;
+use crate::HostCore;
 use crate::host_commands::{NoArgs, conversation_of, host_names, print_json, resolve_host, verb};
 
 const SUMMARY: &str = "The user's port forwards between their Hosts, as ssh -L makes one: list, add and remove them.";
@@ -54,28 +54,28 @@ struct RemoveArgs {
     forward: String,
 }
 
-/// The `forward` group, whose handlers act in `shard`.
-pub fn forward_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
+/// The `forward` group, whose handlers act in `core`.
+pub fn forward_group(core: Weak<dyn HostCore>) -> GroupBuilder {
     GroupBuilder::new("forward", SUMMARY)
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<NoArgs>()
                 .json_output::<Vec<ListedForward>>()
-                .bind(TypedRpc::new(verb(shard.clone(), list))),
+                .bind(TypedRpc::new(verb(core.clone(), list))),
         )
         .leaf(
             LeafBuilder::rpc("add", ADD_SUMMARY)
                 .input::<AddArgs>()
                 .json_output::<ListedForward>()
                 .permission(DEVICES)
-                .bind(TypedRpc::new(verb(shard.clone(), add))),
+                .bind(TypedRpc::new(verb(core.clone(), add))),
         )
         .leaf(
             LeafBuilder::rpc("remove", REMOVE_SUMMARY)
                 .input::<RemoveArgs>()
                 .positionals(["forward"])
                 .permission(DEVICES)
-                .bind(TypedRpc::new(verb(shard, remove))),
+                .bind(TypedRpc::new(verb(core, remove))),
         )
 }
 
@@ -147,9 +147,9 @@ impl ListedForward {
 }
 
 /// The user's forwards as `list` prints them, each Host by its name.
-async fn listed(shard: &dyn HostShard, forwards: &[PortForwardDto]) -> Result<Vec<ListedForward>, RpcError> {
-    let names = host_names(shard).await?;
-    let name_of = |id: &DeviceId| (names.name(id), shard.devices().state(id) == DeviceState::Online);
+async fn listed(core: &dyn HostCore, forwards: &[PortForwardDto]) -> Result<Vec<ListedForward>, RpcError> {
+    let names = host_names(core).await?;
+    let name_of = |id: &DeviceId| (names.name(id), core.devices().state(id) == DeviceState::Online);
     Ok(forwards
         .iter()
         .map(|forward| ListedForward {
@@ -166,9 +166,9 @@ async fn listed(shard: &dyn HostShard, forwards: &[PortForwardDto]) -> Result<Ve
         .collect())
 }
 
-async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let forwards = shard.port_forwards().await.map_err(RpcError::Failed)?;
-    let listed = listed(&*shard, &forwards).await?;
+async fn list(core: Rc<dyn HostCore>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let forwards = core.port_forwards().await.map_err(RpcError::Failed)?;
+    let listed = listed(&*core, &forwards).await?;
     if call.invocation.json {
         return print_json(&port, &listed).await;
     }
@@ -185,7 +185,7 @@ async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Re
     Ok(0)
 }
 
-async fn add(shard: Rc<dyn HostShard>, call: Call<AddArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn add(core: Rc<dyn HostCore>, call: Call<AddArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
     let args = call.args;
     let (listen_host, listen_port) = args
@@ -201,8 +201,8 @@ async fn add(shard: Rc<dyn HostShard>, call: Call<AddArgs>, port: RpcPort) -> Re
         RpcError::Failed("--connect takes <host>:<address>, such as \"MacBook Pro:localhost:11434\"".into())
     })?;
     let address = ForwardAddress::try_from(address.to_owned()).map_err(|error| RpcError::Failed(error.to_string()))?;
-    let listen = resolve_host(&*shard, &conversation, listen_host).await?;
-    let connect = resolve_host(&*shard, &conversation, connect_host).await?;
+    let listen = resolve_host(&*core, &conversation, listen_host).await?;
+    let connect = resolve_host(&*core, &conversation, connect_host).await?;
     let patch = PortForwardPatch {
         listen_device: Some(listen.device),
         listen_port: Some(listen_port),
@@ -213,8 +213,8 @@ async fn add(shard: Rc<dyn HostShard>, call: Call<AddArgs>, port: RpcPort) -> Re
     patch
         .validate()
         .map_err(|report| RpcError::Failed(demi_web_api_protocol::port_forwards::refusal(&report)))?;
-    let forward = shard.add_port_forward(patch).await.map_err(RpcError::Failed)?;
-    let added = listed(&*shard, std::slice::from_ref(&forward))
+    let forward = core.add_port_forward(patch).await.map_err(RpcError::Failed)?;
+    let added = listed(&*core, std::slice::from_ref(&forward))
         .await?
         .pop()
         .expect("a forward is listed");
@@ -232,9 +232,9 @@ async fn add(shard: Rc<dyn HostShard>, call: Call<AddArgs>, port: RpcPort) -> Re
     Ok(0)
 }
 
-async fn remove(shard: Rc<dyn HostShard>, call: Call<RemoveArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn remove(core: Rc<dyn HostCore>, call: Call<RemoveArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let named = call.args.forward;
-    let forwards = shard.port_forwards().await.map_err(RpcError::Failed)?;
+    let forwards = core.port_forwards().await.map_err(RpcError::Failed)?;
     let mut found: Vec<PortForwardDto> = forwards.iter().filter(|forward| forward.id.as_str() == named).cloned().collect();
     if found.is_empty()
         && let Some((host, listen_port)) = named.rsplit_once(':')
@@ -243,7 +243,7 @@ async fn remove(shard: Rc<dyn HostShard>, call: Call<RemoveArgs>, port: RpcPort)
         let conversation = conversation_of(&call.invocation)?;
         // A Host the user has none of names no forward, which the answer
         // below says of the whole argument.
-        if let Ok(listen) = resolve_host(&*shard, &conversation, host).await {
+        if let Ok(listen) = resolve_host(&*core, &conversation, host).await {
             found = forwards
                 .into_iter()
                 .filter(|forward| forward.listen_device == listen.device && forward.listen_port == listen_port)
@@ -266,11 +266,11 @@ async fn remove(shard: Rc<dyn HostShard>, call: Call<RemoveArgs>, port: RpcPort)
             )));
         }
     };
-    let removed = listed(&*shard, std::slice::from_ref(&forward))
+    let removed = listed(&*core, std::slice::from_ref(&forward))
         .await?
         .pop()
         .expect("a forward is listed");
-    shard.remove_port_forward(forward.id).await.map_err(RpcError::Failed)?;
+    core.remove_port_forward(forward.id).await.map_err(RpcError::Failed)?;
     port.stdout(format!("Removed {} → {}.\n", removed.listen(), removed.connect())).await?;
     Ok(0)
 }

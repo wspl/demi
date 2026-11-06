@@ -554,7 +554,7 @@ pub enum InstructionEntry {
         path: String,
     },
     /// The instructions of the workflow the conversation chose
-    /// (`crates/backend-user-shard/src/conversation/workflows.rs`): its name, and its file's
+    /// (`crates/core/src/conversation/workflows.rs`): its name, and its file's
     /// path on the Host.
     Workflow {
         #[garde(skip)]

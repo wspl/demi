@@ -89,7 +89,7 @@ impl LoginAccounts {
     }
 }
 
-/// The providers of every entry, shared by the edge and the shards.
+/// The providers of every entry, shared by the edge and the cores.
 pub struct ProviderRegistry {
     store: Arc<dyn RegistryStore>,
     families: FamilyRegistry,
@@ -106,8 +106,8 @@ pub struct ProviderRegistry {
     rotation: Arc<AccountRotation>,
     /// The media catalog, whose time each entry's media carry.
     media: MediaCatalog,
-    /// The way to the users' devices, set once the backend's shards
-    /// started, which hold their connections (`crates/backend-user-shard/src/shard/device_requests.rs`).
+    /// The way to the users' devices, set once the backend's cores
+    /// started, which hold their connections (`crates/core/src/device_requests.rs`).
     devices: OnceLock<Arc<dyn DeviceRoute>>,
 }
 
@@ -137,7 +137,7 @@ impl ProviderRegistry {
         }
     }
 
-    /// Sets the way to the users' devices, once, as the backend's shards start.
+    /// Sets the way to the users' devices, once, as the backend's cores start.
     ///
     /// A second setting is refused and the first kept.
     pub fn set_devices(&self, route: Arc<dyn DeviceRoute>) {
@@ -146,9 +146,9 @@ impl ProviderRegistry {
         }
     }
 
-    /// The client `entry`'s requests go through on `client`, the shard's or
+    /// The client `entry`'s requests go through on `client`, the core's or
     /// the shared services': out from the owner's device the entry connects
-    /// through (`crates/backend-user-shard/src/shard/device_requests.rs`), or
+    /// through (`crates/core/src/device_requests.rs`), or
     /// to the network.
     pub fn http_for(&self, entry: &ProviderEntry, client: reqwest::Client) -> ProviderHttp {
         self.http_of(Some(entry), client)

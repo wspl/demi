@@ -1,15 +1,15 @@
-//! The user shard.
+//! The user core.
 //!
 //! The crate holds:
 //!
-//! - the shard threads, each user's shard with the calls into it, and the
-//!   shared services every shard is given;
+//! - the shard threads, each user's core with the calls into it, and the
+//!   shared services every core is given;
 //! - the conversations as the agent sees them, their idle watches, and the
 //!   pages' product state and synchronization channels.
 //!
-//! The shard implements what the Cloud, the conversations' host access, the
-//! conversation permissions and the plugin host need of it (`CloudShard`,
-//! `HostShard`, `PermissionShard`, `ProductPort`).
+//! The core implements what the Cloud, the conversations' host access, the
+//! conversation permissions and the plugin host need of it (`CloudCore`,
+//! `HostCore`, `PermissionCore`, `ProductPort`).
 //!
 //! A user's conversations, devices, projects and attachments belong to that
 //! user alone in both instance modes. An administrator's role gives no access to
@@ -21,12 +21,12 @@
 //!   (pipes, transfers, user streams) and the shared services: control records,
 //!   conversation stores, blobs, vault, provider registry, Cloud capacity,
 //!   pending runner claims, login limiter, the registry of sync channels
-//!      |  shards.of(user).call(|shard, cancel| ..)   owned data in and out
+//!      |  cores.of(user).call(|core, cancel| ..)   owned data in and out
 //!      |  adopt(socket)    conversation, synchronization and runner sockets
 //!      |  lease and pipe ends back to the edge       transfers, user streams
 //!      |  a mark in the registry        a part a page shows has changed
-//! v shard threads: each a LocalRuntime hosting the shards of its pinned
-//! users. One user's shard: conversations (file gates, transfers, idle
+//! v shard threads: each a LocalRuntime hosting the cores of its pinned
+//! users. One user's core: conversations (file gates, transfers, idle
 //! watches), agent trees, runner connections, pipe records, the Cloud machine,
 //! titles, forks, the command router, the sync
 //! channels
@@ -37,12 +37,12 @@
 //!
 //! # Where state lives
 //!
-//! Decisions and per-user state live in the shard; bytes and cross-user state
+//! Decisions and per-user state live in the core; bytes and cross-user state
 //! live at the edge and in the shared services.
 //!
 //! # No locks in admission logic
 //!
-//! A shard runs on one thread, so nothing else runs between two of its awaits
+//! A core runs on one thread, so nothing else runs between two of its awaits
 //! and admission logic needs no locks: a check and the state change it guards
 //! happen with no await between them.
 //!
@@ -60,47 +60,47 @@
 //!
 //! - A transfer or user stream returns a lease with its pipe ends. The edge
 //!   copies bytes while it holds the lease, and dropping it releases the
-//!   admission in the shard, which can also end the lease itself, for example
+//!   admission in the core, which can also end the lease itself, for example
 //!   when the conversation is archived.
 //! - A change a page shows crosses as a mark in the registry of open
 //!   synchronization channels, from whoever committed it. The mark adds the part
 //!   to each of the user's channels and wakes their tasks to read it in the
-//!   shard.
+//!   core.
 //!
 //! # Cancellation
 //!
-//! A shard call always runs to completion. When the requester leaves, the edge
+//! A core call always runs to completion. When the requester leaves, the edge
 //! cancels the call's token and only waits observe it, such as the wait for the
 //! file gate or for a Cloud to wake, never a step after a commit: a target
 //! switch that has won its storage write still restarts the conversation's idle
 //! watch even if the page disconnected.
 //!
-//! Transitions such as a switch and an archive run as spawned shard tasks once
+//! Transitions such as a switch and an archive run as spawned core tasks once
 //! they hold the conversation.
 //!
 //! # Threading and placement
 //!
-//! Shard code uses `Rc`, `RefCell` and local futures, and the traits it calls
+//! Core code uses `Rc`, `RefCell` and local futures, and the traits it calls
 //! through (`Host`, `ShellEnvironment`, `RpcHandler`, `ProviderRuntime`) have no
 //! `Send` bound; shared services are `Send + Sync`.
 //!
 //! A user is the unit of placement at both levels, one worker process in a
 //! multi-worker deployment and one shard thread inside a process. More threads
-//! are therefore configuration, as long as per-user state stays in the shard and
+//! are therefore configuration, as long as per-user state stays in the core and
 //! cross-user state in shared services.
 //!
 //! # Components
 //!
-//! Each component owns its state and `Shard` combines them, so no component
+//! Each component owns its state and `Core` combines them, so no component
 //! holds a reference back to another. The components are the backend libraries
-//! beneath, which cannot see `Shard`.
+//! beneath, which cannot see `Core`.
 //!
 //! A component whose operations need another's state, such as the Cloud, whose
 //! reset holds the user's conversations, defines the narrow trait of what it
-//! needs (`CloudShard`) and writes its operations as methods of `dyn
-//! CloudShard`. This crate implements each such trait for `Shard`.
+//! needs (`CloudCore`) and writes its operations as methods of `dyn
+//! CloudCore`. This crate implements each such trait for `Core`.
 //!
-//! Its own behavior is `impl Shard` blocks, one per module. The crate serves no
+//! Its own behavior is `impl Core` blocks, one per module. The crate serves no
 //! HTTP.
 
 mod adoption;
@@ -162,7 +162,7 @@ use crate::conversation::idle_compaction::IdleCompactions;
 use crate::conversation::search::SearchIndexer;
 use crate::conversation::suggested_replies::SuggestedReplies;
 use crate::conversation::titles::Titles;
-use crate::conversation::{ConversationParts, ShardHosts};
+use crate::conversation::{ConversationParts, CoreHosts};
 use crate::lifecycle::collection::BlobCollection;
 use crate::lifecycle::conversations::ConversationWatches;
 use crate::extensions::Extensions;
@@ -171,19 +171,19 @@ use crate::starter::Starter;
 use demi_core_host_access::access::Conversations;
 use demi_core_host_access::plugin_files::PluginInstalls;
 
-/// One user's shard: everything the backend decides for that user. Its
+/// One user's core: everything the backend decides for that user. Its
 /// components arrive with the conversations, devices and Cloud that need
 /// them.
-pub struct Shard {
+pub struct Core {
     user: UserId,
     /// The user's core store.
     store: CoreStore,
-    /// The shard itself, for the tasks its methods start.
-    this: Weak<Shard>,
+    /// The core itself, for the tasks its methods start.
+    this: Weak<Core>,
     services: Arc<CoreServices>,
     /// What whoever runs the core gives it.
     starter: Rc<dyn Starter>,
-    /// The HTTP client of the shard's thread, which the runtimes built here
+    /// The HTTP client of the core's thread, which the runtimes built here
     /// send with: hyper ties a pooled connection to the runtime that made it.
     http: reqwest::Client,
     /// The user's conversations, each with its file gate and transfers.
@@ -194,12 +194,12 @@ pub struct Shard {
     pipes: Pipes,
     /// Each agent node's commands, for the rpc calls of its jobs.
     commands: CommandRouter,
-    /// Every task the shard spawns, which its close waits for.
+    /// Every task the core spawns, which its close waits for.
     tasks: TaskTracker,
-    /// Cancelled when the shard starts closing: it takes no new runner.
+    /// Cancelled when the core starts closing: it takes no new runner.
     closing: CancellationToken,
     /// The user's conversation trees.
-    agent: Rc<AgentServer<ShardHosts>>,
+    agent: Rc<AgentServer<CoreHosts>>,
     /// The title requests of the user's conversations.
     titles: Titles,
     /// The suggested replies of the user's conversations.
@@ -234,10 +234,10 @@ pub struct Shard {
     claude_cli: ClaudeCli,
     /// An instance of every plugin for the user.
     plugins: UserPlugins,
-    /// What the shard remembers of its Hosts' plugin directories.
+    /// What the core remembers of its Hosts' plugin directories.
     plugin_installs: PluginInstalls,
     /// How many times each conversation's permission requests changed
-    /// since the shard started.
+    /// since the core started.
     permission_revisions: demi_core_sync::Revisions,
     /// The project files its conversations use, kept current by the
     /// runner's file watch.
@@ -269,11 +269,11 @@ pub struct Shard {
     media_jobs: media_jobs::MediaJobs,
 }
 
-impl Shard {
-    /// What this shard holds now.
+impl Core {
+    /// What this core holds now.
     pub fn census(&self) -> Census {
         let mut census = Census {
-            shards: 1,
+            cores: 1,
             runners_online: u64::try_from(self.devices.links().len()).unwrap_or(u64::MAX),
             ..Census::default()
         };
@@ -296,53 +296,53 @@ impl Shard {
         user: UserId,
         store: CoreStore,
         services: Arc<CoreServices>,
-        starter_of: impl FnOnce(Weak<Shard>) -> Rc<dyn Starter>,
+        starter_of: impl FnOnce(Weak<Core>) -> Rc<dyn Starter>,
         extensions: Extensions,
         http: reqwest::Client,
         web: reqwest::Client,
     ) -> Rc<Self> {
-        let shard = Rc::new_cyclic(|shard| {
-            Shard::new(shard.clone(), user, store, services, starter_of(shard.clone()), extensions, http, web)
+        let core = Rc::new_cyclic(|core| {
+            Core::new(core.clone(), user, store, services, starter_of(core.clone()), extensions, http, web)
         });
         // The search index follows the user's changes from the start until
         // the core closes.
-        shard.tasks.spawn_local(shard.clone().follow_for_search());
-        shard.tasks.spawn_local(shard.clone().follow_search_resets());
+        core.tasks.spawn_local(core.clone().follow_for_search());
+        core.tasks.spawn_local(core.clone().follow_search_resets());
         // So does the pages' news of what a call cost.
-        shard.tasks.spawn_local(shard.clone().follow_usage());
+        core.tasks.spawn_local(core.clone().follow_usage());
         // So do the processes prepared ahead, the changes of
         // the accounts they were started with.
-        let changes = shard.services.vault.account_changes();
-        shard
+        let changes = core.services.vault.account_changes();
+        core
             .tasks
-            .spawn_local(shard.clone().follow_account_changes(changes));
+            .spawn_local(core.clone().follow_account_changes(changes));
         // And the account each open conversation's next
         // request takes under its entry's rotation.
-        let changes = shard.services.provider_registry.rotation().changes();
-        shard
+        let changes = core.services.provider_registry.rotation().changes();
+        core
             .tasks
-            .spawn_local(shard.clone().follow_rotation_changes(changes));
+            .spawn_local(core.clone().follow_rotation_changes(changes));
         // And the expiry of the user's credentials, which
         // removes at once what is past due.
-        shard
+        core
             .tasks
-            .spawn_local(shard.clone().follow_credential_expiry());
+            .spawn_local(core.clone().follow_credential_expiry());
         // And the user's schedules, which fire what a
         // backend that was down missed.
-        shard
+        core
             .tasks
-            .spawn_local(shard.clone().follow_schedules());
+            .spawn_local(core.clone().follow_schedules());
         // And the media jobs an earlier start kept, which
         // end whether or not their calls come back.
-        shard
+        core
             .tasks
-            .spawn_local(shard.clone().follow_media_jobs());
-        shard
+            .spawn_local(core.clone().follow_media_jobs());
+        core
     }
 
-    /// The shard of `user`, whose agent server reaches it through `shard`.
+    /// The core of `user`, whose agent server reaches it through `core`.
     fn new(
-        shard: Weak<Shard>,
+        core: Weak<Core>,
         user: UserId,
         store: CoreStore,
         services: Arc<CoreServices>,
@@ -354,8 +354,8 @@ impl Shard {
         let plugins = UserPlugins::new(
             services.plugins.clone(),
             user.clone(),
-            Rc::new(plugins::ShardPort {
-                shard: shard.clone(),
+            Rc::new(plugins::CorePort {
+                core: core.clone(),
                 services: services.clone(),
                 web,
             }),
@@ -363,7 +363,7 @@ impl Shard {
             Rc::new(services.sync.of(&user)),
         );
         let ConversationParts { agent, titles, suggested_replies } = conversation::conversation_parts(
-            shard.clone(),
+            core.clone(),
             user.clone(),
             store.clone(),
             services.clone(),
@@ -374,12 +374,12 @@ impl Shard {
             services.runners.returning,
             services.sync.of(&user),
         );
-        let project_files = ProjectFiles::new(&shard);
+        let project_files = ProjectFiles::new(&core);
         Self {
             search: SearchIndexer::new(&services, &user),
             user,
             store,
-            this: shard,
+            this: core,
             services,
             starter,
             http,
@@ -422,12 +422,12 @@ impl Shard {
         &self.plugins
     }
 
-    /// The shard, for a task that outlives the call that starts it. A
-    /// method of the shard runs while its caller holds it.
-    pub fn this(&self) -> Rc<Shard> {
+    /// The core, for a task that outlives the call that starts it. A
+    /// method of the core runs while its caller holds it.
+    pub fn this(&self) -> Rc<Core> {
         self.this
             .upgrade()
-            .expect("a shard's method runs while the shard lives")
+            .expect("a core's method runs while the core lives")
     }
 
     pub(crate) fn claude_cli(&self) -> &ClaudeCli {
@@ -483,8 +483,8 @@ impl Shard {
         let projects = part == demi_core_sync::Part::Projects;
         self.services().sync.mark(self.user(), part);
         if projects {
-            let shard = self.this();
-            self.tasks().spawn_local(async move { shard.projects_changed().await });
+            let core = self.this();
+            self.tasks().spawn_local(async move { core.projects_changed().await });
         }
     }
 
@@ -517,23 +517,23 @@ impl Shard {
         &self.tasks
     }
 
-    /// The Claude Code machine, through the master's shard; none in a
-    /// backend whose shards never started.
+    /// The Claude Code machine, through the master's core; none in a
+    /// backend whose cores never started.
     pub(crate) fn claude_machine(&self) -> Option<ClaudeMachine> {
         self.services().claude_machine.get()
     }
 
-    /// Whether the shard is closing and starts no new work.
+    /// Whether the core is closing and starts no new work.
     pub fn is_closing(&self) -> bool {
         self.closing.is_cancelled()
     }
 
-    /// Resolves once the shard starts closing.
+    /// Resolves once the core starts closing.
     pub fn closed(&self) -> tokio_util::sync::WaitForCancellationFuture<'_> {
         self.closing.cancelled()
     }
 
-    pub(crate) fn agent(&self) -> &Rc<AgentServer<ShardHosts>> {
+    pub(crate) fn agent(&self) -> &Rc<AgentServer<CoreHosts>> {
         &self.agent
     }
 
@@ -623,21 +623,21 @@ impl Shard {
     }
 }
 
-/// Awaits `step` of a shard's close and logs how long it took, so the journal
+/// Awaits `step` of a core's close and logs how long it took, so the journal
 /// of a close that hangs names the step after the last it logged.
 async fn closed<T>(step: &'static str, work: impl Future<Output = T>) -> T {
     let started = std::time::Instant::now();
     let output = work.await;
-    tracing::info!(event = "shard_close.step_ended", step, ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX), "a step of the shard's close ended");
+    tracing::info!(event = "core_close.step_ended", step, ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX), "a step of the core's close ended");
     output
 }
 
-/// What the shards hold now, as the backend's resource sample and its stopping
+/// What the cores hold now, as the backend's resource sample and its stopping
 /// line count it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Census {
-    /// The users with a shard.
-    pub shards: u64,
+    /// The users with a core.
+    pub cores: u64,
     /// The conversation trees live in memory.
     pub live_trees: u64,
     /// The agent sessions of those trees, the roots' and their children's.
@@ -652,7 +652,7 @@ pub struct Census {
 
 impl std::ops::AddAssign for Census {
     fn add_assign(&mut self, other: Self) {
-        self.shards += other.shards;
+        self.cores += other.cores;
         self.live_trees += other.live_trees;
         self.live_sessions += other.live_sessions;
         self.running_turns += other.running_turns;

@@ -1,5 +1,5 @@
 //! A plugin: the factory every shard thread shares, and the instance it
-//! makes for one user's shard.
+//! makes for one user's core.
 
 use std::rc::Rc;
 
@@ -17,7 +17,7 @@ use crate::{
 pub trait PluginFactory: Send + Sync {
     fn manifest(&self) -> &Manifest;
 
-    /// The instance that serves one user's shard, on its thread.
+    /// The instance that serves one user's core, on its thread.
     fn instance(&self) -> Rc<dyn Plugin>;
 
     /// A file its pages load by name, such as a library a document it serves
@@ -42,12 +42,12 @@ pub struct PluginFile {
 }
 
 /// A plugin's instance for one user. It runs on its user's shard thread, so
-/// it follows the shard's rules:
+/// it follows the core's rules:
 ///
 /// - It never blocks the thread; blocking work, such as a git fetch, runs on
 ///   the blocking pool.
 /// - It may keep state in memory, for its own user only, as a cache: the
-///   instance ends with the shard, and what must last is a value or a blob.
+///   instance ends with the core, and what must last is a value or a blob.
 /// - Every task it starts ends when the instance is dropped, and the instance
 ///   saves nothing from a task that was cut off.
 /// - A task may keep the port of the page call that started it, which answers

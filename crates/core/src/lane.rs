@@ -2,7 +2,7 @@
 //! (`crates/web-api-protocol/src/connection.rs`).
 //!
 //! The edge serves the connection and opens each lane, then hands it to its
-//! owner: the shard serves the synchronization channel and a conversation's
+//! owner: the core serves the synchronization channel and a conversation's
 //! lane; the edge relays a file watch, a device's signaling and a user stream.
 //!
 //! ```text
@@ -154,7 +154,7 @@ pub struct Lane {
     sent: u64,
     opened_at: Instant,
     /// Whether the owner ended it; one dropped without an end ends as it
-    /// drops, as one a shard that is closing never adopted.
+    /// drops, as one a core that is closing never adopted.
     ended: bool,
     /// Counts the lane among the open ones until it is dropped.
     _open: Counted,
@@ -377,7 +377,7 @@ impl Lane {
                 )
             };
         }
-        // A lane its owner never ended is a defect, or a shard that closed
+        // A lane its owner never ended is a defect, or a core that closed
         // before it took the lane.
         if matches!(end, LaneEnd::Fail(_)) || reader.is_none() {
             ended!(warn);

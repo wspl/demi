@@ -2,7 +2,7 @@
 //!
 //! - An entry whose provider makes images has an Image Generation switch, on for
 //!   every entry stored before
-//!   (`crates/backend-user-shard/src/provider_settings.rs`).
+//!   (`crates/core/src/provider_settings.rs`).
 //! - A device keeps why it will not start its runner by itself, which no device
 //!   stored before has said (`crates/runner/src/autostart.rs`).
 

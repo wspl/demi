@@ -1,4 +1,4 @@
-//! The times and bounds the shard and the edge run with.
+//! The times and bounds the core and the edge run with.
 //!
 //! The configuration sets them and tests shorten them
 //! (`crates/backend/src/config/mod.rs`).
@@ -6,7 +6,7 @@
 use std::time::Duration;
 
 /// When Demi reclaims what a conversation uses on a Host, one idle window
-/// for the conversation's release and for a Cloud's stop (`crates/backend-user-shard/src/lifecycle/mod.rs`).
+/// for the conversation's release and for a Cloud's stop (`crates/core/src/lifecycle/mod.rs`).
 /// Tests shorten the times.
 #[derive(Debug, Clone, Copy)]
 pub struct LifecycleTuning {

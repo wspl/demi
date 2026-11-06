@@ -48,9 +48,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::access::{DeviceWait, HostAccessError, Refusal, ShowWait, Waits};
 use crate::attachment_commands::{Numbering, Unnumbered, commit};
-use crate::{HostShard, conversation_of};
+use crate::{HostCore, conversation_of};
 
-impl dyn HostShard + '_ {
+impl dyn HostCore + '_ {
     /// The root's Host: the conversation's current primary Host. The host
     /// access admits it and lets it go at once; its later operations take
     /// only a Cloud's per-operation admission.
@@ -262,44 +262,44 @@ impl From<HostAccessError> for HostError {
 }
 
 /// Makes each node's shell environments.
-pub struct ShardShellEnvironments {
-    /// Weak: the shard owns the agent server that holds this factory.
-    shard: Weak<dyn HostShard>,
+pub struct CoreShellEnvironments {
+    /// Weak: the core owns the agent server that holds this factory.
+    core: Weak<dyn HostCore>,
     /// The command packages a node's commands bind to.
     catalog: CommandCatalog,
 }
 
-impl ShardShellEnvironments {
-    pub fn new(shard: Weak<dyn HostShard>, catalog: CommandCatalog) -> Self {
-        Self { shard, catalog }
+impl CoreShellEnvironments {
+    pub fn new(core: Weak<dyn HostCore>, catalog: CommandCatalog) -> Self {
+        Self { core, catalog }
     }
 }
 
-impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
+impl ShellEnvironmentFactory<RemoteHost> for CoreShellEnvironments {
     fn create<'a>(
         &'a self,
         scope: EnvironmentScope<'a>,
         host: Rc<RemoteHost>,
     ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>> {
         Box::pin(async move {
-            let shard = self
-                .shard
+            let core = self
+                .core
                 .upgrade()
                 .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
             let conversation = conversation_of(scope.root);
             let context: ContextSource = {
-                let shard = self.shard.clone();
+                let core = self.core.clone();
                 let conversation = conversation.clone();
                 let caller = CommandCaller::agent(scope.agent);
                 Rc::new(move || {
-                    let shard = shard.clone();
+                    let core = core.clone();
                     let conversation = conversation.clone();
                     let caller = caller.clone();
                     Box::pin(async move {
-                        let shard = shard
+                        let core = core
                             .upgrade()
                             .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
-                        command_context(shard.store(), &conversation, caller)
+                        command_context(core.store(), &conversation, caller)
                             .await
                             .map_err(|error| HostError::failed(None, error.to_string()))
                     })
@@ -312,7 +312,7 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                 scope.numbers.clone(),
             );
             options.access = Some(Rc::new(JobAccess {
-                shard: self.shard.clone(),
+                core: self.core.clone(),
                 conversation: conversation.clone(),
                 follows: scope.agent == 0,
             }));
@@ -322,15 +322,15 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                     HostError::new(HostErrorKind::Protocol, "the node's Host is no device's")
                 })?;
             options.keeper = Some(Rc::new(Keeper {
-                shard: self.shard.clone(),
+                core: self.core.clone(),
                 conversation: conversation.clone(),
                 node: scope.node.clone(),
                 device,
                 host: host.clone(),
-                db: shard.conversation_db(&conversation),
-                store: shard.store().clone(),
-                blobs: shard.blobs(),
-                clock: shard.clock().clone(),
+                db: core.conversation_db(&conversation),
+                store: core.store().clone(),
+                blobs: core.blobs(),
+                clock: core.clock().clone(),
             }));
             let selection = self
                 .catalog
@@ -338,7 +338,7 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                 .map_err(|error| HostError::new(HostErrorKind::Protocol, error.to_string()))?;
             options.commands = Some(selection.clone());
             let environment = RemoteShellEnvironment::new(options);
-            let registration = shard.commands().register(
+            let registration = core.commands().register(
                 scope.node.as_str(),
                 &conversation,
                 scope.commands.clone(),
@@ -354,7 +354,7 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
 
 /// The conversation's host access around each job of a node's environment.
 struct JobAccess {
-    shard: Weak<dyn HostShard>,
+    core: Weak<dyn HostCore>,
     conversation: ConversationId,
     /// Whether the node works where the conversation does: the root or a
     /// side question, agent 0, and not a subagent.
@@ -368,8 +368,8 @@ impl HostAccess for JobAccess {
         withdrawal: Rc<Withdrawal>,
     ) -> LocalBoxFuture<'a, Option<Box<dyn std::any::Any>>> {
         Box::pin(async move {
-            let shard = self.shard.upgrade()?;
-            shard.hold_adopted(&self.conversation, host, self.follows, withdrawal).await
+            let core = self.core.upgrade()?;
+            core.hold_adopted(&self.conversation, host, self.follows, withdrawal).await
         })
     }
 
@@ -382,8 +382,8 @@ impl HostAccess for JobAccess {
         job: LocalBoxFuture<'a, ()>,
     ) -> LocalBoxFuture<'a, Result<(), HostError>> {
         Box::pin(async move {
-            let shard = self
-                .shard
+            let core = self
+                .core
                 .upgrade()
                 .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
             let shown = Shown(waiting);
@@ -391,7 +391,7 @@ impl HostAccess for JobAccess {
                 shown: &shown,
                 follows: self.follows,
             };
-            shard.run_job(&self.conversation, host, &cancel, wait, withdrawal, job).await
+            core.run_job(&self.conversation, host, &cancel, wait, withdrawal, job).await
         })
     }
 }
@@ -413,8 +413,8 @@ impl ShowWait for Shown<'_> {
 /// - Their whole outputs, each with its record in the conversation's database
 ///   (`crates/core-store/src/command_outputs.rs`).
 struct Keeper {
-    /// The shard, through which a stored attachment reaches the pages.
-    shard: Weak<dyn HostShard>,
+    /// The core, through which a stored attachment reaches the pages.
+    core: Weak<dyn HostCore>,
     conversation: ConversationId,
     /// The node whose commands these are.
     node: NodeId,
@@ -472,7 +472,7 @@ impl Keeper {
     /// Stores `output` as a blob, in the kept output's records.
     async fn put(&self, output: &WholeOutput) -> Result<demi_shared_types::BlobRef, String> {
         let output = output.clone();
-        // Encoding 16 MiB would hold the shard's thread.
+        // Encoding 16 MiB would hold the core's thread.
         let encoded = tokio::task::spawn_blocking(move || encode_output(&output))
             .await
             .map_err(|error| error.to_string())?
@@ -503,7 +503,7 @@ impl Keeper {
 
     /// Stores `bytes`, `medium`'s, as an attachment and answers its id.
     async fn store_medium(&self, medium: &CommandMedium, bytes: &Bytes) -> Result<String, String> {
-        let shard = self.shard.upgrade().ok_or("the backend is stopping")?;
+        let core = self.core.upgrade().ok_or("the backend is stopping")?;
         let blob = self.blobs.put(bytes.clone()).await.map_err(|error| error.to_string())?;
         let attachment = Unnumbered {
             name: medium_name(medium),
@@ -518,11 +518,11 @@ impl Keeper {
             source: None,
         };
         let announce = {
-            let shard = shard.this();
+            let core = core.this();
             let conversation = self.conversation.clone();
-            move || shard.summary_changed(&conversation)
+            move || core.summary_changed(&conversation)
         };
-        let row = commit(shard.tasks(), self.db.clone(), attachment, Numbering::SameBytes, announce).await?;
+        let row = commit(core.tasks(), self.db.clone(), attachment, Numbering::SameBytes, announce).await?;
         Ok(row.number.to_string())
     }
 

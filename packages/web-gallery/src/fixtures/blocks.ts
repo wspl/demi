@@ -1410,7 +1410,7 @@ export function usageLimitErrorBlock(id: string, resetsAt: string): Block {
 
 /**
  * The record of a turn whose entry connects through a device its owner
- * removed since (`crates/backend-user-shard/src/shard/device_requests.rs`):
+ * removed since (`crates/core/src/device_requests.rs`):
  * refused before it left the server, with no answer to keep.
  */
 export function deviceRemovedErrorBlock(id: string): Block {
@@ -1428,7 +1428,7 @@ export function deviceRemovedErrorBlock(id: string): Block {
 /**
  * The record of a turn whose entry connects through alex-mbp while it was
  * offline, after the retries an unreachable endpoint gets
- * (`crates/backend-user-shard/src/shard/device_requests.rs`).
+ * (`crates/core/src/device_requests.rs`).
  */
 export function deviceOfflineErrorBlock(id: string): Block {
   return {

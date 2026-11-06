@@ -315,7 +315,7 @@ export interface SettingsVendor {
  * The status of an entry:
  *
  * - `setup`: the entry is not complete yet
- *   (`crates/backend-user-shard/src/provider_settings.rs`). It is a plain wait, never
+ *   (`crates/core/src/provider_settings.rs`). It is a plain wait, never
  *   a failure.
  * - `error` and `unreachable`: failures, which a refused key, an endpoint that did
  *   not answer or a catalog that could not be read cause.

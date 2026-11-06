@@ -1,4 +1,4 @@
-//! Conversations on the user's shard (`crates/backend/src/lib.rs`).
+//! Conversations on the user's core (`crates/backend/src/lib.rs`).
 //!
 //! The module holds:
 //!
@@ -59,8 +59,8 @@ use demi_agent_transcript::RandomIds;
 use demi_agent_store::media::BlobStore;
 use demi_core_store::search::TranscriptChange;
 use demi_core_store::tree::SqliteTreeStore;
-use demi_core_host_access::shells::ShardShellEnvironments;
-use demi_core_host_access::{HostShard, conversation_of};
+use demi_core_host_access::shells::CoreShellEnvironments;
+use demi_core_host_access::{HostCore, conversation_of};
 use demi_core_sync::Part;
 use demi_shared_types::NodeId;
 use demi_web_api_protocol::ids::UserId;
@@ -69,35 +69,35 @@ pub use self::attachment_facts::{attachment_facts, named_blocks, replies, reply_
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
 pub use self::announcement::AgentsError;
-pub(crate) use self::product::ShardHosts;
+pub(crate) use self::product::CoreHosts;
 pub use self::providers::{lent_limits, lent_runtime};
 use self::product::{
-    ExecutionContext, HARNESS_GUIDE, INSTRUCTIONS, PluginContext, ShardAgents, ShardReplyFiles, ShardSubagents, ShardToolsets,
+    ExecutionContext, HARNESS_GUIDE, INSTRUCTIONS, PluginContext, CoreAgents, CoreReplyFiles, CoreSubagents, CoreToolsets,
 };
 use self::providers::ConversationProviders;
 use self::small_requests::SmallRequests;
 use self::suggested_replies::SuggestedReplies;
 use self::titles::Titles;
 use crate::services::CoreServices;
-use crate::Shard;
+use crate::Core;
 
-/// What a shard's conversations run on: the agent server, and the title and
+/// What a core's conversations run on: the agent server, and the title and
 /// suggested replies requests, small requests that infer with the same
 /// providers.
 pub(crate) struct ConversationParts {
-    pub agent: Rc<AgentServer<ShardHosts>>,
+    pub agent: Rc<AgentServer<CoreHosts>>,
     pub titles: Titles,
     pub suggested_replies: SuggestedReplies,
 }
 
-/// The conversation parts of `shard`, the user's.
+/// The conversation parts of `core`, the user's.
 ///
 /// The agent server's trees keep their state in the conversations' databases.
 /// Their sessions infer with the user's providers under the user's rate limit,
 /// as the title requests do, and their nodes' shells run on the conversations'
-/// Hosts through the shard's host access.
+/// Hosts through the core's host access.
 pub(crate) fn conversation_parts(
-    shard: Weak<Shard>,
+    core: Weak<Core>,
     user: UserId,
     store: CoreStore,
     services: Arc<CoreServices>,
@@ -107,9 +107,9 @@ pub(crate) fn conversation_parts(
     let stores: TreeStores = {
         let services = services.clone();
         let marks = marks.clone();
-        let shard = shard.clone();
+        let core = core.clone();
         let databases = store.databases().clone();
-        // The shard's user owns every conversation it hosts.
+        // The core's user owns every conversation it hosts.
         let blobs: Arc<dyn BlobStore> = Arc::new(services.blobs.for_user(&user));
         Rc::new(move |root: &NodeId| {
             let conversation = conversation_of(root);
@@ -120,10 +120,10 @@ pub(crate) fn conversation_parts(
             let saved = {
                 let marks = marks.clone();
                 let root = root.clone();
-                let shard = shard.clone();
+                let core = core.clone();
                 Rc::new(move |node: &NodeId, change: Option<TranscriptChange>| {
-                    if let (Some(change), Some(shard)) = (change, shard.upgrade()) {
-                        shard.follow_save(conversation.clone(), change);
+                    if let (Some(change), Some(core)) = (change, core.upgrade()) {
+                        core.follow_save(conversation.clone(), change);
                     }
                     if *node == root {
                         marks.mark(Part::Conversation(conversation.clone()));
@@ -143,7 +143,7 @@ pub(crate) fn conversation_parts(
         ..ServerConfig::default()
     };
     let providers = Rc::new(ConversationProviders::new(
-        shard.clone(),
+        core.clone(),
         user.clone(),
         store.clone(),
         services.clone(),
@@ -157,22 +157,22 @@ pub(crate) fn conversation_parts(
         marks.clone(),
         services.conversation_tuning.titles,
     );
-    let hosts: Weak<dyn HostShard> = shard.clone();
+    let hosts: Weak<dyn HostCore> = core.clone();
     let agent = AgentServer::new(ServerDeps {
-        toolsets: Rc::new(ShardToolsets {
-            shard: shard.clone(),
+        toolsets: Rc::new(CoreToolsets {
+            core: core.clone(),
         }),
-        subagents: Rc::new(ShardSubagents {
-            shard: shard.clone(),
+        subagents: Rc::new(CoreSubagents {
+            core: core.clone(),
         }),
         instructions: Rc::from(INSTRUCTIONS),
         guide: Rc::from(HARNESS_GUIDE),
-        hosts: Rc::new(ShardHosts {
-            shard: shard.clone(),
+        hosts: Rc::new(CoreHosts {
+            core: core.clone(),
         }),
-        context: context_sources(&shard, &services),
+        context: context_sources(&core, &services),
         providers,
-        shells: Rc::new(ShardShellEnvironments::new(
+        shells: Rc::new(CoreShellEnvironments::new(
             hosts,
             services.packages.catalog(),
         )),
@@ -181,30 +181,30 @@ pub(crate) fn conversation_parts(
         ids: Rc::new(RandomIds),
         config,
         status_changed: {
-            let shard = shard.clone();
+            let core = core.clone();
             Rc::new(move |root: &NodeId| {
                 let conversation = conversation_of(root);
-                if let Some(shard) = shard.upgrade() {
-                    shard.follow_runs(&conversation);
-                    shard.follow_failed_turn(&conversation);
-                    shard.follow_turn_end(&conversation);
-                    shard.follow_suggested_replies(&conversation);
-                    shard.follow_idle_compaction_end(&conversation);
+                if let Some(core) = core.upgrade() {
+                    core.follow_runs(&conversation);
+                    core.follow_failed_turn(&conversation);
+                    core.follow_turn_end(&conversation);
+                    core.follow_suggested_replies(&conversation);
+                    core.follow_idle_compaction_end(&conversation);
                     // A conversation no longer loaded keeps no project files.
-                    if shard.agent().tree(root).is_none() {
-                        shard.project_files().release(&conversation);
+                    if core.agent().tree(root).is_none() {
+                        core.project_files().release(&conversation);
                     }
                 }
                 marks.mark(Part::Conversation(conversation));
             })
         },
-        agents: Rc::new(ShardAgents { shard: shard.clone() }),
-        reply_files: Rc::new(ShardReplyFiles { shard: shard.clone() }),
+        agents: Rc::new(CoreAgents { core: core.clone() }),
+        reply_files: Rc::new(CoreReplyFiles { core: core.clone() }),
         idle_compaction_due: {
-            let shard = shard.clone();
+            let core = core.clone();
             Rc::new(move |root: &NodeId, due| {
-                if let Some(shard) = shard.upgrade() {
-                    shard.follow_idle_compaction(&conversation_of(root), due);
+                if let Some(core) = core.upgrade() {
+                    core.follow_idle_compaction(&conversation_of(root), due);
                 }
             })
         },
@@ -215,19 +215,19 @@ pub(crate) fn conversation_parts(
 /// The context sources a node asks before each provider request, in order:
 /// the product's execution context, the instructions, the side questions,
 /// then each plugin that is one, in registration order.
-fn context_sources(shard: &Weak<Shard>, services: &CoreServices) -> Rc<[Rc<dyn ContextSource>]> {
+fn context_sources(core: &Weak<Core>, services: &CoreServices) -> Rc<[Rc<dyn ContextSource>]> {
     let execution = Rc::new(ExecutionContext {
-        shard: shard.clone(),
+        core: core.clone(),
     }) as Rc<dyn ContextSource>;
-    let instructions = Rc::new(Instructions::new(shard.clone())) as Rc<dyn ContextSource>;
-    let side_questions = Rc::new(side_questions::Told::new(shard.clone())) as Rc<dyn ContextSource>;
+    let instructions = Rc::new(Instructions::new(core.clone())) as Rc<dyn ContextSource>;
+    let side_questions = Rc::new(side_questions::Told::new(core.clone())) as Rc<dyn ContextSource>;
     let plugins = services
         .plugins
         .context_sources()
         .into_iter()
         .map(|plugin| {
             Rc::new(PluginContext {
-                shard: shard.clone(),
+                core: core.clone(),
                 plugin,
             }) as Rc<dyn ContextSource>
         });

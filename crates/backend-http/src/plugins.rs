@@ -7,7 +7,7 @@
 //! - A file a plugin's pages load, such as a library its documents run, which
 //!   its factory gives, for anyone ([`file`]).
 //!
-//! The user's shard checks the parameters against the method's schema, and the
+//! The user's core checks the parameters against the method's schema, and the
 //! user's instance answers. What the call changes reaches the user's pages on
 //! the synchronization channel.
 
@@ -102,7 +102,7 @@ pub(super) async fn switch(
     let switched = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.switch_plugin(&plugin, enabled).await })
+        .call(move |core, _| async move { core.switch_plugin(&plugin, enabled).await })
         .await?;
     switch_answer(switched)
 }
@@ -118,7 +118,7 @@ pub(super) async fn switch_feature(
     let switched = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.switch_plugin_feature(&plugin, &feature, enabled).await })
+        .call(move |core, _| async move { core.switch_plugin_feature(&plugin, &feature, enabled).await })
         .await?;
     switch_answer(switched)
 }
@@ -147,7 +147,7 @@ pub(super) async fn reload(
     let reloaded = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.reload_conversation(&record.id).await })
+        .call(move |core, _| async move { core.reload_conversation(&record.id).await })
         .await?;
     match reloaded {
         Ok(()) => Ok(StatusCode::NO_CONTENT),
@@ -210,8 +210,8 @@ pub(super) async fn conversation_state(
     let answer = state
         .shards
         .of(&user.id)
-        .call(move |shard, cancel| async move {
-            shard
+        .call(move |core, cancel| async move {
+            core
                 .plugins()
                 .conversation_state(&plugin, record.id, cancel)
                 .await
@@ -229,7 +229,7 @@ async fn page_call(
     let result = state
         .shards
         .of(user)
-        .call(move |shard, cancel| async move { shard.plugins().page_call(call, cancel).await })
+        .call(move |core, cancel| async move { core.plugins().page_call(call, cancel).await })
         .await?
         .map_err(refused)?;
     Ok(Json(result))

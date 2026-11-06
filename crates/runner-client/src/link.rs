@@ -145,7 +145,7 @@ pub trait LinkPolicy {
     fn programs(&self) -> Option<CommandCatalog>;
 
     /// The runner said something of a port forward or of a peer it made
-    /// with another runner (`crates/backend-user-shard/src/shard/port_forwards.rs`), in the order it said
+    /// with another runner (`crates/core/src/port_forwards.rs`), in the order it said
     /// it; the policy answers through the link.
     fn forward_event(&self, event: ForwardEvent);
 
@@ -173,7 +173,7 @@ pub trait HostLog {
     fn store(&self, lines: Vec<HostLogLine>, missed: u64);
 }
 
-/// What a runner says of the user's port forwards (`crates/backend-user-shard/src/shard/port_forwards.rs`).
+/// What a runner says of the user's port forwards (`crates/core/src/port_forwards.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ForwardEvent {
     /// What `forward` is on this runner, its Listen On, now; none once it
@@ -469,7 +469,7 @@ pub(crate) enum Answer {
 }
 
 /// What the address answered a request the device made
-/// (`crates/backend-user-shard/src/shard/device_requests.rs`): its status and
+/// (`crates/core/src/device_requests.rs`): its status and
 /// headers; its body comes through the request's answer pipe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpHead {

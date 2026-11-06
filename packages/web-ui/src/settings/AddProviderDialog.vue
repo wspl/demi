@@ -17,7 +17,7 @@ import { WIRE_API_LABELS, type SettingsVendor } from './types'
  * Adding an API-key provider is one pick of two kinds
  * (`packages/web-ui/src/settings/SettingsProvidersPage.vue`), and the pick
  * creates the entry at once, with no question before it
- * (`crates/backend-user-shard/src/provider_settings.rs`).
+ * (`crates/core/src/provider_settings.rs`).
  *
  * - A compatible API, for any proxy or server that speaks one of the protocols,
  *   comes first. Its protocol, endpoint and key are set on its page.

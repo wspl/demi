@@ -54,8 +54,8 @@ pub(super) async fn create(
             let path = state
                 .shards
                 .of(&user.id)
-                .call(move |shard, _| async move {
-                    shard.host_shard().device_directory(&resolving, path.as_str()).await
+                .call(move |core, _| async move {
+                    core.host_core().device_directory(&resolving, path.as_str()).await
                 })
                 .await?
                 .map_err(super::hosts::refused)?;
@@ -95,7 +95,7 @@ pub(super) async fn create(
             match state
                 .shards
                 .of(&user.id)
-                .call(move |shard, _| async move { shard.create_cloud_project(workspace_id, name).await })
+                .call(move |core, _| async move { core.create_cloud_project(workspace_id, name).await })
                 .await??
             {
                 CloudProject::Made(project) => project,
@@ -118,12 +118,12 @@ pub(super) async fn create(
             }
         }
     };
-    // Through the shard, which also tells the Host's runner the new
+    // Through the core, which also tells the Host's runner the new
     // project's directory, whose worktrees it reports.
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.mark(Part::Projects) })
+        .call(move |core, _| async move { core.mark(Part::Projects) })
         .await?;
     Ok((
         StatusCode::CREATED,
@@ -195,7 +195,7 @@ pub(super) async fn switch_saved_scope(
 }
 
 /// Archives the project's conversations and deletes it, as one transition
-/// the user's shard makes.
+/// the user's core makes.
 pub(super) async fn delete(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -205,7 +205,7 @@ pub(super) async fn delete(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.delete_project(&id).await })
+        .call(move |core, _| async move { core.delete_project(&id).await })
         .await?
         .map_err(super::hosts::refused)?;
     Ok(StatusCode::NO_CONTENT)

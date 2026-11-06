@@ -12,7 +12,7 @@
 //!        \            |            /
 //!         Providers service of the port       one call: kind, model, entry?
 //!                     |
-//!         backend (shard/media.rs)            entry, account, hand-on, ledger
+//!         backend (core/media.rs)            entry, account, hand-on, ledger
 //!                     |
 //!         provider-* crates                   the vendors' APIs
 //! ```

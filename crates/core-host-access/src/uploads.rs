@@ -21,10 +21,10 @@ use demi_core_blobs::blobs::OPENING_BYTES;
 use demi_shared_types::{B64Bytes, UserContentBlock};
 use demi_web_api_protocol::ids::{AttachmentId, ConversationId};
 
-use crate::HostShard;
+use crate::HostCore;
 use crate::attachment_commands::{Numbering, Unnumbered, commit};
 
-impl dyn HostShard + '_ {
+impl dyn HostCore + '_ {
     /// The blocks the upload `reference` becomes in a message of the user's
     /// conversation `id` under `file_name`, numbered as the conversation's
     /// next attachment, with the bytes of its medium, or why it cannot.

@@ -1,6 +1,6 @@
 //! The requests the backend makes for the user from this device, such as a
 //! provider entry's that connects through it
-//! (`crates/backend-user-shard/src/shard/device_requests.rs`), for as long as
+//! (`crates/core/src/device_requests.rs`), for as long as
 //! its connection lasts.
 //!
 //! The runner makes each request to its URL with its own HTTP client, the

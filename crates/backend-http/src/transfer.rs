@@ -1,10 +1,10 @@
 //! The bytes of file transfers (`crates/core-host-access/src/access.rs`).
 //!
-//! The edge moves them while the user's shard holds the transfer's admission
+//! The edge moves them while the user's core holds the transfer's admission
 //! through its lease.
 //!
 //! - A download's body is read as the user's browser takes it. It is cut short,
-//!   never ended, when the Host's read fails or the shard ends the transfer.
+//!   never ended, when the Host's read fails or the core ends the transfer.
 //!   A connection on which nothing moves for a minute is closed.
 //! - An upload's body is read as the Host writes it. The upload stalls when the
 //!   user's browser sends nothing for a minute, and a Host that takes nothing
@@ -33,7 +33,7 @@ pub(super) const TRANSFER_IDLE: Duration = Duration::from_secs(60);
 
 /// A download's body: the Host's bytes as the user's browser takes them.
 ///
-/// It ends complete only when the Host's read did. A failing read, or the shard
+/// It ends complete only when the Host's read did. A failing read, or the core
 /// ending the transfer, cuts it short, and the user's browser receives an
 /// incomplete response. The lease and the connection's watch go with the body,
 /// whether it ends or the user's browser leaves.
@@ -154,7 +154,7 @@ pub(super) async fn copy_upload(body: Body, upload: OpenUpload) -> UploadEnd {
     match outcome {
         Ok(Ok(())) => UploadEnd::Written,
         Ok(Err(error)) => UploadEnd::WriteFailed(error),
-        // The shard's owner ended without an outcome only when the transfer
+        // The core's owner ended without an outcome only when the transfer
         // was ended.
         Err(_) => ended(),
     }

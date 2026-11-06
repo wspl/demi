@@ -16,7 +16,7 @@
 //! - The manager's first message names its wire version, so a manager of
 //!   another release stops the start here.
 //! - The turns a graceful shutdown interrupted resume in the background, each
-//!   owner's on its shard, and the start waits for none of them.
+//!   owner's on its core, and the start waits for none of them.
 //!
 //! The listener opens last, so nothing reaches a half-recovered backend.
 //!
@@ -182,7 +182,7 @@ const RECOVERY_RETRY: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Settles the Clouds an earlier backend left, in the background so that the
 /// backend serves meanwhile: the machine manager keeps every running Cloud
-/// and finishes the resets it left unfinished, each running Cloud's shard
+/// and finishes the resets it left unfinished, each running Cloud's core
 /// takes it over, and the trees of a Cloud that does not run although commands
 /// ran on it, as after an upgrade, are restored with their commands as last
 /// recorded, which the Cloud's next hello settles. A
@@ -258,7 +258,7 @@ async fn recover_in_background(
     start_step("cloud_commands", take_up_stopped_clouds(&taken, &services, &shards)).await;
 }
 
-/// Hands each running Cloud to its owner's shard, which takes it over
+/// Hands each running Cloud to its owner's core, which takes it over
 /// (`crates/machine-manager-protocol/src/lib.rs`).
 async fn take_over_clouds(
     running: Vec<(UserId, demi_core_store::devices::DeviceRecord)>,
@@ -267,7 +267,7 @@ async fn take_over_clouds(
     for (owner, device) in running {
         shards
             .of(&owner)
-            .call(move |shard, _| async move { shard.cloud_shard().take_over_cloud(&device).await })
+            .call(move |core, _| async move { core.cloud_core().take_over_cloud(&device).await })
             .await
             .map_err(|error| error.to_string())?
             .map_err(|error| error.to_string())?;
@@ -326,7 +326,7 @@ async fn take_up_stopped_clouds(
             }
             shards
                 .of(&owner)
-                .call(move |shard, _| async move { shard.take_up_stopped_cloud(device).await })
+                .call(move |core, _| async move { core.take_up_stopped_cloud(device).await })
                 .await
                 .map_err(|error| error.to_string())?;
         }
@@ -570,7 +570,7 @@ impl Backend {
         // for its answer; and a credential whose time came while the backend was down
         // is removed.
         //
-        // A failure does not stop the start: the user's shard removes what is past due
+        // A failure does not stop the start: the user's core removes what is past due
         // when it starts, and the next start withdraws the requests.
         for (_, store) in &cores {
             start_step("credential_requests", store.withdraw_credential_requests()).await;
@@ -697,7 +697,7 @@ impl Backend {
         self.services.logins.close().await;
         self.shards.close().await;
         self.services.claims.close();
-        // No shard is left to route a death to.
+        // No core is left to route a death to.
         drop(self.recovery);
         drop(self.deaths);
         drop(self.statuses);

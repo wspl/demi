@@ -3,7 +3,7 @@
 //! An unpaired runner has no user yet, so it waits at the edge, under the code
 //! it printed, until a signed-in user claims that code. The claim creates the
 //! device and hands the waiting runner its token, and the runner's socket moves
-//! into the user's shard. Each user may try ten codes a minute.
+//! into the user's core. Each user may try ten codes a minute.
 //!
 //! An agent pairs a computer it reaches without the user typing the code (`demi
 //! host pair`): the code is proof enough, since it reaches only the runner's
@@ -76,7 +76,7 @@ pub enum ClaimRefusal {
 
 /// What a claim hands its runner: the user who claimed it, the device made
 /// for it, the token only the runner receives, and where the device's answer
-/// goes once the runner's socket is bound in the user's shard.
+/// goes once the runner's socket is bound in the user's core.
 pub struct ClaimGrant {
     pub owner: UserId,
     pub device: DeviceRecord,
@@ -102,7 +102,7 @@ impl PendingClaims {
     /// Pairs the runner waiting under `code`, spelled as a person types it,
     /// with `user`: the device is made, its token goes to that runner alone,
     /// and the answer is the device once the runner's socket is bound in the
-    /// user's shard. Add Device's `POST /devices/claim` and `demi host pair`
+    /// user's core. Add Device's `POST /devices/claim` and `demi host pair`
     /// both claim this way.
     pub async fn claim(
         &self,

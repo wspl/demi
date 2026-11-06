@@ -42,7 +42,7 @@ use serde::{Deserialize, Serialize};
 use super::cost_report::{ConversationCost, CostArgs, cost};
 use super::history::{history_group, shell_word};
 use super::search::search;
-use crate::Shard;
+use crate::Core;
 
 const SUMMARY: &str = "This conversation in the user's sidebar: rename it, and list the user's projects and conversations; send a message to another conversation, or start a new one; what a conversation's calls to the model cost; and transcripts, which history searches and reads: an agent's of this conversation, or of another conversation of the user.";
 
@@ -99,21 +99,21 @@ struct NewArgs {
 #[serde(deny_unknown_fields)]
 struct NoArgs {}
 
-/// The `conversation` group, whose handlers act in `shard`.
-pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
+/// The `conversation` group, whose handlers act in `core`.
+pub(crate) fn conversation_group(core: Weak<Core>) -> GroupBuilder {
     GroupBuilder::new("conversation", SUMMARY)
         .index_entry(ENTRY)
         .leaf(
             LeafBuilder::rpc("rename", RENAME_SUMMARY)
                 .input::<RenameArgs>()
                 .positionals(["title"])
-                .bind(TypedRpc::new(verb(shard.clone(), rename))),
+                .bind(TypedRpc::new(verb(core.clone(), rename))),
         )
         .leaf(
             LeafBuilder::rpc("projects", PROJECTS_SUMMARY)
                 .input::<NoArgs>()
                 .json_output::<Vec<ListedProject>>()
-                .bind(TypedRpc::new(verb(shard.clone(), projects))),
+                .bind(TypedRpc::new(verb(core.clone(), projects))),
         )
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
@@ -121,7 +121,7 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["words"])
                 .success_output("a table of the page's conversations; on stderr, the page and the list of the next page")
                 .json_output::<Vec<ListedConversation>>()
-                .bind(TypedRpc::new(verb(shard.clone(), list))),
+                .bind(TypedRpc::new(verb(core.clone(), list))),
         )
         .leaf(
             LeafBuilder::rpc("send", SEND_SUMMARY)
@@ -129,43 +129,43 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["conversation"])
                 .stdin_field("message")
                 .success_output("the conversation the message reached")
-                .bind(TypedRpc::new(verb(shard.clone(), send))),
+                .bind(TypedRpc::new(verb(core.clone(), send))),
         )
         .leaf(
             LeafBuilder::rpc("new", NEW_SUMMARY)
                 .input::<NewArgs>()
                 .stdin_field("message")
                 .success_output("the conversation started, its title and id")
-                .bind(TypedRpc::new(verb(shard.clone(), new))),
+                .bind(TypedRpc::new(verb(core.clone(), new))),
         )
         .leaf(
             LeafBuilder::rpc("cost", COST_SUMMARY)
                 .input::<CostArgs>()
                 .success_output("the conversation's totals as labelled lines, with a table for each way they are broken down")
                 .json_output::<ConversationCost>()
-                .bind(TypedRpc::new(verb(shard.clone(), cost))),
+                .bind(TypedRpc::new(verb(core.clone(), cost))),
         )
-        .group(history_group(shard))
+        .group(history_group(core))
 }
 
-/// A handler over the live shard, for the product's groups that act in it;
-/// a call after the shard closed fails.
+/// A handler over the live core, for the product's groups that act in it;
+/// a call after the core closed fails.
 pub(crate) fn verb<A, F, Fut>(
-    shard: Weak<Shard>,
+    core: Weak<Core>,
     run: F,
 ) -> impl Fn(Call<A>, RpcPort) -> LocalBoxFuture<'static, Result<u8, RpcError>>
 where
     A: 'static,
-    F: Fn(Rc<Shard>, Call<A>, RpcPort) -> Fut + Clone + 'static,
+    F: Fn(Rc<Core>, Call<A>, RpcPort) -> Fut + Clone + 'static,
     Fut: Future<Output = Result<u8, RpcError>> + 'static,
 {
     move |call, port| {
-        let shard = shard.upgrade();
+        let core = core.upgrade();
         let run = run.clone();
         Box::pin(async move {
-            let shard =
-                shard.ok_or_else(|| RpcError::Failed("the backend is shutting down".into()))?;
-            run(shard, call, port).await
+            let core =
+                core.ok_or_else(|| RpcError::Failed("the backend is shutting down".into()))?;
+            run(core, call, port).await
         })
     }
 }
@@ -180,13 +180,13 @@ pub(crate) fn refused(message: impl ToString) -> RpcError {
     RpcError::Usage(message.to_string())
 }
 
-async fn rename(shard: Rc<Shard>, call: Call<RenameArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn rename(core: Rc<Core>, call: Call<RenameArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
     let title = Trimmed::from(call.args.title).into_string();
     if title.is_empty() {
         return Err(refused("the title is blank"));
     }
-    shard
+    core
         .transition(&conversation, RecordChange::Title(title.clone()).into())
         .await
         .map_err(failed)?;
@@ -198,14 +198,14 @@ async fn rename(shard: Rc<Shard>, call: Call<RenameArgs>, port: RpcPort) -> Resu
 /// Sends the message to the main agent of the conversation `call` names, as
 /// an agent's message from the calling agent (`demi agent send`), and answers
 /// once it is in the recipient's checkpoint.
-async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn send(core: Rc<Core>, call: Call<SendArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let here = conversation_of(&call.invocation)?;
     let content = call.args.message.trim();
     if content.is_empty() {
         return Err(refused("the message is empty"));
     }
     let target = call.args.conversation.clone();
-    let store = shard.store();
+    let store = core.store();
     let recipient = match store.conversation(target.clone()).await.map_err(failed)? {
         Some(record) => record,
         // Another user's conversation is none of the caller's.
@@ -221,8 +221,8 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
         .await
         .map_err(failed)?
         .ok_or_else(|| failed("the sending conversation is gone"))?;
-    let sender = sender_of(&shard, &call, &sending)?;
-    deliver(&shard, &sender, &recipient.id, content).await.map_err(failed)?;
+    let sender = sender_of(&core, &call, &sending)?;
+    deliver(&core, &sender, &recipient.id, content).await.map_err(failed)?;
     let title = recipient.title.as_deref().unwrap_or("untitled");
     port.stdout(format!("Sent to \u{201c}{title}\u{201d} ({target}).\n")).await?;
     Ok(0)
@@ -231,13 +231,13 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
 /// The calling agent of `sending` as the sender of a message to another
 /// conversation, checked before anything is sent: a side question's agent,
 /// for one, sends none.
-fn sender_of<A>(shard: &Shard, call: &Call<A>, sending: &ConversationRecord) -> Result<Sender, RpcError> {
+fn sender_of<A>(core: &Core, call: &Call<A>, sending: &ConversationRecord) -> Result<Sender, RpcError> {
     let caller = call
         .invocation
         .caller
         .as_ref()
         .ok_or_else(|| failed("only an agent's command sends a message"))?;
-    let tree = shard
+    let tree = core
         .agent()
         .tree(&root_of(&sending.id))
         .ok_or_else(|| failed("the sending conversation's agents are not running"))?;
@@ -259,9 +259,9 @@ struct Sender {
 
 /// Admits `content` into the main agent of the user's conversation `to`, an
 /// agent's message from `sender`, as `send` and `new` deliver one.
-async fn deliver(shard: &Shard, sender: &Sender, to: &ConversationId, content: &str) -> Result<(), String> {
+async fn deliver(core: &Core, sender: &Sender, to: &ConversationId, content: &str) -> Result<(), String> {
     let id = BlockId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
-    let timestamp = shard.services().clock.now();
+    let timestamp = core.services().clock.now();
     let message = |recipient: &NodeId| AgentMessage {
         id: id.clone(),
         sender: Some(sender.agent.clone()),
@@ -271,7 +271,7 @@ async fn deliver(shard: &Shard, sender: &Sender, to: &ConversationId, content: &
         event: AgentMessageEvent::Message {},
         origin: sender.origin.clone(),
     };
-    shard.permission_shard().admit(to, &root_of(to), &message).await?;
+    core.permission_core().admit(to, &root_of(to), &message).await?;
     tracing::info!(
         event = "agent_message.sent",
         conversation = %sender.sending,
@@ -289,19 +289,19 @@ async fn deliver(shard: &Shard, sender: &Sender, to: &ConversationId, content: &
 /// the brief is taken. Once the conversation exists, a step that fails after
 /// it names it, so the agent sends the brief again with `send` rather than
 /// starting another.
-async fn new(shard: Rc<Shard>, call: Call<NewArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn new(core: Rc<Core>, call: Call<NewArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let here = conversation_of(&call.invocation)?;
     let content = call.args.message.trim().to_owned();
     if content.is_empty() {
         return Err(refused("the brief is empty"));
     }
     let title = call.args.title.as_deref().map(str::trim).filter(|title| !title.is_empty());
-    let store = shard.store();
+    let store = core.store();
     let starting = store.conversation(here.clone())
         .await
         .map_err(failed)?
         .ok_or_else(|| failed("the starting conversation is gone"))?;
-    let sender = sender_of(&shard, &call, &starting)?;
+    let sender = sender_of(&core, &call, &starting)?;
     let (workspace, target, workflow) = match &call.args.project {
         Some(id) => {
             let projects = store.projects().await.map_err(failed)?;
@@ -319,7 +319,7 @@ async fn new(shard: Rc<Shard>, call: Call<NewArgs>, port: RpcPort) -> Result<u8,
             };
             (project.workspace.clone(), ConversationTarget::Project { project_id: id.clone() }, workflow)
         }
-        None => (starting.workspace.clone(), place_of(&shard, &starting).await?, starting.workflow.clone()),
+        None => (starting.workspace.clone(), place_of(&core, &starting).await?, starting.workflow.clone()),
     };
     let start = ConversationStart {
         workspace,
@@ -330,7 +330,7 @@ async fn new(shard: Rc<Shard>, call: Call<NewArgs>, port: RpcPort) -> Result<u8,
         workflow: workflow.clone(),
     };
     let id = ConversationId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is a conversation's id");
-    let record = match shard.create_started(id.clone(), start).await.map_err(failed)? {
+    let record = match core.create_started(id.clone(), start).await.map_err(failed)? {
         Creation::Created(record) => record,
         created => return Err(failed(format!("the conversation was not created: {created:?}"))),
     };
@@ -344,7 +344,7 @@ async fn new(shard: Rc<Shard>, call: Call<NewArgs>, port: RpcPort) -> Result<u8,
     // choice its starting conversation made.
     if record.workflow != workflow {
         let patch = ConversationPatch { workflow: Some(workflow), ..ConversationPatch::default() };
-        let update = shard
+        let update = core
             .apply_patch(&record.id, patch)
             .await
             .map_err(|error| unsent("its workflow was not kept", error.to_string()))?;
@@ -359,13 +359,13 @@ async fn new(shard: Rc<Shard>, call: Call<NewArgs>, port: RpcPort) -> Result<u8,
     // The title is the brief's start until one is generated; a failed write
     // of it leaves the placeholder, as for any first message.
     if title.is_none()
-        && let Err(error) = shard
+        && let Err(error) = core
             .title_first_message(&record, &[ClientContent::Text { text: content.clone() }])
             .await
     {
         tracing::warn!(event = "conversation.title_failed", conversation = %id, %error, "a started conversation was not titled");
     }
-    deliver(&shard, &sender, &record.id, &content)
+    deliver(&core, &sender, &record.id, &content)
         .await
         .map_err(|reason| unsent("the brief was not delivered", reason))?;
     let shown = match title {
@@ -380,8 +380,8 @@ async fn new(shard: Rc<Shard>, call: Call<NewArgs>, port: RpcPort) -> Result<u8,
 /// Where `starting` works, as a new conversation is to start there: its
 /// Host and directory, the worktree it works in included, and on the Cloud
 /// its own directory, as a Fork keeps it (`fork.rs`).
-async fn place_of(shard: &Shard, starting: &ConversationRecord) -> Result<ConversationTarget, RpcError> {
-    let resolved = shard.host_shard().resolve_target(starting).await.map_err(failed)?;
+async fn place_of(core: &Core, starting: &ConversationRecord) -> Result<ConversationTarget, RpcError> {
+    let resolved = core.host_core().resolve_target(starting).await.map_err(failed)?;
     Ok(match &starting.target {
         Selection::Cloud { path: None } => ConversationTarget::Cloud {
             path: Some(resolved.path().to_owned()),
@@ -389,7 +389,7 @@ async fn place_of(shard: &Shard, starting: &ConversationRecord) -> Result<Conver
         // A worktree is named by its directory, which selects it in its
         // project: the Cloud's as a Cloud directory.
         Selection::Project { device_id, worktree: Some(worktree), .. } => {
-            let device = shard.store().device(device_id.clone()).await.map_err(failed)?;
+            let device = core.store().device(device_id.clone()).await.map_err(failed)?;
             match device {
                 Some(device) if device.kind == DeviceKind::Managed => ConversationTarget::Cloud {
                     path: Some(worktree.path.clone()),
@@ -417,19 +417,19 @@ struct ListedProject {
     directory: String,
 }
 
-async fn projects(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let kept = shard
+async fn projects(core: Rc<Core>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let kept = core
         .store().projects()
         .await
         .map_err(failed)?;
-    let workspaces = shard.store().workspaces().await.map_err(failed)?;
+    let workspaces = core.store().workspaces().await.map_err(failed)?;
     let mut projects = Vec::new();
     for project in &kept {
         projects.push(ListedProject {
             id: project.id.to_string(),
             name: project.name.clone(),
             workspace: workspace_name(&workspaces, &project.workspace),
-            host: shard.host_name(&project.device).await,
+            host: core.host_name(&project.device).await,
             directory: project.path.clone(),
         });
     }
@@ -481,20 +481,20 @@ struct ListedConversation {
 /// How many conversations a page of `list` shows.
 const LISTED_PER_PAGE: usize = 20;
 
-async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn list(core: Rc<Core>, call: Call<ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let given = call.args.words.clone().unwrap_or_default();
     let words = given.join(" ");
     // Whether the app's Search stopped at its most: more may match.
     let mut capped = false;
     let mut records = if words.trim().is_empty() {
-        shard.store().conversations(false).await.map_err(failed)?
+        core.store().conversations(false).await.map_err(failed)?
     } else {
         let query = SearchText::try_from(words).map_err(|error| refused(error))?;
         let mut records = Vec::new();
-        let results = search(shard.store(), &query, None).await.map_err(failed)?;
+        let results = search(core.store(), &query, None).await.map_err(failed)?;
         capped = results.len() >= RESULTS_MAX;
         for found in results {
-            if let Some(record) = shard.store().conversation(found.conversation_id).await.map_err(failed)?
+            if let Some(record) = core.store().conversation(found.conversation_id).await.map_err(failed)?
                 && !record.archived()
             {
                 records.push(record);
@@ -508,8 +508,8 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
     if page > pages {
         return Err(failed(format!("the list has {pages} pages")));
     }
-    let projects = shard.store().projects().await.map_err(failed)?;
-    let workspaces = shard.store().workspaces().await.map_err(failed)?;
+    let projects = core.store().projects().await.map_err(failed)?;
+    let workspaces = core.store().workspaces().await.map_err(failed)?;
     let project = |selection: &Selection| match selection {
         Selection::Project { project_id, .. } => projects
             .iter()
@@ -574,7 +574,7 @@ fn workspace_name(workspaces: &[WorkspaceRecord], id: &WorkspaceId) -> String {
         .map_or_else(|| id.to_string(), |workspace| workspace.shown_name().to_owned())
 }
 
-impl Shard {
+impl Core {
     /// A device's name, or Cloud for the user's Cloud, as Demi's commands
     /// name it.
     pub(crate) async fn host_name(&self, device: &DeviceId) -> String {

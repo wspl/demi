@@ -1,7 +1,7 @@
 //! A root compacted while idle, shortly before its prompt cache expires.
 //!
 //! The root's session says, after each answered request, when its idle
-//! compaction is due, or that it is not (`IdleCompactionDue`). The shard keeps
+//! compaction is due, or that it is not (`IdleCompactionDue`). The core keeps
 //! that time in `idle_compactions` and arms one timer per conversation for it:
 //!
 //! ```text
@@ -17,7 +17,7 @@
 //!   both, as a compaction's end does.
 //! - The time is taken from the row before it acts, so a row an answer wrote
 //!   meanwhile, with a later time, keeps its own timer.
-//! - The rows outlast a restart: the backend's start opens the shard of each
+//! - The rows outlast a restart: the backend's start opens the core of each
 //!   user who has one, which arms their timers again without opening any
 //!   conversation.
 //! - A time that came after its cache expired, as for a backend that was down
@@ -43,7 +43,7 @@ use demi_shared_types::{IDLE_COMPACTION_CONTEXT, SessionPhase};
 use demi_web_api_protocol::ids::ConversationId;
 use tokio_util::task::AbortOnDropHandle;
 
-use crate::Shard;
+use crate::Core;
 
 /// Each conversation's timer.
 #[derive(Default)]
@@ -63,7 +63,7 @@ struct Armed {
 }
 
 impl IdleCompactions {
-    /// Ends every timer, for the shard's close; the rows stay for the next
+    /// Ends every timer, for the core's close; the rows stay for the next
     /// start.
     pub(crate) fn clear(&self) {
         self.timers.borrow_mut().clear();
@@ -88,7 +88,7 @@ impl IdleCompactions {
     }
 }
 
-impl Shard {
+impl Core {
     /// The conversation's root reported when its idle compaction is due:
     /// stores the time and arms its timer, or removes both for none.
     ///
@@ -131,7 +131,7 @@ impl Shard {
         );
     }
 
-    /// Arms a timer for each of the user's stored times, as the shard opens
+    /// Arms a timer for each of the user's stored times, as the core opens
     /// at the backend's start.
     pub async fn arm_idle_compactions(self: Rc<Self>) {
         match self.store().idle_compactions().await {
@@ -251,14 +251,14 @@ impl Shard {
 /// The timer `number` of `conversation`: writes `due` when `write`, then, for
 /// a time, waits for it and compacts the root.
 async fn idle_compaction_timer(
-    shard: Weak<Shard>,
+    core: Weak<Core>,
     conversation: ConversationId,
     number: u64,
     due: Option<IdleCompaction>,
     write: bool,
 ) {
     let wait = {
-        let Some(live) = shard.upgrade() else {
+        let Some(live) = core.upgrade() else {
             return;
         };
         if write && let Err(error) = live.store().set_idle_compaction(conversation.clone(), due).await {
@@ -274,11 +274,11 @@ async fn idle_compaction_timer(
         wait
     };
     tokio::time::sleep(wait).await;
-    let Some(live) = shard.upgrade() else {
+    let Some(live) = core.upgrade() else {
         return;
     };
     // Counted among the tree's openers before the timer lets go of its
-    // handle, which the shard's close no longer aborts: the close waits for
+    // handle, which the core's close no longer aborts: the close waits for
     // it before the agent shuts down, and it opens nothing once the close
     // began.
     let _opening = live.tree_openers().token();

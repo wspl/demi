@@ -34,7 +34,7 @@ import { formatTokens } from '../ui/token-count'
  * - Its fields come in one order: the id, the name, the context window, the
  *   output limit, the thinking efforts, how its API takes thinking, the Fast
  *   tier and the files it reads. Every one is editable, the id too
- *   (`crates/backend-user-shard/src/provider_settings.rs`).
+ *   (`crates/core/src/provider_settings.rs`).
  * - How its API takes thinking shows for a compatible API's model, as the row
  *   of the API it speaks: Thinking on Messages, Interleaved Thinking on Chat
  *   Completions. A vendor's model takes it from models.dev and shows neither.

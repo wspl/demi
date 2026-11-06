@@ -78,7 +78,7 @@ use sha2::{Digest as _, Sha256};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
-use super::Shard;
+use super::Core;
 use super::media_jobs::Reader;
 use super::provider_commands::named;
 use crate::services::CoreServices;
@@ -98,7 +98,7 @@ impl Route {
         self.maker.media()
     }
 
-    /// The client the entry's calls go through on `client`, the shard's or
+    /// The client the entry's calls go through on `client`, the core's or
     /// the shared services'.
     pub fn http(&self, services: &CoreServices, client: &reqwest::Client) -> demi_provider_common::ProviderHttp {
         services.provider_registry.http_for(&self.entry, client.clone())
@@ -267,7 +267,7 @@ async fn standing(services: &CoreServices, route: &Route, model: &str) -> Result
 
 /// Each entry's models of `kind`, by entry id, newest first, for the settings
 /// page's Images, Videos and Audio sections
-/// (`crates/backend-user-shard/src/provider_settings.rs`).
+/// (`crates/core/src/provider_settings.rs`).
 ///
 /// An entry is listed whether or not its switch for the kind is on, and an alias
 /// is left out beside the model it names. An entry whose models could not be
@@ -312,16 +312,16 @@ pub async fn entry_media_models(
 
 /// The active account's label of `route`'s entry, for a user who manages
 /// it.
-async fn account_of(shard: &Shard, route: &Route) -> Option<String> {
-    let active = route.entry.active().filter(|_| Vault::manages(shard.user(), &route.entry))?;
-    let record = shard.services().vault.account(route.entry.id.clone(), active.clone()).await.ok().flatten();
+async fn account_of(core: &Core, route: &Route) -> Option<String> {
+    let active = route.entry.active().filter(|_| Vault::manages(core.user(), &route.entry))?;
+    let record = core.services().vault.account(route.entry.id.clone(), active.clone()).await.ok().flatten();
     Some(record.map_or_else(|| active.to_string(), |record| record.label))
 }
 
 /// Each route's models, in the routes' order; a route whose models could
 /// not be listed offers none and is told in `unlisted`.
 async fn offerings(
-    shard: &Shard,
+    core: &Core,
     catalog: &Catalog,
     routes: &[Route],
 ) -> (Vec<Vec<MediaModelInfo>>, Vec<MediaUnlisted>, Option<(String, MediaFailure, bool)>) {
@@ -329,11 +329,11 @@ async fn offerings(
     let mut unlisted = Vec::new();
     let mut first_failure = None;
     for route in routes {
-        match route.media().models(&route.http(shard.services(), shard.http()), catalog).await {
+        match route.media().models(&route.http(core.services(), core.http()), catalog).await {
             Ok(models) => offered.push(models),
             Err(failure) => {
                 let vendor = route.media().name().to_owned();
-                let manages = Vault::manages(shard.user(), &route.entry);
+                let manages = Vault::manages(core.user(), &route.entry);
                 unlisted.push(MediaUnlisted {
                     provider: route.entry.label.clone(),
                     refusal: vendor_refusal(failure.clone(), vendor.clone(), None, manages),
@@ -407,11 +407,11 @@ fn listed_name<'a>(listing: &[MediaModelInfo], names: &'a [String]) -> Option<&'
 /// what the catalog states of it and the entries that offer it in the
 /// order a call tries them, with why each would or would not make it
 /// now; a model no entry that is on offers is not listed.
-pub(crate) async fn media_models(shard: &Shard, kind: MediaKind) -> Result<MediaListing, PortFailure> {
-    let services = shard.services();
-    let routes = routes(services, shard.user(), kind).await.map_err(failed)?;
+pub(crate) async fn media_models(core: &Core, kind: MediaKind) -> Result<MediaListing, PortFailure> {
+    let services = core.services();
+    let routes = routes(services, core.user(), kind).await.map_err(failed)?;
     let catalog = services.media.current();
-    let (offered, unlisted, _) = offerings(shard, &catalog, &routes).await;
+    let (offered, unlisted, _) = offerings(core, &catalog, &routes).await;
     // An alias is a name of a model, not a model: a model is one row, with
     // its aliases among its facts, and every entry that offers any of its
     // names.
@@ -456,14 +456,14 @@ pub(crate) async fn media_models(shard: &Shard, kind: MediaKind) -> Result<Media
                 provider: route.entry.label.clone(),
                 provider_id: route.entry.id.as_str().to_owned(),
                 subscription: route.subscription(),
-                account: account_of(shard, route).await,
+                account: account_of(core, route).await,
                 confirmed: route.media().confirms_model(),
                 status,
             });
         }
         // A model only entries turned off offer is not listed; beside one
         // that an entry makes, those that are off say so
-        // (`crates/backend-user-shard/src/provider_settings.rs`).
+        // (`crates/core/src/provider_settings.rs`).
         let made = entries
             .iter()
             .any(|entry| !matches!(entry.status, EntryStatus::Off | EntryStatus::TurnedOff));
@@ -685,7 +685,7 @@ fn currency_name(currency: Currency) -> Option<&'static str> {
 /// An image its vendor makes as a job is kept and followed as a video's job
 /// is ([`make_video`]), and waited for within the call.
 pub(crate) async fn make_image(
-    shard: &Shard,
+    core: &Core,
     conversation: &ConversationId,
     caller: Option<&JobCaller>,
     media: &MediaCall,
@@ -697,8 +697,8 @@ pub(crate) async fn make_image(
         _ => Err(refused(MediaRefusal::Failed { message: "the job made no image".to_owned() })),
     };
     if media.resumed {
-        resumed_job(shard, conversation, media, cancel).await?;
-        return pick(wait_kept(shard, media, cancel).await?);
+        resumed_job(core, conversation, media, cancel).await?;
+        return pick(wait_kept(core, media, cancel).await?);
     }
     let request = ImageRequest {
         model: ask.model.clone(),
@@ -711,7 +711,7 @@ pub(crate) async fn make_image(
         images: ask.images.into_iter().map(input_image).collect(),
     };
     let call = Call {
-        shard,
+        core,
         conversation,
         caller,
         kind: MediaKind::Image,
@@ -725,24 +725,24 @@ pub(crate) async fn make_image(
     };
     match answered {
         Answered::Made(image) => Ok(image),
-        Answered::Kept => pick(wait_kept(shard, media, cancel).await?),
+        Answered::Kept => pick(wait_kept(core, media, cancel).await?),
     }
 }
 
 /// What a call's request answered: what it made, or the job a vendor
-/// took, which the shard keeps and follows.
+/// took, which the core keeps and follows.
 enum Answered<T> {
     Made(T),
     Kept,
 }
 
-/// What the job the shard keeps for `media` made, once it ends. A stop of
-/// the call ends the wait ([`Shard::watch_call_stop`] says what becomes of
+/// What the job the core keeps for `media` made, once it ends. A stop of
+/// the call ends the wait ([`Core::watch_call_stop`] says what becomes of
 /// the job).
-async fn wait_kept(shard: &Shard, media: &MediaCall, cancel: &CancellationToken) -> Result<Made, PortFailure> {
+async fn wait_kept(core: &Core, media: &MediaCall, cancel: &CancellationToken) -> Result<Made, PortFailure> {
     let of = JobOfCall { call: media.id.clone(), ordinal: media.ordinal };
     tokio::select! {
-        made = shard.collected(of) => made,
+        made = core.collected(of) => made,
         () = cancel.cancelled() => Err(PortError::Ended("the call was stopped".into()).into()),
     }
 }
@@ -755,13 +755,13 @@ async fn wait_kept(shard: &Shard, media: &MediaCall, cancel: &CancellationToken)
 /// ledger, goes first to that call's entry, which continues its job where the
 /// vendor keeps it.
 ///
-/// The job, once the vendor took it, is kept and followed by the shard
+/// The job, once the vendor took it, is kept and followed by the core
 /// (`super::media_jobs`): the steps, dropped, stop only the call's waiting.
 /// A stop of the call cancels the job where the vendor can, unless the
-/// shard is closing, and a call the runner sends again after a restart
+/// core is closing, and a call the runner sends again after a restart
 /// follows the job its first asked for.
 pub(crate) async fn make_video(
-    shard: &Shard,
+    core: &Core,
     conversation: &ConversationId,
     caller: Option<&JobCaller>,
     call: &MediaCall,
@@ -770,8 +770,8 @@ pub(crate) async fn make_video(
 ) -> Result<(AskedVideo, VideoJob), PortFailure> {
     let of = JobOfCall { call: call.id.clone(), ordinal: call.ordinal };
     if call.resumed {
-        let asked = resumed_video(shard, conversation, call, cancel).await?;
-        return Ok((asked, shard.collect_video(of)));
+        let asked = resumed_video(core, conversation, call, cancel).await?;
+        return Ok((asked, core.collect_video(of)));
     }
     let request = VideoRequest {
         model: ask.model.clone(),
@@ -793,7 +793,7 @@ pub(crate) async fn make_video(
         Some(source) => {
             let bytes = source.bytes.into_bytes();
             let digest = hex::encode(Sha256::digest(&bytes));
-            let made = match shard.store().made_video(digest).await {
+            let made = match core.store().made_video(digest).await {
                 Ok(made) => made,
                 // The file is sent instead, as for a video no call made.
                 Err(error) => {
@@ -810,7 +810,7 @@ pub(crate) async fn make_video(
         None => None,
     };
     let making = Call {
-        shard,
+        core,
         conversation,
         caller,
         kind: MediaKind::Video,
@@ -822,16 +822,16 @@ pub(crate) async fn make_video(
         asked = making.make(&asking) => asked?,
         () = cancel.cancelled() => return Err(PortError::Ended("the call was stopped".into()).into()),
     };
-    Ok((asked, shard.collect_video(of)))
+    Ok((asked, core.collect_video(of)))
 }
 
 /// The job of `conversation` a call sent again after a restart asked for,
 /// followed, and which the call can come back to once more. A job its call
 /// collected already is not asked again: the restart came after the file
 /// was handed over.
-async fn resumed_job(shard: &Shard, conversation: &ConversationId, media: &MediaCall, cancel: &CancellationToken) -> Result<MediaJob, PortFailure> {
+async fn resumed_job(core: &Core, conversation: &ConversationId, media: &MediaCall, cancel: &CancellationToken) -> Result<MediaJob, PortFailure> {
     let of = JobOfCall { call: media.id.clone(), ordinal: media.ordinal };
-    let job = match shard.store().media_job(of).await.map_err(failed)? {
+    let job = match core.store().media_job(of).await.map_err(failed)? {
         Some(job) if job.usage.conversation == *conversation => job,
         _ => {
             return Err(refused(MediaRefusal::Failed {
@@ -840,18 +840,18 @@ async fn resumed_job(shard: &Shard, conversation: &ConversationId, media: &Media
         }
     };
     if job.status == MediaJobStatus::Running {
-        shard.follow_media_job(job.clone(), None);
+        core.follow_media_job(job.clone(), None);
     }
-    shard.watch_call_stop(media, cancel.clone());
+    core.watch_call_stop(media, cancel.clone());
     media.resumable().await;
     Ok(job)
 }
 
 /// The video's job a call sent again after a restart asked for, as its
 /// first call was told of it.
-async fn resumed_video(shard: &Shard, conversation: &ConversationId, media: &MediaCall, cancel: &CancellationToken) -> Result<AskedVideo, PortFailure> {
-    let services = shard.services();
-    let job = resumed_job(shard, conversation, media, cancel).await?;
+async fn resumed_video(core: &Core, conversation: &ConversationId, media: &MediaCall, cancel: &CancellationToken) -> Result<AskedVideo, PortFailure> {
+    let services = core.services();
+    let job = resumed_job(core, conversation, media, cancel).await?;
     let provider = match services.vault.entry(job.usage.provider.clone()).await {
         Ok(Some(entry)) => entry.label,
         _ => job.usage.provider.to_string(),
@@ -870,7 +870,7 @@ async fn resumed_video(shard: &Shard, conversation: &ConversationId, media: &Med
 /// Makes the audio `ask` names for `conversation`, as [`make_image`] makes
 /// an image: one request, or a job kept, answered within the call.
 pub(crate) async fn make_audio(
-    shard: &Shard,
+    core: &Core,
     conversation: &ConversationId,
     caller: Option<&JobCaller>,
     media: &MediaCall,
@@ -882,8 +882,8 @@ pub(crate) async fn make_audio(
         _ => Err(refused(MediaRefusal::Failed { message: "the job made no audio".to_owned() })),
     };
     if media.resumed {
-        resumed_job(shard, conversation, media, cancel).await?;
-        return pick(wait_kept(shard, media, cancel).await?);
+        resumed_job(core, conversation, media, cancel).await?;
+        return pick(wait_kept(core, media, cancel).await?);
     }
     let request = AudioRequest {
         kind: ask.kind,
@@ -904,7 +904,7 @@ pub(crate) async fn make_audio(
         },
     };
     let call = Call {
-        shard,
+        core,
         conversation,
         caller,
         kind: MediaKind::Audio,
@@ -918,7 +918,7 @@ pub(crate) async fn make_audio(
     };
     match answered {
         Answered::Made(audio) => Ok(audio),
-        Answered::Kept => pick(wait_kept(shard, media, cancel).await?),
+        Answered::Kept => pick(wait_kept(core, media, cancel).await?),
     }
 }
 
@@ -926,13 +926,13 @@ pub(crate) async fn make_audio(
 /// take now lists them, read when asked; a listing is no call, and writes
 /// no ledger row.
 pub(crate) async fn audio_voices(
-    shard: &Shard,
+    core: &Core,
     conversation: &ConversationId,
     model: String,
     search: Option<String>,
     cancel: &CancellationToken,
 ) -> Result<AudioVoices, PortFailure> {
-    let call = Call { shard, conversation, caller: None, kind: MediaKind::Audio, model, provider: None };
+    let call = Call { core, conversation, caller: None, kind: MediaKind::Audio, model, provider: None };
     let asking = VoicesCall { search };
     tokio::select! {
         voices = call.make(&asking) => voices,
@@ -949,7 +949,7 @@ fn input_image(image: demi_plugin_interface::ImageInput) -> InputImage {
 
 /// One call of a kind: which entry makes it, and the account within it.
 struct Call<'a> {
-    shard: &'a Shard,
+    core: &'a Core,
     conversation: &'a ConversationId,
     caller: Option<&'a JobCaller>,
     kind: MediaKind,
@@ -961,17 +961,17 @@ struct Call<'a> {
 
 impl Call<'_> {
     async fn make<A: Asking>(self, asking: &A) -> Result<A::Made, PortFailure> {
-        let shard = self.shard;
+        let core = self.core;
         let kind = self.kind;
         let model = self.model.clone();
-        let services = shard.services();
-        let routes = routes(services, shard.user(), kind).await.map_err(failed)?;
+        let services = core.services();
+        let routes = routes(services, core.user(), kind).await.map_err(failed)?;
         let agent = self.caller.and_then(|caller| {
-            let node = shard.agent().node(&root_of(self.conversation), &caller.node)?;
+            let node = core.agent().node(&root_of(self.conversation), &caller.node)?;
             Some(node.record().number)
         });
         let catalog = services.media.current();
-        let (offered, _, unread) = offerings(shard, &catalog, &routes).await;
+        let (offered, _, unread) = offerings(core, &catalog, &routes).await;
         // Each entry that offers any name of the model, with the name it is
         // sent: the one asked when it lists it, else another of the model's.
         let names = model_names(&catalog, kind, &model);
@@ -1008,7 +1008,7 @@ impl Call<'_> {
                     Err(message) => {
                         // An entry that makes none of the kind is named as
                         // one that does not offer the model.
-                        let all = services.vault.entries_for(shard.user()).await.map_err(failed)?;
+                        let all = services.vault.entries_for(core.user()).await.map_err(failed)?;
                         let Ok(other) = named(&all, name) else {
                             return Err(failed(message));
                         };
@@ -1070,7 +1070,7 @@ impl Call<'_> {
             // The entry as it is now: one turned off, deleted or signed out
             // while an earlier entry's request was under way is not sent to,
             // and its key is the one it has now.
-            let Some(route) = current(services, shard.user(), candidate).await.map_err(failed)? else {
+            let Some(route) = current(services, core.user(), candidate).await.map_err(failed)? else {
                 continue;
             };
             let name = sent(&route);
@@ -1082,10 +1082,10 @@ impl Call<'_> {
                 .cloned()
                 .unwrap_or_else(|| MediaModelInfo::id(&name));
             let making = Making {
-                shard,
+                core,
                 catalog: &catalog,
                 listed,
-                manages: Vault::manages(shard.user(), &route.entry),
+                manages: Vault::manages(core.user(), &route.entry),
                 turn: self.caller.and_then(|caller| caller.turn.clone()),
                 route: &route,
                 model: model_of(&name),
@@ -1186,7 +1186,7 @@ impl Asking for ImageCall {
             confirmed: images.confirms_model(),
         };
         if let Some(jobs) = images.jobs() {
-            let asked_at = making.shard.services().clock.now();
+            let asked_at = making.core.services().clock.now();
             let asked = jobs.ask(&making.http(), making.catalog, request).instrument(span.clone()).await;
             row.observe(&asked.observed);
             let answer = Made::Image { image: answer };
@@ -1280,7 +1280,7 @@ impl Asking for AudioCall {
             cost: None,
         };
         if let Some(jobs) = audio.jobs(making.catalog, request.kind, &request.model) {
-            let asked_at = making.shard.services().clock.now();
+            let asked_at = making.core.services().clock.now();
             let of = request.kind;
             let asked = jobs.ask(&making.http(), making.catalog, request).instrument(span.clone()).await;
             row.observe(&asked.observed);
@@ -1332,9 +1332,9 @@ struct Calling {
 /// marked resumable, and its open usage `row`, which the follower writes at
 /// the job's end. An ask the vendor refused writes the row now.
 ///
-/// The keeping is the shard's task, which the call's stop does not cut
+/// The keeping is the core's task, which the call's stop does not cut
 /// short: a stop that comes meanwhile leaves the job to nobody, as one that
-/// comes later does ([`Shard::watch_call_stop`]).
+/// comes later does ([`Core::watch_call_stop`]).
 async fn keep_job(
     making: &Making<'_>,
     maker: &MakerOf,
@@ -1369,21 +1369,21 @@ async fn keep_job(
         follow: Follow { vendor: maker.media().name().to_owned(), label, manages: making.manages, answer },
         status: MediaJobStatus::Running,
     };
-    let shard = making.shard.this();
+    let core = making.core.this();
     let reader = Reader { maker: maker.clone(), http: making.http() };
     let calling = calling.clone();
     let (done, kept_now) = tokio::sync::oneshot::channel();
-    making.shard.tasks().spawn_local(
+    making.core.tasks().spawn_local(
         async move {
             // A job no row keeps is followed all the same, so its cost is
             // recorded; its call cannot collect it.
-            match shard.store().insert_media_job(kept.clone()).await {
+            match core.store().insert_media_job(kept.clone()).await {
                 Ok(true) => {}
                 Ok(false) => tracing::info!(event = "media_job.unkept", cause = "conversation_gone", "a media job was not kept"),
                 Err(error) => tracing::warn!(event = "media_job.unkept", %error, "a media job was not kept"),
             }
-            shard.follow_media_job(kept, Some(reader));
-            shard.watch_call_stop(&calling.media, calling.stop.clone());
+            core.follow_media_job(kept, Some(reader));
+            core.watch_call_stop(&calling.media, calling.stop.clone());
             calling.media.resumable().await;
             // A call that stopped meanwhile waits for nothing.
             let _ = done.send(());
@@ -1484,7 +1484,7 @@ impl Asking for VideoCall {
         label: Option<String>,
     ) -> Result<AskedVideo, MediaFailure> {
         let videos = maker.videos().expect("a video call's maker makes videos");
-        let services = making.shard.services();
+        let services = making.core.services();
         let (mut row, span) = making.open_row("video", account);
         let mut request = VideoRequest { model: making.name.clone(), ..self.request.clone() };
         // A new video asked no length is the shortest the model takes, as
@@ -1549,7 +1549,7 @@ fn video_takes<'a>(making: &'a Making<'_>, videos: &dyn VideoMaker) -> Option<&'
 /// rotation, and another at once when that one is used up; a key's entry
 /// has no account.
 struct Making<'a> {
-    shard: &'a Shard,
+    core: &'a Core,
     /// What the model takes, as the call's catalog says.
     catalog: &'a Arc<Catalog>,
     /// The model as the entry's listing names it.
@@ -1570,15 +1570,15 @@ struct Making<'a> {
 }
 
 impl Making<'_> {
-    /// The client the call's requests go through: the shard's, reaching
+    /// The client the call's requests go through: the core's, reaching
     /// the entry owner's devices.
     fn http(&self) -> demi_provider_common::ProviderHttp {
-        self.route.http(self.shard.services(), self.shard.http())
+        self.route.http(self.core.services(), self.core.http())
     }
 
     async fn run<A: Asking>(self, asking: &A) -> Result<A::Made, PortFailure> {
         let vendor = self.route.media().name().to_owned();
-        let made = on_accounts(self.shard, self.route, &self.model, self.manages, async |maker, account, label| {
+        let made = on_accounts(self.core, self.route, &self.model, self.manages, async |maker, account, label| {
             asking.check(&self, maker).map_err(Unmade::Refusal)?;
             asking
                 .send(&self, maker, account, label.clone())
@@ -1597,7 +1597,7 @@ impl Making<'_> {
     /// The ledger row of a request sent now on `account`, or with the
     /// entry's key, open until the call ends, and its span.
     fn open_row(&self, purpose: &'static str, account: Option<&CredentialId>) -> (OpenRow, tracing::Span) {
-        let services = self.shard.services();
+        let services = self.core.services();
         let entry = &self.route.entry;
         let request_id = uuid::Uuid::new_v4().to_string();
         let span = tracing::info_span!(
@@ -1605,7 +1605,7 @@ impl Making<'_> {
             purpose,
             provider_request_id = %request_id,
             conversation = %self.conversation,
-            user = %self.shard.user(),
+            user = %self.core.user(),
             turn = self.turn.as_ref().map(tracing::field::display),
             node = self.agent,
             account = account.map(tracing::field::display),
@@ -1639,7 +1639,7 @@ impl Making<'_> {
             system_hash: None,
             tools_hash: None,
         };
-        (OpenRow { row: Some(row), shard: self.shard.this() }, span)
+        (OpenRow { row: Some(row), core: self.core.this() }, span)
     }
 }
 
@@ -1659,7 +1659,7 @@ pub enum Unmade {
 /// failure marks it. `send` is told the account and, when `manages`, its
 /// label.
 pub async fn on_accounts<T>(
-    shard: &Shard,
+    core: &Core,
     route: &Route,
     model: &Model,
     manages: bool,
@@ -1671,7 +1671,7 @@ pub async fn on_accounts<T>(
     let entry = &route.entry;
     let vendor = route.media().name().to_owned();
     let failed = |error: &dyn std::fmt::Display| Unmade::Refusal(MediaRefusal::Failed { message: error.to_string() });
-    let services = shard.services();
+    let services = core.services();
     let provider_registry = &services.provider_registry;
     let rotation = entry.rotation();
     // The accounts that refused the call, which it does not ask again.
@@ -1686,7 +1686,7 @@ pub async fn on_accounts<T>(
         };
         // Another account is sent to only while the entry may still
         // make its kind.
-        if !tried.is_empty() && current(services, shard.user(), route).await.map_err(|error| failed(&error))?.is_none() {
+        if !tried.is_empty() && current(services, core.user(), route).await.map_err(|error| failed(&error))?.is_none() {
             return Err(used_up(last_moment, &last_trace));
         }
         let (account, running) = match rotation {
@@ -1782,7 +1782,7 @@ pub(crate) fn vendor_refusal(failure: MediaFailure, vendor: String, account: Opt
 /// dropped before it ends.
 struct OpenRow {
     row: Option<UsageRow>,
-    shard: Rc<Shard>,
+    core: Rc<Core>,
 }
 
 impl OpenRow {
@@ -1792,7 +1792,7 @@ impl OpenRow {
 
     /// How long the call has lasted, in milliseconds.
     fn ms(&mut self) -> u64 {
-        let now = self.shard.services().clock.now().as_millisecond();
+        let now = self.core.services().clock.now().as_millisecond();
         let started = self.row().started_at.as_millisecond();
         u64::try_from(now - started).unwrap_or(0)
     }
@@ -1814,9 +1814,9 @@ impl OpenRow {
     /// Writes the row, ended now.
     async fn write(&mut self) {
         let mut row = self.row.take().expect("a call's row is written once");
-        row.ended_at = self.shard.services().clock.now();
+        row.ended_at = self.core.services().clock.now();
         let lost = (row.conversation.clone(), row.provider.clone(), row.model.clone());
-        if let Err(error) = self.shard.store().append_usage(row).await {
+        if let Err(error) = self.core.store().append_usage(row).await {
             // The row is lost; what the call made still comes back
             // (`crates/core-store/src/usage.rs`).
             tracing::warn!(
@@ -1834,8 +1834,8 @@ impl OpenRow {
 impl Drop for OpenRow {
     fn drop(&mut self) {
         if let Some(mut row) = self.row.take() {
-            row.ended_at = self.shard.services().clock.now();
-            let store = self.shard.store().clone();
+            row.ended_at = self.core.services().clock.now();
+            let store = self.core.store().clone();
             let lost = (row.conversation.clone(), row.provider.clone(), row.model.clone());
             // Nothing awaits a dropped call any more.
             tokio::spawn(async move {

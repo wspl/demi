@@ -15,9 +15,9 @@
 //!   it made, which cancels a video's job left unfinished
 //!   (`demi_core::lent_media`).
 //!
-//! A borrowed session runs on the shard of the key's maker, on the runtime a
+//! A borrowed session runs on the core of the key's maker, on the runtime a
 //! conversation of theirs would have, unmetered
-//! (`crates/backend-user-shard/src/conversation/providers.rs`).
+//! (`crates/core/src/conversation/providers.rs`).
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -44,7 +44,7 @@ use demi_core::conversation::{lent_limits, lent_runtime};
 use demi_core::provider_settings::ProviderRefusal;
 use crate::server_starter::ServerCore;
 use crate::services::Services;
-use demi_core::Shard;
+use demi_core::Core;
 
 /// How long a key nobody used keeps working: a key pasted into a chat and
 /// forgotten should not stay valid, and a week is how long an invite link
@@ -242,7 +242,7 @@ pub trait ProviderSharing {
 ;
 }
 
-impl ProviderSharing for Shard {
+impl ProviderSharing for Core {
     async fn lent(self: Rc<Self>, borrowing: Borrowing) -> Result<Lent, String> {
         let services = self.server_services().clone();
         let registry = &services.provider_registry;

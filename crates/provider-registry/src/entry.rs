@@ -24,7 +24,7 @@ pub struct ProviderEntry {
     pub credential: EntryCredential,
     pub created_at: Timestamp,
     /// Whether the entry makes images when its provider can: its Image
-    /// Generation switch (`crates/backend-user-shard/src/provider_settings.rs`).
+    /// Generation switch (`crates/core/src/provider_settings.rs`).
     pub image_generation: bool,
     /// Whether the entry makes videos when its provider can: its Video
     /// Generation switch.
@@ -45,7 +45,7 @@ pub struct ProviderEntry {
     /// The prompt cache lifetime its requests ask for; none to send none.
     pub cache_ttl: Option<CacheTtl>,
     /// The owner's device an API-key entry's requests go out from
-    /// (`crates/backend-user-shard/src/shard/device_requests.rs`); none for
+    /// (`crates/core/src/device_requests.rs`); none for
     /// the server.
     pub through_device: Option<DeviceId>,
 }
@@ -158,7 +158,7 @@ impl ProviderEntry {
     }
 
     /// What the entry lacks to infer, in the order the page lists it
-    /// (`crates/backend-user-shard/src/provider_settings.rs`):
+    /// (`crates/core/src/provider_settings.rs`):
     ///
     /// - A vendor entry's key.
     /// - A compatible entry's endpoint. Its key is optional.

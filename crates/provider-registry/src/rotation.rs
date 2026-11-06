@@ -156,7 +156,7 @@ impl AccountRotation {
     /// Announces that the agents of `entry` may take another account, as
     /// when its rotation changed or an account of it was removed or signed out.
     pub fn changed(&self, entry: &ProviderId) {
-        // With no follower, as before any user's shard started, no agent
+        // With no follower, as before any user's core started, no agent
         // holds an account to take again.
         let _ = self.changes.send(entry.clone());
     }

@@ -1,7 +1,7 @@
 //! The Host contract (`crates/runner-host/src/lib.rs`): an execution target's
 //! filesystem and processes, as the agent, the providers and the backend
-//! reach them. A Host is shard-local, so its futures and streams of control
-//! are not `Send`; file contents are, so a byte path can leave the shard.
+//! reach them. A Host is core-local, so its futures and streams of control
+//! are not `Send`; file contents are, so a byte path can leave the core.
 
 use std::{collections::BTreeMap, fmt, sync::Arc};
 

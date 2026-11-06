@@ -1,7 +1,7 @@
-//! The services every shard is given (`crates/backend/src/lib.rs`).
+//! The services every core is given (`crates/backend/src/lib.rs`).
 //!
 //! They span users, or are needed before the user is known. The edge and every
-//! shard share them, over the storage they are opened on.
+//! core share them, over the storage they are opened on.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -63,7 +63,7 @@ use crate::tuning::PageTuning;
 const CONTROL_DATABASE: &str = "control.sqlite";
 
 /// The services that span users, or that are needed before the user is
-/// known. The edge and every shard share them.
+/// known. The edge and every core share them.
 pub struct Services {
     /// What the users' cores share.
     pub core: Arc<CoreServices>,
@@ -86,7 +86,7 @@ pub struct Services {
     pub log: ServerLog,
     /// How the sockets to a page are timed.
     pub pages: PageTuning,
-    /// The command packages each shard's catalog is built from.
+    /// The command packages each core's catalog is built from.
     pub native: NativeCatalog,
     /// The machine manager's client, the Cloud capacity across users and
     /// the Cloud's settings.
@@ -126,7 +126,7 @@ pub struct ProviderSetup {
     pub media_catalog: Arc<demi_provider_common::media_catalog::Catalog>,
     /// The Claude Code distribution.
     pub claude_releases: url::Url,
-    /// Where the Claude Code machine is, which the master's shard puts there
+    /// Where the Claude Code machine is, which the master's core puts there
     /// as it starts and the Claude Code family reads too.
     pub claude_machine: MachineSlot,
     pub logins: LoginTiming,

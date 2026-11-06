@@ -71,7 +71,7 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::HostShard;
+use crate::HostCore;
 use crate::access::{ConversationHost, HostAccessError};
 use crate::host_commands::{conversation_of, verb};
 
@@ -134,8 +134,8 @@ struct DownloadedAttachment {
     path: String,
 }
 
-/// The `attachment` group, whose handlers act in `shard`.
-pub fn attachment_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
+/// The `attachment` group, whose handlers act in `core`.
+pub fn attachment_group(core: Weak<dyn HostCore>) -> GroupBuilder {
     GroupBuilder::new("attachment", SUMMARY)
         .index_entry(ENTRY)
         .leaf(
@@ -145,7 +145,7 @@ pub fn attachment_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
                 .json_output::<Vec<UploadedAttachment>>()
                 .success_output("a table of the files uploaded: each one's attachment id, such as a3, its media type, size and path")
                 .failure_output("a file that cannot be uploaded writes its path and why to stderr; the others are still uploaded, and the command exits 1")
-                .bind(TypedRpc::new(verb(shard.clone(), upload))),
+                .bind(TypedRpc::new(verb(core.clone(), upload))),
         )
         .leaf(
             LeafBuilder::rpc("download", DOWNLOAD_SUMMARY)
@@ -154,12 +154,12 @@ pub fn attachment_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
                 .json_output::<Vec<DownloadedAttachment>>()
                 .success_output("a table of the attachments written: each one's id and path")
                 .failure_output("an attachment that cannot be written writes its id and why to stderr; the others are still written, and the command exits 1")
-                .bind(TypedRpc::new(verb(shard, download))),
+                .bind(TypedRpc::new(verb(core, download))),
         )
 }
 
 async fn download(
-    shard: Rc<dyn HostShard>,
+    core: Rc<dyn HostCore>,
     call: Call<DownloadArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -172,7 +172,7 @@ async fn download(
     let mut failed = false;
     for id in args.id {
         let fetched = tokio::select! {
-            fetched = fetch(&*shard, &conversation, &device, &invocation.cwd, directory, &id) => fetched,
+            fetched = fetch(&*core, &conversation, &device, &invocation.cwd, directory, &id) => fetched,
             () = port.cancelled() => return Ok(130),
         };
         match fetched {
@@ -206,7 +206,7 @@ async fn download(
 /// on the conversation's Host on `device`, and answers the name it took.
 /// Answers why when it cannot.
 async fn fetch(
-    shard: &dyn HostShard,
+    core: &dyn HostCore,
     conversation: &ConversationId,
     device: &DeviceId,
     cwd: &str,
@@ -228,7 +228,7 @@ async fn fetch(
         format!("the conversation has no attachment {id}")
     };
     let number: AttachmentNumber = id.parse().map_err(|_| unknown())?;
-    let row = shard
+    let row = core
         .conversation_db(conversation)
         .read(move |connection| conversation_attachments::read(connection, number))
         .await
@@ -236,7 +236,7 @@ async fn fetch(
         .flatten()
         .ok_or_else(unknown)?;
     resolved("found");
-    let bytes = shard
+    let bytes = core
         .blobs()
         .get(&row.blob)
         .await
@@ -246,7 +246,7 @@ async fn fetch(
         exists: WhenExists::Rename,
     };
     // The admission waits only as long as the call: a stopped call drops it.
-    shard
+    core
         .with_host(conversation, Some(device), &CancellationToken::new(), async |host| {
             let paths = host.host.identity().paths;
             let path = paths.join(&paths.resolve(cwd, directory), &row.name);
@@ -260,7 +260,7 @@ async fn fetch(
 }
 
 async fn upload(
-    shard: Rc<dyn HostShard>,
+    core: Rc<dyn HostCore>,
     call: Call<UploadArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -275,7 +275,7 @@ async fn upload(
     let mut failed = false;
     for path in args.path {
         let stored = tokio::select! {
-            stored = store(&*shard, &conversation, &device, &invocation.cwd, node.clone(), &path, Purpose::Upload) => stored,
+            stored = store(&*core, &conversation, &device, &invocation.cwd, node.clone(), &path, Purpose::Upload) => stored,
             () = port.cancelled() => return Ok(130),
         };
         match stored {
@@ -399,7 +399,7 @@ impl From<HostAccessError> for CopyError {
 /// it, or answers why it cannot. Each admission waits only as long as the
 /// call: a stopped call drops it.
 async fn on_host<T>(
-    shard: &dyn HostShard,
+    core: &dyn HostCore,
     conversation: &ConversationId,
     device: &DeviceId,
     purpose: Purpose,
@@ -407,8 +407,8 @@ async fn on_host<T>(
 ) -> Result<T, CopyError> {
     let cancel = CancellationToken::new();
     match purpose {
-        Purpose::Upload => Ok(shard.with_host(conversation, Some(device), &cancel, operation).await?),
-        Purpose::Picture => shard
+        Purpose::Upload => Ok(core.with_host(conversation, Some(device), &cancel, operation).await?),
+        Purpose::Picture => core
             .look_at_reachable_host(conversation, device, &cancel, operation)
             .await?
             .ok_or_else(|| {
@@ -423,14 +423,14 @@ async fn on_host<T>(
 /// it is `device`; a file that is no image, or is over the limit of an
 /// attachment, is refused. Answers why when it cannot.
 pub async fn copy_picture(
-    shard: &dyn HostShard,
+    core: &dyn HostCore,
     conversation: &ConversationId,
     device: &DeviceId,
     cwd: &str,
     node: NodeId,
     path: &str,
 ) -> Result<String, PictureFailure> {
-    let row = store(shard, conversation, device, cwd, Some(node), path, Purpose::Picture)
+    let row = store(core, conversation, device, cwd, Some(node), path, Purpose::Picture)
         .await
         .map_err(|error| {
             tracing::warn!(event = "reply_picture.copy_failed", %conversation, %path, %error, "a picture of a reply was not copied");
@@ -447,7 +447,7 @@ pub async fn copy_picture(
 /// The Host hashes the file first, and sends its bytes only when the namespace
 /// does not hold them already. Answers why when it cannot.
 async fn store(
-    shard: &dyn HostShard,
+    core: &dyn HostCore,
     conversation: &ConversationId,
     device: &DeviceId,
     cwd: &str,
@@ -455,7 +455,7 @@ async fn store(
     path: &str,
     purpose: Purpose,
 ) -> Result<AttachmentRow, CopyError> {
-    let hash = on_host(shard, conversation, device, purpose, async |host| {
+    let hash = on_host(core, conversation, device, purpose, async |host| {
         host.host
             .hash_file_in(cwd, path, ATTACHMENT_MAX_BYTES as u64)
             .await
@@ -472,7 +472,7 @@ async fn store(
         }
         FileHash::TooLarge { size } => return Err(CopyError::TooLarge { size }),
     };
-    let blobs = shard.blobs();
+    let blobs = core.blobs();
     let held = blobs
         .opening(&sha256)
         .await
@@ -486,7 +486,7 @@ async fn store(
         None => {
             // A copy of the same bytes under way is waited for, not made twice.
             let read = || async move {
-                on_host(shard, conversation, device, purpose, async |host| {
+                on_host(core, conversation, device, purpose, async |host| {
                     read(&host.host, cwd, path).await
                 })
                 .await?
@@ -525,12 +525,12 @@ async fn store(
         }),
     };
     let announce = {
-        let shard = shard.this();
+        let core = core.this();
         let conversation = conversation.clone();
-        move || shard.summary_changed(&conversation)
+        move || core.summary_changed(&conversation)
     };
     let node_id = attachment.node.clone();
-    let stored = commit(shard.tasks(), shard.conversation_db(conversation), attachment, Numbering::SameBytes, announce)
+    let stored = commit(core.tasks(), core.conversation_db(conversation), attachment, Numbering::SameBytes, announce)
         .await
         .map_err(CopyError::Unreadable)?;
     tracing::info!(
@@ -578,7 +578,7 @@ pub(crate) enum Numbering {
 /// [`Numbering::SameBytes`] an attachment that has its blob already is
 /// answered instead, and nothing is written or announced.
 ///
-/// The write and the announcement run in a task of `tasks`, which the shard's
+/// The write and the announcement run in a task of `tasks`, which the core's
 /// close waits for. A call stopped once the write is on its way, whose future
 /// is dropped, cuts neither, since the database's thread commits a write it was
 /// handed whoever still waits for it. So a stored attachment is always

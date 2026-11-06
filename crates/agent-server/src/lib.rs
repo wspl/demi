@@ -1,4 +1,4 @@
-//! The agent server: the agents of every conversation of one user shard.
+//! The agent server: the agents of every conversation of one user core.
 //!
 //! An [`AgentServer`] holds each open conversation's [`Tree`]. A tree's
 //! [`Node`]s each run an [`AgentSession`](demi_agent_session::AgentSession)
@@ -7,7 +7,7 @@
 //! decoded frames of one conversation lane, which the backend owns.
 //!
 //! ```text
-//! web app (ConversationClient)    backend: the user's shard           Host
+//! web app (ConversationClient)    backend: the user's core           Host
 //!   send ---------------------->  conversation lane
 //!                                   -> Connection -> Tree -> root Node
 //!                                        provider request;
@@ -38,7 +38,7 @@
 //!   a change reaches the next spawn.
 //! - A node's system prompt is rendered once, when the node is assembled.
 //!
-//! Everything here runs on the user's shard, a single-threaded runtime: nothing
+//! Everything here runs on the user's core, a single-threaded runtime: nothing
 //! is `Send`, and shared state sits in `Rc` and `RefCell` behind synchronous
 //! methods, so no borrow crosses an await.
 //!

@@ -1,4 +1,4 @@
-//! The agent server of one user shard.
+//! The agent server of one user core.
 //!
 //! It holds each open conversation's live tree and hands out the connections
 //! that attach conversation lanes to them. The backend owns the sockets,
@@ -52,7 +52,7 @@ use crate::Node;
 /// runtimes its sessions infer with.
 ///
 /// The backend holds each conversation's selection in its record, resolves the
-/// provider entry a selection names and builds the runtime on the shard that
+/// provider entry a selection names and builds the runtime on the core that
 /// will own it. The agent never sees the provider itself.
 pub trait ProviderResolver {
     /// The model selection the conversation `root`'s tree opens with: the
@@ -251,7 +251,7 @@ pub trait AgentsSource {
 #[error("the conversation's agents are working")]
 pub struct Working;
 
-/// The agent server of one user shard.
+/// The agent server of one user core.
 pub struct AgentServer<H: HostResolver> {
     deps: ServerDeps<H>,
     /// Each open conversation's live tree, by its root.

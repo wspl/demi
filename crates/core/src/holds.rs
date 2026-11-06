@@ -9,7 +9,7 @@ use demi_core_host_access::transfer::TransfersClosed;
 use demi_shared_gates::Reservation;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 
-use super::Shard;
+use super::Core;
 
 /// A conversation an idle stop holds: its tree and its file gate reserved.
 /// The fields drop in order, the tree first.
@@ -27,7 +27,7 @@ pub struct ResetHold {
     _tree: Option<Reservation>,
 }
 
-impl Shard {
+impl Core {
     /// The providers whose processes the conversation's tree runs.
     pub fn tree_providers(&self, conversation: &ConversationId) -> Vec<ProviderId> {
         let Some(tree) = self.agent.tree(&root_of(conversation)) else {

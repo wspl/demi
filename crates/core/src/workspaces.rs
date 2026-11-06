@@ -1,4 +1,4 @@
-//! The user's workspaces as the shard changes them: a deletion that deletes
+//! The user's workspaces as the core changes them: a deletion that deletes
 //! the workspace's conversations first, and moves into a workspace, whose
 //! changes the user's pages and the conversations' sockets hear of.
 
@@ -7,7 +7,7 @@ use demi_core_store::workspaces::{MoveRefusal, WorkspaceDeletion};
 use demi_core_sync::Part;
 use demi_web_api_protocol::ids::{ConversationId, ProjectId, WorkspaceId};
 
-use super::Shard;
+use super::Core;
 
 /// Why a workspace's deletion was refused.
 #[derive(Debug, thiserror::Error)]
@@ -25,7 +25,7 @@ pub enum WorkspaceRefusal {
     Storage(#[from] StorageError),
 }
 
-impl Shard {
+impl Core {
     /// Deletes the user's workspace `id`: each of its conversations, archived
     /// ones included, as a deletion of the conversation deletes it, then its
     /// projects and the workspace. The last workspace is refused before

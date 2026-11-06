@@ -1,4 +1,4 @@
-//! Shares on the owner's shard.
+//! Shares on the owner's core.
 //!
 //! The owner makes a share, makes a conversation's share's list again and
 //! removes a share. Each is announced on the owner's pages through the
@@ -24,7 +24,7 @@ use demi_web_api_protocol::shares::{ShareTarget, ShareTranscriptQuery};
 use rand::TryRngCore as _;
 use rand::rngs::OsRng;
 
-use demi_core::Shard;
+use demi_core::Core;
 
 use crate::server_starter::ServerCore;
 
@@ -132,7 +132,7 @@ pub trait ConversationSharing {
     async fn share_blob(&self, share: &ShareRecord, blob: BlobRef) -> Result<Option<Bytes>, ShareBlobError>;
 }
 
-impl ConversationSharing for Shard {
+impl ConversationSharing for Core {
     async fn share(
         &self,
         conversation: ConversationId,

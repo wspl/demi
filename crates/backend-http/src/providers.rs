@@ -216,8 +216,8 @@ pub(super) async fn delete(
 ) -> Result<StatusCode, ApiError> {
     shards
         .of(&user.id.clone())
-        .call(move |shard, _| async move {
-            shard.services().delete_provider(shard.starter(), &user, &id).await
+        .call(move |core, _| async move {
+            core.services().delete_provider(core.starter(), &user, &id).await
         })
         .await?
         .map_err(refused)?;
@@ -300,7 +300,7 @@ pub(super) async fn quota(
 }
 
 /// One real request to the model the body names, with the account it names
-/// or the active one, on the acting user's shard.
+/// or the active one, on the acting user's core.
 pub(super) async fn test(
     State(services): State<Arc<Services>>,
     State(shards): State<Shards>,
@@ -315,8 +315,8 @@ pub(super) async fn test(
     let model = request.model_id;
     let result = shards
         .of(&user.id)
-        .call(move |shard, cancel| async move {
-            shard
+        .call(move |core, cancel| async move {
+            core
                 .test_provider(entry, provider, account, model, cancel)
                 .await
         })

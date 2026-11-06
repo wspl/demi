@@ -870,7 +870,7 @@ impl<H: HostResolver> Tree<H> {
 
     /// Whether the tree does nothing by itself: it does not work, and no
     /// command of it runs, which is the conversation's work as well
-    /// (`crates/backend-user-shard/src/lifecycle/mod.rs`).
+    /// (`crates/core/src/lifecycle/mod.rs`).
     pub fn is_quiescent(&self) -> bool {
         !self.works() && self.sides_quiescent() && !self.live.runs_commands()
     }

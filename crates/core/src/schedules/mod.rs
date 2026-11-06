@@ -1,4 +1,4 @@
-//! The schedules of the user's conversations in their shard: what a
+//! The schedules of the user's conversations in their core: what a
 //! conversation's metadata lists and `demi schedule` reads and changes, the
 //! scheduler that owns every trigger, a run from its trigger to its turn's
 //! end, the change watches, and the calls of the URL triggers.
@@ -8,8 +8,8 @@
 //! which is read from the conversation's archived state and never written to
 //! the schedule's own `paused`.
 //!
-//! The scheduler is one task per shard. It reads the user's schedules when
-//! the shard starts and whenever one changes, fires what is due, and sleeps
+//! The scheduler is one task per core. It reads the user's schedules when
+//! the core starts and whenever one changes, fires what is due, and sleeps
 //! until the nearest next time or the next change; nothing polls the table.
 
 pub(crate) mod commands;
@@ -39,12 +39,12 @@ use demi_web_api_protocol::schedules::{
 use rand::RngCore;
 use tokio::sync::Notify;
 
-use crate::Shard;
+use crate::Core;
 use plan::{Plan, PlanError};
 
 pub use hooks::{CALLS_PER_MINUTE, HookAnswer, HookCall, HookLimits};
 
-/// What the shard keeps of its schedules between their records' reads.
+/// What the core keeps of its schedules between their records' reads.
 #[derive(Default)]
 pub(crate) struct Schedules {
     /// Rearms the scheduler: a change leaves a permit, so a change made
@@ -57,12 +57,12 @@ pub(crate) struct Schedules {
     tried: RefCell<HashMap<ScheduleId, Timestamp>>,
 }
 
-/// What a schedule has under way in the shard: a URL's burst waiting out its
+/// What a schedule has under way in the core: a URL's burst waiting out its
 /// quiet, and a change watch's check.
 ///
 /// Pausing the schedule, editing its trigger or deleting it drops both, which
 /// stops their tasks, and moves its generation on, so what either finishes after
-/// is not recorded. The shard's end drops them all.
+/// is not recorded. The core's end drops them all.
 #[derive(Default)]
 struct Pending {
     generation: u64,
@@ -150,7 +150,7 @@ pub(crate) fn new_task(prompt: String) -> Task {
     }
 }
 
-impl Shard {
+impl Core {
     /// Whether work the schedule started at `generation` may still record
     /// what it found: nothing paused it, edited its trigger or deleted it
     /// since.
@@ -231,7 +231,7 @@ impl Shard {
         Ok(listed)
     }
 
-    /// The conversation's schedule `id`, as it is stored, while the shard's
+    /// The conversation's schedule `id`, as it is stored, while the core's
     /// user owns the conversation; any other is not found, so neither the page
     /// nor an agent reaches another user's schedule by its id, which a URL
     /// trigger's address shows.
@@ -513,7 +513,7 @@ impl Shard {
         Ok(())
     }
 
-    /// What the shard holds of the schedule `id`, which is deleted: its
+    /// What the core holds of the schedule `id`, which is deleted: its
     /// burst and its check stop, and its URL's call count and its watch's
     /// last try go.
     fn forget_schedule(&self, id: &ScheduleId) {
@@ -548,7 +548,7 @@ impl Shard {
     }
 
     /// The conversation is deleted, and its schedules `ids` with it: what the
-    /// shard holds of them goes, a watch's check under way among it.
+    /// core holds of them goes, a watch's check under way among it.
     pub(crate) fn conversation_deleted_schedules(&self, ids: &[ScheduleId]) {
         for id in ids {
             self.forget_schedule(id);
@@ -619,7 +619,7 @@ impl Shard {
         }
     }
 
-    /// Fires the schedules of the user as their times come, until the shard
+    /// Fires the schedules of the user as their times come, until the core
     /// closes.
     ///
     /// It settles the runs a run of the backend before left running, then fires
@@ -651,7 +651,7 @@ impl Shard {
                 } => {}
                 () = self.schedules().wake.notified() => {}
                 () = self.closed() => {
-                    // The shard ends: its bursts' waits and its checks stop.
+                    // The core ends: its bursts' waits and its checks stop.
                     let pending = std::mem::take(&mut *self.schedules().pending.borrow_mut());
                     drop(pending);
                     return;

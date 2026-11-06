@@ -85,7 +85,7 @@ pub const ROUTE: &str = "/native-artifacts";
 /// How long a runner's signed download URL stays valid.
 const SIGNED_FOR: Duration = Duration::from_secs(300);
 
-/// The loaded command packages, as each shard's catalog is built from them.
+/// The loaded command packages, as each core's catalog is built from them.
 #[derive(Clone)]
 pub struct NativeCatalog {
     packages: Vec<PackageDescriptor>,

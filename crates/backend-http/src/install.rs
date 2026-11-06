@@ -230,7 +230,7 @@ pub(super) async fn artifact(
 }
 
 /// `stored`, whose bytes count as `device`'s download as they are served:
-/// its shard hears of each, until the download ends (`crates/runner/src/update.rs`). Without a device, nothing counts.
+/// its core hears of each, until the download ends (`crates/runner/src/update.rs`). Without a device, nothing counts.
 async fn counted(state: &AppState, device: Option<TokenDevice>, stored: Stored) -> Stored {
     let Some(device) = device else {
         return stored;
@@ -244,7 +244,7 @@ async fn counted(state: &AppState, device: Option<TokenDevice>, stored: Stored) 
     let told = state
         .shards
         .of(&device.owner)
-        .call(move |shard, _| async move { shard.runner_downloading(id, serving) })
+        .call(move |core, _| async move { core.runner_downloading(id, serving) })
         .await;
     if told.is_err() {
         // A closing backend counts nothing more; the bytes go out all the same.

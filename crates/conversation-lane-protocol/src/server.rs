@@ -14,7 +14,7 @@ use serde_with::rust::unwrap_or_skip;
 use crate::{AgentEntry, CacheChart, ClientFrameKind, Followed, TranscriptPatch, Version};
 
 /// What the providers read out of the error blocks a frame carries, by block
-/// id (`crates/backend-user-shard/src/conversation/failure_facts.rs`).
+/// id (`crates/core/src/conversation/failure_facts.rs`).
 /// Attached when the frame is sent, never stored.
 pub type Failures = BTreeMap<BlockId, ProviderFailureFacts>;
 

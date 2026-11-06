@@ -1,5 +1,5 @@
 //! A conversation's choice in its Workflow menu
-//! (`crates/backend-user-shard/src/conversation/workflows.rs`), which the
+//! (`crates/core/src/conversation/workflows.rs`), which the
 //! conversation keeps as it keeps its model.
 
 use schemars::JsonSchema;

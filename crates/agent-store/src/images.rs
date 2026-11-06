@@ -65,7 +65,7 @@ impl From<ImageError> for Unfit {
 }
 
 /// Fits `data`, an image of `media_type`, on the blocking pool: decoding and
-/// encoding would hold the shard's thread for as long as they take.
+/// encoding would hold the core's thread for as long as they take.
 pub async fn fit(data: B64Bytes, media_type: &str) -> Result<Fitted, Unfit> {
     let media_type = media_type.to_owned();
     match tokio::task::spawn_blocking(move || fit_now(&data, &media_type)).await {

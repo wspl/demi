@@ -66,7 +66,7 @@ use demi_shared_types::BlockId;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::ids::ConversationId;
 
-use crate::Shard;
+use crate::Core;
 use demi_core_host_access::root_of;
 
 /// A Fork's destination, and whether this request created it.
@@ -101,7 +101,7 @@ pub enum ForkRefusal {
 /// The suffix every Fork appends to its source's title.
 const TITLE_SUFFIX: &str = " (Fork)";
 
-impl Shard {
+impl Core {
     /// Forks the user's conversation `source` after its assistant text
     /// `block` into the conversation `destination`.
     pub async fn fork(
@@ -162,7 +162,7 @@ impl Shard {
             None => {
                 // The destination keeps the source's directory: on the
                 // Cloud, the source's own.
-                let resolved = self.host_shard().resolve_target(&source).await?;
+                let resolved = self.host_core().resolve_target(&source).await?;
                 let target = match &source.target {
                     Selection::Cloud { path: None } => ConversationTarget::Cloud {
                         path: Some(resolved.path().to_owned()),
@@ -319,7 +319,7 @@ pub async fn recover_forks(cores: &[(UserId, CoreStore)]) -> Result<(), StorageE
     Ok(())
 }
 
-impl Shard {
+impl Core {
     /// Tells the plugins that keep something of a conversation that `source`
     /// is forked into `destination`, whose history names what the source's
     /// does; telling one again, as a retry does, changes nothing it did.

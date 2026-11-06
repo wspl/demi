@@ -21,9 +21,9 @@
 //! # Telling turns apart
 //!
 //! A turn's end is told apart from the turns that ended before by the turn that
-//! had ended last when the tree started to work, which the shard keeps while it
+//! had ended last when the tree started to work, which the core keeps while it
 //! works. The session keeps the latest end of a turn the user asked for, judged
-//! as the turn's inputs and end arrived, and the shard takes it at each rest:
+//! as the turn's inputs and end arrived, and the core takes it at each rest:
 //! the one it took at the rest after work is the one notified of, so a turn
 //! that starts after it never stands in for it, and a compaction or a retry
 //! since changes nothing.
@@ -42,9 +42,9 @@ use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::permissions::PermissionRequestId;
 use demi_web_api_protocol::push::{ANSWER_START_CHARS, PushAsk, PushMessage};
 
-use crate::Shard;
+use crate::Core;
 
-/// What the shard keeps for the notifications of its conversations.
+/// What the core keeps for the notifications of its conversations.
 #[derive(Default)]
 pub(crate) struct Notifications {
     /// Each conversation whose tree works, with the block that ended its
@@ -52,7 +52,7 @@ pub(crate) struct Notifications {
     working: RefCell<HashMap<ConversationId, Option<BlockId>>>,
 }
 
-impl Shard {
+impl Core {
     /// Follows the conversation's status: as its tree starts to run, notes
     /// the turn that had ended last; as it rests, notifies of the latest
     /// turn the user asked for that ended since, unless the user stopped

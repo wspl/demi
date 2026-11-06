@@ -30,7 +30,7 @@ use demi_web_api_protocol::schedules::{IfBusy, RunNote, RunState, Task, Timing, 
 
 use super::hooks::Call;
 use super::message;
-use crate::Shard;
+use crate::Core;
 
 /// What fired a run, with what its message carries of it.
 pub(crate) struct Fired {
@@ -111,7 +111,7 @@ pub(crate) enum Unrunnable {
     Returning { device: DeviceId, rest: std::time::Duration },
 }
 
-impl Shard {
+impl Core {
     /// Whether `schedule`'s conversation can run a run now, or why not: it
     /// is archived or gone, or its Host is offline.
     pub(crate) async fn runnable(&self, schedule: &StoredSchedule) -> Result<(), Unrunnable> {
@@ -121,7 +121,7 @@ impl Shard {
             _ => return Err(Unrunnable::Gone),
         };
         let device = self
-            .host_shard()
+            .host_core()
             .resolve_target(&record)
             .await
             .ok()
@@ -215,14 +215,14 @@ impl Shard {
         if skipped {
             return;
         }
-        let shard = self.this();
+        let core = self.this();
         let schedule = schedule.clone();
         self.tasks().spawn_local(async move {
             // A returning device is waited for in this task, the run
             // recorded already, so the scheduler goes on and never starts it
             // twice; still away after the wait, it is skipped.
             let runnable = match runnable {
-                Err(Unrunnable::Returning { .. }) => shard.runnable_after_return(&schedule).await,
+                Err(Unrunnable::Returning { .. }) => core.runnable_after_return(&schedule).await,
                 runnable => runnable,
             };
             if let Err(unrunnable) = runnable {
@@ -232,13 +232,13 @@ impl Shard {
                     Unrunnable::Offline(device) => Some(RunNote::Offline { device }),
                     Unrunnable::Returning { device, .. } => Some(RunNote::Offline { device: device.to_string() }),
                 };
-                shard.end_run(run, &schedule.conversation).await;
+                core.end_run(run, &schedule.conversation).await;
                 return;
             }
-            if let Err(message) = shard.carry(&schedule, &mut run, fired).await {
+            if let Err(message) = core.carry(&schedule, &mut run, fired).await {
                 run.state = RunState::Failed;
                 run.note = Some(RunNote::TurnFailed { message, code: None });
-                shard.end_run(run, &schedule.conversation).await;
+                core.end_run(run, &schedule.conversation).await;
             }
         });
     }
@@ -350,10 +350,10 @@ impl Shard {
     /// running run whose message went there ends once the turn it started
     /// has ended.
     pub(crate) fn follow_runs(&self, conversation: &ConversationId) {
-        let shard = self.this();
+        let core = self.this();
         let conversation = conversation.clone();
         self.tasks().spawn_local(async move {
-            shard.settle_runs(&conversation).await;
+            core.settle_runs(&conversation).await;
         });
     }
 

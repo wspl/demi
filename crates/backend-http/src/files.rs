@@ -2,9 +2,9 @@
 //! file's bytes in both directions, and the working tree's changes.
 //!
 //! Each reaches the conversation's Host through its host access
-//! (`crates/core-host-access/src/access.rs`), in the user's shard, which
+//! (`crates/core-host-access/src/access.rs`), in the user's core, which
 //! also checks that the conversation is the caller's. The bytes of a download
-//! or an upload move here while the shard holds their admission.
+//! or an upload move here while the core holds their admission.
 
 use axum::Json;
 use axum::body::Body;
@@ -294,9 +294,9 @@ pub(super) async fn raw(
     let download = state
         .shards
         .of(&user.id)
-        .call(move |shard, cancel| async move {
-            shard
-                .host_shard()
+        .call(move |core, cancel| async move {
+            core
+                .host_core()
                 .open_download(&conversation, request, &cancel)
                 .await
         })
@@ -395,9 +395,9 @@ pub(super) async fn search(
     let opened = state
         .shards
         .of(&user.id)
-        .call(move |shard, cancel| async move {
-            shard
-                .host_shard()
+        .call(move |core, cancel| async move {
+            core
+                .host_core()
                 .open_search(&conversation, root, query, &cancel)
                 .await
         })
@@ -427,9 +427,9 @@ pub(super) async fn upload(
     let open = state
         .shards
         .of(&user.id)
-        .call(move |shard, cancel| async move {
-            shard
-                .host_shard()
+        .call(move |core, cancel| async move {
+            core
+                .host_core()
                 .open_upload(&conversation, path, replace.0, &cancel)
                 .await
         })
@@ -743,9 +743,9 @@ where
     state
         .shards
         .of(user)
-        .call(move |shard, cancel| async move {
-            shard
-                .host_shard()
+        .call(move |core, cancel| async move {
+            core
+                .host_core()
                 .with_unheld_host(&conversation, device.as_ref(), &cancel, operation)
                 .await?
         })

@@ -295,7 +295,7 @@ enum Fetched {
 /// until it ends, then how, or why its recording failed.
 type FetchEnd = watch::Receiver<Option<Result<Fetched, String>>>;
 
-/// The instance ends with its shard: every fetch stops and saves nothing.
+/// The instance ends with its core: every fetch stops and saves nothing.
 impl Drop for Instance {
     fn drop(&mut self) {
         for (task, stop) in self.0.fetches.take() {

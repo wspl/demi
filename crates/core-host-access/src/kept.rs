@@ -1,5 +1,5 @@
 //! What the backend keeps of a Host's project files
-//! (`crates/backend-user-shard/src/conversation/workflows.rs`).
+//! (`crates/core/src/conversation/workflows.rs`).
 //!
 //! For each Host and directory a loaded conversation uses, the backend keeps
 //! one search through the conversation's host access, in the form that never

@@ -115,7 +115,7 @@ pub struct ProviderFailureFacts {
     pub signed_out: Option<SignedOutAccount>,
     /// For a request through a device that was offline, the device, which
     /// the failure's headline names
-    /// (`crates/backend-user-shard/src/shard/device_requests.rs`); omitted
+    /// (`crates/core/src/device_requests.rs`); omitted
     /// otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]

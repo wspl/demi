@@ -22,10 +22,10 @@ use demi_core_host_access::root_of;
 use demi_core_sync::Part;
 use demi_web_api_protocol::ids::{ConversationId, WorkspaceId};
 
-use crate::Shard;
+use crate::Core;
 
 
-impl Shard {
+impl Core {
     /// Deletes the user's conversation `id`; false when the user has no such
     /// conversation, a deletion already begun included. A failure before its
     /// records go leaves the conversation as it was; one after leaves the
@@ -52,7 +52,7 @@ impl Shard {
         };
         let root = root_of(&record.id);
         let slot = self.conversations().slot(&record.id);
-        let host = self.host_shard();
+        let host = self.host_core();
         let devices = host.release_devices(&record).await?;
         // Commands running on a Host whose runner is away are left to it: a
         // Host that may never return holds no file gate, and the deletion
@@ -81,7 +81,7 @@ impl Shard {
         {
             stopped = Some(tree.interrupt("the conversation is being deleted").await);
         }
-        // Its schedules go with its records; the shard forgets them after.
+        // Its schedules go with its records; the core forgets them after.
         let schedules = self.conversation_schedule_ids(&record.id).await;
         // Step 1: from this commit on, no request finds the conversation. A
         // fork of it under way finishes first, its plugins told
@@ -93,7 +93,7 @@ impl Shard {
             return Ok(false);
         };
         self.mark(Part::Conversation(id.clone()));
-        // What the shard holds of its schedules stops.
+        // What the core holds of its schedules stops.
         self.conversation_deleted_schedules(&schedules);
         self.tell_schedules_deleted(&schedules).await;
         self.agent().close_tree(&root).await;

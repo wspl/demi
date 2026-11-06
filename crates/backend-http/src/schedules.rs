@@ -1,7 +1,7 @@
 //! A conversation's schedules, as the web contract reaches them.
 //!
 //! - The user pauses, resumes or deletes a schedule of a conversation they
-//!   own, in the caller's shard; the change reaches the conversation's pages
+//!   own, in the caller's core; the change reaches the conversation's pages
 //!   in its metadata. The agent does the rest, with `demi schedule`.
 //! - A schedule's URL, `/hooks/<id>`, is authenticated by no session: its id
 //!   and its secret are its only keys.
@@ -77,7 +77,7 @@ pub(super) async fn hook(
     let answer = state
         .shards
         .of(&owner)
-        .call(move |shard, _| async move { shard.hook_call(&id, call).await })
+        .call(move |core, _| async move { core.hook_call(&id, call).await })
         .await??;
     match answer {
         HookAnswer::Taken => Ok(StatusCode::OK.into_response()),
@@ -99,7 +99,7 @@ pub(super) async fn change(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.change_schedule(&conversation, &id, patch, false).await })
+        .call(move |core, _| async move { core.change_schedule(&conversation, &id, patch, false).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
@@ -117,7 +117,7 @@ pub(super) async fn delete(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.delete_schedule(&conversation, &id).await })
+        .call(move |core, _| async move { core.delete_schedule(&conversation, &id).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)

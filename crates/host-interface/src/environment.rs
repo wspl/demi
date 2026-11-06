@@ -181,7 +181,7 @@ pub struct ExecRequest {
 }
 
 /// The agent node a job runs for, whose commands its `rpc` calls reach
-/// (`crates/backend-user-shard/src/shard/policy.rs`), and the call of
+/// (`crates/core/src/policy.rs`), and the call of
 /// it that started the job, which a message the job sends comes from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

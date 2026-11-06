@@ -1,4 +1,4 @@
-//! A conversation's side questions, each in the user's shard.
+//! A conversation's side questions, each in the user's core.
 //!
 //! Asking one under the id the page chose, a follow-up, a Retry, a Stop, a
 //! deletion and folding its card. Each is an agent of the conversation, which
@@ -36,7 +36,7 @@ pub(super) async fn ask(
     let (side_question, created) = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.ask(id, request).await })
+        .call(move |core, _| async move { core.ask(id, request).await })
         .await?
         .map_err(refused)?;
     let status = if created { StatusCode::CREATED } else { StatusCode::OK };
@@ -56,7 +56,7 @@ pub(super) async fn follow_up(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.ask_more(id, side, content).await })
+        .call(move |core, _| async move { core.ask_more(id, side, content).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
@@ -74,7 +74,7 @@ pub(super) async fn retry(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.retry_side(id, side).await })
+        .call(move |core, _| async move { core.retry_side(id, side).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
@@ -93,7 +93,7 @@ pub(super) async fn stop(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.stop_side(id, side).await })
+        .call(move |core, _| async move { core.stop_side(id, side).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
@@ -112,7 +112,7 @@ pub(super) async fn delete(
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.delete_side(id, side).await })
+        .call(move |core, _| async move { core.delete_side(id, side).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
@@ -132,7 +132,7 @@ pub(super) async fn fold(
     let side_question = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.fold_side(id, folding, folded).await })
+        .call(move |core, _| async move { core.fold_side(id, folding, folded).await })
         .await?
         .map_err(refused)?;
     Ok(Json(SideQuestionAnswer { id: side, side_question }))

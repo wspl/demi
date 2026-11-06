@@ -1,7 +1,7 @@
 //! The idle rule's mechanism: one idle window, and one watch per resource.
 //!
 //! The rule itself, what counts as activity and what a retirement does, belongs
-//! to `crates/backend-user-shard/src/lifecycle/mod.rs`.
+//! to `crates/core/src/lifecycle/mod.rs`.
 //!
 //! A watch reads its resource's gates:
 //!

@@ -20,7 +20,7 @@ use demi_core_store::references::conversation_blobs;
 use demi_shared_types::{BlobRef, Timestamp};
 use tokio::sync::watch;
 
-use crate::Shard;
+use crate::Core;
 
 /// Where the user's collections stand.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -48,11 +48,11 @@ impl Default for BlobCollection {
 impl BlobCollection {
 }
 
-impl Shard {
+impl Core {
     /// Collects the user's blob namespace in the background, or once more
     /// after the collection that runs.
     pub fn collect_blobs(&self) {
-        // A closing shard starts nothing; the next deletion collects.
+        // A closing core starts nothing; the next deletion collects.
         if self.is_closing() {
             return;
         }
@@ -62,21 +62,21 @@ impl Shard {
             return;
         }
         state.send_replace(CollectionState::Running);
-        let shard = self.this();
+        let core = self.this();
         self.tasks().spawn_local(async move {
             loop {
-                match shard.collect_once().await {
+                match core.collect_once().await {
                     Ok(0) => {}
                     Ok(removed) => {
-                        tracing::info!(event = "blobs.collected", user = %shard.user(), removed, "unreferenced blobs removed");
+                        tracing::info!(event = "blobs.collected", user = %core.user(), removed, "unreferenced blobs removed");
                     }
                     Err(why) => {
-                        tracing::warn!(event = "blobs.collect_stopped", user = %shard.user(), %why, "the collection removed nothing more");
+                        tracing::warn!(event = "blobs.collect_stopped", user = %core.user(), %why, "the collection removed nothing more");
                     }
                 }
-                let state = &shard.blob_collection().state;
-                // A closing shard leaves the next one to the next deletion.
-                if *state.borrow() == CollectionState::Again && !shard.is_closing() {
+                let state = &core.blob_collection().state;
+                // A closing core leaves the next one to the next deletion.
+                if *state.borrow() == CollectionState::Again && !core.is_closing() {
                     state.send_replace(CollectionState::Running);
                     continue;
                 }

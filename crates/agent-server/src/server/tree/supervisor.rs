@@ -405,7 +405,7 @@ impl<H: HostResolver> Tree<H> {
     /// subagents.
     ///
     /// The limit counts across all the conversations of `server`, the user's
-    /// shard, and counts in each tree the starts that passed this check and
+    /// core, and counts in each tree the starts that passed this check and
     /// have not yet joined its directory. The slot answered holds the new
     /// child's place until it joins the directory or its start fails.
     fn reserve_live(

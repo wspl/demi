@@ -84,7 +84,7 @@ impl SessionFile {
     /// The session of `session` holding `blocks` of `items` (each item a block
     /// of its own when the request names none), written at `timestamp`.
     ///
-    /// It serializes the whole history, so it runs off the shard.
+    /// It serializes the whole history, so it runs off the core.
     pub(crate) fn new(
         session: &str,
         items: &[InferenceItem],

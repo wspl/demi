@@ -128,9 +128,9 @@ pub(super) async fn grant(
     let place = state
         .shards
         .of(&user.id)
-        .call(move |shard, cancel| async move {
-            shard
-                .host_shard()
+        .call(move |core, cancel| async move {
+            core
+                .host_core()
                 .html_place(&asked, path.as_str(), &cancel)
                 .await
         })
@@ -196,9 +196,9 @@ async fn answer(
         let download = state
             .shards
             .of(&session.user.id)
-            .call(move |shard, cancel| async move {
-                shard
-                    .host_shard()
+            .call(move |core, cancel| async move {
+                core
+                    .host_core()
                     .open_download(&conversation, request, &cancel)
                     .await
             })

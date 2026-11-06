@@ -78,7 +78,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }
     >
   >({})
-  /** The newest version of each process provider's CLI, as last read (`crates/backend-user-shard/src/conversation/claude_cli.rs`). */
+  /** The newest version of each process provider's CLI, as last read (`crates/core/src/conversation/claude_cli.rs`). */
   const newestClis = ref<Record<string, SettingsProviderCli['newest']>>({})
   /**
    * Process provider `providerId`'s CLI: its newest version once read, and
@@ -256,7 +256,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   /**
    * Adding asks only the kind and creates the entry at once: it joins the list
    * once the channel brings it, selected, and its page shows what it still
-   * lacks (`crates/backend-user-shard/src/provider_settings.rs`). `holder` is
+   * lacks (`crates/core/src/provider_settings.rs`). `holder` is
    * the provider the operation holds: `new` for Add, a placeholder for its own.
    */
   function create(body: CreateProvider, holder = 'new'): void {

@@ -27,10 +27,10 @@
 //! - Installing leaves nothing in the transcript. A failure is that request's
 //!   error, or the result of the account action that asked.
 //!
-//! # The master's shard
+//! # The master's core
 //!
-//! The machine's record is the master's, so the master's shard holds it. Another
-//! user's work crosses there once per process start: the master's shard starts
+//! The machine's record is the master's, so the master's core holds it. Another
+//! user's work crosses there once per process start: the master's core starts
 //! the process, and a task there relays its standard streams and its end as
 //! `Send` pipe ends. The task closes the process, SIGTERM first, once the user's
 //! side lets go.
@@ -89,7 +89,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::services::CoreServices;
-use crate::Shard;
+use crate::Core;
 use crate::cores::Cores;
 
 /// The most an operation of the package answers: one JSON document.
@@ -149,7 +149,7 @@ struct CliTarget {
     context: CommandContext,
 }
 
-/// The Claude Code machine as every shard reaches it: through the shard of
+/// The Claude Code machine as every core reaches it: through the core of
 /// the instance's master, which holds it
 /// (`crates/backend-cloud/src/lib.rs`). It serves a sign-in and a usage
 /// probe from any thread.
@@ -196,12 +196,12 @@ impl ClaudeMachine {
             .cloned()
     }
 
-    /// Runs `work` on the master's shard, which holds the machine, and
+    /// Runs `work` on the master's core, which holds the machine, and
     /// answers its result. Dropping the answer cancels the token `work`
     /// receives.
     async fn on_machine<F, Fut, T>(&self, work: F) -> Result<T, StartError>
     where
-        F: FnOnce(Rc<Shard>, CancellationToken) -> Fut + Send + 'static,
+        F: FnOnce(Rc<Core>, CancellationToken) -> Fut + Send + 'static,
         Fut: Future<Output = T> + 'static,
         T: Send + 'static,
     {
@@ -213,9 +213,9 @@ impl ClaudeMachine {
     }
 }
 
-/// Where the Claude Code machine is once the master's shard has started,
-/// which every shard and the Claude Code family read; empty before then,
-/// and in a backend without shards. Its clones share it.
+/// Where the Claude Code machine is once the master's core has started,
+/// which every core and the Claude Code family read; empty before then,
+/// and in a backend without cores. Its clones share it.
 #[derive(Clone, Default)]
 pub struct MachineSlot(Arc<std::sync::OnceLock<ClaudeMachine>>);
 
@@ -226,7 +226,7 @@ impl MachineSlot {
         self.0.set(machine).is_ok()
     }
 
-    /// The machine; none before the master's shard has started.
+    /// The machine; none before the master's core has started.
     pub fn get(&self) -> Option<ClaudeMachine> {
         self.0.get().cloned()
     }
@@ -242,15 +242,15 @@ impl AccountMachine for ClaudeMachine {
         Box::pin(async move {
             let entry = ProviderId::try_from(entry).map_err(|error| StartError(error.to_string()))?;
             machine
-                .on_machine(move |shard, abandoned| async move {
-                    let context = match provider_context(shard.store(), &entry).await {
+                .on_machine(move |core, abandoned| async move {
+                    let context = match provider_context(core.store(), &entry).await {
                         Ok(context) => context,
                         Err(error) => {
                             tracing::warn!(event = "claude_code.command_context_missing", account = %entry, %error, "Claude Code account work found no command context");
                             return;
                         }
                     };
-                    let placement = MachinePlacement::placement(Rc::downgrade(&shard), context);
+                    let placement = MachinePlacement::placement(Rc::downgrade(&core), context);
                     work(placement, abandoned).await;
                 })
                 .await
@@ -261,13 +261,13 @@ impl AccountMachine for ClaudeMachine {
         let machine = self.clone();
         Box::pin(async move {
             machine
-                .on_machine(move |shard, _| async move {
-                    let access = cloud_of(&*shard)
+                .on_machine(move |core, _| async move {
+                    let access = cloud_of(&*core)
                         .map_err(|error| StartError(error.to_string()))?
                         .claude_code_access()
                         .await
                         .map_err(|error| StartError(error.to_string()))?;
-                    let gates = shard.claude_cli().gates.clone();
+                    let gates = core.claude_cli().gates.clone();
                     gates.remove(&access, &account).await
                 })
                 .await?
@@ -276,22 +276,22 @@ impl AccountMachine for ClaudeMachine {
 }
 
 /// The placement of a provider's process for a user's conversation or
-/// entry: every start crosses once to the master's shard, which starts the
+/// entry: every start crosses once to the master's core, which starts the
 /// process on the Claude Code machine and relays it back as `Send` pipe
 /// ends.
 pub(crate) struct CrossPlacement {
-    shard: Weak<Shard>,
+    core: Weak<Core>,
     work: ProcessWork,
     machine: ClaudeMachine,
 }
 
 impl CrossPlacement {
     /// The placement a provider's process of `work` starts with.
-    pub fn placement(shard: Weak<Shard>, work: ProcessWork) -> Rc<dyn Placement> {
-        // A shard that is gone starts nothing.
-        match shard.upgrade().and_then(|shard| shard.claude_machine()) {
+    pub fn placement(core: Weak<Core>, work: ProcessWork) -> Rc<dyn Placement> {
+        // A core that is gone starts nothing.
+        match core.upgrade().and_then(|core| core.claude_machine()) {
             Some(machine) => Rc::new(Self {
-                shard,
+                core,
                 work,
                 machine,
             }),
@@ -304,7 +304,7 @@ impl CrossPlacement {
     /// (`ProviderRegistry::own_provider`), which only Claude Code's is of those
     /// whose CLI runs as a process.
     pub async fn runtime(
-        shard: Weak<Shard>,
+        core: Weak<Core>,
         registry: &ProviderRegistry,
         entry: &ProviderEntry,
         account: Option<&CredentialId>,
@@ -314,16 +314,16 @@ impl CrossPlacement {
         let provider = provider
             .downcast::<ClaudeCodeProvider>()
             .map_err(|_| format!("The provider family {} runs no process Demi places", entry.family))?;
-        Ok(provider.process_runtime(Self::placement(shard, work)))
+        Ok(provider.process_runtime(Self::placement(core, work)))
     }
 
     /// The command context the package's operations run under for the work.
-    async fn context(&self, shard: &Shard) -> Result<CommandContext, StartError> {
+    async fn context(&self, core: &Core) -> Result<CommandContext, StartError> {
         let context = match &self.work {
             ProcessWork::Conversation(id) => {
-                command_context(shard.store(), id, CommandCaller::User {}).await
+                command_context(core.store(), id, CommandCaller::User {}).await
             }
-            ProcessWork::Account(provider) => provider_context(shard.store(), provider).await,
+            ProcessWork::Account(provider) => provider_context(core.store(), provider).await,
         };
         context.map_err(|error| StartError(format!("The command context could not be read: {error}")))
     }
@@ -337,15 +337,15 @@ impl Placement for CrossPlacement {
         stages: &'a dyn Fn(StartStage),
     ) -> LocalBoxFuture<'a, Result<Placed, StartError>> {
         Box::pin(async move {
-            let shard = self
-                .shard
+            let core = self
+                .core
                 .upgrade()
                 .ok_or_else(|| StartError("The backend is shutting down".into()))?;
-            let context = self.context(&shard).await?;
-            drop(shard);
+            let context = self.context(&core).await?;
+            drop(core);
             let (staged, mut reached) = mpsc::unbounded_channel();
-            let started = self.machine.on_machine(move |shard, abandoned| async move {
-                let placement = MachinePlacement::new(Rc::downgrade(&shard), context);
+            let started = self.machine.on_machine(move |core, abandoned| async move {
+                let placement = MachinePlacement::new(Rc::downgrade(&core), context);
                 let stages = move |stage| {
                     // A start nobody waits for reports to nobody.
                     let _ = staged.send(stage);
@@ -354,7 +354,7 @@ impl Placement for CrossPlacement {
                     placed = placement.place(work, start, &stages) => placed,
                     () = abandoned.cancelled() => return Err(StartError("The start was given up".into())),
                 };
-                placed.map(|(placed, hold)| relay(&shard, placed, hold))
+                placed.map(|(placed, hold)| relay(&core, placed, hold))
             });
             tokio::pin!(started);
             let relayed = loop {
@@ -378,13 +378,13 @@ impl Placement for CrossPlacement {
     fn work(&self) -> WorkLease {
         let (held, released) = oneshot::channel::<()>();
         let machine = self.machine.clone();
-        if let Some(shard) = self.shard.upgrade() {
-            shard.tasks().spawn_local(async move {
+        if let Some(core) = self.core.upgrade() {
+            core.tasks().spawn_local(async move {
                 let held = machine
-                    .on_machine(move |shard, _| async move {
-                        let lease = MachinePlacement::lease(&shard);
+                    .on_machine(move |core, _| async move {
+                        let lease = MachinePlacement::lease(&core);
                         // The lease is held until the user's side lets go.
-                        shard.tasks().spawn_local(async move {
+                        core.tasks().spawn_local(async move {
                             let _lease = lease;
                             let _ = released.await;
                         });
@@ -403,8 +403,8 @@ impl Placement for CrossPlacement {
     }
 }
 
-/// The placement of a shard that has no Claude Code machine to reach, as in
-/// a backend that has no shards: every start fails.
+/// The placement of a core that has no Claude Code machine to reach, as in
+/// a backend that has no cores: every start fails.
 struct Unplaced;
 
 impl Placement for Unplaced {
@@ -427,7 +427,7 @@ impl Placement for Unplaced {
     }
 }
 
-/// A process the master's shard started and relays: its standard streams
+/// A process the master's core started and relays: its standard streams
 /// and its end as `Send` pipe ends, and how long each step of its start
 /// took.
 struct Relayed {
@@ -529,8 +529,8 @@ impl ConfigDir for RelayedDir {
     }
 }
 
-/// Starts relaying `placed`, a process the master's shard started, holding its
-/// account's gate (`hold`), as a task of that shard.
+/// Starts relaying `placed`, a process the master's core started, holding its
+/// account's gate (`hold`), as a task of that core.
 ///
 /// - Its output goes to the pipe.
 /// - The user's side's orders reach its control.
@@ -540,7 +540,7 @@ impl ConfigDir for RelayedDir {
 /// When the user's side lets go of the control, or a change of the account
 /// begins, the process is closed, SIGTERM first. The task owns the process's
 /// control, so no path drops it raw.
-fn relay(shard: &Shard, placed: Placed, hold: Option<AccountHold>) -> Relayed {
+fn relay(core: &Core, placed: Placed, hold: Option<AccountHold>) -> Relayed {
     let Placed {
         process,
         config,
@@ -558,7 +558,7 @@ fn relay(shard: &Shard, placed: Placed, hold: Option<AccountHold>) -> Relayed {
     let closing = hold
         .as_ref()
         .map_or_else(CancellationToken::new, |hold| hold.closing.clone());
-    shard.tasks().spawn_local(async move {
+    core.tasks().spawn_local(async move {
         let forwarding = async {
             while let Some(chunk) = output.next().await {
                 // The user's side reads the output while it holds the
@@ -604,7 +604,7 @@ fn relay(shard: &Shard, placed: Placed, hold: Option<AccountHold>) -> Relayed {
 }
 
 /// The accounts whose processes run on the Claude Code machine, each with its
-/// gate, which the master's shard keeps
+/// gate, which the master's core keeps
 /// (`crates/provider-claude-code/src/account.rs`).
 ///
 /// Every process of an account holds its gate shared, from before its directory
@@ -718,7 +718,7 @@ impl AccountGates {
     }
 }
 
-/// The Claude Code machine as the master's shard starts a process on it, for a
+/// The Claude Code machine as the master's core starts a process on it, for a
 /// user's start that crossed there or for a sign-in or a usage probe that runs
 /// there.
 ///
@@ -734,26 +734,26 @@ impl AccountGates {
 /// It holds the machine's admission only until the process started; a process
 /// that is retained holds none afterwards.
 pub(crate) struct MachinePlacement {
-    shard: Weak<Shard>,
+    core: Weak<Core>,
     /// The context the package's operations run under.
     context: CommandContext,
 }
 
 impl MachinePlacement {
-    pub(crate) fn new(shard: Weak<Shard>, context: CommandContext) -> Self {
-        Self { shard, context }
+    pub(crate) fn new(core: Weak<Core>, context: CommandContext) -> Self {
+        Self { core, context }
     }
 
-    pub(crate) fn placement(shard: Weak<Shard>, context: CommandContext) -> Rc<dyn Placement> {
-        Rc::new(Self::new(shard, context))
+    pub(crate) fn placement(core: Weak<Core>, context: CommandContext) -> Rc<dyn Placement> {
+        Rc::new(Self::new(core, context))
     }
 
     /// A hold of the machine for work starting now, which wakes it when it
-    /// is stopped, taken on the master's shard.
-    fn lease(shard: &Rc<Shard>) -> WorkLease {
+    /// is stopped, taken on the master's core.
+    fn lease(core: &Rc<Core>) -> WorkLease {
         let (held, mut released) = oneshot::channel::<()>();
-        let holder = shard.clone();
-        shard.tasks().spawn_local(async move {
+        let holder = core.clone();
+        core.tasks().spawn_local(async move {
             let cloud = cloud_of(&*holder);
             let admitted = tokio::select! {
                 admitted = async {
@@ -791,8 +791,8 @@ impl MachinePlacement {
         stages: &dyn Fn(StartStage),
     ) -> Result<(Placed, Option<AccountHold>), StartError> {
         {
-            let shard = self
-                .shard
+            let core = self
+                .core
                 .upgrade()
                 .ok_or_else(|| StartError("The backend is shutting down".into()))?;
             stages(StartStage::Machine);
@@ -805,13 +805,13 @@ impl MachinePlacement {
                 *into = now - step;
                 step = now;
             };
-            let access = cloud_of(&*shard)
+            let access = cloud_of(&*core)
                 .map_err(|error| StartError(error.to_string()))?
                 .claude_code_access()
                 .await
                 .map_err(|error| StartError(error.to_string()))?;
             lap(&mut steps.admit);
-            let executable = shard
+            let executable = core
                 .cli_executable_at(&access, &self.context, stages)
                 .await
                 .map_err(StartError)?;
@@ -837,7 +837,7 @@ impl MachinePlacement {
                     // A change of the account under way or waiting goes
                     // first; this start then finds its directory as the
                     // change left it.
-                    let gates = shard.claude_cli().gates.clone();
+                    let gates = core.claude_cli().gates.clone();
                     let hold = gates.hold(&account).await?;
                     fs.mkdir(&account_dir, MkdirOptions { recursive: true })
                         .await
@@ -855,7 +855,7 @@ impl MachinePlacement {
                     fs.mkdir(&path, MkdirOptions { recursive: true })
                         .await
                         .map_err(|error| made("process's directory", error))?;
-                    let dir = MachineDir::new(&self.shard, &access.host, path, None);
+                    let dir = MachineDir::new(&self.core, &access.host, path, None);
                     (account_dir, name, dir, Some(hold))
                 }
                 CliWork::Login => {
@@ -866,19 +866,19 @@ impl MachinePlacement {
                     fs.chmod(&path, 0o700)
                         .await
                         .map_err(|error| made("sign-in's directory", error))?;
-                    let dir = MachineDir::new(&self.shard, &access.host, path.clone(), Some(accounts));
+                    let dir = MachineDir::new(&self.core, &access.host, path.clone(), Some(accounts));
                     (path, "demi".to_owned(), dir, None)
                 }
             };
             lap(&mut steps.directories);
-            let system = shard.cli_system(&access, &run_dir).await.map_err(|error| {
+            let system = core.cli_system(&access, &run_dir).await.map_err(|error| {
                 StartError(format!(
                     "The Claude Code machine could not be asked what it tells Claude Code of itself: {error}"
                 ))
             })?;
             lap(&mut steps.system);
             // The machine keeps as many idle processes as its memory holds.
-            if let (Some(machine), Some(link)) = (shard.claude_machine(), shard.devices().link(&access.device.id)) {
+            if let (Some(machine), Some(link)) = (core.claude_machine(), core.devices().link(&access.device.id)) {
                 machine.idle().hold_memory(link.memory());
             }
             let site = CliSite {
@@ -913,7 +913,7 @@ impl MachinePlacement {
             // another runner sharing the cache removed it, drops what is
             // kept of the machine's versions
             // (`crates/provider-claude-code/src/releases.rs`).
-            let kept_by = self.shard.clone();
+            let kept_by = self.core.clone();
             let device = access.device.id.clone();
             let exit = process
                 .exit
@@ -925,9 +925,9 @@ impl MachinePlacement {
                             ..
                         })
                     );
-                    // A shard that is gone keeps nothing to drop.
-                    if let (true, Some(shard)) = (gone, kept_by.upgrade()) {
-                        shard.claude_cli().forget_versions(&device);
+                    // A core that is gone keeps nothing to drop.
+                    if let (true, Some(core)) = (gone, kept_by.upgrade()) {
+                        core.claude_cli().forget_versions(&device);
                         tracing::info!(event = "claude_code_versions.dropped", host_id = %device, reason = "executable_gone", "the Claude Code versions kept for the device were dropped");
                     }
                     end
@@ -950,7 +950,7 @@ impl MachinePlacement {
 
 impl Placement for MachinePlacement {
     /// An account's process, a usage probe's, is relayed by a task of the
-    /// shard, which owns its control and closes it, SIGTERM first, when the
+    /// core, which owns its control and closes it, SIGTERM first, when the
     /// work lets go or a change of the account begins; a sign-in's is the
     /// sign-in's own.
     fn start<'a>(
@@ -964,11 +964,11 @@ impl Placement for MachinePlacement {
             let Some(hold) = hold else {
                 return Ok(placed);
             };
-            let shard = self
-                .shard
+            let core = self
+                .core
                 .upgrade()
                 .ok_or_else(|| StartError("The backend is shutting down".into()))?;
-            let Relayed { pipes, steps } = relay(&shard, placed, Some(hold));
+            let Relayed { pipes, steps } = relay(&core, placed, Some(hold));
             Ok(Placed {
                 process: pipes.process(),
                 config: Box::new(RelayedDir),
@@ -978,8 +978,8 @@ impl Placement for MachinePlacement {
     }
 
     fn work(&self) -> WorkLease {
-        match self.shard.upgrade() {
-            Some(shard) => Self::lease(&shard),
+        match self.core.upgrade() {
+            Some(core) => Self::lease(&core),
             None => WorkLease::new(()),
         }
     }
@@ -1068,7 +1068,7 @@ async fn hand_over(
 /// ended; a sign-in, its new directory, removed the same way unless it
 /// becomes an account's.
 struct MachineDir {
-    shard: Weak<Shard>,
+    core: Weak<Core>,
     host: RemoteHost,
     path: String,
     /// For a sign-in, the directory of accounts its directory joins when
@@ -1080,9 +1080,9 @@ struct MachineDir {
 }
 
 impl MachineDir {
-    fn new(shard: &Weak<Shard>, host: &RemoteHost, path: String, accounts: Option<String>) -> Self {
+    fn new(core: &Weak<Core>, host: &RemoteHost, path: String, accounts: Option<String>) -> Self {
         Self {
-            shard: shard.clone(),
+            core: core.clone(),
             host: host.clone(),
             path,
             accounts,
@@ -1154,24 +1154,24 @@ impl ConfigDir for MachineDir {
                 exit.await;
             }
             let shutting_down = || HostError::new(HostErrorKind::Unavailable, "the backend is shutting down");
-            let gates = match self.shard.upgrade() {
-                Some(shard) => shard.claude_cli().gates.clone(),
+            let gates = match self.core.upgrade() {
+                Some(core) => core.claude_cli().gates.clone(),
                 None => return Err(shutting_down()),
             };
             // Waiting here for the account's processes gives up with the
             // adoption, and the sign-in's directory then goes.
             let (gate, whole) = gates.whole(account).await;
-            let Some(shard) = self.shard.upgrade() else {
+            let Some(core) = self.core.upgrade() else {
                 return Err(shutting_down());
             };
-            // From here the change runs to its end as a task of the shard,
+            // From here the change runs to its end as a task of the core,
             // even when the adoption is dropped: one cut between its steps
             // would leave the account without its directory.
             self.removed = true;
             let host = self.host.clone();
             let path = self.path.clone();
             let (done, changed) = oneshot::channel();
-            shard.tasks().spawn_local(async move {
+            core.tasks().spawn_local(async move {
                 let fs = host.fs();
                 let options = RmOptions {
                     recursive: true,
@@ -1202,32 +1202,32 @@ impl ConfigDir for MachineDir {
 
 impl Drop for MachineDir {
     /// A directory nobody removed or adopted goes once its process ended,
-    /// as a task of the shard, which shutdown waits for.
+    /// as a task of the core, which shutdown waits for.
     fn drop(&mut self) {
         if self.removed {
             return;
         }
         let removal = self.removal();
-        if let Some(shard) = self.shard.upgrade() {
-            shard.tasks().spawn_local(removal);
+        if let Some(core) = self.core.upgrade() {
+            core.tasks().spawn_local(removal);
         }
     }
 }
 
-/// The CLI work of one user's shard.
+/// The CLI work of one user's core.
 ///
 /// It keeps:
 ///
 /// - the versions each machine has;
 /// - the versions being installed beside the one in use;
-/// - on the master's shard, what it keeps of the Claude Code machine: the run
+/// - on the master's core, what it keeps of the Claude Code machine: the run
 ///   directory's real path there and the gates of the accounts whose processes
 ///   it starts.
 #[derive(Default)]
 pub(crate) struct ClaudeCli {
     versions: RefCell<HashMap<DeviceId, KeptVersions>>,
     upgrading: RefCell<HashSet<String>>,
-    /// The accounts whose processes the master's shard starts, each with
+    /// The accounts whose processes the master's core starts, each with
     /// its gate.
     gates: Rc<AccountGates>,
     /// The run directory with its links resolved, and the runner
@@ -1310,7 +1310,7 @@ impl ClaudeCli {
     }
 }
 
-impl Shard {
+impl Core {
     /// What the machine `access` holds tells a process in `run_dir` of itself, as
     /// the CLI reads it to describe its environment
     /// (`crates/provider-claude-code/src/session.rs`).
@@ -1462,17 +1462,17 @@ impl Shard {
             }
             return (kept.versions.clone(), kept.waiting.clone());
         }
-        // The ask holds the shard weakly: the shard keeps the ask.
-        let shard = Rc::downgrade(&self.this());
+        // The ask holds the core weakly: the core keeps the ask.
+        let core = Rc::downgrade(&self.this());
         let asked = target.clone();
         let versions = async move {
-            let Some(shard) = shard.upgrade() else {
+            let Some(core) = core.upgrade() else {
                 return Err(CliError {
                     version: None,
                     reason: "the backend is shutting down".into(),
                 });
             };
-            installed(shard.services(), &asked).await
+            installed(core.services(), &asked).await
         }
         .boxed_local()
         .shared();
@@ -1537,25 +1537,25 @@ impl Shard {
         {
             return;
         }
-        let shard = self.this();
+        let core = self.this();
         self.tasks().spawn_local(async move {
             let upgraded = tokio::select! {
-                upgraded = shard.ensure_cli(&target, &release) => Some(upgraded),
-                () = shard.closed() => None,
+                upgraded = core.ensure_cli(&target, &release) => Some(upgraded),
+                () = core.closed() => None,
             };
             if let Some(Err(error)) = upgraded {
-                tracing::warn!(event = "claude_code_cli.update_failed", user = %shard.user(), %error, "the Claude Code machine's CLI was not updated");
+                tracing::warn!(event = "claude_code_cli.update_failed", user = %core.user(), %error, "the Claude Code machine's CLI was not updated");
             }
-            shard.claude_cli().upgrading.borrow_mut().remove(&release.version);
+            core.claude_cli().upgrading.borrow_mut().remove(&release.version);
         });
     }
 
     /// Follows the vault's announcements of active-account changes until the
-    /// shard closes (`crates/provider-claude-code/src/prepared.rs`).
+    /// core closes (`crates/provider-claude-code/src/prepared.rs`).
     ///
     /// For each change, the processes prepared for the entry in the previous
     /// account's directory close, and the conversations on the entry that a page
-    /// has open prepare again. `changes` was subscribed when the shard was made,
+    /// has open prepare again. `changes` was subscribed when the core was made,
     /// so no change since is missed; a follower that fell behind treats every
     /// entry as changed, and closes every process prepared on the machine.
     pub(crate) async fn follow_account_changes(
@@ -1600,28 +1600,28 @@ impl Shard {
     }
 
     /// Installs the CLI on the Claude Code machine for account work of
-    /// `entry`, as a task of the shard, and records the outcome for the
+    /// `entry`, as a task of the core, and records the outcome for the
     /// settings page. Shutdown cancels it.
     pub(crate) fn install_cli(&self, entry: ProviderId) {
-        let shard = self.this();
+        let core = self.this();
         self.tasks().spawn_local(async move {
             let installed = tokio::select! {
-                installed = shard.install_cli_now(&entry) => installed,
-                () = shard.closed() => return,
+                installed = core.install_cli_now(&entry) => installed,
+                () = core.closed() => return,
             };
             let outcome = match installed {
                 Ok(path) => CliInstall::Installed { path },
                 Err(message) => CliInstall::Failed { message },
             };
-            shard
+            core
                 .services()
                 .cli_installs
-                .finish(shard.user(), &entry, outcome);
-            shard.mark(Part::Providers);
+                .finish(core.user(), &entry, outcome);
+            core.mark(Part::Providers);
         });
     }
 
-    /// Installs the CLI on the Claude Code machine, on the master's shard,
+    /// Installs the CLI on the Claude Code machine, on the master's core,
     /// which holds it.
     async fn install_cli_now(&self, entry: &ProviderId) -> Result<String, String> {
         let machine = self
@@ -1633,13 +1633,13 @@ impl Shard {
         let user = self.user().clone();
         let entry = entry.clone();
         machine
-            .on_machine(move |shard, _| async move {
-                let access = cloud_of(&*shard)
+            .on_machine(move |core, _| async move {
+                let access = cloud_of(&*core)
                     .map_err(|error| error.to_string())?
                     .claude_code_access()
                     .await
                     .map_err(|error| error.to_string())?;
-                let services = shard.services();
+                let services = core.services();
                 let download = |stage| {
                     if let StartStage::Download(progress) = stage
                         && services.cli_installs.download(&user, &entry, progress)
@@ -1647,7 +1647,7 @@ impl Shard {
                         services.sync.mark(&user, Part::Providers);
                     }
                 };
-                shard.cli_executable_at(&access, &context, &download).await
+                core.cli_executable_at(&access, &context, &download).await
             })
             .await
             .map_err(|error| error.0)?
@@ -1880,7 +1880,7 @@ pub async fn start_install(services: &CoreServices, cores: &dyn Cores, user: &Us
     services.sync.mark(user, Part::Providers);
     let id = entry.clone();
     let queued = cores
-        .call(user, move |shard, _| async move { shard.install_cli(id) })
+        .call(user, move |core, _| async move { core.install_cli(id) })
         .await;
     if let Err(error) = queued {
         let failed = CliInstall::Failed {

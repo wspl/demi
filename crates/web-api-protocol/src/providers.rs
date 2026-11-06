@@ -29,7 +29,7 @@ serde_plain::derive_fromstr_from_deserialize!(CredentialKind);
 
 pub use demi_shared_types::Rotation;
 
-/// What a configured model makes (`crates/backend-user-shard/src/provider_settings.rs`):
+/// What a configured model makes (`crates/core/src/provider_settings.rs`):
 /// text, the model menu's, unless its user added it as an audio model of a
 /// compatible entry with an audio shape. A compatible entry makes no images
 /// and no videos.
@@ -132,7 +132,7 @@ fn within(context_window: Option<u32>) -> impl FnOnce(&Option<u32>, &()) -> gard
 /// are distinct in a list that is kept ([`ConfiguredModels::repeated_id`]):
 /// a request that repeats one is refused as `duplicate_model`, not as an
 /// invalid body. An empty list leaves the entry incomplete until a model is
-/// added (`crates/backend-user-shard/src/provider_settings.rs`).
+/// added (`crates/core/src/provider_settings.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(transparent)]
 #[garde(transparent)]
@@ -1110,7 +1110,7 @@ pub enum Availability {
 #[serde(rename_all = "snake_case")]
 pub enum UnavailableReason {
     /// The entry lacks a part it needs to infer
-    /// (`crates/backend-user-shard/src/provider_settings.rs`).
+    /// (`crates/core/src/provider_settings.rs`).
     Setup,
     /// The credential is refused, or a subscription's account expired.
     Authentication,

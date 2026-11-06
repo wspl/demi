@@ -94,7 +94,7 @@ struct Library {
 ///   attribution.
 /// - The public holidays exported from the `holidays` Python package, which
 ///   a schedule's working days skip
-///   (`crates/backend-user-shard/src/schedules/holidays.rs`).
+///   (`crates/core/src/schedules/holidays.rs`).
 /// - Tailwind's browser build and html-to-image, which a widget's document
 ///   runs and the widget plugin serves (`crates/plugin-widget/plugin/src/page.rs`).
 /// - proot and the talloc it links, which run Simple Isolation Clouds
@@ -140,7 +140,7 @@ const LIBRARIES: [Library; 11] = [
         name: "holidays",
         version: "0.107",
         license: "MIT",
-        notice: "crates/backend-user-shard/src/schedules/LICENSE-holidays",
+        notice: "crates/core/src/schedules/LICENSE-holidays",
     },
     Library {
         name: "@tailwindcss/browser",

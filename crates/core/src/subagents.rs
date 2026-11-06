@@ -24,7 +24,7 @@ use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::ProfileId;
 use demi_web_api_protocol::subagents::{NewProfile, ProfilePatch, SubagentProfile, SubagentsPatch};
 
-use crate::Shard;
+use crate::Core;
 
 /// The name no profile takes: omitting `--profile` selects the inherit
 /// profile, and naming it would read as that one.
@@ -207,7 +207,7 @@ pub enum ProfileRefusal {
     Storage(#[from] StorageError),
 }
 
-impl Shard {
+impl Core {
     /// Sets what `patch` names of the user's Subagents switch and limits.
     pub async fn patch_subagents(&self, patch: SubagentsPatch) -> Result<(), StorageError> {
         self.store().set_subagents(patch)

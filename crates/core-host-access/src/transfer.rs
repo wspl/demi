@@ -1,7 +1,7 @@
 //! File transfers: a file's bytes between the user's browser and the
 //! conversation's Host, for as long as the user's browser takes.
 //!
-//! The shard admits a transfer like any operation and hands the edge the pipe
+//! The core admits a transfer like any operation and hands the edge the pipe
 //! end and a lease. An archive or a target change ends the conversation's open
 //! transfers instead of waiting for them, and a detach those that reached the
 //! detached device. This module also
@@ -9,12 +9,12 @@
 //! conditional request, and the part a `Range` asks for.
 //!
 //! The edge holds the lease while bytes move and drops it when done, which
-//! releases the admission in the shard. When the shard ends the transfer first,
+//! releases the admission in the core. When the core ends the transfer first,
 //! it releases the admission at once without waiting for the edge, which sees
 //! the lease end and stops. A download of `report.txt` from the Cloud:
 //!
 //! ```text
-//! Web app          Edge                     User's shard         Runner
+//! Web app          Edge                     User's core         Runner
 //!   |-- GET fs/raw -->|                           |                   |
 //!   |                 |-- admit the download ---->| file gate, Cloud  |
 //!   |                 |                           |   admission       |
@@ -57,7 +57,7 @@ use http::{HeaderMap, HeaderValue, StatusCode};
 use tokio::sync::{oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
-use crate::HostShard;
+use crate::HostCore;
 use crate::access::{Admitted, ConversationHost, HostAccessError, Refusal, Waits};
 use crate::lease::Lease;
 
@@ -145,7 +145,7 @@ pub struct OpenUpload {
     pub lease: Lease,
 }
 
-impl dyn HostShard + '_ {
+impl dyn HostCore + '_ {
     /// Admits a download of one file on the conversation's primary Host, and
     /// answers what the file's metadata decides: the part's bytes as a
     /// stream, or an answer without them.
@@ -249,7 +249,7 @@ impl dyn HostShard + '_ {
             }
             body = part.body;
         }
-        // The bytes move at the edge; the shard only holds the admission.
+        // The bytes move at the edge; the core only holds the admission.
         let lease = self.lease_transfer(admitted, open, std::future::pending(), || {});
         Ok(Download::Stream {
             stat,
@@ -351,7 +351,7 @@ impl dyn HostShard + '_ {
 
     /// Hands the edge a lease on an admitted transfer.
     ///
-    /// The shard's owner task keeps the admission and the transfer's
+    /// The core's owner task keeps the admission and the transfer's
     /// registration until `work` ends, the edge drops the lease, or a
     /// transition ends the transfer. In the last two cases `stop` runs first.
     /// The admission goes before the registration, so a transition that waits

@@ -45,7 +45,7 @@ pub struct DeviceAnswer {
 }
 
 /// Why a request made through a device got no answer, in the words the user
-/// reads (`crates/backend-user-shard/src/shard/device_requests.rs`).
+/// reads (`crates/core/src/device_requests.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DeviceRefusal {
     /// The device is none of the owner's any more.

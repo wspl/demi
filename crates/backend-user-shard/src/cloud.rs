@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 use crate::pool::Shards;
 use crate::services::Services;
 
-/// Routes each death the machine manager reports to the shard of the
+/// Routes each death the machine manager reports to the core of the
 /// device's owner (`crates/backend/src/lib.rs`), until the backend closes.
 pub async fn route_deaths(
     mut deaths: mpsc::Receiver<demi_machine_manager_protocol::DeviceId>,
@@ -30,10 +30,10 @@ pub async fn route_deaths(
                 continue;
             }
         };
-        // A shard that is closing has no Cloud left to stop.
+        // A core that is closing has no Cloud left to stop.
         let _ = shards
             .of(&owner)
-            .call(move |shard, _| async move { shard.cloud_shard().cloud_died(&id).await })
+            .call(move |core, _| async move { core.cloud_core().cloud_died(&id).await })
             .await;
     }
 }
@@ -58,10 +58,10 @@ pub async fn route_statuses(
                 continue;
             }
         };
-        // A shard that is closing has no page left to tell.
+        // A core that is closing has no page left to tell.
         let _ = shards
             .of(&owner)
-            .call(move |shard, _| async move { shard.cloud_shard().marks().mark(demi_core_sync::Part::Cloud) })
+            .call(move |core, _| async move { core.cloud_core().marks().mark(demi_core_sync::Part::Cloud) })
             .await;
     }
 }

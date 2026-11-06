@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_backend_runners::prefetch::NextRelease;
-use demi_core::Shard;
+use demi_core::Core;
 use demi_runner_protocol::release::PrefetchState;
 
 /// The download of the next runner release, on the user's core.
@@ -20,7 +20,7 @@ pub trait RunnerPrefetch {
     async fn prefetch(self: &Rc<Self>, next: Arc<NextRelease>);
 }
 
-impl RunnerPrefetch for Shard {
+impl RunnerPrefetch for Core {
     async fn prefetch(self: &Rc<Self>, next: Arc<NextRelease>) {
         let devices = match self.store().paired_devices().await {
             Ok(devices) => devices,

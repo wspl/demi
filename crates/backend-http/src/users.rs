@@ -188,7 +188,7 @@ pub(super) async fn change(
                 state
                     .shards
                     .of(&user)
-                    .call(|shard, _| async move { shard.disconnect_runners("the account was disabled").await })
+                    .call(|core, _| async move { core.disconnect_runners("the account was disabled").await })
                     .await??;
             }
         }

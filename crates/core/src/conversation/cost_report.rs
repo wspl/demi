@@ -34,7 +34,7 @@ use std::rc::Rc;
 
 use super::organize::failed;
 use super::product::entries;
-use crate::Shard;
+use crate::Core;
 
 /// The media purposes, whose calls make a file.
 const MEDIA: [&str; 3] = ["image", "video", "audio"];
@@ -240,20 +240,20 @@ pub(super) struct Labels {
 
 impl Labels {
     /// The labels of the entries and accounts `calls` name.
-    pub(super) async fn of(shard: &Shard, calls: &[LedgerCall]) -> Self {
+    pub(super) async fn of(core: &Core, calls: &[LedgerCall]) -> Self {
         let mut labels = Self::default();
         // An entry that cannot be read leaves only its id to show.
-        let entries = entries(shard).await.unwrap_or_default();
+        let entries = entries(core).await.unwrap_or_default();
         for entry in entries {
             let named = calls.iter().any(|call| call.provider == entry.id);
             if !named {
                 continue;
             }
             if calls.iter().any(|call| call.provider == entry.id && call.account.is_some())
-                && Vault::manages(shard.user(), &entry)
+                && Vault::manages(core.user(), &entry)
             {
                 labels.disclosed.insert(entry.id.clone());
-                if let Ok(listed) = vault_accounts::list(&shard.services().vault, &entry, true).await {
+                if let Ok(listed) = vault_accounts::list(&core.services().vault, &entry, true).await {
                     for account in listed.accounts {
                         if let Ok(id) = CredentialId::try_from(account.id.as_str()) {
                             labels.accounts.insert((entry.id.clone(), id), account.label);
@@ -300,19 +300,19 @@ impl Labels {
 }
 
 /// `demi conversation cost`.
-pub(super) async fn cost(shard: Rc<Shard>, call: Call<CostArgs>, port: RpcPort) -> Result<u8, RpcError> {
+pub(super) async fn cost(core: Rc<Core>, call: Call<CostArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let id = match &call.args.conversation {
         Some(id) => id.clone(),
         None => conversation_of(&call.invocation)?,
     };
     // Another user's conversation is none of the caller's.
-    let record = match shard.store().conversation(id.clone()).await.map_err(failed)? {
+    let record = match core.store().conversation(id.clone()).await.map_err(failed)? {
         Some(record) => record,
         _ => return Err(failed(format!("no conversation {id}"))),
     };
     let (conversation, title) = (record.id, record.title);
-    let (calls, now) = shard.store().conversation_calls(conversation.clone()).await.map_err(failed)?;
-    let profiles: BTreeMap<u64, Option<String>> = shard.store().databases()
+    let (calls, now) = core.store().conversation_calls(conversation.clone()).await.map_err(failed)?;
+    let profiles: BTreeMap<u64, Option<String>> = core.store().databases()
         .read(&conversation, tree::subagents)
         .await
         .map_err(failed)?
@@ -320,7 +320,7 @@ pub(super) async fn cost(shard: Rc<Shard>, call: Call<CostArgs>, port: RpcPort) 
         .into_iter()
         .map(|subagent| (subagent.record.number, subagent.record.profile))
         .collect();
-    let labels = Labels::of(&shard, &calls).await;
+    let labels = Labels::of(&core, &calls).await;
     let report = report(conversation, title, &calls, now, &profiles, &labels);
     if call.invocation.json {
         let text = serde_json::to_string(&report).map_err(failed)?;

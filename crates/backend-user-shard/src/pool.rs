@@ -17,9 +17,9 @@ use std::sync::Arc;
 use demi_backend_cloud::CloudSide;
 use demi_core::conversation::claude_cli::ClaudeMachine;
 use demi_core::extensions::Extensions;
-use demi_core::cores::{CoreWork, Cores, ShardUnavailable};
+use demi_core::cores::{CoreWork, Cores, CoreUnavailable};
 use demi_core::device_requests::DeviceRequests;
-use demi_core::{Census, Shard, web_client};
+use demi_core::{Census, Core, web_client};
 use demi_web_api_protocol::ids::UserId;
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use sha2::{Digest, Sha256};
@@ -96,7 +96,7 @@ impl Shards {
 }
 
 impl Cores for Shards {
-    fn run(&self, user: &UserId, work: CoreWork) -> BoxFuture<'static, Result<(), ShardUnavailable>> {
+    fn run(&self, user: &UserId, work: CoreWork) -> BoxFuture<'static, Result<(), CoreUnavailable>> {
         let shards = self.clone();
         let user = user.clone();
         Box::pin(async move { shards.of(&user).call(work).await })
@@ -108,9 +108,9 @@ impl ShardRef<'_> {
     /// to completion even when this future is dropped; dropping it cancels
     /// the token `work` receives, which only its waits observe, never a step
     /// after a commit.
-    pub async fn call<F, Fut, T>(&self, work: F) -> Result<T, ShardUnavailable>
+    pub async fn call<F, Fut, T>(&self, work: F) -> Result<T, CoreUnavailable>
     where
-        F: FnOnce(Rc<Shard>, CancellationToken) -> Fut + Send + 'static,
+        F: FnOnce(Rc<Core>, CancellationToken) -> Fut + Send + 'static,
         Fut: Future<Output = T> + 'static,
         T: Send + 'static,
     {
@@ -119,18 +119,18 @@ impl ShardRef<'_> {
 
     /// A call the shard also serves while it closes, such as a runner's pipe
     /// request, which the shard's own shutdown steps may need.
-    pub async fn call_while_closing<F, Fut, T>(&self, work: F) -> Result<T, ShardUnavailable>
+    pub async fn call_while_closing<F, Fut, T>(&self, work: F) -> Result<T, CoreUnavailable>
     where
-        F: FnOnce(Rc<Shard>, CancellationToken) -> Fut + Send + 'static,
+        F: FnOnce(Rc<Core>, CancellationToken) -> Fut + Send + 'static,
         Fut: Future<Output = T> + 'static,
         T: Send + 'static,
     {
         self.run(work, true).await
     }
 
-    async fn run<F, Fut, T>(&self, work: F, while_closing: bool) -> Result<T, ShardUnavailable>
+    async fn run<F, Fut, T>(&self, work: F, while_closing: bool) -> Result<T, CoreUnavailable>
     where
-        F: FnOnce(Rc<Shard>, CancellationToken) -> Fut + Send + 'static,
+        F: FnOnce(Rc<Core>, CancellationToken) -> Fut + Send + 'static,
         Fut: Future<Output = T> + 'static,
         T: Send + 'static,
     {
@@ -148,18 +148,18 @@ impl ShardRef<'_> {
         self.queue
             .send(Message::Call(Box::new(job)))
             .await
-            .map_err(|_| ShardUnavailable::Closing)?;
+            .map_err(|_| CoreUnavailable::Closing)?;
         // An answer dropped unsent means the call panicked.
-        answered.await.unwrap_or(Err(ShardUnavailable::Failed))
+        answered.await.unwrap_or(Err(CoreUnavailable::Failed))
     }
 
     /// Moves `work`, such as serving a page's lane, into the user's
     /// shard, where it runs as the shard's task until it ends. It answers
     /// once the work is queued; a closing shard refuses it, and dropping the
     /// work drops what it holds.
-    pub async fn adopt<F, Fut>(&self, work: F) -> Result<(), ShardUnavailable>
+    pub async fn adopt<F, Fut>(&self, work: F) -> Result<(), CoreUnavailable>
     where
-        F: FnOnce(Rc<Shard>) -> Fut + Send + 'static,
+        F: FnOnce(Rc<Core>) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + 'static,
     {
         let job = AdoptJob {
@@ -170,7 +170,7 @@ impl ShardRef<'_> {
         self.queue
             .send(Message::Call(Box::new(job)))
             .await
-            .map_err(|_| ShardUnavailable::Closing)
+            .map_err(|_| CoreUnavailable::Closing)
     }
 }
 
@@ -187,7 +187,7 @@ trait Job: Send {
     fn user(&self) -> &UserId;
     /// Whether the shard runs it while it closes.
     fn while_closing(&self) -> bool;
-    fn run(self: Box<Self>, shard: Rc<Shard>) -> LocalBoxFuture<'static, ()>;
+    fn run(self: Box<Self>, shard: Rc<Core>) -> LocalBoxFuture<'static, ()>;
     fn refuse(self: Box<Self>);
 }
 
@@ -195,7 +195,7 @@ struct CallJob<F, T> {
     user: UserId,
     work: F,
     cancel: CancellationToken,
-    answer: oneshot::Sender<Result<T, ShardUnavailable>>,
+    answer: oneshot::Sender<Result<T, CoreUnavailable>>,
     while_closing: bool,
     /// The caller's span, such as its request's, which the work logs in.
     span: tracing::Span,
@@ -203,7 +203,7 @@ struct CallJob<F, T> {
 
 impl<F, Fut, T> Job for CallJob<F, T>
 where
-    F: FnOnce(Rc<Shard>, CancellationToken) -> Fut + Send + 'static,
+    F: FnOnce(Rc<Core>, CancellationToken) -> Fut + Send + 'static,
     Fut: Future<Output = T> + 'static,
     T: Send + 'static,
 {
@@ -215,7 +215,7 @@ where
         self.while_closing
     }
 
-    fn run(self: Box<Self>, shard: Rc<Shard>) -> LocalBoxFuture<'static, ()> {
+    fn run(self: Box<Self>, shard: Rc<Core>) -> LocalBoxFuture<'static, ()> {
         let CallJob {
             work,
             cancel,
@@ -233,7 +233,7 @@ where
 
     fn refuse(self: Box<Self>) {
         // A requester that went away needs no refusal either.
-        let _ = self.answer.send(Err(ShardUnavailable::Closing));
+        let _ = self.answer.send(Err(CoreUnavailable::Closing));
     }
 }
 
@@ -247,7 +247,7 @@ struct AdoptJob<F> {
 
 impl<F, Fut> Job for AdoptJob<F>
 where
-    F: FnOnce(Rc<Shard>) -> Fut + Send + 'static,
+    F: FnOnce(Rc<Core>) -> Fut + Send + 'static,
     Fut: Future<Output = ()> + 'static,
 {
     fn user(&self) -> &UserId {
@@ -258,7 +258,7 @@ where
         false
     }
 
-    fn run(self: Box<Self>, shard: Rc<Shard>) -> LocalBoxFuture<'static, ()> {
+    fn run(self: Box<Self>, shard: Rc<Core>) -> LocalBoxFuture<'static, ()> {
         let AdoptJob { work, span, .. } = *self;
         Box::pin(async move {
             // The work belongs to the shard, whose close waits for it.
@@ -326,7 +326,7 @@ impl ShardPool {
             tracing::error!(event = "claude_code_machine.set_twice", "the Claude Code machine was set twice; the first is kept");
         }
         // A provider entry's request through one of its owner's devices goes
-        // through the owner's shard (`crates/backend-user-shard/src/shard/device_requests.rs`).
+        // through the owner's shard (`crates/core/src/device_requests.rs`).
         shared.provider_registry.set_devices(DeviceRequests::new(Arc::new(shards.clone())));
         Ok(Self { shards, workers })
     }
@@ -421,7 +421,7 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
     let calls = TaskTracker::new();
     let http = reqwest::Client::new();
     let web = web_client(&services);
-    let mut shards: HashMap<UserId, Rc<Shard>> = HashMap::new();
+    let mut shards: HashMap<UserId, Rc<Core>> = HashMap::new();
     let mut closer = None;
     while let Some(message) = queue.recv().await {
         match message {
@@ -445,7 +445,7 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                     .entry(job.user().clone())
                     .or_insert_with_key(|user| {
                         let store = store.expect("a user with no shard had the store opened above");
-                        Shard::start(
+                        Core::start(
                             user.clone(),
                             store,
                             services.core.clone(),

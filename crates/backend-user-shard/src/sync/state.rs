@@ -1,7 +1,7 @@
 //! The product state `GET /state` answers, and each part of it a channel sends
 //! when it changed.
 //!
-//! The user's shard reads each part from the stores and its own state when the
+//! The user's core reads each part from the stores and its own state when the
 //! channel sends it. The state is not one atomic read across databases, and need
 //! not be: its version is taken before it is read, so a change made while it
 //! is read is one after the version, which the page follows the state from.
@@ -26,7 +26,7 @@ use futures_util::future::join_all;
 
 use demi_core::provider_settings::CatalogError;
 use demi_backend_cloud::user_core::CloudOfCore;
-use demi_core::Shard;
+use demi_core::Core;
 
 use crate::server_starter::ServerCore;
 
@@ -79,7 +79,7 @@ fn millis(started: Instant) -> u64 {
     reason = "a core runs on one thread: its futures are never sent to another"
 )]
 pub trait StateReads {
-    /// The product state for `user`, this shard's user as the session
+    /// The product state for `user`, this core's user as the session
     /// resolved them.
     ///
     /// It writes how long each part took, which a page with no offline copy
@@ -90,7 +90,7 @@ pub trait StateReads {
     ) -> Result<ProductState, StateError>;
 
     /// The part as the message that carries it, read now for `user`, this
-    /// shard's user, and the page of the session `reader`; a conversation
+    /// core's user, and the page of the session `reader`; a conversation
     /// the user no longer has was deleted.
     async fn read_part(
         &self,
@@ -105,7 +105,7 @@ pub trait StateReads {
     async fn provider_states(&self, user: &UserDto) -> Result<Vec<ProviderState>, StorageError>;
 }
 
-impl StateReads for Shard {
+impl StateReads for Core {
     async fn product_state(
         &self,
         user: UserDto,
@@ -129,7 +129,7 @@ impl StateReads for Shard {
         let mut conversations = timed(&mut ms.conversations, self.conversation_summaries(false)).await?;
         let active = conversations.len();
         conversations.extend(timed(&mut ms.archived, self.conversation_summaries(true)).await?);
-        let cloud = timed(&mut ms.cloud, self.cloud_shard().cloud_status()).await?;
+        let cloud = timed(&mut ms.cloud, self.cloud_core().cloud_status()).await?;
         let runner_release = match timed(&mut ms.runner_release, services.runner_releases.current()).await {
             Ok(release) => release.map(|release| release.release),
             Err(error) => {
@@ -359,7 +359,7 @@ impl StateReads for Shard {
                 logins: self.server_services().logins.listed(self.user()),
             },
             Part::Cloud => SyncEvent::Cloud {
-                cloud: self.cloud_shard().cloud_status().await?,
+                cloud: self.cloud_core().cloud_status().await?,
             },
         };
         Ok(Some(event))

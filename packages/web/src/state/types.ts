@@ -119,7 +119,7 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   model: ModelSettings
   /**
    * The Workflow menu choice of a conversation without a record, which its
-   * first send gives it (`crates/backend-user-shard/src/conversation/workflows.rs`); one with
+   * first send gives it (`crates/core/src/conversation/workflows.rs`); one with
    * a record holds its choice there.
    */
   workflow: WorkflowChoice

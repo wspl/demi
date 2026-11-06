@@ -1,7 +1,7 @@
 //! The plugin contract and nothing that implements it.
 //!
 //! A plugin is a factory, shared by every shard thread, that carries its
-//! manifest and makes one instance per user shard. An instance receives
+//! manifest and makes one instance per user core. An instance receives
 //! requests as data and acts only through its port, whose every operation is
 //! one message and one answer.
 //!
@@ -20,7 +20,7 @@
 //!
 //! Everything a plugin receives is a message, so no plugin ever receives a live
 //! object: no Host handle, no callback into the backend, no reference to a
-//! session or a shard. That is:
+//! session or a core. That is:
 //!
 //! - what keeps a plugin written with a TypeScript SDK possible without
 //!   embedding the Rust runtime (no such SDK is built);

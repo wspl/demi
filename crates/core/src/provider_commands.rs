@@ -45,7 +45,7 @@ use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::Shard;
+use super::Core;
 use super::agent_profiles::Scope;
 use crate::conversation::organize::verb;
 use crate::conversation::product::entries;
@@ -395,24 +395,24 @@ struct RemovedEntry {
     removed: bool,
 }
 
-/// The `providers` group, whose handlers act in `shard`.
-pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
+/// The `providers` group, whose handlers act in `core`.
+pub(crate) fn providers_group(core: std::rc::Weak<Core>) -> GroupBuilder {
     let models = GroupBuilder::new("models", MODELS_SUMMARY)
         .leaf(
             LeafBuilder::rpc("search", SEARCH_SUMMARY)
                 .input::<SearchArgs>()
                 .positionals(["query"])
                 .json_output::<Vec<ModelMatch>>()
-                .bind(TypedRpc::new(verb(shard.clone(), search))),
+                .bind(TypedRpc::new(verb(core.clone(), search))),
         )
         .leaf(model_leaf::<ModelAddArgs>("add", MODEL_ADD_SUMMARY)
             .describe("kind", KIND)
             .positionals(["entry", "model"])
-            .bind(TypedRpc::new(verb(shard.clone(), add_model))))
+            .bind(TypedRpc::new(verb(core.clone(), add_model))))
         .leaf(model_leaf::<ModelEditArgs>("edit", MODEL_EDIT_SUMMARY)
             .describe("model", "The id of the model in the entry's list.")
             .positionals(["entry", "model"])
-            .bind(TypedRpc::new(verb(shard.clone(), edit_model))))
+            .bind(TypedRpc::new(verb(core.clone(), edit_model))))
         .leaf(
             LeafBuilder::rpc("remove", MODEL_REMOVE_SUMMARY)
                 .input::<ModelRemoveArgs>()
@@ -420,7 +420,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .positionals(["entry", "model"])
                 .json_output::<ConfiguredModel>()
                 .permission(MANAGE)
-                .bind(TypedRpc::new(verb(shard.clone(), remove_model))),
+                .bind(TypedRpc::new(verb(core.clone(), remove_model))),
         );
     GroupBuilder::new("providers", SUMMARY)
         .index_entry(ENTRY)
@@ -430,7 +430,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .input::<ListArgs>()
                 .describe("all", ALL)
                 .json_output::<Vec<ListedEntry>>()
-                .bind(TypedRpc::new(verb(shard.clone(), list))),
+                .bind(TypedRpc::new(verb(core.clone(), list))),
         )
         .leaf(
             LeafBuilder::rpc("show", SHOW_SUMMARY)
@@ -438,7 +438,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .describe("entry", ENTRY_ARG)
                 .positionals(["entry"])
                 .json_output::<ShownEntry>()
-                .bind(TypedRpc::new(verb(shard.clone(), show))),
+                .bind(TypedRpc::new(verb(core.clone(), show))),
         )
         .leaf(
             LeafBuilder::rpc("add", ADD_SUMMARY)
@@ -454,7 +454,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .stdin_with(["api-key-stdin"])
                 .json_output::<ShownEntry>()
                 .permission(MANAGE)
-                .bind(TypedRpc::new(verb(shard.clone(), add))),
+                .bind(TypedRpc::new(verb(core.clone(), add))),
         )
         .leaf(
             LeafBuilder::rpc("edit", EDIT_SUMMARY)
@@ -466,7 +466,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .stdin_field("patch")
                 .json_output::<ShownEntry>()
                 .permission(MANAGE)
-                .bind(TypedRpc::new(verb(shard.clone(), edit))),
+                .bind(TypedRpc::new(verb(core.clone(), edit))),
         )
         .leaf(
             LeafBuilder::rpc("context", CONTEXT_SUMMARY)
@@ -475,7 +475,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .positionals(["entry", "model", "size"])
                 .json_output::<ModelContext>()
                 .permission(MANAGE)
-                .bind(TypedRpc::new(verb(shard.clone(), set_context))),
+                .bind(TypedRpc::new(verb(core.clone(), set_context))),
         )
         .leaf(
             LeafBuilder::rpc("hide", HIDE_SUMMARY)
@@ -484,7 +484,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .positionals(["entry"])
                 .json_output::<ShownEntry>()
                 .permission(MANAGE)
-                .bind(TypedRpc::new(verb(shard.clone(), hide))),
+                .bind(TypedRpc::new(verb(core.clone(), hide))),
         )
         .leaf(
             LeafBuilder::rpc("unhide", UNHIDE_SUMMARY)
@@ -493,7 +493,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .positionals(["entry"])
                 .json_output::<ShownEntry>()
                 .permission(MANAGE)
-                .bind(TypedRpc::new(verb(shard.clone(), unhide))),
+                .bind(TypedRpc::new(verb(core.clone(), unhide))),
         )
         .leaf(
             LeafBuilder::rpc("remove", REMOVE_SUMMARY)
@@ -502,7 +502,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .positionals(["entry"])
                 .json_output::<RemovedEntry>()
                 .permission(MANAGE)
-                .bind(TypedRpc::new(verb(shard.clone(), remove))),
+                .bind(TypedRpc::new(verb(core.clone(), remove))),
         )
         .leaf(
             LeafBuilder::rpc("order", ORDER_SUMMARY)
@@ -511,7 +511,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .positionals(["entry"])
                 .json_output::<Vec<ListedEntry>>()
                 .permission(MANAGE)
-                .bind(TypedRpc::new(verb(shard.clone(), order))),
+                .bind(TypedRpc::new(verb(core.clone(), order))),
         )
         .group(models)
         .group(
@@ -522,7 +522,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                         .describe("entry", ENTRY_ARG)
                         .positionals(["entry"])
                         .json_output::<Vec<ListedAccount>>()
-                        .bind(TypedRpc::new(verb(shard.clone(), list_accounts))),
+                        .bind(TypedRpc::new(verb(core.clone(), list_accounts))),
                 )
                 .leaf(
                     LeafBuilder::rpc("activate", ACCOUNTS_ACTIVATE_SUMMARY)
@@ -531,7 +531,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                         .positionals(["entry", "account"])
                         .json_output::<Vec<ListedAccount>>()
                         .permission(MANAGE)
-                        .bind(TypedRpc::new(verb(shard.clone(), activate_account))),
+                        .bind(TypedRpc::new(verb(core.clone(), activate_account))),
                 )
                 .leaf(
                     LeafBuilder::rpc("order", ACCOUNTS_ORDER_SUMMARY)
@@ -540,7 +540,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                         .positionals(["entry", "account"])
                         .json_output::<Vec<ListedAccount>>()
                         .permission(MANAGE)
-                        .bind(TypedRpc::new(verb(shard, order_accounts))),
+                        .bind(TypedRpc::new(verb(core, order_accounts))),
                 ),
         )
 }
@@ -577,10 +577,10 @@ async fn json(port: &RpcPort, value: &impl Serialize) -> Result<u8, RpcError> {
     out(port, format!("{text}\n")).await
 }
 
-async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn list(core: Rc<Core>, call: Call<ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let all = call.args.all == Some(true);
-    let scope = shard.scope().await.map_err(failed)?;
-    let current = caller_model(&shard, &call.invocation);
+    let scope = core.scope().await.map_err(failed)?;
+    let current = caller_model(&core, &call.invocation);
     let providers: Vec<ListedEntry> = scope
         .entries
         .iter()
@@ -643,18 +643,18 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
     out(&port, table.render()).await
 }
 
-async fn show(shard: Rc<Shard>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let user = user(&shard).await?;
-    let scope = shard.scope().await.map_err(failed)?;
+async fn show(core: Rc<Core>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let user = user(&core).await?;
+    let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, &call.args.entry).map_err(failed)?;
-    let current = caller_model(&shard, &call.invocation);
-    let shown = shown(&shard, &user, &scope, entry, current.as_ref()).await?;
+    let current = caller_model(&core, &call.invocation);
+    let shown = shown(&core, &user, &scope, entry, current.as_ref()).await?;
     answer(&port, call.invocation.json, shown).await
 }
 
-async fn add(shard: Rc<Shard>, call: Call<AddArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn add(core: Rc<Core>, call: Call<AddArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&shard).await?;
+    let user = user(&core).await?;
     let api_key = key(args.api_key_stdin, args.api_key)?;
     let label = args.label.map(Trimmed::from);
     let base_url = args.base_url.map(endpoint).transpose()?;
@@ -697,22 +697,22 @@ async fn add(shard: Rc<Shard>, call: Call<AddArgs>, port: RpcPort) -> Result<u8,
         }
     };
     body.validate().map_err(|report| failed(problems(&report)))?;
-    let entry = shard
+    let entry = core
         .services()
         .create_provider(&user, body)
         .await
         .map_err(failed)?;
-    let scope = shard.scope().await.map_err(failed)?;
+    let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, entry.id.as_str()).map_err(failed)?;
-    let current = caller_model(&shard, &call.invocation);
-    let shown = shown(&shard, &user, &scope, entry, current.as_ref()).await?;
+    let current = caller_model(&core, &call.invocation);
+    let shown = shown(&core, &user, &scope, entry, current.as_ref()).await?;
     answer(&port, call.invocation.json, shown).await
 }
 
-async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn edit(core: Rc<Core>, call: Call<EditArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&shard).await?;
-    let scope = shard.scope().await.map_err(failed)?;
+    let user = user(&core).await?;
+    let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, &args.entry).map_err(failed)?;
     let id = entry.id.clone();
     let command = call.invocation.path.join(" ");
@@ -722,8 +722,8 @@ async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u
             ..ProviderPatch::default()
         })
     } else {
-        let current = caller_model(&shard, &call.invocation);
-        let shown = shown(&shard, &user, &scope, entry, current.as_ref()).await?;
+        let current = caller_model(&core, &call.invocation);
+        let shown = shown(&core, &user, &scope, entry, current.as_ref()).await?;
         let (patch, left) = entry_patch(&shown, args.patch.as_deref().unwrap_or_default())?;
         if !left.is_empty() {
             let what = format!(
@@ -737,7 +737,7 @@ async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u
     match patch {
         Some(patch) => {
             patch.validate().map_err(|report| failed(problems(&report)))?;
-            shard
+            core
                 .services()
                 .update_provider(&user, id.as_str(), patch)
                 .await
@@ -748,10 +748,10 @@ async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u
             port.stderr(note(&command, what)).await?;
         }
     }
-    let scope = shard.scope().await.map_err(failed)?;
+    let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, id.as_str()).map_err(failed)?;
-    let current = caller_model(&shard, &call.invocation);
-    let shown = shown(&shard, &user, &scope, entry, current.as_ref()).await?;
+    let current = caller_model(&core, &call.invocation);
+    let shown = shown(&core, &user, &scope, entry, current.as_ref()).await?;
     answer(&port, call.invocation.json, shown).await
 }
 
@@ -832,10 +832,10 @@ fn changed_fields(
 /// Stores the user's limit on a model, or removes it, as the model menu's
 /// Context row does: the same patch of the preferences, read and written
 /// in one transaction.
-async fn set_context(shard: Rc<Shard>, call: Call<ContextArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn set_context(core: Rc<Core>, call: Call<ContextArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&shard).await?;
-    let scope = shard.scope().await.map_err(failed)?;
+    let user = user(&core).await?;
+    let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, &args.entry).map_err(failed)?;
     let Some(model) = scope
         .catalog_of(entry)
@@ -875,8 +875,8 @@ async fn set_context(shard: Rc<Shard>, call: Call<ContextArgs>, port: RpcPort) -
         ..PreferencesPatch::default()
     };
     let checked = crate::settings::check(patch).map_err(failed)?;
-    let services = shard.services();
-    shard.store().patch_preferences(move |saved| crate::settings::merge(saved, checked))
+    let services = core.services();
+    core.store().patch_preferences(move |saved| crate::settings::merge(saved, checked))
         .await
         .map_err(failed)?;
     services.sync.mark(&user.id, Part::Preferences);
@@ -898,12 +898,12 @@ async fn set_context(shard: Rc<Shard>, call: Call<ContextArgs>, port: RpcPort) -
     out(&port, fields.render()).await
 }
 
-async fn hide(shard: Rc<Shard>, call: Call<HideArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    show_in_menu(shard, call, port, false).await
+async fn hide(core: Rc<Core>, call: Call<HideArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    show_in_menu(core, call, port, false).await
 }
 
-async fn unhide(shard: Rc<Shard>, call: Call<HideArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    show_in_menu(shard, call, port, true).await
+async fn unhide(core: Rc<Core>, call: Call<HideArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    show_in_menu(core, call, port, true).await
 }
 
 /// Turns the entry, or its model `--model`, on or off in the model menu, as
@@ -911,18 +911,18 @@ async fn unhide(shard: Rc<Shard>, call: Call<HideArgs>, port: RpcPort) -> Result
 /// the user turned off gain or lose it, read and written in one
 /// transaction so a change made beside it stays.
 async fn show_in_menu(
-    shard: Rc<Shard>,
+    core: Rc<Core>,
     call: Call<HideArgs>,
     port: RpcPort,
     shown_in_menu: bool,
 ) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&shard).await?;
-    let scope = shard.scope().await.map_err(failed)?;
+    let user = user(&core).await?;
+    let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, &args.entry).map_err(failed)?;
     let id = entry.id.clone();
     if let Some(model) = &args.model {
-        if shard.services().provider_registry.reads_directory(entry) {
+        if core.services().provider_registry.reads_directory(entry) {
             return Err(failed(format!(
                 "--model: {} is shared by another server, whose settings say which of its models it offers",
                 entry.label
@@ -939,9 +939,9 @@ async fn show_in_menu(
             )));
         }
     }
-    let services = shard.services();
+    let services = core.services();
     let provider = id.clone();
-    shard.store().patch_preferences(move |mut saved| {
+    core.store().patch_preferences(move |mut saved| {
             match args.model {
                 Some(model_id) => {
                     saved
@@ -963,25 +963,25 @@ async fn show_in_menu(
         .await
         .map_err(failed)?;
     services.sync.mark(&user.id, Part::Preferences);
-    let scope = shard.scope().await.map_err(failed)?;
+    let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, id.as_str()).map_err(failed)?;
-    let current = caller_model(&shard, &call.invocation);
-    let shown = shown(&shard, &user, &scope, entry, current.as_ref()).await?;
+    let current = caller_model(&core, &call.invocation);
+    let shown = shown(&core, &user, &scope, entry, current.as_ref()).await?;
     answer(&port, call.invocation.json, shown).await
 }
 
 /// A user who only infers with the entry sees no account, as in Settings.
-async fn list_accounts(shard: Rc<Shard>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let user = user(&shard).await?;
-    let entry = scoped(&shard, &user, &call.args.entry).await?;
+async fn list_accounts(core: Rc<Core>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let user = user(&core).await?;
+    let entry = scoped(&core, &user, &call.args.entry).await?;
     let disclose = Vault::manages(&user.id, &entry);
-    accounts_answer(&shard, &port, call.invocation.json, &entry, disclose).await
+    accounts_answer(&core, &port, call.invocation.json, &entry, disclose).await
 }
 
-async fn activate_account(shard: Rc<Shard>, call: Call<AccountArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let user = user(&shard).await?;
-    let entry = managed(&shard, &user, &call.args.entry).await?;
-    let services = shard.services();
+async fn activate_account(core: Rc<Core>, call: Call<AccountArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let user = user(&core).await?;
+    let entry = managed(&core, &user, &call.args.entry).await?;
+    let services = core.services();
     let listed = vault_accounts::list(&services.vault, &entry, true).await.map_err(failed)?;
     let account = account_named(&listed.accounts, &call.args.account)?;
     {
@@ -990,14 +990,14 @@ async fn activate_account(shard: Rc<Shard>, call: Call<AccountArgs>, port: RpcPo
             .await
             .map_err(failed)?;
     }
-    let entry = managed(&shard, &user, entry.id.as_str()).await?;
-    accounts_answer(&shard, &port, call.invocation.json, &entry, true).await
+    let entry = managed(&core, &user, entry.id.as_str()).await?;
+    accounts_answer(&core, &port, call.invocation.json, &entry, true).await
 }
 
-async fn order_accounts(shard: Rc<Shard>, call: Call<AccountOrderArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let user = user(&shard).await?;
-    let entry = managed(&shard, &user, &call.args.entry).await?;
-    let services = shard.services();
+async fn order_accounts(core: Rc<Core>, call: Call<AccountOrderArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let user = user(&core).await?;
+    let entry = managed(&core, &user, &call.args.entry).await?;
+    let services = core.services();
     let listed = vault_accounts::list(&services.vault, &entry, true).await.map_err(failed)?;
     let order = call
         .args
@@ -1011,14 +1011,14 @@ async fn order_accounts(shard: Rc<Shard>, call: Call<AccountOrderArgs>, port: Rp
             .await
             .map_err(failed)?;
     }
-    accounts_answer(&shard, &port, call.invocation.json, &entry, true).await
+    accounts_answer(&core, &port, call.invocation.json, &entry, true).await
 }
 
 /// The entry `named_as` names among the user's.
-async fn scoped(shard: &Shard, user: &UserDto, named_as: &str) -> Result<ProviderEntry, RpcError> {
-    let entries = entries(shard).await.map_err(failed)?;
+async fn scoped(core: &Core, user: &UserDto, named_as: &str) -> Result<ProviderEntry, RpcError> {
+    let entries = entries(core).await.map_err(failed)?;
     let id = named(&entries, named_as).map_err(failed)?.id.clone();
-    shard
+    core
         .services()
         .scoped_entry(&user.id, id.as_str())
         .await
@@ -1027,10 +1027,10 @@ async fn scoped(shard: &Shard, user: &UserDto, named_as: &str) -> Result<Provide
 
 /// The entry `named_as` names, when the user manages it: changing its
 /// accounts is the configuring user's, as in Settings.
-async fn managed(shard: &Shard, user: &UserDto, named_as: &str) -> Result<ProviderEntry, RpcError> {
-    let entries = entries(shard).await.map_err(failed)?;
+async fn managed(core: &Core, user: &UserDto, named_as: &str) -> Result<ProviderEntry, RpcError> {
+    let entries = entries(core).await.map_err(failed)?;
     let id = named(&entries, named_as).map_err(failed)?.id.clone();
-    shard
+    core
         .services()
         .managed_entry(&user.id, id.as_str())
         .await
@@ -1067,13 +1067,13 @@ fn account_named(accounts: &[AccountInfo], named: &str) -> Result<CredentialId, 
 /// The entry's accounts in their order, the active one marked; none unless
 /// `disclose`.
 async fn accounts_answer(
-    shard: &Shard,
+    core: &Core,
     port: &RpcPort,
     json_output: bool,
     entry: &ProviderEntry,
     disclose: bool,
 ) -> Result<u8, RpcError> {
-    let listed = vault_accounts::list(&shard.services().vault, entry, disclose)
+    let listed = vault_accounts::list(&core.services().vault, entry, disclose)
         .await
         .map_err(failed)?;
     let accounts: Vec<ListedAccount> = listed
@@ -1102,9 +1102,9 @@ async fn accounts_answer(
     out(port, text).await
 }
 
-async fn order(shard: Rc<Shard>, call: Call<OrderArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let user = user(&shard).await?;
-    let entries = entries(&shard).await.map_err(failed)?;
+async fn order(core: Rc<Core>, call: Call<OrderArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let user = user(&core).await?;
+    let entries = entries(&core).await.map_err(failed)?;
     let mut ids = Vec::new();
     for name in &call.args.entry {
         let entry = named(&entries, name).map_err(failed)?;
@@ -1122,17 +1122,17 @@ async fn order(shard: Rc<Shard>, call: Call<OrderArgs>, port: RpcPort) -> Result
             ids.push(entry.id.clone());
         }
     }
-    shard.services().order_providers(&user, ids).await.map_err(failed)?;
-    list(shard, Call { args: ListArgs { all: Some(true) }, invocation: call.invocation }, port).await
+    core.services().order_providers(&user, ids).await.map_err(failed)?;
+    list(core, Call { args: ListArgs { all: Some(true) }, invocation: call.invocation }, port).await
 }
 
-async fn remove(shard: Rc<Shard>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let user = user(&shard).await?;
-    let entries = entries(&shard).await.map_err(failed)?;
+async fn remove(core: Rc<Core>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let user = user(&core).await?;
+    let entries = entries(&core).await.map_err(failed)?;
     let id = named(&entries, &call.args.entry).map_err(failed)?.id.clone();
-    let removed = shard
+    let removed = core
         .services()
-        .delete_provider(shard.starter(), &user, id.as_str())
+        .delete_provider(core.starter(), &user, id.as_str())
         .await
         .map_err(failed)?;
     let removed = RemovedEntry {
@@ -1146,11 +1146,11 @@ async fn remove(shard: Rc<Shard>, call: Call<EntryArgs>, port: RpcPort) -> Resul
     out(&port, format!("Removed {} ({}).\n", removed.label, removed.id)).await
 }
 
-async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn search(core: Rc<Core>, call: Call<SearchArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let query = call.args.query.join(" ");
-    let results = shard
+    let results = core
         .services()
-        .search_models(shard.user(), &query, None)
+        .search_models(core.user(), &query, None)
         .await
         .map_err(failed)?;
     if call.invocation.json {
@@ -1180,13 +1180,13 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
 }
 
 async fn add_model(
-    shard: Rc<Shard>,
+    core: Rc<Core>,
     call: Call<ModelAddArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&shard).await?;
-    let scope = shard.scope().await.map_err(failed)?;
+    let user = user(&core).await?;
+    let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, &args.entry).map_err(failed)?;
     wire_fields_for(entry, &args.fields)?;
     // An entry that follows its vendor's list starts its own from the
@@ -1197,7 +1197,7 @@ async fn add_model(
     };
     let found = match &args.model {
         Some(reference) => Some(
-            shard
+            core
                 .services()
                 .models_dev_model(reference)
                 .await
@@ -1215,7 +1215,7 @@ async fn add_model(
         // The vendor's own copy of the model gives way to the one added.
         models.retain(|listed| listed.id != model.id);
     }
-    // A taken id takes the first free suffix (`crates/backend-user-shard/src/provider_settings.rs`).
+    // A taken id takes the first free suffix (`crates/core/src/provider_settings.rs`).
     if models.iter().any(|listed| listed.id == model.id) {
         let id = (2..)
             .map(|number| format!("{}-{number}", model.id.as_str()))
@@ -1225,7 +1225,7 @@ async fn add_model(
     }
     models.push(model.clone());
     let count = models.len();
-    write_list(&shard, &user, entry, models).await?;
+    write_list(&core, &user, entry, models).await?;
     if started {
         let models = if count == 1 { "1 model".to_owned() } else { format!("{count} models") };
         let note = format!("{} now keeps its own list of {models}; it no longer follows models.dev", entry.label);
@@ -1263,13 +1263,13 @@ fn vendor_list(scope: &Scope, entry: &ProviderEntry) -> Vec<ConfiguredModel> {
 }
 
 async fn edit_model(
-    shard: Rc<Shard>,
+    core: Rc<Core>,
     call: Call<ModelEditArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&shard).await?;
-    let entries = entries(&shard).await.map_err(failed)?;
+    let user = user(&core).await?;
+    let entries = entries(&core).await.map_err(failed)?;
     let entry = named(&entries, &args.entry).map_err(failed)?;
     wire_fields_for(entry, &args.fields)?;
     let mut models = owned_list(entry)?;
@@ -1304,40 +1304,40 @@ async fn edit_model(
         model.fast_tier = (tier != NONE).then_some(tier);
     }
     let model = model.clone();
-    write_list(&shard, &user, entry, models).await?;
+    write_list(&core, &user, entry, models).await?;
     model_answer(&port, call.invocation.json, model).await
 }
 
 async fn remove_model(
-    shard: Rc<Shard>,
+    core: Rc<Core>,
     call: Call<ModelRemoveArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&shard).await?;
-    let entries = entries(&shard).await.map_err(failed)?;
+    let user = user(&core).await?;
+    let entries = entries(&core).await.map_err(failed)?;
     let entry = named(&entries, &args.entry).map_err(failed)?;
     let mut models = owned_list(entry)?;
     let index = listed(entry, &models, &args.model)?;
     let model = models.remove(index);
-    write_list(&shard, &user, entry, models).await?;
+    write_list(&core, &user, entry, models).await?;
     model_answer(&port, call.invocation.json, model).await
 }
 
 /// The word that empties a field an option sets.
 const NONE: &str = "none";
 
-/// The user the shard serves, with the role that decides whether they
+/// The user the core serves, with the role that decides whether they
 /// configure the scope's entries.
-async fn user(shard: &Shard) -> Result<UserDto, RpcError> {
-    shard.starter().principal().await.map_err(failed)
+async fn user(core: &Core) -> Result<UserDto, RpcError> {
+    core.starter().principal().await.map_err(failed)
 }
 
 /// The model the calling agent runs on, while its session is live.
-fn caller_model(shard: &Shard, invocation: &RpcInvocation) -> Option<ModelSelection> {
+fn caller_model(core: &Core, invocation: &RpcInvocation) -> Option<ModelSelection> {
     let conversation = conversation_of(invocation).ok()?;
     let job = invocation.caller.as_ref()?;
-    let node = shard.agent().node(&root_of(&conversation), &job.node)?;
+    let node = core.agent().node(&root_of(&conversation), &job.node)?;
     Some(node.session().model())
 }
 
@@ -1449,7 +1449,7 @@ fn listed(entry: &ProviderEntry, models: &[ConfiguredModel], id: &str) -> Result
 /// Saves `models` as the entry's list through the settings page's path,
 /// checked by the page's rules.
 async fn write_list(
-    shard: &Shard,
+    core: &Core,
     user: &UserDto,
     entry: &ProviderEntry,
     models: Vec<ConfiguredModel>,
@@ -1459,7 +1459,7 @@ async fn write_list(
         ..ProviderPatch::default()
     };
     patch.validate().map_err(|report| failed(problems(&report)))?;
-    shard
+    core
         .services()
         .update_provider(user, entry.id.as_str(), patch)
         .await
@@ -1587,13 +1587,13 @@ async fn model_answer(port: &RpcPort, json_output: bool, model: ConfiguredModel)
 
 /// The entry as `show` and a change answer it.
 async fn shown(
-    shard: &Shard,
+    core: &Core,
     user: &UserDto,
     scope: &Scope,
     entry: &ProviderEntry,
     current: Option<&ModelSelection>,
 ) -> Result<ShownEntry, RpcError> {
-    let services = shard.services();
+    let services = core.services();
     let accounts = match entry.credential {
         EntryCredential::Subscription { .. } if Vault::manages(&user.id, entry) => services
             .vault
@@ -1636,7 +1636,7 @@ async fn shown(
         .unwrap_or_default();
     let through_name = match &entry.through_device {
         Some(id) => Some(
-            shard
+            core
                 .host_records()
                 .await
                 .map_err(failed)?

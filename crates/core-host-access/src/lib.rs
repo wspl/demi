@@ -9,8 +9,8 @@
 //! - The shell environments of the agent's nodes over the access.
 //! - The product's `demi host` and `demi attachment` groups.
 //!
-//! The operations are methods of `dyn HostShard`, what host access needs of its
-//! user's shard (`crates/backend-user-shard/src/lib.rs`), which the shard
+//! The operations are methods of `dyn HostCore`, what host access needs of its
+//! user's core (`crates/core/src/lib.rs`), which the core
 //! implements.
 //!
 //! Everything that reaches a conversation's Host on the conversation's behalf
@@ -64,16 +64,16 @@
 //!   a Cloud project's directory or a provider's process on the Claude Code
 //!   machine.
 //!
-//! The state this protects lives in the user's shard because one shard holds
+//! The state this protects lives in the user's core because one core holds
 //! all of a user's conversations, devices and Cloud: the file gates, the
 //! admission of transfers and streams, and the transitions that end them. The
 //! edge moves the bytes of transfers and user streams. Admitting them is the
-//! shard's. A runner connection makes a conversation's Host handle only against
+//! core's. A runner connection makes a conversation's Host handle only against
 //! a lease of that conversation's file gate, which only host access takes, so
 //! no other code can make one.
 //!
 //! Other work holds the conversation through the gate itself (`file_gate`),
-//! whose leases make no Host. Host access never sees `Shard`, and no second way
+//! whose leases make no Host. Host access never sees `Core`, and no second way
 //! to a conversation's Host exists.
 
 pub mod access;
@@ -121,9 +121,9 @@ use self::access::Conversations;
 use self::plugin_files::{DirectorySets, PluginInstalls};
 use self::transition::{ChangeRefusal, Switched};
 
-/// What host access needs of its user's shard: the handles its operations
+/// What host access needs of its user's core: the handles its operations
 /// use, and the conversation's idle watch, which every Host admission starts.
-pub trait HostShard {
+pub trait HostCore {
     fn user(&self) -> &UserId;
     fn store(&self) -> &CoreStore;
     /// The wall clock the backend reads times from.
@@ -151,26 +151,26 @@ pub trait HostShard {
     /// `demi host install-command` prints; none while nothing serves the
     /// installers.
     fn install_commands(&self) -> Option<InstallCommands>;
-    /// Every task the shard spawns, which its close waits for.
+    /// Every task the core spawns, which its close waits for.
     fn tasks(&self) -> &TaskTracker;
-    /// The shard as the user's Cloud sees it, whose admission an operation
+    /// The core as the user's Cloud sees it, whose admission an operation
     /// on the Cloud takes.
     fn cloud_host(&self) -> Option<Rc<dyn cloud::CloudHost>>;
-    /// The shard, for a task that outlives the call that starts it.
-    fn this(&self) -> Rc<dyn HostShard>;
+    /// The core, for a task that outlives the call that starts it.
+    fn this(&self) -> Rc<dyn HostCore>;
     /// The placements of the conversation's live subagents, each a Host and
     /// a directory there; none while its tree is not open
     /// (`crates/agent-server/src/node/mod.rs`).
     fn agent_placements(&self, conversation: &ConversationId) -> Vec<Placement>;
     /// Starts the conversation's idle watch unless one runs, as each Host
-    /// admission does (`crates/backend-user-shard/src/lifecycle/mod.rs`).
+    /// admission does (`crates/core/src/lifecycle/mod.rs`).
     fn track_idle(&self, conversation: &ConversationId);
     /// The Host directories of the user's plugins, which each job installs
     /// before it starts.
     fn directory_sets(&self) -> LocalBoxFuture<'_, Result<DirectorySets, String>>;
-    /// What the shard remembers of its Hosts' directories.
+    /// What the core remembers of its Hosts' directories.
     fn plugin_installs(&self) -> &PluginInstalls;
-    /// Applies `change` to the conversation through the shard's one entry
+    /// Applies `change` to the conversation through the core's one entry
     /// for its changes, and shows it on the user's pages, as a change the
     /// user makes.
     fn transition<'a>(
@@ -218,8 +218,8 @@ pub fn root_of(conversation: &ConversationId) -> NodeId {
     NodeId::try_from(conversation.as_str()).expect("a conversation id is never empty")
 }
 
-/// The conversation a tree's root belongs to. The shard opens trees only
+/// The conversation a tree's root belongs to. The core opens trees only
 /// under the roots `root_of` names, so every root is a conversation id.
 pub fn conversation_of(root: &NodeId) -> ConversationId {
-    ConversationId::try_from(root.as_str()).expect("the shard opens trees only for conversations")
+    ConversationId::try_from(root.as_str()).expect("the core opens trees only for conversations")
 }

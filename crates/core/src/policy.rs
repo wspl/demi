@@ -34,7 +34,7 @@
 //!   its pipes stay bound to the participating device endpoints.
 //!
 //! The callback is authorized here, where the backend holds the device's runner
-//! connection, in the owner's shard, rather than delegated to the generic Host
+//! connection, in the owner's core, rather than delegated to the generic Host
 //! adapter, which knows no user policy.
 
 use std::rc::{Rc, Weak};
@@ -56,25 +56,25 @@ use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 
-use super::Shard;
+use super::Core;
 
-/// The rules of one device's connection, in its user's shard.
-pub(crate) struct ShardPolicy {
-    /// Weak: the shard owns the connection this policy serves.
-    shard: Weak<Shard>,
+/// The rules of one device's connection, in its user's core.
+pub(crate) struct CorePolicy {
+    /// Weak: the core owns the connection this policy serves.
+    core: Weak<Core>,
     device: DeviceId,
 }
 
-impl ShardPolicy {
-    pub fn new(shard: &Rc<Shard>, device: DeviceId) -> Self {
+impl CorePolicy {
+    pub fn new(core: &Rc<Core>, device: DeviceId) -> Self {
         Self {
-            shard: Rc::downgrade(shard),
+            core: Rc::downgrade(core),
             device,
         }
     }
 
-    fn shard(&self) -> Result<Rc<Shard>, String> {
-        self.shard
+    fn core(&self) -> Result<Rc<Core>, String> {
+        self.core
             .upgrade()
             .ok_or_else(|| "backend shutting down".to_owned())
     }
@@ -82,27 +82,27 @@ impl ShardPolicy {
 
 /// A demand lease of the conversation's stream gate, which holds it active
 /// as a watched stream does, with its idle watch started, as a Host
-/// admission starts it (`crates/backend-user-shard/src/lifecycle/mod.rs`).
-async fn watches(shard: &Shard, conversation: &ConversationId) -> GateLease {
-    let lease = shard
+/// admission starts it (`crates/core/src/lifecycle/mod.rs`).
+async fn watches(core: &Core, conversation: &ConversationId) -> GateLease {
+    let lease = core
         .conversations()
         .slot(conversation)
         .streams
         .enter(Purpose::Demand)
         .await;
-    shard.track_idle(conversation);
+    core.track_idle(conversation);
     lease
 }
 
-impl LinkPolicy for ShardPolicy {
+impl LinkPolicy for CorePolicy {
     fn programs(&self) -> Option<CommandCatalog> {
-        let shard = self.shard.upgrade()?;
-        let services = shard.services();
+        let core = self.core.upgrade()?;
+        let services = core.services();
         Some(services.packages.catalog())
     }
 
     fn host_log(&self) -> Option<Rc<dyn HostLog>> {
-        self.shard.upgrade()?.starter().host_log(&self.device)
+        self.core.upgrade()?.starter().host_log(&self.device)
     }
 
     fn admit_call<'a>(&'a self, job: &'a JobOrigin) -> LocalBoxFuture<'a, Result<(), String>> {
@@ -117,11 +117,11 @@ impl LinkPolicy for ShardPolicy {
             // goes on as after an ssh session ends, but its calls are
             // refused. A conversation that cannot be read is refused by what
             // the call then needs.
-            let shard = self.shard()?;
+            let core = self.core()?;
             let Ok(conversation) = ConversationId::try_from(conversation) else {
                 return Ok(());
             };
-            if let Ok(hosts) = shard.host_shard().conversation_hosts(&conversation).await
+            if let Ok(hosts) = core.host_core().conversation_hosts(&conversation).await
                 && !hosts.iter().any(|host| host.device == self.device)
             {
                 return Err("this host is no longer one of the conversation's".into());
@@ -143,10 +143,10 @@ impl LinkPolicy for ShardPolicy {
         invocation: RpcInvocation,
         port: RpcPort,
     ) -> LocalBoxFuture<'static, Result<u8, RpcError>> {
-        let shard = self.shard();
+        let core = self.core();
         Box::pin(async move {
-            let shard = shard.map_err(RpcError::Failed)?;
-            let commands = shard.commands().commands_of(&job).map_err(RpcError::Failed)?;
+            let core = core.map_err(RpcError::Failed)?;
+            let commands = core.commands().commands_of(&job).map_err(RpcError::Failed)?;
             let path = invocation.path.clone();
             // A usage error, the check's or the handler's, is told with the
             // leaf's usage.
@@ -160,7 +160,7 @@ impl LinkPolicy for ShardPolicy {
                     Some(named) => {
                         let conversation = ConversationId::try_from(invocation.context.conversation.as_str())
                             .map_err(|_| RpcError::Failed("the call names no conversation".into()))?;
-                        let host = resolve_host(shard.host_shard(), &conversation, named).await?;
+                        let host = resolve_host(core.host_core(), &conversation, named).await?;
                         Some(BroughtHost {
                             device: host.device.to_string(),
                             name: host.name,
@@ -180,7 +180,7 @@ impl LinkPolicy for ShardPolicy {
                     (None, None) => None,
                 };
                 if let Some(need) = need {
-                    demi_core_permissions::check(shard.permission_shard(), &invocation, need, &port).await?;
+                    demi_core_permissions::check(core.permission_core(), &invocation, need, &port).await?;
                 }
                 let mut invocation = invocation;
                 invocation.brought = brought;
@@ -192,10 +192,10 @@ impl LinkPolicy for ShardPolicy {
 
     /// The blobs of the user's namespace a handler returns as media.
     fn read_blob(&self, blob: BlobRef) -> LocalBoxFuture<'static, Result<Option<Bytes>, String>> {
-        let shard = self.shard();
+        let core = self.core();
         Box::pin(async move {
-            shard?
-                .host_shard()
+            core?
+                .host_core()
                 .blobs()
                 .get(&blob)
                 .await
@@ -207,11 +207,11 @@ impl LinkPolicy for ShardPolicy {
     /// for, as a report of the job does, and has the node that ran the job
     /// take it up; why it could not, when it could not.
     fn take_up_job(&self, job: String) -> LocalBoxFuture<'static, Result<(), String>> {
-        let shard = self.shard();
+        let core = self.core();
         let device = self.device.clone();
         Box::pin(async move {
-            let shard = shard?;
-            let conversation = shard
+            let core = core?;
+            let conversation = core
                 .store().running_jobs(device)
                 .await
                 .map_err(|error| error.to_string())?
@@ -221,23 +221,23 @@ impl LinkPolicy for ShardPolicy {
                 .ok_or("rpc requires a live job dispatched to this device")?;
             // Counted before the open, so the close waits for it before the
             // agent shuts down.
-            let _opening = shard.tree_openers().token();
-            if shard.is_closing() {
+            let _opening = core.tree_openers().token();
+            if core.is_closing() {
                 return Err("the backend is shutting down".into());
             }
-            shard.restore_tree(&conversation).await?;
-            shard.agent().take_up_job(&root_of(&conversation), &job).await
+            core.restore_tree(&conversation).await?;
+            core.agent().take_up_job(&root_of(&conversation), &job).await
         })
     }
 
     /// Revokes the device at its runner's request, as the user's
     /// revocation does: only a paired device.
     fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>> {
-        let shard = self.shard();
+        let core = self.core();
         let device = self.device.clone();
         Box::pin(async move {
-            let shard = shard?;
-            let record = shard
+            let core = core?;
+            let record = core
                 .store().device(device.clone())
                 .await
                 .map_err(|error| error.to_string())?
@@ -245,7 +245,7 @@ impl LinkPolicy for ShardPolicy {
             if record.kind != DeviceKind::User {
                 return Err("only a paired device is revoked".into());
             }
-            shard
+            core
                 .revoke_device(device)
                 .await
                 .map(drop)
@@ -262,16 +262,16 @@ impl LinkPolicy for ShardPolicy {
         sequence: ResidentSequence,
         count: u32,
     ) -> LocalBoxFuture<'static, Result<u64, String>> {
-        let shard = self.shard();
+        let core = self.core();
         let device = self.device.clone();
         Box::pin(async move {
-            let shard = shard?;
-            let conversation = reaching(&shard, &conversation, &device).await?;
+            let core = core?;
+            let conversation = reaching(&core, &conversation, &device).await?;
             let sequence = match sequence {
                 ResidentSequence::Tab => Sequence::Tab,
                 ResidentSequence::Device => Sequence::Device,
             };
-            shard.store().databases()
+            core.store().databases()
                 .db(&conversation)
                 .call(move |connection| sequences::reserve(connection, sequence, count))
                 .await
@@ -284,7 +284,7 @@ impl LinkPolicy for ShardPolicy {
     ///
     /// It holds the conversation active with a demand lease of its stream gate,
     /// and its idle watch started, as a Host admission starts it
-    /// (`crates/backend-user-shard/src/lifecycle/mod.rs`). It installs what a
+    /// (`crates/core/src/lifecycle/mod.rs`). It installs what a
     /// relay stream of the user stream `name` may: the executable of the package
     /// the name binds, which the runner fetches from where the published catalog
     /// says.
@@ -293,13 +293,13 @@ impl LinkPolicy for ShardPolicy {
         conversation: String,
         name: String,
     ) -> LocalBoxFuture<'static, Result<DirectAdmission, String>> {
-        let shard = self.shard();
+        let core = self.core();
         let device = self.device.clone();
         Box::pin(async move {
-            let shard = shard?;
-            let conversation = reaching(&shard, &conversation, &device).await?;
-            let lease = watches(&shard, &conversation).await;
-            let services = shard.services();
+            let core = core?;
+            let conversation = reaching(&core, &conversation, &device).await?;
+            let lease = watches(&core, &conversation).await;
+            let services = core.services();
             let package = services
                 .user_streams
                 .get(&name)
@@ -315,29 +315,29 @@ impl LinkPolicy for ShardPolicy {
     /// Holds the conversation active again, as [`Self::direct_stream`]'s
     /// admission does.
     fn watch_stream(&self, conversation: String) -> LocalBoxFuture<'static, Result<GateLease, String>> {
-        let shard = self.shard();
+        let core = self.core();
         let device = self.device.clone();
         Box::pin(async move {
-            let shard = shard?;
-            let conversation = reaching(&shard, &conversation, &device).await?;
-            Ok(watches(&shard, &conversation).await)
+            let core = core?;
+            let conversation = reaching(&core, &conversation, &device).await?;
+            Ok(watches(&core, &conversation).await)
         })
     }
 
     fn package_event(&self, event: PackageEvent) -> LocalBoxFuture<'static, ()> {
-        let shard = self.shard();
+        let core = self.core();
         let device = self.device.clone();
         Box::pin(async move {
-            // A shard that is gone has no plugin to tell.
-            let Ok(shard) = shard else { return };
+            // A core that is gone has no plugin to tell.
+            let Ok(core) = core else { return };
             match event {
                 PackageEvent::Message {
                     package,
                     conversation,
                     message,
-                } => match reaching(&shard, &conversation, &device).await {
+                } => match reaching(&core, &conversation, &device).await {
                     Ok(conversation) => {
-                        shard
+                        core
                             .plugins()
                             .package_message(&package, &conversation, &device, message)
                             .await;
@@ -347,34 +347,34 @@ impl LinkPolicy for ShardPolicy {
                     }
                 },
                 PackageEvent::Lost { package } => {
-                    shard.package_lost(&device, Lost::Package(&package)).await;
+                    core.package_lost(&device, Lost::Package(&package)).await;
                 }
             }
         })
     }
 
     fn forward_event(&self, event: ForwardEvent) {
-        // A shard that is closing serves no forward.
-        if let Ok(shard) = self.shard() {
-            shard.forward_event(&self.device, event);
+        // A core that is closing serves no forward.
+        if let Ok(core) = self.core() {
+            core.forward_event(&self.device, event);
         }
     }
 
     fn worktrees(&self, directory: String, worktrees: Vec<LinkedWorktree>) {
-        // A shard that is closing stores nothing; the next connection
+        // A core that is closing stores nothing; the next connection
         // reports again.
-        if let Ok(shard) = self.shard() {
-            shard.worktrees_reported(&self.device, directory, worktrees);
+        if let Ok(core) = self.core() {
+            core.worktrees_reported(&self.device, directory, worktrees);
         }
     }
 }
 
 /// `conversation`, a conversation of the user that reaches `device`, as its
 /// primary Host or an attached one; or why it is none.
-async fn reaching(shard: &Shard, conversation: &str, device: &DeviceId) -> Result<ConversationId, String> {
+async fn reaching(core: &Core, conversation: &str, device: &DeviceId) -> Result<ConversationId, String> {
     let conversation = ConversationId::try_from(conversation)
         .map_err(|_| format!("no conversation {conversation}"))?;
-    let hosts = reachable(shard.host_shard(), &conversation)
+    let hosts = reachable(core.host_core(), &conversation)
         .await
         .map_err(|error| error.to_string())?;
     if !hosts.iter().any(|host| &host.device == device) {

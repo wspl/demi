@@ -9,9 +9,9 @@ use demi_core_store::Selection;
 use demi_core_store::StorageError;
 use demi_web_api_protocol::ids::ConversationId;
 
-use crate::HostShard;
+use crate::HostCore;
 
-impl dyn HostShard + '_ {
+impl dyn HostCore + '_ {
     /// The conversation's selection as its device and directory. Resolving
     /// never starts a machine.
     pub async fn resolve_target(

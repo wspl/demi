@@ -1,5 +1,5 @@
 //! A conversation's Workflow menu
-//! (`crates/backend-user-shard/src/conversation/workflows.rs`):
+//! (`crates/core/src/conversation/workflows.rs`):
 //!
 //! - The conversation's metadata carries the workflows of its working
 //!   directory as the backend last read them, with when, under their

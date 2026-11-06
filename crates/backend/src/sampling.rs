@@ -30,7 +30,7 @@ pub(crate) async fn sample(shards: Shards, log: ServerLog) {
         tracing::info!(
             event = "backend.sampled",
             rss_mb = resident_mb(&mut system),
-            shards = census.shards,
+            cores = census.cores,
             live_trees = census.live_trees,
             live_sessions = census.live_sessions,
             running_turns = census.running_turns,

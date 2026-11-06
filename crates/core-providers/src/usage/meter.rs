@@ -1,5 +1,5 @@
 //! The metered runtime
-//! (`crates/backend-user-shard/src/conversation/providers.rs`): the backend
+//! (`crates/core/src/conversation/providers.rs`): the backend
 //! wraps each session's runtime so that accounting happens around every run.
 //!
 //! - Every call the run makes to the vendor is a usage ledger row as it ends,

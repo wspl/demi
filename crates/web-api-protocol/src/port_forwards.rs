@@ -1,4 +1,4 @@
-//! The user's port forwards (`crates/backend-user-shard/src/shard/port_forwards.rs`): what Settings › Port
+//! The user's port forwards (`crates/core/src/port_forwards.rs`): what Settings › Port
 //! Forwarding and `demi host forward` read and send, and the rules an
 //! address follows wherever it arrives. A forward is its route, where it
 //! listens and where it connects; nothing names it.

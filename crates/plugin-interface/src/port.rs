@@ -555,7 +555,7 @@ pub struct DirectoryPath {
 
 /// What a package call does on the Host, which decides whether it wakes a
 /// stopped Cloud and whether it is activity (`backend-user-shard`'s
-/// `crates/backend-user-shard/src/lifecycle/mod.rs`).
+/// `crates/core/src/lifecycle/mod.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CallKind {

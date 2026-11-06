@@ -15,7 +15,7 @@
 //! | native         |<=====>| Origin; relays    |<====>|   conversation      |
 //! | controls,      |       | the bytes         |      |   browser:          |
 //! | viewport menu  |       |-------------------|      |    tab registry     |
-//! +----------------+       | user's shard:     |      |    live hub         |
+//! +----------------+       | user's core:     |      |    live hub         |
 //!                          | admits the stream,|      |    capture channel  |
 //!                          | opens its pipes   |      |   Chrome:           |
 //!                          +-------------------+      |    capture ext.     |
@@ -47,7 +47,7 @@
 //!   encodes only what changes and leaves CDP to the commands.
 //! - The stream operates a browser signed in to the user's sites. The edge
 //!   checks the session cookie, the conversation's owner and the product's
-//!   origin before the request reaches the shard. The capture socket accepts
+//!   origin before the request reaches the core. The capture socket accepts
 //!   only its environment's token. Page observers run in an isolated world.
 
 use demi_command_package_browser_protocol::browser as protocol;

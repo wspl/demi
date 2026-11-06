@@ -25,11 +25,11 @@ type Account = (ProviderId, CredentialId);
 pub struct AccountQuotas {
     /// Where the snapshots are stored, and who is told when they change.
     store: Arc<dyn RegistryStore>,
-    /// The edge's runtime, which outlives the shards: the record writes run
+    /// The edge's runtime, which outlives the cores: the record writes run
     /// there, wherever the update came from.
     edge: tokio::runtime::Handle,
     writes: TaskTracker,
-    /// A `std` mutex: probes at the edge and observations on the shards
+    /// A `std` mutex: probes at the edge and observations on the cores
     /// update snapshots from several threads, and no section awaits. An
     /// account is held from its first use; `None` holds no snapshot yet.
     held: Mutex<HashMap<Account, Option<Arc<QuotaSnapshot>>>>,

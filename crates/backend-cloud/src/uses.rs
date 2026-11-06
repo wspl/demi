@@ -51,7 +51,7 @@ use demi_core_store::StorageError;
 use demi_web_api_protocol::ids::ConversationId;
 
 use crate::machine::CloudError;
-use crate::{CloudShard, ConversationHold};
+use crate::{CloudCore, ConversationHold};
 
 /// How a conversation uses the Cloud.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,7 +60,7 @@ pub(crate) enum Role {
     Attached,
 }
 
-impl dyn CloudShard {
+impl dyn CloudCore {
     /// Each of the user's conversations that uses the Cloud, with its
     /// strongest role.
     pub(crate) async fn cloud_uses(&self) -> Result<Vec<(ConversationId, Role)>, StorageError> {

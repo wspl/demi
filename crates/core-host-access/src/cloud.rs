@@ -62,9 +62,9 @@ impl MachineAccess {
     }
 }
 
-/// The Cloud of `shard`'s starter.
-pub fn cloud_of(shard: &(impl crate::HostShard + ?Sized)) -> Result<std::rc::Rc<dyn CloudHost>, CloudError> {
-    shard.cloud_host().ok_or(CloudError::Absent)
+/// The Cloud of `core`'s starter.
+pub fn cloud_of(core: &(impl crate::HostCore + ?Sized)) -> Result<std::rc::Rc<dyn CloudHost>, CloudError> {
+    core.cloud_host().ok_or(CloudError::Absent)
 }
 
 /// Why the Cloud admits no operation, or why one of its transitions failed.

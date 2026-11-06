@@ -153,7 +153,7 @@ pub struct Group<B = Binding> {
     pub index_entry: Option<String>,
     /// What only the group's own `--help` shows after its summary, such as the
     /// format of the files its commands read
-    /// (`crates/backend-user-shard/src/conversation/workflows.rs`); its
+    /// (`crates/core/src/conversation/workflows.rs`); its
     /// parent's help lists the summary alone.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     pub details: Option<String>,

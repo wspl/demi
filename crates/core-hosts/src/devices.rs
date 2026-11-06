@@ -612,7 +612,7 @@ impl Devices {
     /// boot waits for its runner.
     pub async fn until_online(&self, device: &DeviceId) {
         let mut link = self.slot(device).link.subscribe();
-        // The slot keeps the sender while the shard lives.
+        // The slot keeps the sender while the core lives.
         let _ = link
             .wait_for(|link| matches!(link, DeviceLink::Online(link) if !link.is_closed()))
             .await;

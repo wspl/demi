@@ -10,19 +10,19 @@ use futures_util::future::{BoxFuture, LocalBoxFuture};
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
-use super::Shard;
+use super::Core;
 
 /// Work sent to a core: it runs there, on the core's thread, to its end.
-pub type CoreWork = Box<dyn FnOnce(Rc<Shard>, CancellationToken) -> LocalBoxFuture<'static, ()> + Send>;
+pub type CoreWork = Box<dyn FnOnce(Rc<Core>, CancellationToken) -> LocalBoxFuture<'static, ()> + Send>;
 
 /// Why a call produced no answer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum ShardUnavailable {
+pub enum CoreUnavailable {
     /// The backend is shutting down and starts no new work.
     #[error("the backend is shutting down")]
     Closing,
-    /// The call panicked; its shard goes on serving.
-    #[error("the shard call failed")]
+    /// The call panicked; its core goes on serving.
+    #[error("the core call failed")]
     Failed,
 }
 
@@ -31,15 +31,15 @@ pub trait Cores: Send + Sync {
     /// Runs `work` on the core of `user` and answers once it ended. The work
     /// runs to completion even when the answer is dropped; dropping it
     /// cancels the token `work` receives.
-    fn run(&self, user: &UserId, work: CoreWork) -> BoxFuture<'static, Result<(), ShardUnavailable>>;
+    fn run(&self, user: &UserId, work: CoreWork) -> BoxFuture<'static, Result<(), CoreUnavailable>>;
 }
 
 impl dyn Cores + '_ {
     /// Runs `work` on the core of `user` and answers its result, as
     /// [`Cores::run`] runs it.
-    pub async fn call<F, Fut, T>(&self, user: &UserId, work: F) -> Result<T, ShardUnavailable>
+    pub async fn call<F, Fut, T>(&self, user: &UserId, work: F) -> Result<T, CoreUnavailable>
     where
-        F: FnOnce(Rc<Shard>, CancellationToken) -> Fut + Send + 'static,
+        F: FnOnce(Rc<Core>, CancellationToken) -> Fut + Send + 'static,
         Fut: Future<Output = T> + 'static,
         T: Send + 'static,
     {
@@ -53,6 +53,6 @@ impl dyn Cores + '_ {
             }),
         )
         .await?;
-        answered.await.map_err(|_| ShardUnavailable::Failed)
+        answered.await.map_err(|_| CoreUnavailable::Failed)
     }
 }

@@ -1,4 +1,4 @@
-//! The user's port forwards in their shard.
+//! The user's port forwards in their core.
 //!
 //! The module serves:
 //!
@@ -76,12 +76,12 @@ use demi_web_api_protocol::ids::{DeviceId, PortForwardId};
 use demi_web_api_protocol::port_forwards::{PortForwardDto, PortForwardPatch};
 use tokio_util::sync::CancellationToken;
 
-use super::Shard;
+use super::Core;
 
 /// How long the backend waits for the other runner's answer to an offer.
 const ANSWER_TIMEOUT: Duration = CONNECT_TIMEOUT;
 
-/// What the shard keeps of the user's forwards while it runs: what each
+/// What the core keeps of the user's forwards while it runs: what each
 /// Listen On runner last announced, and the peers it introduced between two
 /// runners, by the peer's id.
 #[derive(Default)]
@@ -98,7 +98,7 @@ pub(crate) struct ForwardsHeld {
     told: std::cell::RefCell<HashMap<DeviceId, Vec<Forward>>>,
 }
 
-/// A peer the shard introduced between two runners.
+/// A peer the core introduced between two runners.
 struct IntroducedPeer {
     closed: CancellationToken,
     offering: DeviceId,
@@ -130,7 +130,7 @@ fn change_of(patch: PortForwardPatch) -> PortForwardChange {
     }
 }
 
-impl Shard {
+impl Core {
     /// The user's forwards as a page lists them, oldest first, each with
     /// what its Listen On runner last announced of it.
     pub async fn port_forward_list(&self) -> Result<Vec<PortForwardDto>, StorageError> {
@@ -324,15 +324,15 @@ impl Shard {
                 self.mark(Part::PortForwards);
             }
             ForwardEvent::Open { id, forward } => {
-                let shard = self.clone();
+                let core = self.clone();
                 let device = device.clone();
-                self.tasks().spawn_local(async move { shard.open_forwarded(device, id, forward).await });
+                self.tasks().spawn_local(async move { core.open_forwarded(device, id, forward).await });
             }
             ForwardEvent::Dial { id, peer, device: other, sdp } => {
-                let shard = self.clone();
+                let core = self.clone();
                 let device = device.clone();
                 self.tasks()
-                    .spawn_local(async move { shard.introduce(device, id, peer, other, sdp).await });
+                    .spawn_local(async move { core.introduce(device, id, peer, other, sdp).await });
             }
             ForwardEvent::Closed { peer } => {
                 // Only the pair's own runners close their peer.

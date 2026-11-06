@@ -41,15 +41,15 @@ use tracing::Instrument as _;
 use crate::conversation::claude_cli::{CrossPlacement, ProcessWork};
 use crate::services::CoreServices;
 use demi_core_store::store::CoreStore;
-use crate::Shard;
+use crate::Core;
 use demi_core_host_access::conversation_of;
 
-impl Shard {
+impl Core {
     /// Follows the entries whose agents may take another account until the
-    /// shard closes (`crates/provider-registry/src/rotation.rs`): the
+    /// core closes (`crates/provider-registry/src/rotation.rs`): the
     /// conversations on each that a page has open take their next account
     /// again, so their context usage names the one their next request uses.
-    /// `changes` was subscribed when the shard was made, so no change since
+    /// `changes` was subscribed when the core was made, so no change since
     /// is missed; a follower that fell behind takes every entry as changed.
     pub(crate) async fn follow_rotation_changes(
         self: Rc<Self>,
@@ -73,26 +73,26 @@ impl Shard {
 
 /// Where the user's sessions get their runtimes.
 pub(super) struct ConversationProviders {
-    /// The user's shard, whose Cloud runs a provider's process.
-    shard: Weak<Shard>,
+    /// The user's core, whose Cloud runs a provider's process.
+    core: Weak<Core>,
     user: UserId,
     /// The user's core, which holds their conversations and usage.
     store: CoreStore,
     services: Arc<CoreServices>,
-    /// The shard's HTTP client, which its runtimes send with.
+    /// The core's HTTP client, which its runtimes send with.
     http: reqwest::Client,
 }
 
 impl ConversationProviders {
     pub(super) fn new(
-        shard: Weak<Shard>,
+        core: Weak<Core>,
         user: UserId,
         store: CoreStore,
         services: Arc<CoreServices>,
         http: reqwest::Client,
     ) -> Self {
         Self {
-            shard,
+            core,
             user,
             store,
             services,
@@ -135,7 +135,7 @@ impl ProviderResolver for ConversationProviders {
             let provider =
                 ProviderId::try_from(model.provider_id.as_str()).map_err(|_| unknown())?;
             let scope = Rc::new(Scope {
-                shard: self.shard.clone(),
+                core: self.core.clone(),
                 services: self.services.clone(),
                 store: self.store.clone(),
                 user: self.user.clone(),
@@ -252,8 +252,8 @@ impl ProviderResolver for ConversationProviders {
         model: &'a ProfileModel,
     ) -> LocalBoxFuture<'a, Result<ModelSelection, Unavailable>> {
         Box::pin(async move {
-            let shard = self
-                .shard
+            let core = self
+                .core
                 .upgrade()
                 .ok_or_else(|| Unavailable::Failed("the backend is shutting down".into()))?;
             let provider_id =
@@ -264,7 +264,7 @@ impl ProviderResolver for ConversationProviders {
                 thinking_effort: model.thinking_effort.clone(),
                 service_tier_id: model.service_tier_id.clone(),
             };
-            shard
+            core
                 .chosen_selection(&chosen)
                 .await
                 .map_err(|refusal| missing(&model.model_id, refusal))
@@ -307,7 +307,7 @@ async fn current_selection(
 /// Whose requests a session's runtime makes, and what it builds its
 /// runtimes with.
 struct Scope {
-    shard: Weak<Shard>,
+    core: Weak<Core>,
     services: Arc<CoreServices>,
     store: CoreStore,
     user: UserId,
@@ -346,20 +346,20 @@ impl Work {
 /// server borrows with the share key `key`: a conversation's, under the
 /// entry's rotation, but unmetered. Its first request makes its runtime.
 pub fn lent_runtime(
-    shard: &Rc<Shard>,
+    core: &Rc<Core>,
     services: Arc<CoreServices>,
     user: UserId,
     provider: ProviderId,
     key: String,
 ) -> Box<dyn ProviderRuntime> {
     let scope = Rc::new(Scope {
-        shard: Rc::downgrade(shard),
+        core: Rc::downgrade(core),
         services,
-        store: shard.store().clone(),
+        store: core.store().clone(),
         user,
         work: Work::Lent { key },
         provider: provider.clone(),
-        http: shard.http().clone(),
+        http: core.http().clone(),
     });
     Box::new(ConversationRuntime {
         scope,
@@ -386,7 +386,7 @@ pub fn lent_runtime(
 /// What one request of each of `models` of `entry` may hold, as the runtime
 /// of a session lent with the share key `key` would say.
 pub async fn lent_limits(
-    shard: &Rc<Shard>,
+    core: &Rc<Core>,
     services: Arc<CoreServices>,
     user: UserId,
     entry: &ProviderEntry,
@@ -397,13 +397,13 @@ pub async fn lent_limits(
         return Ok(Vec::new());
     };
     let scope = Rc::new(Scope {
-        shard: Rc::downgrade(shard),
+        core: Rc::downgrade(core),
         services,
-        store: shard.store().clone(),
+        store: core.store().clone(),
         user,
         work: Work::Lent { key },
         provider: entry.id.clone(),
-        http: shard.http().clone(),
+        http: core.http().clone(),
     });
     let mut runtime = ConversationRuntime {
         scope,
@@ -867,7 +867,7 @@ impl ConversationRuntime {
                     Work::Conversation(conversation) => ProcessWork::Conversation(conversation.clone()),
                     Work::Lent { .. } => ProcessWork::Account(entry.id.clone()),
                 };
-                CrossPlacement::runtime(scope.shard.clone(), provider_registry, entry, account.or(entry.active()), work)
+                CrossPlacement::runtime(scope.core.clone(), provider_registry, entry, account.or(entry.active()), work)
                     .await
                     .map_err(|error| refused(error, None))?
             } else {
@@ -923,18 +923,18 @@ fn metered(
         })
     };
     // A model the vendor no longer serves leaves the entry's list in a task
-    // of the shard's, apart from the run, which goes on at once.
+    // of the core's, apart from the run, which goes on at once.
     let retire: RetireModel = {
-        let shard = scope.shard.clone();
+        let core = scope.core.clone();
         let provider_registry = scope.services.provider_registry.clone();
         let entry = entry.clone();
         let provider = provider.clone();
         Rc::new(move |model: String, answered_by: Option<String>| {
-            if let Some(shard) = shard.upgrade() {
+            if let Some(core) = core.upgrade() {
                 let provider_registry = provider_registry.clone();
                 let entry = entry.clone();
                 let provider = provider.clone();
-                shard.tasks().spawn_local(async move {
+                core.tasks().spawn_local(async move {
                     provider_registry.retire_model(&entry, &Ok(provider), model, answered_by).await;
                 });
             }

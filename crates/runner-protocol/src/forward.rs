@@ -1,4 +1,4 @@
-//! Port forwards between the user's Hosts (`crates/backend-user-shard/src/shard/port_forwards.rs`): what the
+//! Port forwards between the user's Hosts (`crates/core/src/port_forwards.rs`): what the
 //! backend tells each runner of the forwards it is an end of, and what the
 //! Listen On runner announces of each. A forwarded connection's channel when
 //! two runners talk directly is a pair's ([`crate::pairs`]).
@@ -13,7 +13,7 @@ use crate::pairs::{PairReason, PairRoute};
 
 /// How long a forwarded connection's target has to accept it, and its two
 /// relay pipes to both open, before the connection is closed as a refused
-/// one is (`crates/backend-user-shard/src/shard/port_forwards.rs`).
+/// one is (`crates/core/src/port_forwards.rs`).
 pub const DEADLINE: Duration = Duration::from_secs(10);
 /// The most characters of a Connect To address, `host:port`: a host name is at
 /// most 253 characters (RFC 1035) and a port five.

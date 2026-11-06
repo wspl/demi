@@ -482,7 +482,7 @@ impl ProviderFamily for GrokBuildFamily {
 /// CLI's own login, whose requests run the CLI on the Claude Code machine.
 pub struct ClaudeCodeFamily {
     /// The machine a sign-in and a usage probe run on, once the backend's
-    /// shards started; a session's processes reach it through their shard.
+    /// shards started; a session's processes reach it through their core.
     machine: MachineSlot,
 }
 

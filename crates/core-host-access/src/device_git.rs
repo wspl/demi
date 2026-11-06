@@ -30,7 +30,7 @@ use demi_shared_types::StreamKind;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::DeviceId;
 
-use crate::HostShard;
+use crate::HostCore;
 
 /// The fetches this backend started, which tells two fetches' directories
 /// apart within one moment.
@@ -101,7 +101,7 @@ pub enum DeviceGitError {
     Failed(String),
 }
 
-impl dyn HostShard + '_ {
+impl dyn HostCore + '_ {
     /// The commit `url`'s default branch points to, as `device` reads it.
     pub async fn device_git_head(&self, device: &DeviceId, url: &str) -> Result<String, DeviceGitError> {
         let host = self.git_device(device).await?;

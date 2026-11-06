@@ -4,8 +4,8 @@
 
 use std::rc::Rc;
 
-use demi_core::Shard;
-use demi_core_permissions::{PermissionShard, deliver};
+use demi_core::Core;
+use demi_core_permissions::{PermissionCore, deliver};
 use demi_core_store::StorageError;
 use demi_core_store::store::CoreStore;
 use demi_web_api_protocol::ids::UserId;
@@ -13,7 +13,7 @@ use demi_web_api_protocol::ids::UserId;
 use crate::pool::Shards;
 
 /// Finishes each deletion an earlier backend left pending
-/// (`crates/core-store/src/deletions.rs`), in its owner's shard, and
+/// (`crates/core-store/src/deletions.rs`), in its owner's core, and
 /// collects the owner's blobs after it. A deletion that fails again stays
 /// pending for the next start; only listing them fails the call.
 pub async fn finish_deletions(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
@@ -21,10 +21,10 @@ pub async fn finish_deletions(cores: &[(UserId, CoreStore)], shards: &Shards) ->
         for id in store.pending_deletions().await? {
             let finished = shards
                 .of(owner)
-                .call(move |shard, _| async move {
-                    let finished = shard.finish_deletion(&id).await;
+                .call(move |core, _| async move {
+                    let finished = core.finish_deletion(&id).await;
                     if finished.is_ok() {
-                        shard.collect_blobs();
+                        core.collect_blobs();
                     }
                     finished.map_err(|error| (id, error))
                 })
@@ -42,14 +42,14 @@ pub async fn finish_deletions(cores: &[(UserId, CoreStore)], shards: &Shards) ->
     Ok(())
 }
 
-/// Opens at start the shard of each user with a stored idle compaction time,
+/// Opens at start the core of each user with a stored idle compaction time,
 /// which arms its timers in the background, so the start waits for none.
 pub async fn arm_idle_compactions(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
     for (owner, store) in cores {
         if store.idle_compactions().await?.is_empty() {
             continue;
         }
-        let handed = shards.of(owner).adopt(Shard::arm_idle_compactions).await;
+        let handed = shards.of(owner).adopt(Core::arm_idle_compactions).await;
         if handed.is_err() {
             // The backend is shutting down; the rows stay for the next start.
             return Ok(());
@@ -59,13 +59,13 @@ pub async fn arm_idle_compactions(cores: &[(UserId, CoreStore)], shards: &Shards
 }
 
 /// Takes up at start the turns the last shutdown interrupted: each owner's
-/// shard resumes its own in the background, so the start waits for none.
+/// core resumes its own in the background, so the start waits for none.
 pub async fn resume_after_restart(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
     for (owner, store) in cores {
         if store.interrupted_turns().await?.is_empty() {
             continue;
         }
-        let handed = shards.of(owner).adopt(Shard::resume_interrupted_turns).await;
+        let handed = shards.of(owner).adopt(Core::resume_interrupted_turns).await;
         if handed.is_err() {
             // The backend is shutting down; the next start takes up what is
             // left.
@@ -77,14 +77,14 @@ pub async fn resume_after_restart(cores: &[(UserId, CoreStore)], shards: &Shards
 
 /// Brings each user's search index in step with the conversations at start
 /// (`crates/core-store/src/search.rs`): every user who has a conversation has
-/// their shard index it in the background, while the backend serves. Answers
-/// once each shard has its task.
+/// their core index it in the background, while the backend serves. Answers
+/// once each core has its task.
 pub async fn index_at_start(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
     for (owner, store) in cores {
         if store.conversations(false).await?.is_empty() && store.conversations(true).await?.is_empty() {
             continue;
         }
-        let handed = shards.of(owner).adopt(Shard::catch_up_everything).await;
+        let handed = shards.of(owner).adopt(Core::catch_up_everything).await;
         if handed.is_err() {
             // The backend is shutting down; the next start indexes what is
             // left.
@@ -95,16 +95,16 @@ pub async fn index_at_start(cores: &[(UserId, CoreStore)], shards: &Shards) -> R
 }
 
 /// Delivers at start each decision whose message a restart cut off: each
-/// user's shard sends it to the agent that asked, opening its conversation's
-/// tree. Answers once each shard has its tasks.
+/// user's core sends it to the agent that asked, opening its conversation's
+/// tree. Answers once each core has its tasks.
 pub async fn deliver_decisions(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
     for (owner, store) in cores {
         for request in store.undelivered_permissions().await? {
             let handed = shards
                 .of(owner)
-                .adopt(move |shard| {
-                    let shard: Rc<dyn PermissionShard> = shard;
-                    deliver(shard, request)
+                .adopt(move |core| {
+                    let core: Rc<dyn PermissionCore> = core;
+                    deliver(core, request)
                 })
                 .await;
             if handed.is_err() {
@@ -117,7 +117,7 @@ pub async fn deliver_decisions(cores: &[(UserId, CoreStore)], shards: &Shards) -
     Ok(())
 }
 
-/// Opens the shard of every user who has a schedule, whose scheduler
+/// Opens the core of every user who has a schedule, whose scheduler
 /// then fires what a backend that was down missed and waits for the next
 /// times.
 pub async fn start_schedulers(
@@ -128,7 +128,7 @@ pub async fn start_schedulers(
         if !store.has_schedules().await? {
             continue;
         }
-        // The shard's first call starts its scheduler; a shard that cannot
+        // The core's first call starts its scheduler; a core that cannot
         // be reached starts it on its next call.
         if let Err(error) = shards.of(user).call(|_, _| async {}).await {
             tracing::warn!(event = "schedule_scheduler.start_failed", %user, %error, "the schedules' scheduler did not start");
@@ -137,7 +137,7 @@ pub async fn start_schedulers(
     Ok(())
 }
 
-/// Starts the shard of each user with a running job, whose start follows
+/// Starts the core of each user with a running job, whose start follows
 /// them.
 pub async fn start_media_followers(
     cores: &[(UserId, CoreStore)],
@@ -147,7 +147,7 @@ pub async fn start_media_followers(
         if !store.has_running_media_jobs().await? {
             continue;
         }
-        // A shard that cannot be reached follows them at its next call.
+        // A core that cannot be reached follows them at its next call.
         if let Err(error) = shards.of(user).call(|_, _| async {}).await {
             tracing::warn!(event = "media_job.start_failed", %user, %error, "the media jobs were not followed");
         }
