@@ -15,4 +15,7 @@ bench = false
 demi-plugin-host = { path = "../plugin-host" }
 demi-core-store = { path = "../core-store" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
 tokio.workspace = true

@@ -56,7 +56,7 @@ pub(super) async fn list(
     let shares = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.conversation_shares(&record.id).await })
+        .call(move |shard, _| async move { shard.starter().conversation_shares(&record.id).await })
         .await??;
     Ok(Json(shares))
 }

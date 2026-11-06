@@ -137,7 +137,6 @@ pub struct Shard {
     tree_openers: TaskTracker,
     /// The pages' synchronization channels being served, which the close
     /// ends first, so no page is sent what the steps after it change.
-    sync_channels: TaskTracker,
     /// Fork requests, one at a time per destination id in lowercase.
     forks: KeyedSerialGate<String>,
     /// The forks and deletions of the user's conversations, one at a time:
@@ -214,6 +213,57 @@ impl Shard {
         census
     }
 
+    /// Starts the core of `user` over `store`: the starter `starter_of`
+    /// makes for it, and what the starter keeps in it. The core follows its
+    /// changes, schedules and jobs until it closes.
+    pub fn start(
+        user: UserId,
+        store: CoreStore,
+        services: Arc<CoreServices>,
+        starter_of: impl FnOnce(Weak<Shard>) -> Rc<dyn Starter>,
+        extensions: Extensions,
+        http: reqwest::Client,
+        web: reqwest::Client,
+    ) -> Rc<Self> {
+        let shard = Rc::new_cyclic(|shard| {
+            Shard::new(shard.clone(), user, store, services, starter_of(shard.clone()), extensions, http, web)
+        });
+        // The search index follows the user's changes from the start until
+        // the core closes.
+        shard.tasks.spawn_local(shard.clone().follow_for_search());
+        shard.tasks.spawn_local(shard.clone().follow_search_resets());
+        // So does the pages' news of what a call cost.
+        shard.tasks.spawn_local(shard.clone().follow_usage());
+        // So do the processes prepared ahead, the changes of
+        // the accounts they were started with.
+        let changes = shard.services.vault.account_changes();
+        shard
+            .tasks
+            .spawn_local(shard.clone().follow_account_changes(changes));
+        // And the account each open conversation's next
+        // request takes under its entry's rotation.
+        let changes = shard.services.provider_registry.rotation().changes();
+        shard
+            .tasks
+            .spawn_local(shard.clone().follow_rotation_changes(changes));
+        // And the expiry of the user's credentials, which
+        // removes at once what is past due.
+        shard
+            .tasks
+            .spawn_local(shard.clone().follow_credential_expiry());
+        // And the user's schedules, which fire what a
+        // backend that was down missed.
+        shard
+            .tasks
+            .spawn_local(shard.clone().follow_schedules());
+        // And the media jobs an earlier start kept, which
+        // end whether or not their calls come back.
+        shard
+            .tasks
+            .spawn_local(shard.clone().follow_media_jobs());
+        shard
+    }
+
     /// The shard of `user`, whose agent server reaches it through `shard`.
     fn new(
         shard: Weak<Shard>,
@@ -267,7 +317,6 @@ impl Shard {
             titles,
             suggested_replies,
             tree_openers: TaskTracker::new(),
-            sync_channels: TaskTracker::new(),
             forks: KeyedSerialGate::new(),
             lifecycle: SerialGate::new(),
             workspace_deletions: SerialGate::new(),
@@ -425,10 +474,6 @@ impl Shard {
         &self.tree_openers
     }
 
-    pub(crate) fn sync_channels(&self) -> &TaskTracker {
-        &self.sync_channels
-    }
-
     pub fn forks(&self) -> &KeyedSerialGate<String> {
         &self.forks
     }
@@ -458,8 +503,9 @@ impl Shard {
     ///
     /// The order has reasons:
     ///
-    /// - The channels go first, so no page is sent what the steps below change; a
-    ///   page reads the state again from the next backend.
+    /// - The starter's work goes first, such as the pages' channels, so no page
+    ///   is sent what the steps below change; a page reads the state again
+    ///   from the next backend.
     /// - The lanes end before the agents, so no tree opens and no frame reaches a
     ///   tree after its shutdown.
     /// - A root's running turn is marked in `interrupted_turns` before it is
@@ -468,8 +514,7 @@ impl Shard {
     ///   still save.
     async fn close(&self) {
         self.closing.cancel();
-        self.sync_channels.close();
-        closed("the sync channels ended", self.sync_channels.wait()).await;
+        closed("the starter's work ended", self.starter.closing()).await;
         self.services.sync.forget(self.user());
         self.stop_idle_watches();
         self.retry_resumes.clear();
@@ -934,54 +979,17 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                     .entry(job.user().clone())
                     .or_insert_with_key(|user| {
                         let store = store.expect("a user with no shard had the store opened above");
-                        let shard = Rc::new_cyclic(|shard| {
-                            Shard::new(
-                                shard.clone(),
-                                user.clone(),
-                                store,
-                                services.core.clone(),
-                                Rc::new(ServerStarter::new(user.clone(), services.clone(), shard.clone())),
-                                Extensions::default()
-                                    .with(ServerSide::new(services.clone()))
-                                    .with(CloudSide::new(services.control.clone(), services.cloud.clone())),
-                                http.clone(),
-                                web.clone(),
-                            )
-                        });
-                        // The search index follows the user's changes from
-                        // the shard's first call until it closes.
-                        shard.tasks.spawn_local(shard.clone().follow_for_search());
-                        shard.tasks.spawn_local(shard.clone().follow_search_resets());
-                        // So does the pages' news of what a call cost.
-                        shard.tasks.spawn_local(shard.clone().follow_usage());
-                        // So do the processes prepared ahead, the changes of
-                        // the accounts they were started with.
-                        let changes = services.vault.account_changes();
-                        shard
-                            .tasks
-                            .spawn_local(shard.clone().follow_account_changes(changes));
-                        // And the account each open conversation's next
-                        // request takes under its entry's rotation.
-                        let changes = services.provider_registry.rotation().changes();
-                        shard
-                            .tasks
-                            .spawn_local(shard.clone().follow_rotation_changes(changes));
-                        // And the expiry of the user's credentials, which
-                        // removes at once what is past due.
-                        shard
-                            .tasks
-                            .spawn_local(shard.clone().follow_credential_expiry());
-                        // And the user's schedules, which fire what a
-                        // backend that was down missed.
-                        shard
-                            .tasks
-                            .spawn_local(shard.clone().follow_schedules());
-                        // And the media jobs an earlier start kept, which
-                        // end whether or not their calls come back.
-                        shard
-                            .tasks
-                            .spawn_local(shard.clone().follow_media_jobs());
-                        shard
+                        Shard::start(
+                            user.clone(),
+                            store,
+                            services.core.clone(),
+                            |shard| Rc::new(ServerStarter::new(user.clone(), services.clone(), shard)),
+                            Extensions::default()
+                                .with(ServerSide::new(services.clone()))
+                                .with(CloudSide::new(services.control.clone(), services.cloud.clone())),
+                            http.clone(),
+                            web.clone(),
+                        )
                     })
                     .clone();
                 calls.spawn_local(job.run(shard));

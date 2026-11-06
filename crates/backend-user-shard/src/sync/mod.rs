@@ -26,7 +26,7 @@ mod state;
 
 use demi_core_sync::Part;
 
-pub use self::state::{StateError, etag_of, etag_of_json};
+pub use self::state::StateError;
 use crate::shard::Shard;
 
 impl Shard {

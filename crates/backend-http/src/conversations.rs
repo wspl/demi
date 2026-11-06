@@ -39,7 +39,7 @@ use super::hosts;
 use super::query::QueryParams;
 use demi_backend_user_shard::conversation::{AgentsError, ForkRefusal};
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::sync::etag_of;
+use demi_core_sync::etag_of;
 
 fn not_found() -> ApiError {
     ApiError::new(

@@ -20,13 +20,12 @@ use demi_core_store::conversation_index::ConversationRecord;
 use demi_core_store::{tree::{self, EndedTurn, SummaryFacts, Terminal}};
 use demi_shared_types::{ModelSelection, SessionPhase};
 use demi_web_api_protocol::conversations::{
-    ConversationMetadata, ConversationShares, ConversationStatus, ConversationSummary, LastTurn, ModelSettings,
+    ConversationMetadata, ConversationStatus, ConversationSummary, LastTurn, ModelSettings,
     TurnOutcome,
 };
 use demi_web_api_protocol::hosts::{AttachedHost, ConversationHosts};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 use demi_web_api_protocol::panel::WorkPanel;
-use demi_web_api_protocol::shares::ConversationShare;
 use futures_util::future::try_join_all;
 use tokio_util::sync::CancellationToken;
 
@@ -98,19 +97,7 @@ impl Shard {
         })
     }
 
-    /// The conversation `id`'s shares, its own and its answers', as the share
-    /// dialog lists them.
-    pub async fn conversation_shares(&self, id: &ConversationId) -> Result<ConversationShares, StorageError> {
-        let shares = self
-            .server_services()
-            .control
-            .shares_of(self.user().clone(), id.clone())
-            .await?
-            .into_iter()
-            .map(|share| ConversationShare::new(share.token, share.target))
-            .collect();
-        Ok(ConversationShares { shares })
-    }
+
 
     /// What a page shows of `record` while it shows the conversation.
     pub async fn conversation_metadata(&self, record: ConversationRecord) -> Result<ConversationMetadata, StorageError> {

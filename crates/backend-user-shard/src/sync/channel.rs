@@ -88,7 +88,7 @@ impl Shard {
     ) {
         // Counted before any wait, so the shard's close waits for this
         // channel; one adopted as the close begins ends at once.
-        let _channel = self.sync_channels().token();
+        let _channel = ServerSide::of(&self).sync_channels.token();
         let end = if self.is_closing() {
             End::BackendClosing
         } else {

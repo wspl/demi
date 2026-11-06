@@ -27,7 +27,7 @@ use axum::http::{HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum_extra::headers::{ETag, HeaderMapExt as _, IfNoneMatch};
-use demi_backend_user_shard::sync::etag_of_json;
+use demi_core_sync::etag_of_json;
 
 /// Whether the answer of a `GET` of `path`, relative to `/api`, holds a secret
 /// or is a session's own: the authentication routes except the passkey list,

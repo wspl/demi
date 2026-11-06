@@ -15,6 +15,9 @@ use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::devices::{DeviceDto, InstallCommands};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use demi_web_api_protocol::push::PushMessage;
+use demi_web_api_protocol::conversations::ConversationShares;
+use demi_web_api_protocol::shares::ConversationShare;
+use tokio_util::task::TaskTracker;
 use futures_util::future::LocalBoxFuture;
 
 use crate::page_notifications::PageNotifications;
@@ -45,6 +48,8 @@ pub struct ServerSide {
     pub(crate) pages: PageNotifications,
     /// The media jobs of the user's entries lent to other servers.
     pub(crate) lent_jobs: LentJobs,
+    /// The tasks of the user's pages' synchronization channels.
+    pub(crate) sync_channels: TaskTracker,
 }
 
 impl ServerSide {
@@ -53,6 +58,7 @@ impl ServerSide {
             services,
             pages: PageNotifications::default(),
             lent_jobs: LentJobs::default(),
+            sync_channels: TaskTracker::new(),
         }
     }
 
@@ -141,6 +147,31 @@ impl Starter for ServerStarter {
             };
             ServerSide::deliver(&shard, message, recipients);
             Ok(notified)
+        })
+    }
+
+    fn conversation_shares<'a>(&'a self, id: &'a ConversationId) -> LocalBoxFuture<'a, Result<ConversationShares, StorageError>> {
+        Box::pin(async move {
+            let shares = self
+                .services
+                .control
+                .shares_of(self.user.clone(), id.clone())
+                .await?
+                .into_iter()
+                .map(|share| ConversationShare::new(share.token, share.target))
+                .collect();
+            Ok(ConversationShares { shares })
+        })
+    }
+
+    fn closing(&self) -> LocalBoxFuture<'_, ()> {
+        Box::pin(async move {
+            let Some(shard) = self.shard.upgrade() else {
+                return;
+            };
+            let channels = &ServerSide::of(&shard).sync_channels;
+            channels.close();
+            channels.wait().await;
         })
     }
 

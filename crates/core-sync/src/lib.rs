@@ -36,6 +36,8 @@
 //!
 //! The registry reads and builds no product state: `backend-user-shard` does.
 
+mod etag;
+
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -45,6 +47,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use demi_core_store::tokens::TokenHash;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use tokio::sync::Notify;
+
+pub use self::etag::{etag_of, etag_of_json};
 
 /// A part of the product state that a page shows. A channel sends the parts
 /// that changed in this order, so a new conversation's summary goes before

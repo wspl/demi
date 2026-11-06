@@ -18,6 +18,7 @@ use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::devices::{DeviceDto, InstallCommands};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use demi_web_api_protocol::push::PushMessage;
+use demi_web_api_protocol::conversations::ConversationShares;
 use futures_util::future::LocalBoxFuture;
 
 /// What a notification did as it was sent: counted then, delivered after.
@@ -89,4 +90,12 @@ pub trait Starter {
 
     /// Whether the agent's notifications reach the user now.
     fn agent_reaches(&self) -> LocalBoxFuture<'_, Result<bool, StorageError>>;
+
+    /// The conversation `id`'s shares, its own and its answers', which its
+    /// page shows; none for a starter that shares nothing.
+    fn conversation_shares<'a>(&'a self, id: &'a ConversationId) -> LocalBoxFuture<'a, Result<ConversationShares, StorageError>>;
+
+    /// Ends the starter's own work on the core, first as the core closes,
+    /// so nothing it serves reads what the core's close changes.
+    fn closing(&self) -> LocalBoxFuture<'_, ()>;
 }

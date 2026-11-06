@@ -93,7 +93,7 @@ use futures_util::future::LocalBoxFuture;
 
 use super::attachment_facts::StreamedText;
 use super::failure_facts;
-use crate::sync::etag_of;
+use demi_core_sync::etag_of;
 use crate::shard::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader, Shard};
 use demi_core_host_access::remote_files::{RemoteFile, RemoteFileRefusal};
 use demi_core_host_access::root_of;
@@ -993,7 +993,7 @@ impl Shard {
                 None => None,
             };
             let shares = match shown.shares {
-                Some(_) => Some(self.conversation_shares(conversation).await?),
+                Some(_) => Some(self.starter().conversation_shares(conversation).await?),
                 None => None,
             };
             let draft = if shown.draft.is_some_and(|held| draft_revision > held) {
