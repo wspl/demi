@@ -694,28 +694,13 @@ function regenerate(id: string): void {
 // What the transcript leaves to the composer, as a comment's sending, puts the focus there.
 const composerFocus = provideComposerFocus()
 /**
- * Whether the turn that ended last ended while the page showed the
- * conversation: its answer's suggestions are on their way, and the row
- * stands from then. One the page found ended, as an old conversation
- * opened, waits for none, nor does a compaction's end.
- */
-const endedHere = ref(false)
-watch(() => props.conversation.phase, (phase, before) => {
-  if (phase === 'running') {
-    endedHere.value = false
-  } else if (phase === 'idle' && before === 'running') {
-    endedHere.value = true
-  }
-})
-watch(() => props.conversation.id, () => {
-  endedHere.value = false
-})
-/**
  * The suggested replies under the last answer, while the conversation rests
  * after it, a compaction while idle and its divider included: those kept for
- * it, or none yet after a turn that ended here, so the row stands with the
- * footer. An open edit hides the pills and keeps the row; a message on its
- * way, an error or a Stop ends the answer's turn otherwise, and the row goes.
+ * it, or none known yet, so the row stands with the footer before the page
+ * learns of them, as a copy shown before its session connects has none of
+ * the suggestions written after it. An open edit hides the pills and keeps
+ * the row; a message on its way, an error or a Stop ends the answer's turn
+ * otherwise, and the row goes.
  */
 const suggested = computed<SuggestedReplies | null>(() => {
   const kept = props.suggestedReplies
@@ -725,10 +710,7 @@ const suggested = computed<SuggestedReplies | null>(() => {
     || (props.pendingSubmissions?.length ?? 0) > 0 || last?.type !== 'text') {
     return null
   }
-  const replies = kept && kept.blockId === last.id ? kept.replies : endedHere.value ? null : undefined
-  if (replies === undefined) {
-    return null
-  }
+  const replies = kept && kept.blockId === last.id ? kept.replies : null
   return { blockId: last.id, replies: props.messageEdit ? [] : replies }
 })
 provideSuggestedReplies({

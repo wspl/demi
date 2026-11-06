@@ -11,14 +11,15 @@ import { t } from '../locales/text'
  * answer's footer: a click sends a pill's words, its Edit (a long press on a
  * phone) puts them into the composer.
  *
- * The row keeps a line's height while the suggestions are written (`replies`
- * null) and when none came, so nothing under the answer moves as they
- * arrive. Every pill shows its words whole: one that does not fit beside the
- * others goes to the next line, and one wider than the row wraps its words,
- * its ends rounded as a one-line pill's.
+ * The row keeps a line's height while the page knows no suggestions
+ * (`replies` null), as while they are written, and when none came, so
+ * nothing under the answer moves as they arrive. Every pill shows its words
+ * whole: one that does not fit beside the others goes to the next line, and
+ * one wider than the row wraps its words, its ends rounded as a one-line
+ * pill's.
  */
 const props = defineProps<{
-  /** Null while they are written; empty when none came. */
+  /** Null while the page knows none, as while they are written; empty when none came. */
   replies: readonly string[] | null
 }>()
 
