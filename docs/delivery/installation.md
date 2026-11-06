@@ -77,6 +77,10 @@ Installation is Linux only, on the [supported distributions](#distributions).
 gVisor and Simple Isolation ([Set up managed Cloud hosts](../cloud/setup.md)),
 because every deployment has Cloud. There is no uninstall.
 
+Without a Linux machine of their own, an operator runs the same server from
+Demi's container image on Railway, on Fly, or with Docker Compose
+([In a container](#in-a-container)).
+
 ## The bootstrap
 
 `install.sh` is one script for every release, `crates/server/install.sh`:
@@ -253,3 +257,30 @@ e2fsprogs and nftables have those names everywhere. Four notes apply:
 
 Each distribution offered needs Linux 5.14 or later, systemd and cgroup v2,
 which their current releases have.
+
+## In a container
+
+Demi publishes a container image with each release,
+`ghcr.io/demi-sh/demi`, for `linux/amd64` and `linux/arm64`. Its tags are
+the version, such as `0.2.6017`, `canary` for the newest release, and `beta`
+and `latest` for the newest Beta. The server it sets up follows the tag's
+channel in Settings › Updates.
+
+The image sets up the server on its first start, on a volume at `/opt/demi`,
+with the layout `install.sh` makes. From then on the server updates itself in
+Settings › Updates, as on any machine, and starting a newer image upgrades it
+to the image's release. The container needs no privileges: its Clouds run on
+Simple Isolation, and Settings › Cloud says why gVisor is unavailable.
+
+| Setup | What the operator does | Attachments and media | Cost a month, about |
+| --- | --- | --- | --- |
+| [Railway](railway.md) | Deploys Demi's template | A Railway Bucket | $5 for the Hobby plan, which includes $5 of usage; a server with a running Cloud uses $2 to $6 |
+| [Fly](fly.md) | Pastes one block of commands | A Tigris bucket | $8 for a `shared-cpu-1x` machine with 1 GB and a 10 GB volume |
+| [Docker Compose](docker-compose.md) | Runs `docker compose up -d` | The volume | What the machine costs; Oracle Cloud's Always Free Arm machines cost nothing |
+
+Every setup keeps the same data on its volume: the databases, each user's
+Cloud, the releases and the configuration. A server for one user starts near
+1.1 GB, and grows with what its users install in their Clouds. In a
+container, the platform's variables are the configuration: each start writes
+`/opt/demi/config/demi.env` from the container's `DEMI_*` and `AWS_*`
+variables, so a setting changes in the platform, and the next start takes it.

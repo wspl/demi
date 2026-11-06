@@ -108,9 +108,21 @@ impl Layout {
         self.at("/opt/demi/config/demi.env")
     }
 
-    /// Where systemd reads the services' units.
+    /// Where systemd, or a container's supervisor, reads the services'
+    /// units.
     pub fn units(&self) -> PathBuf {
         self.at("/etc/systemd/system")
+    }
+
+    /// Where the services' runtime directories lie.
+    #[cfg(target_os = "linux")]
+    pub fn run_directory(&self) -> PathBuf {
+        self.at("/run")
+    }
+
+    /// The socket of the supervisor that runs the services in a container.
+    pub fn supervisor_socket(&self) -> PathBuf {
+        self.at(demi_supervisor_protocol::SOCKET)
     }
 
     /// `demi-server`'s own state: its lock, an upgrade's journal and a

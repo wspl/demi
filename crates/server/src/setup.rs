@@ -6,6 +6,11 @@
 //! an agent runs it, a missing choice prints the guide. Every step can be taken
 //! again, so the same command continues a run that stopped, such as for a proxy
 //! that was not ready yet.
+//!
+//! A container sets itself up with the same steps ([`run_in_container`]), but
+//! those its image or its platform took already: the packages, the users, the
+//! configuration from its variables (`container`), and the check from
+//! outside, which the platform's own check of the service makes.
 
 use std::{
     io::{self, BufRead as _, IsTerminal as _, Write as _},
@@ -128,7 +133,7 @@ const BACKEND_DATA: &str = "/opt/demi/data/backend";
 
 /// What setup reached, kept while a run has not finished: a `current`
 /// without it is a server that is set up.
-fn marker(layout: &Layout) -> PathBuf {
+pub(crate) fn marker(layout: &Layout) -> PathBuf {
     layout.state().join("setup")
 }
 
@@ -215,58 +220,114 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
 
     step("Making the Cloud store");
     crate::store::make(&options.cloud_data)?;
-    step("Checking that this machine can run Cloud");
-    let release = layout.release(&version);
-    let check = || {
-        settings
-            .command(Path::new("unshare"))
-            .args(["--mount", "--propagation", "private"])
-            .arg(release.join("bin/demi-machine-manager"))
-            .arg("--check-host")
-            .status()
-    };
-    // A new server runs Simple Isolation, and fetches gVisor's release, about
-    // 160 MB, when the master first chooses gVisor; a machine that runs no
-    // Simple Isolation needs it now.
-    if !check()?.success() {
-        step("Fetching the gVisor runtime it pins");
-        gvisor::of_release(layout, &version)?;
-        if !check()?.success() {
-            return Err("this machine cannot run Cloud, so Demi cannot be set up on it (the check above names why)".into());
-        }
-    }
+    check_cloud(layout, &settings, &version, true)?;
 
     step("Writing the installation");
     std::fs::create_dir_all(layout.state())?;
     std::fs::write(marker(layout), version.to_string())?;
     write_installation(layout, &settings)?;
 
-    step("Starting Demi");
-    layout.point_at(&version)?;
-    layout.install_units(&version)?;
-    services.reload(&layout.path_units())?;
-    for unit in UNITS {
-        services.start(unit).map_err(|error| format!("{unit} did not start: {error}\n{}", services.log(unit)))?;
-    }
-    link_program(layout)?;
+    start(layout, services, &version)?;
 
     step(&format!("Checking https://{} from outside", choices.domain));
     runtime.block_on(check_outside(&choices))?;
-    // A run that continued on a newer release leaves the earlier one, which
-    // never ran: a server just set up has no release to return to.
-    for unpacked in layout.versions()? {
-        if unpacked != version {
-            std::fs::remove_dir_all(layout.release(&unpacked))?;
-        }
-    }
-    gvisor::prune(layout, &[&version])?;
-    std::fs::remove_file(marker(layout))?;
+    finish(layout, &version)?;
     println!(
         "\nDemi {version} is set up at https://{0}.\n\
          Open https://{0} now and create the master account on its setup page: until it exists, anyone who reaches it can.",
         choices.domain
     );
     Ok(Outcome::SetUp)
+}
+
+/// Sets a container up from the release its image holds, with the
+/// configuration its start wrote; a run that stopped goes on at the
+/// container's next start.
+#[cfg(target_os = "linux")]
+pub fn run_in_container(layout: &Layout, services: &dyn Services) -> Result<(), Box<dyn std::error::Error>> {
+    let settings = Settings::read(&layout.config())?;
+    let version = crate::own_version();
+    let source = fetch::Source::Directory(PathBuf::from(crate::container::ASSETS));
+    require_tools()?;
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+    step(&format!("Unpacking Demi {version}"));
+    runtime.block_on(fetch::fetch(layout, &source, &version, &CancellationToken::new(), &mut |_| {}))?;
+
+    step("Making the Cloud store");
+    crate::store::make(&settings.manager_data()?)?;
+    // A container that may not copy its mount namespace runs the manager in
+    // its own, as the supervisor does.
+    let unshares = succeeded(Command::new("unshare").args(["--mount", "--propagation", "private", "true"]))?;
+    check_cloud(layout, &settings, &version, unshares)?;
+
+    step("Writing the installation");
+    std::fs::create_dir_all(layout.state())?;
+    std::fs::write(marker(layout), version.to_string())?;
+    make_users_and_directories(&settings)?;
+
+    start(layout, services, &version)?;
+    finish(layout, &version)?;
+    let url = settings.public_url().unwrap_or("its public URL");
+    println!(
+        "\nDemi {version} is set up at {url}.\n\
+         Open it now and create the master account on its setup page: until it exists, anyone who reaches it can."
+    );
+    Ok(())
+}
+
+/// Checks that the manager of `version` runs a Cloud here, in a mount
+/// namespace of its own when `unshare`, as its unit runs it.
+fn check_cloud(layout: &Layout, settings: &Settings, version: &Version, unshare: bool) -> Result<(), Box<dyn std::error::Error>> {
+    step("Checking that this machine can run Cloud");
+    let manager = layout.release(version).join("bin/demi-machine-manager");
+    let check = || {
+        let mut command = if unshare {
+            let mut command = settings.command(Path::new("unshare"));
+            command.args(["--mount", "--propagation", "private"]).arg(&manager);
+            command
+        } else {
+            settings.command(&manager)
+        };
+        command.arg("--check-host").status()
+    };
+    // A new server runs Simple Isolation, and fetches gVisor's release, about
+    // 160 MB, when the master first chooses gVisor; a machine that runs no
+    // Simple Isolation needs it now.
+    if !check()?.success() {
+        step("Fetching the gVisor runtime it pins");
+        gvisor::of_release(layout, version)?;
+        if !check()?.success() {
+            return Err("this machine cannot run Cloud, so Demi cannot be set up on it (the check above names why)".into());
+        }
+    }
+    Ok(())
+}
+
+/// Points `current` at `version` and starts its services.
+fn start(layout: &Layout, services: &dyn Services, version: &Version) -> Result<(), Box<dyn std::error::Error>> {
+    step("Starting Demi");
+    layout.point_at(version)?;
+    layout.install_units(version)?;
+    services.reload(&layout.path_units())?;
+    for unit in UNITS {
+        services.start(unit).map_err(|error| format!("{unit} did not start: {error}\n{}", services.log(unit)))?;
+    }
+    link_program(layout)?;
+    Ok(())
+}
+
+/// Leaves only `version`, which runs: a run that continued on a newer
+/// release leaves the earlier one, which never ran, and a server just set up
+/// has no release to return to.
+fn finish(layout: &Layout, version: &Version) -> Result<(), Box<dyn std::error::Error>> {
+    for unpacked in layout.versions()? {
+        if &unpacked != version {
+            std::fs::remove_dir_all(layout.release(&unpacked))?;
+        }
+    }
+    gvisor::prune(layout, &[version])?;
+    std::fs::remove_file(marker(layout))?;
+    Ok(())
 }
 
 fn step(name: &str) {
@@ -431,9 +492,8 @@ fn require_tools() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// The user and group the backend runs as, its data directory, the
-/// manager's, and the configuration file, which a run that continues must
-/// find as it wrote it.
+/// The configuration file, which a run that continues must find as it wrote
+/// it, then the users and directories.
 fn write_installation(layout: &Layout, settings: &Settings) -> Result<(), Box<dyn std::error::Error>> {
     let config = layout.config();
     let text = settings.file();
@@ -460,6 +520,11 @@ fn write_installation(layout: &Layout, settings: &Settings) -> Result<(), Box<dy
         }
         Err(error) => return Err(error.into()),
     }
+    make_users_and_directories(settings)
+}
+
+/// The backend's user and group, its data directory and the manager's.
+fn make_users_and_directories(settings: &Settings) -> Result<(), Box<dyn std::error::Error>> {
     if !succeeded(Command::new("getent").args(["group", "demi-cloud"]))? {
         checked(Command::new("groupadd").args(["--system", "demi-cloud"]))?;
     }

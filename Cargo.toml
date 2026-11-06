@@ -26,6 +26,7 @@ members = [
   "crates/backend-user-shard",
   "crates/backend-database",
   "crates/server",
+  "crates/supervisor-protocol",
   "crates/backend-page-sync",
   "crates/backend-permissions",
   "crates/plugin-browser/protocol",

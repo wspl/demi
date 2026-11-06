@@ -1,0 +1,48 @@
+# Demi on Fly (docs/delivery/fly.md): one machine with a
+# volume at /opt/demi, and attachments in a Tigris bucket, which the guide's
+# commands make. `fly launch --copy-config` names the app.
+app = "demi"
+
+[build]
+  image = "ghcr.io/demi-sh/demi:latest"
+
+# So the master can choose gVisor in Settings › Cloud: a Fly machine names
+# only Fly's internal IPv6 resolver, which a gVisor Cloud cannot use, and has
+# cgroup v1 alone, where gVisor runs without limits. The machine is this
+# server's alone.
+[env]
+  DEMI_MANAGED_DNS = "1.1.1.1"
+  DEMI_MANAGED_LIMITS = "off"
+
+[[mounts]]
+  source = "demi"
+  destination = "/opt/demi"
+  initial_size = "10gb"
+
+# A stop saves each running Cloud first, which takes longer than Fly's
+# default 5 s, after the signal Demi stops on.
+kill_signal = "SIGTERM"
+kill_timeout = 300
+
+[http_service]
+  internal_port = 3271
+  force_https = true
+  # Demi runs Clouds and conversations with nobody watching.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # The first start sets the server up before it listens, which takes about
+  # 30 s; Fly allows a minute at most, and a deploy waits for the check.
+  [[http_service.checks]]
+    grace_period = "1m"
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/api/update"
+
+# A server with a running Cloud uses about 600 MB; more memory is
+# `fly scale memory`.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

@@ -1,0 +1,121 @@
+# Publishes Demi's container image, ghcr.io/demi-sh/demi, for a published
+# release, from the release's own assets (deploy/image/Dockerfile), for
+# linux/amd64 and linux/arm64. The image's update channel, which a new
+# server starts on in Settings › Updates, is the channel whose releases
+# include the version, as install.sh's --version says: a Canary's image says
+# canary until the release becomes a Beta.
+#
+#   channel   when
+#   canary    release.yml published a pre-release
+#   beta      a pre-release became the latest release, or release.yml
+#             published one
+#
+# Each image takes `<version>`. It takes `beta` and `latest` while its
+# version is GitHub's latest release, and `canary` while it is the newest
+# release of all, which Canary offers. So a Beta release.yml publishes takes
+# all three, and a version published again, after newer ones, moves none.
+#
+# Starting it:
+#
+# - release.yml calls it once its release is published. A release that
+#   workflow publishes starts no `release` event, since the repository's own
+#   token publishes it.
+# - A person who turns a pre-release into the latest release
+#   (docs/delivery/upgrades.md) starts its `released` event.
+# - A manual start, `gh workflow run image.yml -f version=<version> -f
+#   channel=<channel>`, publishes it again.
+name: Image
+
+on:
+  release:
+    types: [released]
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      channel:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The published version, such as 0.2.6017.
+        type: string
+        required: true
+      channel:
+        description: canary or beta.
+        type: choice
+        options: [canary, beta]
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: image
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  publish:
+    name: Publish the image
+    runs-on: ubuntu-26.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version || github.event.release.tag_name }}
+      CHANNEL: ${{ inputs.channel || 'beta' }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Gather the release's assets
+        run: |
+          VERSION=${VERSION#v}
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          context="$RUNNER_TEMP/context"
+          downloads="$RUNNER_TEMP/downloads"
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --dir "$downloads" \
+            --pattern SHA256SUMS --pattern "demi-$VERSION-*-linux-*.tar*" --pattern "demi-server-*-unknown-linux-musl"
+          for arch in amd64 arm64; do
+            target=$([ "$arch" = amd64 ] && echo x86_64 || echo aarch64)-unknown-linux-musl
+            files=("demi-$VERSION-server-linux-$arch.tar.zst" "demi-$VERSION-image-linux-$arch.tar" "demi-server-$target")
+            for file in "${files[@]}"; do
+              sum=$(awk -v file="$file" '$2 == file' "$downloads/SHA256SUMS")
+              [ -n "$sum" ] || { echo "SHA256SUMS names no $file" >&2; exit 1; }
+              (cd "$downloads" && sha256sum --check --quiet <<< "$sum")
+            done
+            # The image's mirror holds its architecture's archives and the
+            # sums of what it holds, as fetch.rs reads a directory.
+            mkdir -p "$context/assets/$arch" "$context/bin/$arch"
+            mv "$downloads/${files[0]}" "$downloads/${files[1]}" "$context/assets/$arch/"
+            awk -v server="${files[0]}" -v image="${files[1]}" '$2 == server || $2 == image' \
+              "$downloads/SHA256SUMS" > "$context/assets/$arch/SHA256SUMS"
+            mv "$downloads/${files[2]}" "$context/bin/$arch/demi-server"
+          done
+          cp deploy/image/Dockerfile "$context/"
+          echo "CONTEXT=$context" >> "$GITHUB_ENV"
+      # The arm64 image's one package step runs under QEMU.
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build and push
+        run: |
+          image=ghcr.io/${GITHUB_REPOSITORY,,}
+          tags=(--tag "$image:$VERSION")
+          latest=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          if [ "$latest" = "v$VERSION" ]; then
+            tags+=(--tag "$image:beta" --tag "$image:latest")
+          fi
+          newest=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 \
+            --json tagName --jq '.[0].tagName')
+          if [ "$newest" = "v$VERSION" ]; then
+            tags+=(--tag "$image:canary")
+          fi
+          docker buildx build --platform linux/amd64,linux/arm64 --build-arg "CHANNEL=$CHANNEL" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            "${tags[@]}" --push "$CONTEXT"

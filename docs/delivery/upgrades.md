@@ -71,6 +71,15 @@ If anything fails before 0.2.0 reports ready, `demi-server` puts 0.1.0 back,
 with the databases as they were, and says what failed. After 0.2.0 runs,
 `demi-server rollback` returns to 0.1.0 in the same way.
 
+A server in a container ([In a container](installation.md#in-a-container))
+upgrades the same way, from Settings › Updates. Starting a newer image
+upgrades it too: the image holds one release's assets, and its start upgrades
+a server older than that release from them, with the same steps. An older
+image starts the newer release the server already runs. In the container,
+`demi-server supervise` runs the two services from the release's units in
+place of systemd, and runs the release's own supervisor after each switch
+(`crates/server/src/supervise.rs`).
+
 ## One release on a server
 
 A server runs one release at a time, and every part of Demi on it, and every
@@ -637,8 +646,8 @@ switching and rolling back, and the units.
 
 - It never edits the configuration.
 - It never touches a data directory except for its `snapshots/` and a restore.
-- It asks systemd to start and stop only Demi's two services, and to run the
-  path unit of an update from Settings.
+- It asks systemd, or the supervisor in a container, to start and stop only
+  Demi's two services, and to run the path unit of an update from Settings.
 
 Setting a server up, the first time, is its `setup`
 ([Installation](installation.md)).

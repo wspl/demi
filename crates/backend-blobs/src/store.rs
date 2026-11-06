@@ -29,7 +29,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use object_store::ObjectStore;
-use object_store::aws::{AmazonS3Builder, Checksum};
+use object_store::aws::{AmazonS3Builder, AmazonS3ConfigKey, Checksum};
 use object_store::signer::Signer;
 use url::Url;
 
@@ -85,7 +85,7 @@ impl S3Config {
     /// The bucket's client, which checksums every upload with SHA-256 and
     /// creates an object only if its key is free when asked to.
     pub fn builder(&self) -> AmazonS3Builder {
-        let builder = AmazonS3Builder::from_env()
+        let builder = aws_environment()
             .with_bucket_name(&self.bucket)
             .with_region(&self.region)
             .with_checksum_algorithm(Checksum::SHA256);
@@ -110,6 +110,37 @@ impl S3Config {
             None => builder.with_virtual_hosted_style_request(!self.force_path_style),
         }
     }
+}
+
+/// The client as AWS's own variables configure it, as
+/// `AmazonS3Builder::from_env` reads them, but for what Demi's settings
+/// decide: the bucket, its region and its endpoint. `AWS_ENDPOINT_URL_S3`
+/// would otherwise win over the endpoint the settings give, such as the one
+/// Fly's `fly storage create` sets beside its credentials, which names no
+/// bucket in its host.
+fn aws_environment() -> AmazonS3Builder {
+    let mut builder = AmazonS3Builder::new();
+    for (name, value) in std::env::vars_os() {
+        let (Some(name), Some(value)) = (name.to_str(), value.to_str()) else {
+            continue;
+        };
+        let Ok(key) = name.to_ascii_lowercase().parse::<AmazonS3ConfigKey>() else {
+            continue;
+        };
+        let settings_own = matches!(
+            key,
+            AmazonS3ConfigKey::Bucket
+                | AmazonS3ConfigKey::Region
+                | AmazonS3ConfigKey::DefaultRegion
+                | AmazonS3ConfigKey::Endpoint
+                | AmazonS3ConfigKey::S3Endpoint
+                | AmazonS3ConfigKey::VirtualHostedStyleRequest
+        );
+        if name.starts_with("AWS_") && !settings_own {
+            builder = builder.with_config(key, value);
+        }
+    }
+    builder
 }
 
 /// The opened object store, and for S3 the signer of the download URLs a

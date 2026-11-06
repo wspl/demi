@@ -24,112 +24,85 @@
   <img src="docs/assets/product.webp" alt="浏览器里的 Demi：智能体为一个 iPhone App 做了双栏布局，回复上有一条评论和一个追问，下面是回复建议；侧边面板里是半折叠的 iPhone Duo 上运行的 App，手机上是同一个对话。" width="800">
 </p>
 
-Demi 是部署在你自己服务器上的网页版 AI Agent，在任何浏览器中都能打开。随口问个问题，或者把一整件事交给它：查资料、操作网站、处理文件、写代码，都在同一个对话里完成。
-
-所有对话都集中保存在你的服务器上，所有设备看到的是同一份。你的电脑只负责执行：Agent 在云端沙箱或你自己的多台机器上工作，关掉网页后任务照常进行。
-
-<p align="center">
-  <img src="docs/assets/concept.webp" alt="在电脑或手机上连到同一台 Demi 服务器，所有对话都保存在这里；它通过笔记本、台式机、HomeLab、VPS 上的 Runner 或云端沙箱完成工作。" width="800">
-</p>
+Demi 是部署在你自己服务器上的网页版 AI Agent，在任何浏览器中都能打开，什么事都可以交给它：查资料、操作网站、处理文件、写代码。对话都保存在你的服务器上，工作在云端沙箱或你自己的机器上运行，关掉网页也照常进行。
 
 > [!NOTE]
 > Demi 目前处于早期开发阶段，版本之间可能存在不兼容的变更。
 
 ## 快速开始
 
-你需要以下条件：
+点几下即可部署 Demi：
 
-- 一台有 root 权限的 Linux 服务器，系统为以下之一（[支持的发行版](docs/delivery/installation.md#distributions)）：
-  - Ubuntu 22.04 及以上、Debian 12 及以上
-  - Fedora、RHEL 10、Rocky Linux、AlmaLinux
-  - Arch Linux
-- 一个域名，并在服务器前提供 HTTPS（[HTTPS 配置方法](docs/delivery/installation.md#https)）。
+<p>
+  <a href="docs/delivery/railway.md"><img alt="Deploy on Railway" src="https://railway.com/button.svg" height="40"></a>
+  <a href="docs/delivery/fly.md"><img alt="Deploy on Fly.io" src="docs/assets/deploy/deploy-on-fly.svg" height="40"></a>
+  <a href="docs/delivery/docker-compose.md"><img alt="Run with Docker Compose" src="docs/assets/deploy/run-with-docker-compose.svg" height="40"></a>
+</p>
 
-在服务器上运行这条命令。它安装 Beta，即 Demi 发布的版本；加上 `--canary` 则安装 Canary，最先收到每个新构建：
+或者安装到你自己的 Linux 服务器上（需要一个域名）：
 
 ```sh
-# Beta
 curl -fsSL https://demi.sh/install.sh | sudo bash
-# Canary
-curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --canary
 ```
 
-也可以把这句话发给 Claude Code、Codex 等编程 agent，让它帮你安装：
+或者让 Claude Code、Codex 等编程 Agent 帮你安装：
 
 ```text
 按照 https://raw.githubusercontent.com/demi-sh/demi/main/docs/delivery/install-with-an-agent.md 在我的服务器上安装 Demi
 ```
 
-安装程序会问几个问题，然后完成安装。安装完成后：
+装好后打开 Demi，创建管理员账号，在 **Settings › Providers** 中添加模型。支持的系统、HTTPS、Canary 渠道和各方案的费用见[安装指南](docs/delivery/installation.md)。
 
-1. 立即打开你的域名，创建管理员账号。
-2. 进入 **Settings › Providers**，用订阅账号登录或添加 API 密钥。
-3. 开始一个对话，它会在你的云端沙箱中运行。
-4. 如需在自己的电脑上工作，在对话的 Host 菜单中选择 **Add Device**，然后在那台电脑上运行显示的命令。
-
-全部选项（包括免交互安装）请参阅[安装指南](docs/delivery/installation.md)，升级方法请参阅[升级说明](docs/delivery/upgrades.md)。
+<p align="center">
+  <img src="docs/assets/concept.webp" alt="在电脑或手机上连到同一台 Demi 服务器，所有对话都保存在这里；它通过笔记本、台式机、HomeLab、VPS 上的 Runner 或云端沙箱完成工作。" width="800">
+</p>
 
 ## 核心特性
 
-Demi 的特性分为四组。
-
 ### 聊天、办事、写代码
 
-- **一个对话搞定所有事**：简单问题直接回答，复杂任务也在同一个对话里完成，无需切换模式。
-- **编程**：修改代码仓库，运行构建和测试，每处改动都能以 diff 形式查看。
+- **一个对话搞定所有事**：简单问题和多步骤任务都在这里。
+- **编程**：修改代码仓库，运行构建和测试，每处改动都能以 diff 查看。
 - **调研**：搜索网页，阅读网页、PDF 和各类文档。
-- **真实浏览器**：Demi 会操作 Chrome 完成登录、填写表单、下载文件。你可以在侧边面板中实时观看，随时接手。
-- **手机应用**：Demi 能操作 iOS 模拟器和 Android 模拟器，安装、运行、测试应用，还能录屏。你可以在侧边面板中实时观看，随时接手。
-- **文件与数据**：处理文档、表格和图片，结果以附件形式发回给你。
-- **图片、视频与音频**：通过你添加的模型服务生成和编辑图片，生成视频、语音、音乐和音效。
-- **分享**：把整个对话或单条回答分享为只读链接。
-- **评论与提问**：在回复里选中文字，就能评论或就此提问，不打断正在进行的任务。
-- **搜索**：在所有对话里查找任意一条消息，也能只在当前对话里找。
+- **真实浏览器**：Demi 会操作 Chrome，你可以实时观看，随时接手。
+- **手机应用**：在 iOS 模拟器和 Android 模拟器上安装、测试应用。
+- **文件与数据**：处理文档、表格和图片，结果以附件发回。
+- **图片、视频与音频**：通过你添加的模型服务生成。
+- **评论与提问**：在回复里选中文字，就能就此提问。
+- **分享与搜索**：分享只读链接，搜索任意一条消息。
 
 ### 随时随地，任意机器
 
-- **浏览器即用**：电脑、平板、手机均可使用，无需安装任何软件。还能添加到主屏幕，并适配手机、平板和折叠屏。
-- **九种语言**：英语、德语、西班牙语、法语、葡萄牙语、简体中文、繁体中文、日语和韩语。
-- **后台运行**：关掉网页后，任务仍在服务器上继续执行。
-- **通知**：任务完成或需要你处理时，手机和电脑都会收到通知，Demi 关着也一样。
-- **对话集中管理**：对话统一保存在服务器上，不会散落在 Agent 工作过的各台机器里。在笔记本上开始，在手机上继续，实时同步。更换 AI 服务商，历史记录也都还在。
-- **扫码与 Passkey 登录**：手机扫码即可登录，也支持 Touch ID、Face ID 和 Windows Hello。
-- **专属云端沙箱**：每个用户在你的服务器上拥有独立的 Linux 沙箱。它运行在 gVisor 中，访问不到服务器上的服务和你的内网，也看不到其他用户的沙箱。
-- **接入你自己的电脑**：一条命令即可连接 macOS、Windows 和 Linux 机器，无需开放端口。
-- **多机协作**：一个对话可以同时使用多台机器，比如在 Mac 上构建、在 Windows 上测试。
-- **随时切换机器**：对话可以在云端和你的电脑之间迁移，无需从头开始。
-- **每台机器的文件**：浏览云端沙箱和每台电脑上的文件，预览图片、视频、音频、PDF 和 Markdown，上传下载，按文件名和内容搜索。
+- **浏览器即用**：电脑、平板、手机、折叠屏都行，无需安装。
+- **后台运行**：关掉网页后任务继续执行，完成时通知你。
+- **对话集中管理**：在笔记本上开始，在手机上继续。
+- **专属云端沙箱**：每个用户都有独立的 Linux 沙箱。
+- **接入你自己的电脑**：一条命令连接 macOS、Windows 和 Linux。
+- **多机协作**：在 Mac 上构建、在 Windows 上测试，任务中途也能切换机器。
+- **每台机器的文件**：浏览、预览和搜索每台机器上的文件。
 - **端口转发**：从一台机器访问另一台机器的端口。
+- **登录方式随你选**：扫码或 Passkey，支持九种语言。
 
 ### Agent 能力
 
-- **多 Agent 协作**：Demi 会把大任务拆给一组并行工作的 Agent，最后汇总它们的结果。
-- **Agent Profile**：定义各司其职的专家 Agent，比如调研员、审查员，分别设置模型、思考强度、指令和命令。
-- **工作流**：把一组 Agent Profile 和工作指令打包成预设，放在项目的 `.demi/workflows/` 中，在输入框里一键选用，并随仓库与团队共享。
-- **定时任务**：让对话在指定时间、按周期、每隔一段时间、按 cron、在命令输出变化时或 URL 被调用时自动唤醒。
-- **对话协作**：一个对话可以给另一个对话发消息，也能读取其他对话的记录。
-- **Skills**：安装 Skill，让 Demi 学会新的任务。
-- **安全的凭据管理**：API 密钥和密码通过安全表单索取，不会出现在对话中。
+- **多 Agent 协作**：一组 Agent 拆分大任务，并行工作。
+- **Agent Profile 与工作流**：各司其职的专家 Agent，可随仓库共享。
+- **定时任务**：按时间、cron 或在出现变化时唤醒对话。
+- **对话协作**：一个对话可以给另一个对话发消息，或读取它的记录。
+- **Skills**：教 Demi 学会新任务。
+- **安全的凭据管理**：密钥通过表单索取，不会出现在对话中。
 
 ### 模型与团队
 
-- **使用已有订阅**：用 Claude、ChatGPT 或 Grok Build 账号直接登录。每种订阅可添加多个账号，额度用完时 Demi 会自动轮换。
-- **Coding Plan**：使用 Kimi、GLM、MiniMax 等 Coding Plan 的密钥。
-- **API 密钥**：支持 Anthropic、OpenAI、Gemini 以及任何兼容端点。
-- **本地模型**：通过端口转发，让服务器使用你自己电脑上运行的模型，比如 Ollama。
-- **随时切换模型**：随时更换模型或思考强度，任务进行中也可以。
-- **用量与费用**：查看每个订阅的额度用了多少、何时重置，以及最近一小时、一天或全部的花费。
-- **多用户**：每个用户拥有独立的沙箱、设备和对话，可共用管理员的订阅，也可各用各的。
-- **管理后台**：添加用户、管理角色、重置密码、发放手机登录码。
-- **一键安装与升级**：一条命令部署服务器，一条命令完成升级。
+- **使用已有订阅**：Claude、ChatGPT 和 Grok Build，额度用完自动轮换账号。
+- **任意 API**：Anthropic、OpenAI、Gemini，Kimi、GLM、MiniMax 等 Coding Plan，以及本地模型。
+- **随时切换模型**，任务进行中也可以。
+- **用量与费用**：查看每个订阅的额度和任务花费。
+- **多用户**：每个用户拥有独立的沙箱、设备和对话。
 
 ## 基于 Shell 的 Agent
 
-Demi 既是 Agent 的界面，也是 Agent 本身。
-
-它不套壳 Claude Code 或 Codex，而是由自己的运行时驱动所有模型；用 Claude 或 ChatGPT 订阅登录时，只调用订阅中的模型。
-
-大多数 Agent 会给模型一长串工具，Demi 只给一个：Shell。浏览器、其他机器、子 Agent 等所有能力，都是这个 Shell 里的 `demi` 命令：
+Demi 不套壳 Claude Code 或 Codex，而是由自己的运行时驱动所有模型。大多数 Agent 会给模型一长串工具，Demi 只给一个：Shell。浏览器、其他机器、子 Agent 都是这个 Shell 里的 `demi` 命令：
 
 ```sh
 T=$(demi browser tab new) && demi browser open $T http://localhost:5173 && demi browser screenshot $T | demi file view
@@ -137,20 +110,16 @@ demi host shell --host windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```
 
-这种设计有以下好处：
-
-- **可组合**：命令之间可以用管道和 `&&` 串联，通常需要多次工具调用的事，一步就能完成。
-- **提示词精简**：每组命令在提示词中只占一行，模型需要时再读 `--help`。能力再多，也不会让每次请求变得臃肿。
-- **处处同一个 Shell**：每台机器都运行同一个用 Rust 编写的 bash 兼容 Shell（[brush](https://github.com/reubeno/brush)），在云端能跑的脚本，在 macOS 和 Windows 上同样能跑。会改动文件的工具在每台机器上都是 GNU 版（[uutils](https://github.com/uutils/coreutils)），它们做的改动都会被记录；其余程序（如 tar、python）用系统自带的，其改动不会被记录，Windows 上其余的工具用 Git for Windows 的，缺少时由 Demi 的设置安装。
-- **模型无关**：所有模型面对的都是同一个工具，换模型不会改变 Agent 的能力。
-- **适合长任务**：命令在后台持续运行，结束后自动汇报，开发服务器和测试套件不会阻塞对话。
+- **可组合**：命令可以用管道串联，一步完成通常需要多次工具调用的事。
+- **精简的提示词**：模型只在需要时才读命令的 `--help`。
+- **处处相同的 Shell**：每台机器都运行同一个用 Rust 编写、兼容 bash 的 Shell。
+- **所有模型一致**：换模型不会改变 Agent 能做的事。
+- **为长任务而生**：命令在后台运行，完成后汇报。
 
 > [!NOTE]
-> **规划中**：Demi 服务器将提供 OpenAPI，你的程序可以用它的对话、Agent 和云端沙箱，满足你自己的 Agent 需求。
+> **计划中**：为 Demi 服务器提供 OpenAPI，让你自己的程序也能使用它的对话、Agent 和云端沙箱。
 
 ## 架构
-
-下图展示各部分如何连接：
 
 ```text
   Browsers (computer, phone, tablet)
@@ -166,16 +135,14 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
   ┌─────┴──────────┐  ┌──┴───────────────────────────┐
   │ Runner in your │  │ Runners on your computers    │
   │ cloud sandbox  │  │ and servers (macOS, Windows, │
-  │ (gVisor)       │  │ Linux)                       │
+  │                │  │ Linux)                       │
   └────────────────┘  └──────────────────────────────┘
 ```
 
-这种架构有以下特点：
-
-- **服务器运行 Agent，Runner 负责执行**：对话、Agent 和设置都在服务器上。每台机器上的轻量 Runner 只负责文件、命令和浏览器操作。Runner 主动连接服务器，在 NAT 和防火墙后也能正常工作。
-- **同一个 Runner**：云端沙箱和你的电脑运行同一个 Runner，所有功能在每台机器上都可用。
-- **节省带宽**：大段输出和文件保留在产生它们的机器上，只在你打开时才加载。
-- **原生实现**：服务器、Runner 和 Agent 的工具均由 Rust 编写，网页应用基于 Vue 和 TypeScript。
+- **服务器运行 Agent，Runner 负责干活**：每个 Runner 主动向外连接，因此在 NAT 和防火墙后也能工作。
+- **处处同一个 Runner**：每个功能在每台机器上都能用。
+- **节省带宽**：大文件留在生成它的机器上，打开时才加载。
+- **原生**：服务器、Runner 和工具用 Rust 编写，网页应用用 Vue 和 TypeScript。
 
 设计文档见 [docs/](docs/README.md)，建议从[概览](docs/overview.md)开始阅读（英文）。
 

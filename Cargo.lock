@@ -2630,6 +2630,7 @@ dependencies = [
  "demi-shared-artifacts",
  "demi-shared-cli",
  "demi-shared-types",
+ "demi-supervisor-protocol",
  "fs-err",
  "futures-util",
  "hickory-proto",
@@ -3472,6 +3473,7 @@ dependencies = [
  "demi-shared-artifacts",
  "demi-shared-cli",
  "demi-shared-types",
+ "demi-supervisor-protocol",
  "demi-web-api-protocol",
  "dotenvy",
  "jiff",
@@ -3615,6 +3617,14 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unicode-width 0.2.2",
+]
+
+[[package]]
+name = "demi-supervisor-protocol"
+version = "0.1.65"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

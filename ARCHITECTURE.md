@@ -306,6 +306,7 @@ The following table shows where each wire or data family is defined:
 | Plugin manifests, requests and replies | `plugin-interface` |
 | A plugin's page state and calls | the plugin's crate |
 | Machine manager socket, Cloud image manifest | `machine-manager-protocol` |
+| A container's service supervisor socket | `supervisor-protocol` |
 | JSON stored in the databases | the crate that owns the data |
 
 Contracts follow these further rules:
@@ -400,6 +401,7 @@ live-view-protocol -> shared-types
 command-package-claude-code-protocol -> none
 runner-protocol -> command-protocol, command-declarations, shared-types
 machine-manager-protocol -> command-protocol, runner-protocol, shared-types
+supervisor-protocol -> none
 web-api-protocol -> conversation-lane-protocol, command-protocol, shared-types, runner-protocol
 shared-gates -> none
 shared-lanes -> none
@@ -463,8 +465,8 @@ backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, b
 backend-user-shard -> agent-server, conversation-lane-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-host-access, backend-idle-watch, backend-blobs, backend-permissions, plugin-host, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-artifacts, shared-types, shared-gates, plugin-interface, runner-client, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol, provider-registry, provider-relay
 backend-http -> conversation-lane-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, runner-client, provider-common, runner-protocol, shared-lanes, host-interface, web-api-protocol, backend-permissions, plugin-host, plugin-interface, provider-registry, provider-relay
 backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, plugin-mobile, provider-anthropic-api, provider-claude-code, provider-codex, provider-bytedance, provider-common, provider-elevenlabs, provider-minimax, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web, plugin-image, plugin-video, plugin-audio, plugin-widget, provider-registry, provider-relay
-machine-manager -> shared-artifacts, shared-cli, shared-types, machine-manager-protocol, runner-protocol
-server -> backend-database, machine-manager-protocol, runner-protocol, shared-artifacts, shared-cli, shared-types, web-api-protocol
+machine-manager -> shared-artifacts, shared-cli, shared-types, machine-manager-protocol, runner-protocol, supervisor-protocol
+server -> backend-database, machine-manager-protocol, runner-protocol, shared-artifacts, shared-cli, shared-types, supervisor-protocol, web-api-protocol
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts, shared-cli
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates, shared-cli
 command-package-fetch -> command-protocol, command-sdk, command-package-fetch-protocol, shared-cli, shared-types, shared-artifacts
