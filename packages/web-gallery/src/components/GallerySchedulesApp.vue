@@ -84,7 +84,7 @@ function remove(id: string): void {
           @delete="(ids) => (conversations = conversations.filter((each) => !ids.includes(each.id)))"
           @reorder="productWould('Reorder the Sidebar')"
           @open-settings="productWould('Open Settings')"
-          @hand-off-to-phone="productWould('Hand Off to Phone')"
+          @hand-off="productWould('Hand Off to Another Device')"
           @retry-list="productWould('Load the Conversations Again')"
           @sign-out="productWould('Sign Out')"
         />

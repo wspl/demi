@@ -536,8 +536,8 @@
       "newPassword": "Bestätige deine Identität, um ein neues Passwort zu erstellen."
     },
     "ready": {
-      "added": "Das Konto für {email} ist bereit. Gib der Person dieses Passwort oder lass sie den Code scannen.",
-      "reset": "{email} hat ein neues Passwort. Gib der Person dieses Passwort oder lass sie den Code scannen."
+      "added": "Das Konto für {email} ist bereit. Gib der Person dieses Passwort oder melde sie mit dem Code unten an.",
+      "reset": "{email} hat ein neues Passwort. Gib der Person dieses Passwort oder melde sie mit dem Code unten an."
     },
     "reset": {
       "title": "Passwort von {name} zurücksetzen?",

@@ -63,21 +63,21 @@
     "other": "Melde dich mit der Bildschirmsperre deines Geräts statt mit deinem Passwort an."
   },
   "handoff": {
-    "title": "An dein Telefon übergeben",
-    "confirm": "Bestätige deine Identität. Dein Telefon öffnet dann diese Seite, angemeldet mit diesem Konto.",
-    "scan": "Scanne mit der Kamera deines Telefons.",
+    "title": "An ein anderes Gerät übergeben",
+    "confirm": "Bestätige deine Identität. Dein anderes Gerät öffnet dann diese Seite, angemeldet mit diesem Konto.",
+    "scan": "Scanne mit der Kamera deines Telefons oder öffne den Link auf einem anderen Gerät.",
     "done": "An {browser} übergeben.",
     "codeTitle": "Anmeldecode",
-    "codeConfirm": "Bestätige deine Identität. Ein Code meldet dann das Telefon von {name} mit dem eigenen Konto an.",
-    "codeScan": "Scanne mit der Kamera dieses Telefons.",
+    "codeConfirm": "Bestätige deine Identität. Ein Code meldet dann {name} auf dem eigenen Gerät mit dem eigenen Konto an.",
+    "codeScan": "Scanne mit der Kamera dieses Telefons oder sende den Link an diese Person.",
     "codeDone": "Angemeldet auf {browser}.",
-    "readyScan": "Oder scanne mit der Kamera dieses Telefons, um es anzumelden.",
     "making": "Code wird erstellt",
     "qr": "QR-Code",
     "expires": "Läuft ab in {left}",
     "expired": "Dieser Code ist abgelaufen.",
     "usePasskey": "Passkey verwenden",
-    "showNew": "Neuen Code anzeigen"
+    "showNew": "Neuen Code anzeigen",
+    "copyLink": "Link kopieren"
   },
   "verify": {
     "title": "Bestätige deine Identität",

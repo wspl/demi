@@ -15,7 +15,7 @@
     "failed": "Couldn’t load conversations."
   },
   "foot": {
-    "handOff": "Hand Off to Phone",
+    "handOff": "Hand Off to Another Device",
     "settings": "Settings",
     "updateAvailable": "Demi {version} is available",
     "updating": "Updating Demi"

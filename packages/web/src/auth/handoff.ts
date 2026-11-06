@@ -20,7 +20,7 @@ import { useHeldList, useProduct } from '../state/product'
 import { browserHasPasskeys, signWithPasskey } from './webauthn'
 
 /**
- * A code that opens `to`, the page the user is on, on a phone; `verify` when the
+ * A code that opens `to`, the page the user is on, on another device; `verify` when the
  * backend wants the session confirmed first, which its 403 decides.
  */
 export function makeHandoffCode(to: string): Promise<HandoffStart> {
@@ -96,8 +96,8 @@ export async function verifyWithPasskey(): Promise<HandoffVerifyOutcome> {
 }
 
 /**
- * How spending a code on the phone went: the page to go to, signed in to
- * the code's account, in the phone's own session or a new one; the
+ * How spending a code on the other device went: the page to go to, signed in
+ * to the code's account, in the device's own session or a new one; the
  * code expired, was spent or is unknown; or another failure.
  */
 export type HandoffSpent =
@@ -105,7 +105,7 @@ export type HandoffSpent =
   | { kind: 'expired' }
   | ({ kind: 'failed' } & ShownError)
 
-/** Spends the code a phone's page read from its address. */
+/** Spends the code the other device's page read from its address. */
 export async function spendHandoffCode(code: string): Promise<HandoffSpent> {
   try {
     const response = await apiRequest('/auth/handoff', {
@@ -123,9 +123,9 @@ export async function spendHandoffCode(code: string): Promise<HandoffSpent> {
 
 /**
  * The account's signed-in browsers, which the synchronization channel's
- * `sessions` part brings, and the dialog that hands off to a phone: it learns
- * of the phone from the session that carries the code, the one the code made or
- * the phone's own.
+ * `sessions` part brings, and the dialog that hands off to another device: it
+ * learns of the device from the session that carries the code, the one the
+ * code made or the device's own.
  */
 const useSessionStore = defineStore('sessions', () => {
   const product = useProduct()

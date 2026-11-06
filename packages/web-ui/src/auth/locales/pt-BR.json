@@ -63,21 +63,21 @@
     "other": "Entre com o bloqueio de tela do seu dispositivo em vez da sua senha."
   },
   "handoff": {
-    "title": "Passar para o celular",
-    "confirm": "Confirme que é você. Seu celular então abre esta página, conectado a esta conta.",
-    "scan": "Escaneie com a câmera do seu celular.",
+    "title": "Passar para outro dispositivo",
+    "confirm": "Confirme que é você. Seu outro dispositivo então abre esta página, conectado a esta conta.",
+    "scan": "Escaneie com a câmera do seu celular ou abra o link em outro dispositivo.",
     "done": "Passado para {browser}.",
     "codeTitle": "Código de login",
-    "codeConfirm": "Confirme que é você. Um código então conecta o celular de {name} à conta dessa pessoa.",
-    "codeScan": "Escaneie com a câmera desse celular.",
+    "codeConfirm": "Confirme que é você. Um código então conecta {name} à própria conta, no dispositivo dessa pessoa.",
+    "codeScan": "Escaneie com a câmera desse celular ou envie o link para essa pessoa.",
     "codeDone": "Conectado em {browser}.",
-    "readyScan": "Ou escaneie com a câmera desse celular para conectá-lo.",
     "making": "Criando um código",
     "qr": "Código QR",
     "expires": "Expira em {left}",
     "expired": "Este código expirou.",
     "usePasskey": "Usar chave-senha",
-    "showNew": "Mostrar novo código"
+    "showNew": "Mostrar novo código",
+    "copyLink": "Copiar link"
   },
   "verify": {
     "title": "Confirme que é você",

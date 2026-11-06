@@ -30,7 +30,7 @@
     "signin": {
       "signin": "Sign In",
       "setup": "Setup",
-      "handoff": "Phone Handoff",
+      "handoff": "Handoff",
       "starting": "Starting"
     },
     "primitives": {

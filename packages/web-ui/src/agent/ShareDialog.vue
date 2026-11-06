@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Check, Copy } from '@lucide/vue'
+import CopyLabel from '../ui/CopyLabel.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
@@ -8,7 +8,6 @@ import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import InlineError from '../ui/InlineError.vue'
 import TextInput from '../ui/TextInput.vue'
 import { shownError } from '../infra/errors'
-import { t as shared } from '../locales/text'
 import { t } from './locales/text'
 import type { Action, Operation } from '../ui/operations'
 import type { SharePhase, ShareTarget } from './sharing'
@@ -105,12 +104,7 @@ const stop = computed<Operation>(() => ({ action: 'stop', target: `share:${token
       <Button v-if="target.kind === 'conversation'" :operation="update" :disabled="!link" @click="onUpdate?.()">{{ t('share.updateLink') }}</Button>
       <Button v-if="phase.status === 'failed'" variant="primary" @click="emit('retry')">{{ t('share.tryAgain') }}</Button>
       <Button v-else variant="primary" :disabled="!link" @click="emit('copy')">
-        <component :is="copied ? Check : Copy" :size="14" />
-        <!-- Both labels take one cell, so the button keeps the wider one's width. -->
-        <span class="inline-grid">
-          <span class="col-start-1 row-start-1" :class="copied ? 'invisible' : ''">{{ t('share.copyLink') }}</span>
-          <span class="col-start-1 row-start-1" :class="copied ? '' : 'invisible'">{{ shared('common.copied') }}</span>
-        </span>
+        <CopyLabel :label="t('share.copyLink')" :copied="copied" />
       </Button>
     </template>
   </Dialog>

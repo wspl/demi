@@ -63,21 +63,21 @@
     "other": "Sign in with your device’s screen lock instead of your password."
   },
   "handoff": {
-    "title": "Hand Off to Your Phone",
-    "confirm": "Confirm it’s you. Your phone then opens this page, signed in to this account.",
-    "scan": "Scan with your phone’s camera.",
+    "title": "Hand Off to Another Device",
+    "confirm": "Confirm it’s you. Your other device then opens this page, signed in to this account.",
+    "scan": "Scan with your phone’s camera, or open the link on another device.",
     "done": "Handed off to {browser}.",
     "codeTitle": "Sign-In Code",
-    "codeConfirm": "Confirm it’s you. A code then signs {name}’s phone in to their account.",
-    "codeScan": "Scan with their phone’s camera.",
+    "codeConfirm": "Confirm it’s you. A code then signs {name} in to their account on their device.",
+    "codeScan": "Scan with their phone’s camera, or send them the link.",
     "codeDone": "Signed in on {browser}.",
-    "readyScan": "Or scan with their phone’s camera to sign it in.",
     "making": "Making a code",
     "qr": "QR code",
     "expires": "Expires in {left}",
     "expired": "This code has expired.",
     "usePasskey": "Use Passkey",
-    "showNew": "Show New Code"
+    "showNew": "Show New Code",
+    "copyLink": "Copy Link"
   },
   "verify": {
     "title": "Confirm It’s You",

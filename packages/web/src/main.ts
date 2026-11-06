@@ -102,7 +102,7 @@ const router = createRouter({
       path: '/setup',
       component: SetupPage,
     },
-    // A phone's camera opens a handoff code here, signed in or not.
+    // A handoff code's QR code or link opens here, signed in or not.
     {
       path: '/handoff',
       component: HandoffPage,
@@ -282,7 +282,7 @@ router.beforeEach(async (to) => {
   // Each session state has its pages: setup while no account exists, sign-in
   // without a session, and the product with one.
   const status = session.current.status
-  // The handoff page signs the phone in, in whatever state it was.
+  // The handoff page signs the device in, in whatever state it was.
   if (to.path === '/handoff') {
     return true
   }

@@ -15,7 +15,7 @@
     "failed": "Chats konnten nicht geladen werden."
   },
   "foot": {
-    "handOff": "An Telefon übergeben",
+    "handOff": "An ein anderes Gerät übergeben",
     "settings": "Einstellungen",
     "updateAvailable": "Demi {version} ist verfügbar",
     "updating": "Demi wird aktualisiert"

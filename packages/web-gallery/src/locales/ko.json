@@ -30,7 +30,7 @@
     "signin": {
       "signin": "로그인",
       "setup": "설정",
-      "handoff": "휴대폰으로 핸드오프",
+      "handoff": "핸드오프",
       "starting": "시작 중"
     },
     "primitives": {

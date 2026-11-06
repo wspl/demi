@@ -15,7 +15,7 @@
     "failed": "Impossible de charger les conversations."
   },
   "foot": {
-    "handOff": "Passer sur le téléphone",
+    "handOff": "Passer sur un autre appareil",
     "settings": "Paramètres",
     "updateAvailable": "Demi {version} est disponible",
     "updating": "Mise à jour de Demi"

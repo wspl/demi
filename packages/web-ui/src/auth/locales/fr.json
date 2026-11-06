@@ -63,21 +63,21 @@
     "other": "Connectez-vous avec le verrouillage de l’écran de votre appareil au lieu de votre mot de passe."
   },
   "handoff": {
-    "title": "Passer sur votre téléphone",
-    "confirm": "Confirmez votre identité. Votre téléphone ouvre ensuite cette page, connecté à ce compte.",
-    "scan": "Scannez avec l’appareil photo de votre téléphone.",
+    "title": "Passer sur un autre appareil",
+    "confirm": "Confirmez votre identité. Votre autre appareil ouvre ensuite cette page, connecté à ce compte.",
+    "scan": "Scannez avec l’appareil photo de votre téléphone, ou ouvrez le lien sur un autre appareil.",
     "done": "Transmis à {browser}.",
     "codeTitle": "Code de connexion",
-    "codeConfirm": "Confirmez votre identité. Un code connecte ensuite le téléphone de {name} à son propre compte.",
-    "codeScan": "Scannez avec l’appareil photo de ce téléphone.",
+    "codeConfirm": "Confirmez votre identité. Un code connecte ensuite {name} à son propre compte, sur son appareil.",
+    "codeScan": "Scannez avec l’appareil photo de ce téléphone, ou envoyez-lui le lien.",
     "codeDone": "Connecté sur {browser}.",
-    "readyScan": "Ou scannez avec l’appareil photo de ce téléphone pour le connecter.",
     "making": "Création d’un code",
     "qr": "Code QR",
     "expires": "Expire dans {left}",
     "expired": "Ce code a expiré.",
     "usePasskey": "Utiliser une clé d’accès",
-    "showNew": "Afficher un nouveau code"
+    "showNew": "Afficher un nouveau code",
+    "copyLink": "Copier le lien"
   },
   "verify": {
     "title": "Confirmez votre identité",

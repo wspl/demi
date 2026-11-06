@@ -34,14 +34,14 @@ export function galleryVerification(confirmed = false): { host: VerificationHost
   return { host, verified: () => Date.now() < verifiedUntil }
 }
 
-/** How a specimen's dialog opens: on the confirmation, on a code, on an expired code, or handed off to the phone. */
+/** How a specimen's dialog opens: on the confirmation, on a code, on an expired code, or handed off to the other device. */
 export type HandoffSpecimenStart = 'verify' | 'code' | 'expired' | 'handedOff'
 
 /** The browser of the stand-in phone the code is handed off to. */
 const PHONE = 'Safari on iPhone'
 
 /**
- * A host of Hand Off to Your Phone as the product's would answer, for one
+ * A host of Hand Off to Another Device as the product's would answer, for one
  * specimen: it confirms as `galleryVerification` does; a code lasts ten
  * minutes, and the confirmation five, so asking again within them shows a
  * code at once. `phoneScans` stands in for the phone's camera.

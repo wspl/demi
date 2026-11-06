@@ -30,7 +30,7 @@
     "signin": {
       "signin": "サインイン",
       "setup": "セットアップ",
-      "handoff": "スマートフォンへのハンドオフ",
+      "handoff": "ハンドオフ",
       "starting": "起動中"
     },
     "primitives": {

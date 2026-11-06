@@ -112,7 +112,7 @@ impl JsonSchema for ProductPath {
     }
 }
 
-/// `POST /auth/handoff/code`: the page the phone opens.
+/// `POST /auth/handoff/code`: the page the other device opens.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct HandoffRequest {
@@ -133,7 +133,8 @@ pub struct HandoffCode {
     pub expires_in_ms: u32,
 }
 
-/// `POST /auth/handoff`: the code the phone's page read from its address.
+/// `POST /auth/handoff`: the code the other device's page read from its
+/// address.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct HandoffSpend {

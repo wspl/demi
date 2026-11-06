@@ -146,7 +146,7 @@ function openFoundMessage(close: () => void): void {
 }
 
 /**
- * Hand Off to Your Phone, opened on each of its steps; Open again starts the
+ * Hand Off to Another Device, opened on each of its steps; Open again starts the
  * specimen over, on its step.
  */
 const handoffSpecimens = ref(
@@ -436,8 +436,8 @@ const resetPhases: {
 
     <template v-if="view === 'account'">
       <GallerySection
-        title="Hand Off to Your Phone"
-        note="The phone mark at the sidebar’s foot opens it. The backend decides whether the user confirms it is them first: with the password, or a passkey where the account has one, which holds five minutes. The code is a QR code of the backend’s address with the page the window shows; it lasts ten minutes, and an expired one offers Show New Code. Once the phone opens the page, signed in anew or in the session it had, the dialog says Handed off to its browser and closes by itself."
+        title="Hand Off to Another Device"
+        note="The device mark at the sidebar’s foot opens it; a page on a phone has none. The backend decides whether the user confirms it is them first: with the password, or a passkey where the account has one, which holds five minutes. The code is a QR code of the backend’s address with the page the window shows; it lasts ten minutes, and an expired one offers Show New Code. While it is valid, Copy Link puts the same address on the clipboard and reads Copied for a moment, so a computer without a camera opens it too; the dialog never shows the address. Once the other device opens the page, signed in anew or in the session it had, the dialog says Handed off to its browser and closes by itself."
       >
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="(item, index) in handoffSpecimens" :key="item.variant" wide :variant="item.variant">

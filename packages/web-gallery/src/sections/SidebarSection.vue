@@ -204,11 +204,11 @@ function wouldOpenSettings(section?: string): void {
   productWould(section ? `Open ${section} Settings` : 'Open Settings')
 }
 
-/** Hand Off to Your Phone, which the live sidebar opens; the other specimens say they would. */
+/** Hand Off to Another Device, which the live sidebar opens; the other specimens say they would. */
 const handoffOpen = ref(false)
 const handoff = galleryHandoff('verify')
-function wouldHandOffToPhone(): void {
-  productWould('Open Hand Off to Your Phone')
+function wouldHandOff(): void {
+  productWould('Open Hand Off to Another Device')
 }
 
 const anatomy: [string, string][] = [
@@ -760,7 +760,7 @@ onBeforeUnmount(() => {
             @archive="dropMany"
             @delete="deleteMany"
             @open-settings="openSettings"
-            @hand-off-to-phone="handoffOpen = true"
+            @hand-off="handoffOpen = true"
             @sign-out="productWould('Sign Out')"
           />
           </template>
@@ -853,7 +853,7 @@ onBeforeUnmount(() => {
                 @switch-saved-scope="(id, scope, to) => savedScopeSwitched(fixedProjects, id, scope, to)"
                 @open-settings="wouldOpenSettings"
                 @sign-out="productWould('Sign Out')"
-                @hand-off-to-phone="wouldHandOffToPhone"
+                @hand-off="wouldHandOff"
                 @select="selectFold"
                 @reorder="(request) => productWould(request.kind === 'project' ? 'Move the Project' : 'Move the Conversation')"
                 @rename="(id, title) => (foldConversations = foldConversations.map((c) => (c.id === id ? { ...c, title } : c)))"
@@ -885,7 +885,7 @@ onBeforeUnmount(() => {
               @add-project="productWould('Add a Project')"
               @open-settings="wouldOpenSettings"
               @sign-out="productWould('Sign Out')"
-              @hand-off-to-phone="wouldHandOffToPhone"
+              @hand-off="wouldHandOff"
             />
           </div>
         </GallerySpecimen>
@@ -916,7 +916,7 @@ onBeforeUnmount(() => {
                 @add-project="productWould('Add a Project')"
                 @open-settings="wouldOpenSettings"
                 @sign-out="productWould('Sign Out')"
-                @hand-off-to-phone="wouldHandOffToPhone"
+                @hand-off="wouldHandOff"
                 @select="(id) => (hoverActive = id)"
                 @reorder="(request) => productWould(request.kind === 'project' ? 'Move the Project' : 'Move the Conversation')"
                 @rename="(id, title) => (hoverConversations = hoverConversations.map((c) => (c.id === id ? { ...c, title } : c)))"
@@ -964,7 +964,7 @@ onBeforeUnmount(() => {
                 @switch-saved-scope="(id, scope, to) => (markProjectList = savedScopeSwitched(markProjectList, id, scope, to))"
                 @open-settings="wouldOpenSettings"
                 @sign-out="productWould('Sign Out')"
-                @hand-off-to-phone="wouldHandOffToPhone"
+                @hand-off="wouldHandOff"
                 @select="(id) => (markActive = id)"
                 @reorder="(request) => productWould(request.kind === 'project' ? 'Move the Project' : 'Move the Conversation')"
                 @rename="(id, title) => (markConversations = markConversations.map((c) => (c.id === id ? { ...c, title } : c)))"
@@ -1004,7 +1004,7 @@ onBeforeUnmount(() => {
                 @add-project="productWould('Add a Project')"
                 @open-settings="wouldOpenSettings"
                 @sign-out="productWould('Sign Out')"
-                @hand-off-to-phone="wouldHandOffToPhone"
+                @hand-off="wouldHandOff"
                 @select="selectStatus"
                 @reorder="(request) => productWould(request.kind === 'project' ? 'Move the Project' : 'Move the Conversation')"
                 @rename="(id, title) => (statusConversations = statusConversations.map((c) => (c.id === id ? { ...c, title } : c)))"
@@ -1046,7 +1046,7 @@ onBeforeUnmount(() => {
               @add-project="productWould('Add a Project')"
               @open-settings="wouldOpenSettings"
               @sign-out="productWould('Sign Out')"
-              @hand-off-to-phone="wouldHandOffToPhone"
+              @hand-off="wouldHandOff"
             />
           </div>
         </GallerySpecimen>
@@ -1072,7 +1072,7 @@ onBeforeUnmount(() => {
               :active-id="null"
               list-status="loading"
               @open-settings="wouldOpenSettings"
-              @hand-off-to-phone="wouldHandOffToPhone"
+              @hand-off="wouldHandOff"
               @sign-out="productWould('Sign Out')"
             />
           </div>
@@ -1102,7 +1102,7 @@ onBeforeUnmount(() => {
               :list-status="recoveredStatus"
               @retry-list="retrySidebar"
               @open-settings="wouldOpenSettings"
-              @hand-off-to-phone="wouldHandOffToPhone"
+              @hand-off="wouldHandOff"
               @sign-out="productWould('Sign Out')"
               @select="(id) => (recoveredActive = id)"
               @archive="(ids) => (recoveredConversations = without(recoveredConversations, ids))"
@@ -1125,7 +1125,7 @@ onBeforeUnmount(() => {
               :active-id="null"
               @create="(projectId) => productWould(projectId ? 'Start a New Conversation in the Project' : 'Start a New Conversation')"
               @open-settings="wouldOpenSettings"
-              @hand-off-to-phone="wouldHandOffToPhone"
+              @hand-off="wouldHandOff"
               @sign-out="productWould('Sign Out')"
             />
           </div>
@@ -1162,7 +1162,7 @@ onBeforeUnmount(() => {
               @add-project="productWould('Add a Project')"
               @open-settings="wouldOpenSettings"
               @sign-out="productWould('Sign Out')"
-              @hand-off-to-phone="wouldHandOffToPhone"
+              @hand-off="wouldHandOff"
             />
           </div>
         </GallerySpecimen>

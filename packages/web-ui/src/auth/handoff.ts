@@ -2,8 +2,8 @@ import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 
 /**
- * Handing off to a phone by a QR code: what the dialog shows of a code, and
- * what its host does for it.
+ * Handing off to another device by a QR code or its link: what the dialog
+ * shows of a code, and what its host does for it.
  */
 
 /** A code as the dialog shows it: its id, the URL its QR code holds, and when it expires. */
@@ -49,7 +49,7 @@ export type HandoffVerifyOutcome =
  * What the dialog says, which the same code flow words for who shows it and who
  * scans it. The wordings are:
  *
- * - Hand Off to Your Phone (the user's own phone),
+ * - Hand Off to Another Device (the user's own),
  * - an administrator's Sign-In Code… for an account, and
  * - Add User's last step.
  */
@@ -77,7 +77,7 @@ export const HANDOFF_WORDING: HandoffWording = {
   done: (browser) => t('handoff.done', { browser }),
 }
 
-/** An administrator's Sign-In Code… for the account `name`, which signs a phone in to it. */
+/** An administrator's Sign-In Code… for the account `name`, which signs a device in to it. */
 export function signInCodeWording(name: string): HandoffWording {
   return {
     get title() {
@@ -108,7 +108,7 @@ export function userReadyWording(title: string, name: string): HandoffWording {
       return code.confirm
     },
     get scan() {
-      return t('handoff.readyScan')
+      return code.scan
     },
     done: code.done,
   }

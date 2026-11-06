@@ -32,8 +32,8 @@ const anatomy: [string, string][] = [
     'What the first visitor of a Demi without accounts sees instead of signing in: a name, an email, a password and its confirmation create the master account, which signs in. Where passkeys are offered, an optional Add a Passkey step follows, using the password just entered, with Skip. Once the account exists, the page is gone and every visitor signs in.'
   ],
   [
-    'Phone handoff',
-    'What a phone’s camera opens from a code another signed-in browser shows: it says it opens the page while the code is spent, then opens the page the code names, signed in: in the phone’s own session when it was signed in to the account. A code that expired or was used says so, with Sign In.'
+    'Handoff',
+    'What a code another signed-in browser shows opens, by its QR code or its link: it says it opens the page while the code is spent, then opens the page the code names, signed in: in the device’s own session when it was signed in to the account. A code that expired or was used says so, with Sign In.'
   ],
   [
     'Starting',
@@ -263,7 +263,7 @@ function createAccount(name: string, address: string) {
 
     <GallerySection
       v-else-if="view === 'handoff'"
-      title="Phone Handoff"
+      title="Handoff"
       note="Switch the state. Opening shows while the code is spent; the product then opens the page the code names. Sign In opens the sign-in page."
     >
       <div class="mb-3">

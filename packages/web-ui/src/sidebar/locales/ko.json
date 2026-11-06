@@ -15,7 +15,7 @@
     "failed": "대화를 불러올 수 없습니다."
   },
   "foot": {
-    "handOff": "휴대폰으로 핸드오프",
+    "handOff": "다른 기기로 핸드오프",
     "settings": "설정",
     "updateAvailable": "Demi {version} 사용 가능",
     "updating": "Demi 업데이트 중"
