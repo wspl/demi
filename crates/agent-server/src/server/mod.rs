@@ -666,18 +666,18 @@ impl<H: HostResolver> AgentServer<H> {
     /// message of its user's, `id`, as the root takes one: a live subagent
     /// takes it as a steer, which starts a turn when it is idle, and a
     /// closed one is resumed with it, as `demi agent resume` resumes one
-    /// for its parent. An error when no tree is open, the conversation has
-    /// no such subagent, or it refused the message.
+    /// for its parent. One whose history or queue holds `id` took it
+    /// already and takes nothing, so a request sent again, after its answer
+    /// was lost, runs no second turn and resumes nothing. An error when no
+    /// tree is open, the conversation has no such subagent, or it refused
+    /// the message.
     pub async fn message_subagent(&self, root: &NodeId, node: &NodeId, id: BlockId, text: String) -> Result<(), String> {
         let tree = self.tree(root).ok_or("the conversation's tree is not open")?;
         if node == root {
             return Err("the main agent takes messages as the conversation's".into());
         }
-        if let Some(live) = tree.live_agent(node) {
-            return live
-                .session()
-                .steer(vec![UserContentBlock::Text { text }], id)
-                .map_err(|error| error.to_string());
+        if let Some(steered) = tree.steer_live(node, &id, &text) {
+            return steered;
         }
         let record = tree
             .store()
@@ -686,10 +686,16 @@ impl<H: HostResolver> AgentServer<H> {
             .map_err(|error| error.to_string())?
             .ok_or("the conversation has no such agent")?;
         let parent = record.parent.ok_or("the conversation has no such subagent")?;
-        let input = tree::StartInput::Resume {
+        // A start refuses while the parent is closed, which says nothing of
+        // a message the subagent took before that.
+        if tree.history_holds(node, &id).await? {
+            return Ok(());
+        }
+        let input = tree::StartInput::Message {
             id: node.clone(),
-            message: text,
-            profile_name: None,
+            number: record.number,
+            message_id: id,
+            text,
         };
         tree.start(&parent, input).await.map(drop)
     }

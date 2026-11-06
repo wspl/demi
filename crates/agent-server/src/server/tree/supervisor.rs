@@ -98,7 +98,7 @@ use demi_agent_session::{
     Subscription,
 };
 use demi_agent_store::{ClosePhase, Kind, NodeClose, NodeRecord, Placement, Reprofile};
-use demi_agent_transcript::last_failure;
+use demi_agent_transcript::{Earlier, last_failure};
 use demi_agent_tools::{HostResolver, SubagentSource};
 use demi_conversation_lane_protocol::{
     JobModel, JobPhase, TranscriptPatch,
@@ -219,6 +219,15 @@ pub(crate) enum StartInput {
         message: String,
         profile_name: Option<String>,
     },
+    /// A message of the child's user under `message_id`, which the child
+    /// takes as a steer if an earlier start made it live, or is resumed
+    /// with unless it took it while this start waited.
+    Message {
+        id: NodeId,
+        number: u64,
+        message_id: BlockId,
+        text: String,
+    },
 }
 
 /// Who stops a child, which decides whether its parent is told.
@@ -291,6 +300,25 @@ impl<H: HostResolver> Tree<H> {
 
     fn is_live(&self, id: &NodeId) -> bool {
         self.children.borrow().contains_key(id)
+    }
+
+    /// Hands the live agent `id` the user's `text` as the steer `message`,
+    /// which it takes once however often it is handed. None when it is not
+    /// live.
+    pub(crate) fn steer_live(&self, id: &NodeId, message: &BlockId, text: &str) -> Option<Result<(), String>> {
+        let live = self.live_agent(id)?;
+        let content = vec![UserContentBlock::Text { text: text.to_owned() }];
+        Some(live.session().steer(content, message.clone()).map_err(|error| error.to_string()))
+    }
+
+    /// Whether the history of the agent `id`, which is not live, holds the
+    /// message `message`.
+    pub(crate) async fn history_holds(&self, id: &NodeId, message: &BlockId) -> Result<bool, String> {
+        let store = self.store.session_store(id);
+        let checkpoint = store.load().await.map_err(|error| error.to_string())?;
+        let blocks = checkpoint.map_or(0, |checkpoint| checkpoint.block_count());
+        let earlier = Earlier::read(store.as_ref(), blocks).await.map_err(|error| error.to_string())?;
+        Ok(earlier.holds_input(message))
     }
 
     /// The live children of `owner`, in spawn order.
@@ -478,7 +506,23 @@ impl<H: HostResolver> Tree<H> {
                     id,
                     message,
                     profile_name,
-                } => tree.reopen(&owner, id, message, profile_name).await,
+                } => {
+                    let message = tree.text_message(message);
+                    tree.reopen(&owner, id, message, profile_name).await
+                }
+                StartInput::Message { id, number, message_id, text } => {
+                    if let Some(steered) = tree.steer_live(&id, &message_id, &text) {
+                        return steered.map(|()| number);
+                    }
+                    if !tree.is_live(&id) && tree.history_holds(&id, &message_id).await? {
+                        return Ok(number);
+                    }
+                    let message = QueuedMessage {
+                        id: TurnId::try_from(message_id.into_string()).expect("a block id is not empty"),
+                        ..tree.text_message(text)
+                    };
+                    tree.reopen(&owner, id, message, None).await
+                }
             }
         }
         .in_current_span());
@@ -634,7 +678,7 @@ impl<H: HostResolver> Tree<H> {
         self: &Rc<Self>,
         owner: &Rc<Node<H>>,
         id: NodeId,
-        message: String,
+        message: QueuedMessage,
         profile_name: Option<String>,
     ) -> Result<u64, String> {
         let stored = self
@@ -700,7 +744,7 @@ impl<H: HostResolver> Tree<H> {
                 &id,
                 round,
                 started_at,
-                Some(self.text_message(message)),
+                Some(message),
                 reprofile,
             )
             .await

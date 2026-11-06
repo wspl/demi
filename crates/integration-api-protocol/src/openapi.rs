@@ -163,7 +163,7 @@ fn routes() -> Vec<Route> {
         act("/conversations/{conversation}/agents/{agent}/stop", "Stop one of the main agent's subagents; one that already ended has nothing to stop")
             .refuses(409, "The agent is a subagent's subagent, which this route does not stop, as the page's Stop does not (`integration_refused`)."),
         act("/conversations/{conversation}/agents/{agent}/compact", "Compact a subagent's context"),
-        json("post", "/conversations/{conversation}/agents/{agent}/messages", "Send a subagent a message; a closed one resumes with it", Some(of::<SubagentMessage>), (204, None)).refuses(409, "The subagent did not take the message, as the message says (`integration_refused`)."),
+        json("post", "/conversations/{conversation}/agents/{agent}/messages", "Send a subagent a message; a closed one resumes with it", Some(of::<SubagentMessage>), (200, Some(of::<MessageAnswer>))).refuses(409, "The subagent did not take the message, as the message says (`integration_refused`)."),
         json("get", "/conversations/{conversation}/agents/{agent}/transcript", "A page of an agent's transcript, the latest without a query", None, (200, Some(of::<Transcript>)))
             .query(of::<TranscriptQuery>)
             .refuses(400, "The query names more than one of `before`, `after` and `around`, `before` or `after` without `edge`, or an index outside the transcript (`invalid_query`).")

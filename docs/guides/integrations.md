@@ -360,7 +360,10 @@ These do what the same controls do in the Demi app. Each path starts with
 
 `POST …/agents/{agent}/messages` sends a subagent a message, as if from its
 user: a working subagent reads it after its current step, an idle one starts
-working on it, and a subagent that ended resumes with it.
+working on it, and a subagent that ended resumes with it. Give each message
+an `id` and repeat it when you retry: a subagent that already has the message
+takes nothing, and one that ended stays ended. An `id` belongs to one agent,
+so the same `id` sent to two subagents is two messages.
 
 ### Transcripts
 

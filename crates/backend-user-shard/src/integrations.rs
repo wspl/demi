@@ -975,7 +975,7 @@ impl Shard {
         id: &ConversationId,
         agent: &NodeId,
         message: api::SubagentMessage,
-    ) -> Result<(), IntegrationRefusal> {
+    ) -> Result<api::MessageAnswer, IntegrationRefusal> {
         let id = &self.integration_conversation_of(integration, id).await?.id;
         let (_, entries) = self
             .conversation_agents(id)
@@ -987,7 +987,9 @@ impl Shard {
         if !held {
             return Err(IntegrationRefusal::NotFound("subagent"));
         }
-        let block = BlockId::try_from(uuid::Uuid::new_v4().simple().to_string()).expect("a UUID is a block id");
+        let message_id = message.id.unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string());
+        let block = BlockId::try_from(message_id.clone())
+            .map_err(|_| IntegrationRefusal::Invalid("The message id is no id.".to_owned()))?;
         let root = root_of(id);
         let text = message.text;
         self.with_open_tree(id, async || {
@@ -997,7 +999,7 @@ impl Shard {
                 .map_err(|reason| Refusal::new(ErrorCode::SendFailed, reason))
         })
         .await?;
-        Ok(())
+        Ok(api::MessageAnswer { id: message_id })
     }
 
     /// Forks the integration's conversation `id` through `request.block_id`

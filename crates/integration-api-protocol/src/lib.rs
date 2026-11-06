@@ -745,11 +745,17 @@ pub enum StopScope {
 
 /// `POST /conversations/:id/agents/:agent/messages`: a message to a
 /// subagent, which it takes into its turn, starts a turn with, or is
-/// resumed with. It takes no id of the program's: a closed subagent is
-/// resumed as `demi agent resume` resumes one, which names no message.
+/// resumed with.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SubagentMessage {
+    /// The id it takes, which a retry repeats so nothing is sent twice; one
+    /// is made when none. A subagent that holds the id takes nothing and
+    /// stays as it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(length(min = 1, max = 64))]
+    #[garde(inner(length(chars, min = 1, max = 64)))]
+    pub id: Option<String>,
     #[schemars(length(min = 1))]
     #[garde(length(chars, min = 1))]
     pub text: String,

@@ -792,17 +792,17 @@ async fn message_agent(
     headers: HeaderMap,
     Path((conversation, agent)): Path<(String, String)>,
     JsonBody(message): JsonBody<api::SubagentMessage>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<Json<api::MessageAnswer>, ApiError> {
     let record = authenticated(&state, &headers).await?;
     let id = conversation_id(conversation)?;
     let agent = node_id(agent)?;
-    state
+    let answer = state
         .shards
         .of(&record.user.clone())
         .call(move |shard, _| async move { shard.message_integration_subagent(&record, &id, &agent, message).await })
         .await?
         .map_err(refused)?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(Json(answer))
 }
 
 /// `POST /v1/conversations/:conversation/fork`: answers 201 with the new
