@@ -41,7 +41,7 @@ impl ControlService {
             }
             let partition = transaction
                 .query_row(
-                    "SELECT archived, pinned, target_project_id FROM conversations WHERE id = ?1 AND user_id = ?2",
+                    "SELECT archived_at IS NOT NULL, pinned, target_project_id FROM conversations WHERE id = ?1 AND user_id = ?2",
                     params![moved.as_str(), user.as_str()],
                     |row| Ok((row.get::<_, bool>(0)?, row.get::<_, bool>(1)?, row.get::<_, Option<String>>(2)?)),
                 )
@@ -52,7 +52,7 @@ impl ControlService {
             let peers = {
                 let mut statement = transaction.prepare_cached(
                     "SELECT id FROM conversations
-                     WHERE user_id = ?1 AND archived = 0 AND pinned = ?2 AND target_project_id IS ?3
+                     WHERE user_id = ?1 AND archived_at IS NULL AND pinned = ?2 AND target_project_id IS ?3
                      ORDER BY sort_order, id",
                 )?;
                 let rows = statement.query_map(params![user.as_str(), pinned, project], |row| row.get::<_, String>(0))?;

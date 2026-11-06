@@ -498,8 +498,8 @@ pub enum ConversationStatus {
     Idle,
 }
 
-/// `GET /conversations`: the caller's conversations in sidebar order,
-/// pinned first.
+/// `GET /conversations`: the caller's conversations: those not archived in
+/// sidebar order, pinned first, or the archived ones, the last archived first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Conversations {
     pub conversations: Vec<ConversationSummary>,

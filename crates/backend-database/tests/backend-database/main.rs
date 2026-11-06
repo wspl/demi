@@ -43,6 +43,29 @@ fn the_grants_and_requests_of_the_other_conversations_go() {
 }
 
 #[test]
+fn an_archived_conversation_takes_its_last_activity_as_its_archive_time() {
+    let shipped = include_str!("../../src/schema/control/from_0_1_5979_port_forward_routes.sql");
+    let mut connection = Connection::open_in_memory().unwrap();
+    connection.execute_batch(shipped).unwrap();
+    connection.pragma_update(None, "user_version", version_of(shipped)).unwrap();
+    // The rows need no owner of their own.
+    connection.pragma_update(None, "foreign_keys", false).unwrap();
+    connection
+        .execute_batch(
+            "INSERT INTO conversations (id, user_id, workspace_id, title, title_origin, archived, pinned, sort_order, read_revision,
+               target_kind, context_version, created_at, updated_at) VALUES
+               ('active', 'u1', 'w1', 'Draft the release notes', 'user', 0, 0, 1, 0, 'cloud', 1, 1, 10),
+               ('archived', 'u1', 'w1', 'Plan the launch', 'user', 1, 0, 2, 0, 'cloud', 1, 1, 20);",
+        )
+        .unwrap();
+    migrate(DatabaseKind::Control, &mut connection).unwrap();
+    let times = query(&connection, "SELECT id, archived_at FROM conversations ORDER BY id", |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
+    });
+    assert_eq!(times, vec![("active".to_owned(), None), ("archived".to_owned(), Some(20))]);
+}
+
+#[test]
 fn a_panel_loses_its_widget_tabs_and_keeps_the_others() {
     let shipped = include_str!("../../src/schema/control/from_0_1_5979.sql");
     let mut connection = Connection::open_in_memory().unwrap();

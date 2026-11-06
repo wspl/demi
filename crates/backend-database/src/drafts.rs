@@ -304,7 +304,7 @@ pub(crate) fn archived(
     conversation: &ConversationId,
 ) -> Result<bool, StorageError> {
     Ok(connection.query_row(
-        "SELECT archived FROM conversations WHERE id = ?1",
+        "SELECT archived_at IS NOT NULL FROM conversations WHERE id = ?1",
         [conversation.as_str()],
         |row| row.get(0),
     )?)

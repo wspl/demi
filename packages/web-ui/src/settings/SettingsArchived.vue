@@ -19,7 +19,8 @@ import SettingsPage from './SettingsPage.vue'
 import type { SettingsArchivedConversation } from './types'
 
 /**
- * What was put away: a searchable list, one line per conversation.
+ * What was put away: a searchable list, one line per conversation, the last
+ * archived first.
  *
  * ```
  * 3 Conversations
