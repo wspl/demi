@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use demi_backend_cloud::machine::Cloud;
-use demi_backend_cloud::{CloudServices, CloudShard, ConversationHold};
+use demi_backend_cloud::{CloudServices, CloudShard, CloudSide, ConversationHold};
 use demi_backend_database::control::ControlService;
 use demi_core_store::store::CoreStore;
 use demi_core_idle_watch::Activity;
@@ -42,7 +42,7 @@ impl CloudShard for Shard {
     }
 
     fn cloud(&self) -> &Cloud {
-        &self.cloud
+        &self.cloud_side().cloud
     }
 
     fn devices(&self) -> &Devices {
@@ -50,7 +50,7 @@ impl CloudShard for Shard {
     }
 
     fn control(&self) -> &ControlService {
-        &self.server_services().control
+        &self.cloud_side().control
     }
 
     fn store(&self) -> &CoreStore {
@@ -58,7 +58,7 @@ impl CloudShard for Shard {
     }
 
     fn cloud_services(&self) -> &CloudServices {
-        &self.server_services().cloud
+        &self.cloud_side().services
     }
 
     fn public_url(&self) -> &PublicUrl {
@@ -201,6 +201,11 @@ struct ResetHold {
 impl ConversationHold for ResetHold {}
 
 impl Shard {
+    fn cloud_side(&self) -> &CloudSide {
+        self.extension()
+            .expect("the server starts each of its cores with its Cloud's side")
+    }
+
     /// The shard as its Cloud sees it, whose operations it is.
     pub fn cloud_shard(&self) -> &(dyn CloudShard + 'static) {
         self
@@ -229,7 +234,7 @@ impl CloudHost for Shard {
     }
 
     fn stop(&self) {
-        self.cloud.stop();
+        self.cloud_side().cloud.stop();
     }
 
     fn close(&self) -> LocalBoxFuture<'_, ()> {

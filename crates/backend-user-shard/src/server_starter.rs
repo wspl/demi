@@ -20,57 +20,50 @@ use futures_util::future::LocalBoxFuture;
 use crate::page_notifications::PageNotifications;
 use crate::services::Services;
 use crate::shard::Shard;
+use crate::shard::lent_media::LentJobs;
 use crate::starter::{Notified, Reach, Starter};
 
-/// The server's side of one user's core.
+/// What the server gives one user's core.
 pub struct ServerStarter {
     user: UserId,
     services: Arc<Services>,
     /// Weak: the core owns its starter.
     shard: Weak<Shard>,
-    /// The user's open pages, which decide where a notification goes.
-    pub(crate) pages: PageNotifications,
 }
 
 impl ServerStarter {
     pub fn new(user: UserId, services: Arc<Services>, shard: Weak<Shard>) -> Self {
+        Self { user, services, shard }
+    }
+}
+
+/// What the server keeps in each of its users' cores for its own work on
+/// them.
+pub struct ServerSide {
+    pub(crate) services: Arc<Services>,
+    /// The user's open pages, which decide where a notification goes.
+    pub(crate) pages: PageNotifications,
+    /// The media jobs of the user's entries lent to other servers.
+    pub(crate) lent_jobs: LentJobs,
+}
+
+impl ServerSide {
+    pub fn new(services: Arc<Services>) -> Self {
         Self {
-            user,
             services,
-            shard,
             pages: PageNotifications::default(),
+            lent_jobs: LentJobs::default(),
         }
-    }
-
-    /// The user whose core it is.
-    pub(crate) fn user(&self) -> &UserId {
-        &self.user
-    }
-
-    /// The core.
-    pub(crate) fn shard(&self) -> &Weak<Shard> {
-        &self.shard
     }
 
     /// The server's side of `core`, which the server started.
     pub fn of(core: &Shard) -> &Self {
-        core.starter()
-            .as_any()
-            .downcast_ref()
-            .expect("the server starts each of its cores with its own side")
-    }
-
-    /// The server's services.
-    pub fn services(&self) -> &Arc<Services> {
-        &self.services
+        core.extension()
+            .expect("the server starts each of its cores with its side")
     }
 }
 
 impl Starter for ServerStarter {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
     fn cloud(&self) -> Option<Rc<dyn CloudHost>> {
         Some(self.shard.upgrade()?)
     }
@@ -135,14 +128,18 @@ impl Starter for ServerStarter {
 
     fn notify(&self, message: PushMessage) -> LocalBoxFuture<'_, Result<Notified, StorageError>> {
         Box::pin(async move {
-            let in_use = self.pages.in_use();
-            let recipients = self.recipients(&message, &in_use).await?;
+            let Some(shard) = self.shard.upgrade() else {
+                return Ok(Notified::Nowhere);
+            };
+            let side = ServerSide::of(&shard);
+            let in_use = side.pages.in_use();
+            let recipients = side.recipients(&self.user, &message, &in_use).await?;
             let notified = match (recipients.now.len(), recipients.shown) {
                 (0, 0) => Notified::Nowhere,
                 (0, _) => Notified::Shown,
                 (n, _) => Notified::Sending(n),
             };
-            self.deliver(message, recipients);
+            ServerSide::deliver(&shard, message, recipients);
             Ok(notified)
         })
     }

@@ -6,7 +6,6 @@
 //! records of its own that name what the core holds, such as which core a
 //! runner's token or a schedule's URL reaches.
 
-use std::any::Any;
 use std::rc::Rc;
 
 use demi_core_host_access::cloud::CloudHost;
@@ -42,11 +41,7 @@ pub struct Reach {
 }
 
 /// What the core asks of whoever runs it.
-pub trait Starter: Any {
-    /// The starter itself, which its own code that holds the core reads its
-    /// state from.
-    fn as_any(&self) -> &dyn Any;
-
+pub trait Starter {
     /// The Cloud, a Host the starter wakes and stops; none for a starter
     /// that runs no Cloud.
     fn cloud(&self) -> Option<Rc<dyn CloudHost>>;

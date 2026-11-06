@@ -88,7 +88,7 @@ pub struct Services {
     pub native: NativeCatalog,
     /// The machine manager's client, the Cloud capacity across users and
     /// the Cloud's settings.
-    pub cloud: CloudServices,
+    pub cloud: Arc<CloudServices>,
     /// The sessions and media calls other servers borrow this one's entries
     /// in, by share key, which revoking a key ends.
     pub lent: crate::provider_sharing::LentSessions,
@@ -571,7 +571,7 @@ impl Services {
             log: settings.log,
             pages: settings.pages,
             native: settings.native,
-            cloud: settings.cloud,
+            cloud: Arc::new(settings.cloud),
             lent: Default::default(),
             web_build: settings.web_build,
             runner_releases: settings.runner_releases,

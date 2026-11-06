@@ -112,6 +112,7 @@ pub mod tuning;
 mod uses;
 
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use demi_backend_database::control::ControlService;
@@ -154,6 +155,24 @@ impl CloudServices {
     /// architecture no image is made for.
     pub fn target(&self) -> Option<&'static str> {
         demi_machine_manager_protocol::image::Architecture::host().map(|architecture| architecture.target())
+    }
+}
+
+/// What the server keeps in each of its users' cores for the user's Cloud:
+/// its machines, and the handles every Cloud shares.
+pub struct CloudSide {
+    pub cloud: Cloud,
+    pub control: ControlService,
+    pub services: Arc<CloudServices>,
+}
+
+impl CloudSide {
+    pub fn new(control: ControlService, services: Arc<CloudServices>) -> Self {
+        Self {
+            cloud: Cloud::default(),
+            control,
+            services,
+        }
     }
 }
 

@@ -23,12 +23,13 @@ use std::time::Duration;
 
 use demi_backend_database::push::StoredPushSubscription;
 use demi_core_store::StorageError;
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::push::{IN_USE_MINUTES, PushMessage};
 use demi_web_api_protocol::sessions::SessionId;
 use tokio::time::Instant;
 
-use crate::server_starter::ServerStarter;
+use crate::server_starter::ServerSide;
+use crate::shard::Shard;
 
 /// How long a session stays in use after the last input to one of its pages.
 const IN_USE_FOR: Duration = Duration::from_secs(IN_USE_MINUTES * 60);
@@ -158,7 +159,7 @@ impl PageNotifications {
     }
 }
 
-impl ServerStarter {
+impl ServerSide {
     /// Where `message` goes now: to the subscriptions that chose it, but
     /// those of a session a page of which shows its conversation, and,
     /// for the end of a turn, those quiet while the user is on another
@@ -166,8 +167,8 @@ impl ServerStarter {
     ///
     /// `in_use` are the sessions in use when the notification came, which
     /// decide it however long it waits for the ones before.
-    pub(crate) async fn recipients(&self, message: &PushMessage, in_use: &[SessionId]) -> Result<Recipients, StorageError> {
-        let subscriptions = self.services().push.subscriptions(self.user().clone()).await?;
+    pub(crate) async fn recipients(&self, user: &UserId, message: &PushMessage, in_use: &[SessionId]) -> Result<Recipients, StorageError> {
+        let subscriptions = self.services.push.subscriptions(user.clone()).await?;
         let mut recipients = Recipients {
             now: Vec::new(),
             shown: 0,
@@ -197,11 +198,8 @@ impl ServerStarter {
 
     /// Delivers `message` to `recipients` in the background, after the
     /// notifications before it. A failure is logged.
-    pub(crate) fn deliver(&self, message: PushMessage, recipients: Recipients) {
-        let Some(shard) = self.shard().upgrade() else {
-            return;
-        };
-        let delivering = self.pages.delivering.clone();
+    pub(crate) fn deliver(shard: &Rc<Shard>, message: PushMessage, recipients: Recipients) {
+        let delivering = Self::of(shard).pages.delivering.clone();
         let this = shard.clone();
         shard.tasks().spawn_local(async move {
             let _turn = delivering.lock().await;
@@ -229,7 +227,7 @@ impl ServerStarter {
                 );
                 return;
             }
-            let services = ServerStarter::of(&this).services();
+            let services = &Self::of(&this).services;
             let Some(contact) = services.public_url.get() else {
                 // The backend serves only once it listens, which sets it.
                 tracing::error!(event = "notification.too_early", conversation = %message.conversation(), "a notification came before the backend listened");

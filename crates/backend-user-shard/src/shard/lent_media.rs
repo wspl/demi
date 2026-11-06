@@ -40,6 +40,7 @@ use tokio::time::Instant;
 use super::Shard;
 use super::media::{Route, Unmade, model_of, on_accounts, route};
 use crate::provider_sharing::Borrowing;
+use crate::server_starter::ServerSide;
 
 /// Why a lent call was not taken.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,7 +134,7 @@ impl Shard {
         let key = borrowing.key.id.clone();
         // A job's reads and cancel go to the maker that took it.
         if let Call::VideoState { job: handle, .. } | Call::VideoCancel { job: handle, .. } = &call {
-            let Some(lent) = self.lent_jobs.of(&key, handle) else {
+            let Some(lent) = ServerSide::of(&self).lent_jobs.of(&key, handle) else {
                 let reply = match call {
                     Call::VideoState { .. } => Reply::VideoState(Ok(JobState::Lost)),
                     _ => Reply::VideoCancelled(Ok(())),
@@ -234,7 +235,7 @@ impl Shard {
             (Reply::VideoAsked(Ok(job)), Some(model)) => {
                 let kept_until = Instant::now() + services.media_tuning.job_bound;
                 let lent = LentJob { key: key.clone(), maker, http, job, model, kept_until };
-                let handle = self.lent_jobs.keep(lent);
+                let handle = ServerSide::of(&self).lent_jobs.keep(lent);
                 (Reply::VideoAsked(Ok(handle.clone())), Some(handle))
             }
             (reply, _) => (reply, None),
@@ -247,9 +248,9 @@ impl Shard {
         // neither read nor cancel.
         if sender.send(reply.map_failure(crossing)).is_err()
             && let Some(handle) = handle
-            && let Some(lent) = self.lent_jobs.of(key, &handle)
+            && let Some(lent) = ServerSide::of(&self).lent_jobs.of(key, &handle)
         {
-            self.lent_jobs.forget(&handle);
+            ServerSide::of(&self).lent_jobs.forget(&handle);
             let call = Call::VideoCancel { job: lent.job.clone(), model: lent.model.clone() };
             let catalog = services.media.current();
             self.tasks().spawn_local(async move {
@@ -283,7 +284,7 @@ impl Shard {
             () = revoked.cancelled() => return,
         };
         if cancels {
-            self.lent_jobs.forget(handle);
+            ServerSide::of(&self).lent_jobs.forget(handle);
         }
         if let Some(failure) = reply.failure() {
             tracing::info!(event = "relay.media_failed", key = lent.key, outcome = failure.outcome(), "a lent video's job call failed");

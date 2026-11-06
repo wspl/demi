@@ -46,7 +46,6 @@ use std::sync::Arc;
 
 use demi_agent_server::AgentServer;
 use demi_core_store::store::CoreStore;
-use demi_backend_cloud::machine::Cloud;
 use demi_plugin_host::UserPlugins;
 use demi_runner_client::{ARRIVAL, Pipes};
 use demi_core_hosts::devices::Devices;
@@ -72,7 +71,9 @@ use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationParts, ShardHosts};
 use crate::lifecycle::collection::BlobCollection;
 use crate::lifecycle::conversations::ConversationWatches;
-use crate::server_starter::ServerStarter;
+use crate::extensions::Extensions;
+use crate::server_starter::{ServerSide, ServerStarter};
+use demi_backend_cloud::CloudSide;
 use crate::services::{CoreServices, Services};
 use crate::starter::Starter;
 use demi_core_host_access::access::Conversations;
@@ -149,7 +150,6 @@ pub struct Shard {
     /// workspace left and delete the last's conversations.
     workspace_deletions: SerialGate,
     /// The user's Cloud machine.
-    cloud: Cloud,
     /// Each conversation's idle watch.
     idle_watches: ConversationWatches,
     /// The collections of the user's blob namespace.
@@ -189,7 +189,7 @@ pub struct Shard {
     /// notifications, for the user's push notifications.
     pub(crate) notifications: Notifications,
     /// The videos' jobs borrowers of the user's lent entries asked for.
-    lent_jobs: lent_media::LentJobs,
+    extensions: Extensions,
     /// The media jobs the user's calls asked for, while they run.
     media_jobs: media_jobs::MediaJobs,
 }
@@ -221,6 +221,7 @@ impl Shard {
         store: CoreStore,
         services: Arc<CoreServices>,
         starter: Rc<dyn Starter>,
+        extensions: Extensions,
         http: reqwest::Client,
         web: reqwest::Client,
     ) -> Self {
@@ -270,7 +271,6 @@ impl Shard {
             forks: KeyedSerialGate::new(),
             lifecycle: SerialGate::new(),
             workspace_deletions: SerialGate::new(),
-            cloud: Cloud::default(),
             idle_watches: ConversationWatches::default(),
             blob_collection: BlobCollection::default(),
             claude_cli: ClaudeCli::default(),
@@ -287,7 +287,7 @@ impl Shard {
             restart_resumes: RestartResumes::default(),
             idle_compactions: IdleCompactions::default(),
             notifications: Notifications::default(),
-            lent_jobs: lent_media::LentJobs::default(),
+            extensions,
             media_jobs: media_jobs::MediaJobs::default(),
         }
     }
@@ -353,7 +353,12 @@ impl Shard {
 
     /// The server's services, for the server's work on the core.
     pub(crate) fn server_services(&self) -> &Arc<Services> {
-        ServerStarter::of(self).services()
+        &ServerSide::of(self).services
+    }
+
+    /// The value of type `T` whoever started the core keeps in it.
+    pub fn extension<T: std::any::Any>(&self) -> Option<&T> {
+        self.extensions.get()
     }
 
     pub fn http(&self) -> &reqwest::Client {
@@ -936,6 +941,9 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                                 store,
                                 services.core.clone(),
                                 Rc::new(ServerStarter::new(user.clone(), services.clone(), shard.clone())),
+                                Extensions::default()
+                                    .with(ServerSide::new(services.clone()))
+                                    .with(CloudSide::new(services.control.clone(), services.cloud.clone())),
                                 http.clone(),
                                 web.clone(),
                             )
