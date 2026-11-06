@@ -6,103 +6,50 @@
 //! - Otherwise the data directory's `instance-secret` file, which the first
 //!   start creates readable only by its owner.
 //!
-//! Each key the backend needs derives from it with HKDF-SHA256 under a label
-//! of its own, so no key can stand in for another.
-//!
-//! Sealing protects credentials when the database leaks alone; it is not key
-//! management, and whoever holds both the database and the secret opens every
-//! credential. A deployment sets `DEMI_INSTANCE_SECRET` to keep the secret
-//! apart from the data it protects, or when several backends must share it.
+//! It is the secret of every user's core (`crates/core-store/src/seal.rs`),
+//! and the server's own keys derive from it under labels of their own. A
+//! deployment sets `DEMI_INSTANCE_SECRET` to keep the secret apart from the
+//! data it protects, or when several backends must share it.
 
-use std::fmt;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::str::FromStr;
-
-use demi_shared_artifacts::{Mode, Permissions, Publication};
-use hkdf::Hkdf;
-use sha2::Sha256;
 
 use demi_backend_accounts::email_change::CodeKey;
 use demi_backend_accounts::push::PushKey;
-use demi_core_store::seal::VaultKey;
+use demi_core_store::seal::{CoreSecret, VaultKey};
+
+pub use demi_core_store::seal::SecretError;
 
 const FILE: &str = "instance-secret";
 const EMAIL_CODE_LABEL: &[u8] = b"demi email-change code";
-const VAULT_LABEL: &[u8] = b"demi provider vault";
 const PUSH_LABEL: &str = "demi web push vapid";
 
 /// The instance secret. `Debug` never shows it.
-#[derive(Clone)]
-pub struct InstanceSecret([u8; 32]);
-
-/// Why the instance secret is unusable. A malformed secret stops startup,
-/// and no error shows the secret itself.
-#[derive(Debug, thiserror::Error)]
-pub enum SecretError {
-    #[error("the instance secret must be 64 hexadecimal digits")]
-    Malformed,
-    #[error("the instance secret file {} is not 64 hexadecimal digits", path.display())]
-    Corrupt { path: PathBuf },
-    #[error("the instance secret file {} cannot be read: {source}", path.display())]
-    Read { path: PathBuf, source: io::Error },
-    #[error("the instance secret file {} cannot be created: {source}", path.display())]
-    Create {
-        path: PathBuf,
-        source: demi_shared_artifacts::Error,
-    },
-}
+#[derive(Clone, Debug)]
+pub struct InstanceSecret(CoreSecret);
 
 impl FromStr for InstanceSecret {
     type Err = SecretError;
 
     fn from_str(text: &str) -> Result<Self, SecretError> {
-        let mut bytes = [0; 32];
-        hex::decode_to_slice(text, &mut bytes).map_err(|_| SecretError::Malformed)?;
-        Ok(Self(bytes))
-    }
-}
-
-impl fmt::Debug for InstanceSecret {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("InstanceSecret(..)")
+        text.parse().map(Self)
     }
 }
 
 impl InstanceSecret {
     /// The data directory's secret, created on first use.
     pub(crate) async fn load_or_create(data_dir: &Path) -> Result<Self, SecretError> {
-        let path = data_dir.join(FILE);
-        match tokio::fs::read_to_string(&path).await {
-            Ok(text) => text
-                .trim_end()
-                .parse()
-                .map_err(|_| SecretError::Corrupt { path }),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                let secret = Self(rand::random());
-                let text = format!("{}\n", hex::encode(secret.0));
-                let publication = Publication {
-                    mode: Mode::CreateNew,
-                    permissions: Permissions::Private,
-                    durable: true,
-                };
-                demi_shared_artifacts::publish_bytes(&path, text.as_bytes(), publication)
-                    .await
-                    .map_err(|source| SecretError::Create { path, source })?;
-                Ok(secret)
-            }
-            Err(source) => Err(SecretError::Read { path, source }),
-        }
+        CoreSecret::load_or_create(&data_dir.join(FILE)).await.map(Self)
     }
 
     /// The key email-change codes are hashed under.
     pub(crate) fn email_code_key(&self) -> CodeKey {
-        CodeKey::new(self.subkey(EMAIL_CODE_LABEL))
+        CodeKey::new(self.0.subkey(EMAIL_CODE_LABEL))
     }
 
-    /// The key provider credentials are sealed under.
+    /// The key every user's core seals its credentials under.
     pub(crate) fn vault_key(&self) -> VaultKey {
-        VaultKey::new(self.subkey(VAULT_LABEL))
+        self.0.vault_key()
     }
 
     /// The VAPID key push messages are signed with: the same for as long as the
@@ -116,17 +63,8 @@ impl InstanceSecret {
                     0 => PUSH_LABEL.to_owned(),
                     n => format!("{PUSH_LABEL} {n}"),
                 };
-                PushKey::new(self.subkey(label.as_bytes()))
+                PushKey::new(self.0.subkey(label.as_bytes()))
             })
             .expect("some subkey is a P-256 scalar")
-    }
-
-    /// The HKDF-SHA256 subkey under `label`, which no other label shares.
-    fn subkey(&self, label: &[u8]) -> [u8; 32] {
-        let mut key = [0; 32];
-        Hkdf::<Sha256>::new(None, &self.0)
-            .expand(label, &mut key)
-            .expect("32 bytes is a valid HKDF-SHA256 output length");
-        key
     }
 }
