@@ -5,7 +5,6 @@ import { reactive } from 'vue'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { ReplyAsking, ShownSideQuestion } from '@demicodes/web-ui/agent/comments/asks'
 import { anchorOfText } from '@demicodes/web-ui/agent/comments/anchors'
-import type { SuggestedReply } from '@demicodes/web-ui/agent/suggested-replies'
 import { heldTranscript } from '@demicodes/web-ui/transport/protocol'
 import type { WorkspaceView } from '@demicodes/web-ui/workspaces/workspaces'
 import { askAnswer, askMessage, askStep } from '@demicodes/web-gallery/fixtures/asks'
@@ -57,7 +56,7 @@ const HARBOR_SCREEN: GalleryScreen = {
 /** What the scene adds to the conversation as it plays: its side questions and the suggested replies under its last answer. */
 export const readmeExtras = reactive<{
   asking: ReplyAsking | undefined
-  suggested: { blockId: string; replies: readonly SuggestedReply[] } | null
+  suggested: { blockId: string; replies: readonly string[] } | null
 }>({ asking: undefined, suggested: null })
 
 const HARBOR = '/Users/alex/Projects/harbor'
@@ -173,10 +172,10 @@ export const README_SCENES: Record<string, ReadmeScene> = {
           cues.marks.check = performance.now()
         await c.run(step, playMs)
       }
-      await c.say('Cards now grow with their notes on both displays.')
+      await c.say('Cards now grow with their notes on both displays. Shall I open a pull request?')
       c.done()
       const last = c.state.blocks.findLast((block) => block.type === 'text')!.id
-      readmeExtras.suggested = { blockId: last, replies: [{ text: 'Open a pull request' }, { text: 'Check it in dark mode' }, { text: 'Try the Android foldable' }] as never }
+      readmeExtras.suggested = { blockId: last, replies: ['Open a pull request'] }
       cues.marks.done = performance.now()
     },
   },

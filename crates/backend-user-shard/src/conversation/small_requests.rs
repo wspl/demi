@@ -50,7 +50,7 @@ impl SmallRequests {
 
     /// The user's small model for a request of a conversation that infers
     /// with `conversation`, from the entries' catalogs as they are now.
-    async fn resolve(&self, conversation: &ModelSelection) -> Result<ModelSelection, StorageError> {
+    pub(crate) async fn resolve(&self, conversation: &ModelSelection) -> Result<ModelSelection, StorageError> {
         let services = &self.services;
         let entries = services.vault.entries_for(&self.user).await?;
         let preferences = services.control.preferences(self.user.clone()).await?;
@@ -69,13 +69,26 @@ impl SmallRequests {
         cancel: CancellationToken,
     ) -> Result<Option<String>, SmallRequestFailure> {
         let selection = self.resolve(conversation).await?;
-        let mut runtime = self.providers.runtime(&root_of(id), &selection).await?;
+        self.run_on(id, &selection, request, cancel).await
+    }
+
+    /// Runs `request` for the conversation `id` on the small model `selection`
+    /// that `resolve` answered, and answers the text of its response; none
+    /// when `cancel` stopped it.
+    pub(crate) async fn run_on(
+        &self,
+        id: &ConversationId,
+        selection: &ModelSelection,
+        request: SmallRequest,
+        cancel: CancellationToken,
+    ) -> Result<Option<String>, SmallRequestFailure> {
+        let mut runtime = self.providers.runtime(&root_of(id), selection).await?;
         let request_id = uuid::Uuid::new_v4().to_string();
         let answer = run_small_request(
             &mut *runtime,
             id.as_str(),
             request_id,
-            &selection,
+            selection,
             request,
             cancel,
         )

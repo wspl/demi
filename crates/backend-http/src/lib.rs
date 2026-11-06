@@ -88,6 +88,7 @@ mod sidebar;
 mod state;
 mod streams;
 mod subagents;
+mod suggested_replies;
 mod sync;
 mod transfer;
 mod server_upgrade;
@@ -571,6 +572,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/cost/recent", get(cost::recent))
         .route("/conversations/{id}/search", get(search::search_in))
         .route("/conversations/{id}/panel/changes", post(panel::change))
+        .route("/conversations/{id}/suggested-replies/used", post(suggested_replies::used))
         .route(
             "/conversations/{id}/draft",
             get(drafts::read).put(drafts::save),

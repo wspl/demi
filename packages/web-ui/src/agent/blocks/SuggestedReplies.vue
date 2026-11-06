@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { onBeforeUnmount } from 'vue'
-import { Lightbulb, Pencil, Reply } from '@lucide/vue'
+import { Pencil, Reply } from '@lucide/vue'
 import { usePhone } from '../../ui/phone'
 import Tooltip from '../../ui/Tooltip.vue'
 import { LONG_PRESS_MS, LONG_PRESS_SLOP_PX } from '../../ui/context-menu'
 import { t } from '../locales/text'
-import type { SuggestedReply } from '../suggested-replies'
 
 /**
  * The replies the user is likely to send next, as one row of pills under an
@@ -20,7 +19,7 @@ import type { SuggestedReply } from '../suggested-replies'
  */
 const props = defineProps<{
   /** Null while they are written; empty when none came. */
-  replies: readonly SuggestedReply[] | null
+  replies: readonly string[] | null
 }>()
 
 const emit = defineEmits<{
@@ -81,7 +80,7 @@ onBeforeUnmount(clearPress)
   >
     <TransitionGroup name="suggested-reply">
       <div
-        v-for="{ text, kind } in props.replies ?? []"
+        v-for="text in props.replies ?? []"
         :key="text"
         class="suggested-reply btn group relative flex min-h-chip max-w-full items-stretch text-chrome text-fg-body"
       >
@@ -95,9 +94,9 @@ onBeforeUnmount(clearPress)
           @pointercancel="clearPress"
           @contextmenu="phone && $event.preventDefault()"
         >
-          <!-- An answer to the reply, or a new topic, centered on the first line. -->
+          <!-- Centered on the first line. -->
           <span class="flex h-[1lh] shrink-0 items-center">
-            <component :is="kind === 'answer' ? Reply : Lightbulb" :size="14" aria-hidden="true" class="text-fg-subtle" />
+            <Reply :size="14" aria-hidden="true" class="text-fg-subtle" />
           </span>
           <!-- A word longer than the pill, such as an identifier, breaks too. -->
           <span class="min-w-0 [overflow-wrap:anywhere]">{{ text }}</span>

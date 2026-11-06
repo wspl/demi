@@ -401,6 +401,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :suggested-replies="preferences.suggestedReplies ? conversation.suggestedReplies : undefined"
     :output-speed="preferences.outputSpeed"
     @send-suggestion="(text: string) => conversation && store.sendSuggestion(conversation, text)"
+    @edit-suggestion="(text: string) => conversation && store.reportSuggestion(conversation, text, 'edited')"
     :asking="asking"
     :files="files"
     :primary-host="primaryHost"

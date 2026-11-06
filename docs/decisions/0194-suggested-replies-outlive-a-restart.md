@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, superseded in part by 0285
 ---
 
 # Suggested replies outlive a restart

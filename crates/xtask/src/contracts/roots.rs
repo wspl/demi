@@ -292,6 +292,7 @@ pub fn web() -> Vec<Root> {
         sends::<panel::PanelChanges>(),
         receives::<panel::PanelAnswer>(),
         receives::<workflows::KeptWorkflowList>(),
+        sends::<conversations::SuggestedReplyUsed>(),
         sends::<drafts::DraftSave>(),
         receives::<drafts::DraftAnswer>(),
         receives::<drafts::DraftWritten>(),

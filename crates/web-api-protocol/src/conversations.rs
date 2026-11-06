@@ -4,7 +4,7 @@ use demi_conversation_lane_protocol::{
     AgentCost, AgentEntry, BlockVersions, CacheChart, ConversationAttachment, Failures, Refusal, ReplyBlockFacts,
     RequestOutput, SendMessage, ShellStatus, TurnSpeed, Version,
 };
-use demi_shared_types::{Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, SuggestedReply, Timestamp, WorkflowChoice};
+use demi_shared_types::{Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp, WorkflowChoice};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
@@ -332,7 +332,33 @@ pub struct SuggestedReplies {
     /// The text block of the answer they follow.
     pub block_id: BlockId,
     /// At most three, the most likely first; empty when none was likely.
-    pub replies: Vec<SuggestedReply>,
+    pub replies: Vec<String>,
+}
+
+/// `POST /conversations/:id/suggested-replies/used`: the user took one of the
+/// replies an answer offers, which the backend keeps to measure them by.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SuggestedReplyUsed {
+    /// The text block of the answer they follow.
+    #[garde(skip)]
+    pub block_id: BlockId,
+    /// The reply's place among them.
+    #[garde(skip)]
+    pub reply: u32,
+    #[serde(rename = "as")]
+    #[garde(skip)]
+    pub used_as: SuggestedReplyUse,
+}
+
+/// How the user took a suggested reply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum SuggestedReplyUse {
+    /// A tap, which sent its words.
+    Sent,
+    /// Edit, which put its words into the composer.
+    Edited,
 }
 
 /// How far back `GET /conversations/:id/cost/recent` counts, as its `window`

@@ -1,5 +1,4 @@
 import type { Block } from '@demicodes/protocol'
-import type { SuggestedReply } from '@demicodes/web-ui/agent/suggested-replies'
 import { demoModel, inRequests } from './blocks'
 
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
@@ -19,27 +18,26 @@ export function suggestedRepliesConversation(): Block[] {
   ])
 }
 
-const answer = (text: string): SuggestedReply => ({ text, kind: 'answer' })
-const topic = (text: string): SuggestedReply => ({ text, kind: 'topic' })
-
 /**
  * What the small model suggests after each answer of the live specimen, in
- * turn: two answers and a new topic after the first, one answer after the
- * next, none after the third, then again from the start.
+ * turn: one after the first, whose question most answers put, none after the
+ * next, which puts nothing to the user, then again from the start.
  */
-export const SUGGESTION_ROUNDS: readonly (readonly SuggestedReply[])[] = [
-  [answer('Merge it'), answer('Show me the diff first'), topic('Add a test for the old cookie name')],
-  [answer('Commit it')],
+export const SUGGESTION_ROUNDS: readonly (readonly string[])[] = [
+  ['Merge it'],
   [],
 ]
+
+/** What it suggests after an answer that names the options to choose among. */
+export const CHOICE_SUGGESTIONS: readonly string[] = ['Squash it', 'Rebase it', 'Keep the merge commit']
 
 /**
  * Suggestions long enough that a narrow row wraps them, each within the
  * longest the backend keeps, the second one long word and the last wider
  * than the row.
  */
-export const LONG_SUGGESTIONS: readonly SuggestedReply[] = [
-  answer('Merge it, then ship a release to the beta channel for the team'),
-  answer('Rename SessionCookieCompatibilityRegressionTestHelper'),
-  topic('Rename the cookie helper so its name says which cookie it reads, and update every test that names it'),
+export const LONG_SUGGESTIONS: readonly string[] = [
+  'Merge it, then ship a release to the beta channel for the team',
+  'Rename SessionCookieCompatibilityRegressionTestHelper',
+  'Rename the cookie helper so its name says which cookie it reads, and update every test that names it',
 ]

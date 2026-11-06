@@ -8,10 +8,10 @@
 //! opened, as a page opening an old conversation opens it; a version of an
 //! answer brought back; a compaction; a turn that ended without text. What a
 //! request answered is stored with the answer it follows
-//! (`demi_backend_database::suggested_replies`), for the conversation's
-//! metadata, until the next answer's replaces it, so a page the backend's
-//! restart reconnects shows what it showed; the page shows it only under
-//! that answer. Work that starts while a request runs cancels it, as does an
+//! (`demi_backend_database::suggested_replies`), and stays; the conversation's
+//! metadata offers the newest, so a page the backend's restart reconnects
+//! shows what it showed; the page shows it only under that answer. Work that
+//! starts while a request runs cancels it, as does an
 //! archive and the shard's close. The pages learn what a request kept from
 //! the conversation's metadata.
 
@@ -23,11 +23,12 @@ use demi_agent_server::small_request::SmallRequest;
 use demi_agent_server::suggested_replies::{answer_of, suggestion_request, suggestions_from_response};
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
+use demi_backend_database::suggested_replies::AnsweredReplies;
 use demi_backend_host_access::root_of;
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_shared_types::{BlockId, ModelSelection, Timestamp};
-use demi_web_api_protocol::conversations::SuggestedReplies as Kept;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
+use sha2::{Digest as _, Sha256};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::Instrument as _;
@@ -99,11 +100,15 @@ impl SuggestedReplies {
         tasks.spawn_local(
             async move {
                 let started = std::time::Instant::now();
+                // The small model, once resolved, which the end's log line names.
+                let mut small = None;
                 let ended = async {
                     if !control.preferences(user).await?.suggests_replies() {
                         return Ok::<_, Failure>("off");
                     }
-                    let response = small_requests.run(&id, &selection, request, cancel.clone()).await?;
+                    let answering = small.insert(small_requests.resolve(&selection).await?).clone();
+                    let hash = instruction_hash(request.instruction);
+                    let response = small_requests.run_on(&id, &answering, request, cancel.clone()).await?;
                     // Stopped, or replaced by a later request: what it brought is stale.
                     let current = in_flight.borrow().get(&id).is_some_and(|(of, _)| *of == number);
                     if cancel.is_cancelled() || !current {
@@ -111,11 +116,23 @@ impl SuggestedReplies {
                     }
                     let replies = response.as_deref().map(suggestions_from_response).unwrap_or_default();
                     let outcome = if replies.is_empty() { "none" } else { "kept" };
-                    control.keep_suggested_replies(id.clone(), Kept { block_id: answer.clone(), replies }).await?;
+                    control
+                        .keep_suggested_replies(
+                            id.clone(),
+                            AnsweredReplies {
+                                block_id: answer.clone(),
+                                provider_id: answering.provider_id.to_string(),
+                                model: answering.model.id.to_string(),
+                                instruction_hash: hash,
+                                response,
+                                replies,
+                            },
+                        )
+                        .await?;
                     Ok(outcome)
                 }
                 .await;
-                log(&id, &selection, started, &ended);
+                log(&id, small.as_ref(), started, &ended);
                 let mut in_flight = in_flight.borrow_mut();
                 if in_flight.get(&id).is_some_and(|(of, _)| *of == number) {
                     in_flight.remove(&id);
@@ -136,12 +153,19 @@ enum Failure {
     Storage(#[from] StorageError),
 }
 
+/// A hash of `instruction`, which tells the answers of one text from another's
+/// with no number to raise by hand. Sixteen digits tell a handful of texts apart.
+fn instruction_hash(instruction: &str) -> String {
+    hex::encode(&Sha256::digest(instruction)[..8])
+}
+
 /// The line that ends a request: whether it kept suggestions, found none,
-/// was off or stopped, or failed.
-fn log(conversation: &ConversationId, selection: &ModelSelection, started: std::time::Instant, ended: &Result<&'static str, Failure>) {
+/// was off or stopped, or failed. `small` is the small model that answered, none
+/// before one was resolved.
+fn log(conversation: &ConversationId, small: Option<&ModelSelection>, started: std::time::Instant, ended: &Result<&'static str, Failure>) {
     let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    let provider = selection.provider_id.as_str();
-    let model = selection.model.id.as_str();
+    let provider = small.map(|small| small.provider_id.as_str());
+    let model = small.map(|small| small.model.id.as_str());
     match ended {
         Ok(outcome) => tracing::info!(event = "suggested_replies.ended", %conversation, provider, model, ms, outcome, "a suggested replies request ended"),
         Err(error) => tracing::warn!(event = "suggested_replies.ended", %conversation, provider, model, ms, outcome = "failed", error = %error, "a suggested replies request ended"),

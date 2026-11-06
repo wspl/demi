@@ -1,19 +1,18 @@
 <script setup lang="ts">
 import SuggestedReplies from '@demicodes/web-ui/agent/blocks/SuggestedReplies.vue'
 import { showToast } from '@demicodes/web-ui/infra/toast'
-import type { SuggestedReply } from '@demicodes/web-ui/agent/suggested-replies'
-import { LONG_SUGGESTIONS, SUGGESTION_ROUNDS } from '../fixtures/suggested-replies'
+import { CHOICE_SUGGESTIONS, LONG_SUGGESTIONS, SUGGESTION_ROUNDS } from '../fixtures/suggested-replies'
 
 /**
  * The row of suggested replies in each state it has, under an answer's
- * width: three, three long ones wrapped, one, being written and none, the
+ * width: one, three long ones wrapped, three, being written and none, the
  * last two keeping a line's height. A pill's click and its Edit say in a
  * toast what the product would do with the words.
  */
-const STATES: readonly { name: string; replies: readonly SuggestedReply[] | null; narrow?: boolean }[] = [
-  { name: 'three', replies: SUGGESTION_ROUNDS[0] ?? [] },
+const STATES: readonly { name: string; replies: readonly string[] | null; narrow?: boolean }[] = [
+  { name: 'one', replies: SUGGESTION_ROUNDS[0] ?? [] },
   { name: 'three long ones in a narrow column, wrapped', replies: LONG_SUGGESTIONS, narrow: true },
-  { name: 'one', replies: SUGGESTION_ROUNDS[1] ?? [] },
+  { name: 'three, one for each option the answer names', replies: CHOICE_SUGGESTIONS },
   { name: 'being written: the row keeps its height', replies: null },
   { name: 'none came: the row keeps its height', replies: [] },
 ]
