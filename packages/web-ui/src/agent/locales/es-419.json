@@ -29,6 +29,8 @@
   },
   "transcript": {
     "accountSwitch": {
+      "refused": "El proveedor rechazó {from}. Se continúa con {to}.",
+      "signedOut": "Se cerró la sesión de {from}. Se continúa con {to}.",
       "usage": "{from} alcanzó su límite de uso. Se continúa con {to}.",
       "usageReset": "{from} alcanzó su límite de uso, {reset}. Se continúa con {to}.",
       "window": "{from} alcanzó su {window}. Se continúa con {to}.",

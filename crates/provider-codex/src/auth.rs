@@ -7,7 +7,8 @@ use demi_provider_common::{
     Secret,
     credentials::{
         AccountDocument, AccountLabel, AuthFailure, AuthReason, CredentialPool, NewAccount,
-        SecretDecodeError, SecretDocument, decode_secret, read_secret, renew,
+        RefreshFailure, SecretDecodeError, SecretDocument, decode_secret, read_secret, renew,
+        sign_out_account,
     },
     oauth::{TokenRefusal, decode_json_response, jwt_claims},
     wire::{Reported, ReportedString},
@@ -272,6 +273,13 @@ impl CodexAuth {
             .map_err(|error| AuthFailure::of_account(FAMILY, error))
     }
 
+    /// Marks the account signed out: its vendor refused its sign-in.
+    pub(crate) async fn signed_out(&self) {
+        if let Some(account) = self.account.as_deref() {
+            sign_out_account(&*self.pool, FAMILY, account).await;
+        }
+    }
+
     /// The account's stored sign-in, unless it has ended.
     pub(crate) async fn signed_in(&self) -> Result<CodexSecret, AuthFailure> {
         let stored = self.stored().await?;
@@ -303,10 +311,18 @@ impl CodexAuth {
             token_url: self.token_url.clone(),
             clock: self.clock.clone(),
         };
-        let renewed = renew(doc.into(), needs_refresh, |secret| refresh.run(secret))
-            .await
-            .map_err(|error| AuthFailure::of_renewal(FAMILY, error))?;
+        let renewed = match renew(doc.into(), needs_refresh, |secret| refresh.run(secret)).await {
+            Ok(renewed) => renewed,
+            Err(error) => {
+                let failure = AuthFailure::of_renewal(FAMILY, error);
+                if failure.is_signed_out() {
+                    self.signed_out().await;
+                }
+                return Err(failure);
+            }
+        };
         if renewed.ended(self.clock.now(), refused) {
+            self.signed_out().await;
             return Err(AuthFailure::new(FAMILY, AuthReason::SignedOut));
         }
         Ok(renewed.credentials())
@@ -324,11 +340,11 @@ struct Refresh {
 impl Refresh {
     /// Asks the sign-in service for new tokens. A refreshed sign-in keeps
     /// the tokens the answer does not replace and the account it acts for.
-    async fn run(self, secret: CodexSecret) -> Result<CodexSecret, String> {
+    async fn run(self, secret: CodexSecret) -> Result<CodexSecret, RefreshFailure> {
         // `credentials` refreshes only a sign-in that holds a refresh token,
         // and no refresh takes one away.
         let Some(refresh_token) = &secret.refresh_token else {
-            return Err("The Codex sign-in has no refresh token".into());
+            return Err(RefreshFailure::Failed("The Codex sign-in has no refresh token".into()));
         };
         let body = serde_json::json!({
             "client_id": CLIENT_ID,
@@ -342,7 +358,7 @@ impl Refresh {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|error| format!("Codex token refresh failed: {}", error.without_url()))?;
+            .map_err(|error| RefreshFailure::Failed(format!("Codex token refresh failed: {}", error.without_url())))?;
         let status = response.status().as_u16();
         if !response.status().is_success() {
             // The refusal's code, never its description, which may quote
@@ -354,11 +370,11 @@ impl Refresh {
                 error = refusal.named(),
                 "Codex refused a token refresh"
             );
-            return Err(format!("Codex token refresh failed with HTTP {status}"));
+            return Err(RefreshFailure::refused(status, &refusal, format!("Codex token refresh failed with HTTP {status}")));
         }
         let tokens: RefreshedTokens = decode_json_response(response)
             .await
-            .map_err(|error| format!("Codex token refresh failed: {error}"))?;
+            .map_err(|error| RefreshFailure::Failed(format!("Codex token refresh failed: {error}")))?;
         Ok(CodexSecret {
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token.or(secret.refresh_token),

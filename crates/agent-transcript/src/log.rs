@@ -837,6 +837,7 @@ impl TranscriptLog {
             created_at,
             request: None,
             model: model.clone(),
+            cause: switch.cause,
             from: switch.from,
             to: switch.to,
             window: switch.window,

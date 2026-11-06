@@ -29,6 +29,8 @@
   },
   "transcript": {
     "accountSwitch": {
+      "refused": "供應商拒絕了 {from}，改用 {to} 繼續。",
+      "signedOut": "{from} 已登出，改用 {to} 繼續。",
       "usage": "{from} 已達使用上限，改用 {to} 繼續。",
       "usageReset": "{from} 已達使用上限，{reset}，改用 {to} 繼續。",
       "window": "{from} 已達{window}，改用 {to} 繼續。",

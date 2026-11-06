@@ -115,8 +115,7 @@ pub trait CredentialPool: Send + Sync {
     ) -> BoxFuture<'_, Result<(), PoolError>>;
 
     /// Marks the account as signed out: the vendor refused its sign-in
-    /// (`crates/provider-claude-code/src/account.rs`). An account removed
-    /// meanwhile marks nothing.
+    /// ([`sign_out_account`]). An account removed meanwhile marks nothing.
     fn sign_out<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), PoolError>>;
 
     /// The secret document of the account `id`, which need not exist yet.
@@ -126,6 +125,28 @@ pub trait CredentialPool: Send + Sync {
     /// account, the first remaining one in id order becomes active, or none
     /// when it was the last (`crates/backend-providers/src/vault/logins.rs`).
     fn remove<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), PoolError>>;
+}
+
+/// Marks `account` signed out: its vendor refused its sign-in, and rotation
+/// passes over it until the user signs in again
+/// (`crates/provider-registry/src/rotation.rs`). A pool that fails keeps the
+/// account as it was, and its next request fails the same way.
+pub async fn sign_out_account(pool: &dyn CredentialPool, family: &str, account: &str) {
+    tracing::info!(
+        event = "provider_account.signed_out",
+        family,
+        account,
+        "a vendor signed an account out"
+    );
+    if let Err(error) = pool.sign_out(account).await {
+        tracing::warn!(
+            event = "provider_account.sign_out_mark_failed",
+            family,
+            account,
+            %error,
+            "a signed-out account was not marked"
+        );
+    }
 }
 
 /// The account of `pool` whose identity key is `identity_key`.

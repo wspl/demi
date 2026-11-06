@@ -7,14 +7,14 @@ import { accountSwitchText } from '../account-switch'
 import type { AccountSwitchBlock } from '../block-types'
 
 /**
- * Where the agent's account reached its limit and the same request went on with
- * another account: a neutral line, as the Stopped row is, not a failure
+ * Where the vendor would not serve the agent's account and the same request went
+ * on with another account: a neutral line, as the Stopped row is, not a failure
  * (`crates/provider-registry/src/rotation.rs`). It is the whole of what
  * happened, so it wraps where the transcript is narrow rather than cut the
  * account it went on with. /
  */
 const props = defineProps<{
-  block: Pick<AccountSwitchBlock, 'from' | 'to' | 'window' | 'resetsAt'>
+  block: Pick<AccountSwitchBlock, 'cause' | 'from' | 'to' | 'window' | 'resetsAt'>
 }>()
 
 const now = useClock()

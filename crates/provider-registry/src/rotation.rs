@@ -17,7 +17,10 @@
 //! cache belongs to the account: a 300K conversation that moves to another
 //! account writes its 300K again there. It takes another only in these cases:
 //!
-//! - Its account fails with `usage_limit`.
+//! - Its account fails with `usage_limit`, or the vendor refuses the account
+//!   with `auth_expired` or `permission_denied`, while another can serve it.
+//! - Its vendor signed its account out, which a choice passes over until the
+//!   user signs it in again.
 //! - A compaction ran, whose next request writes its prefix anew in any case.
 //! - Its account is removed, or the rotation changes.
 //!
@@ -151,7 +154,7 @@ impl AccountRotation {
     }
 
     /// Announces that the agents of `entry` may take another account, as
-    /// when its rotation changed or an account of it was removed.
+    /// when its rotation changed or an account of it was removed or signed out.
     pub fn changed(&self, entry: &ProviderId) {
         // With no follower, as before any user's shard started, no agent
         // holds an account to take again.

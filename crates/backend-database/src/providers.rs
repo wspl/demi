@@ -500,7 +500,7 @@ impl ControlService {
                 return Ok(false);
             };
             let changed = connection.execute(
-                "UPDATE provider_credentials SET secret = ?1, version = version + 1, updated_at = ?2
+                "UPDATE provider_credentials SET secret = ?1, version = version + 1, updated_at = ?2, signed_out = 0
                  WHERE provider_id = ?3 AND id = ?4 AND version = ?5",
                 params![secret, now.as_millisecond(), provider.as_str(), id.as_str(), version],
             )?;

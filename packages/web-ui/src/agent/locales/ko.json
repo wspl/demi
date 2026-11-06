@@ -29,6 +29,8 @@
   },
   "transcript": {
     "accountSwitch": {
+      "refused": "제공업체가 {from} 계정을 거부하여 {to} 계정으로 계속합니다.",
+      "signedOut": "{from} 계정이 로그아웃되어 {to} 계정으로 계속합니다.",
       "usage": "{from} 계정이 사용 한도에 도달하여 {to} 계정으로 계속합니다.",
       "usageReset": "{from} 계정이 사용 한도에 도달하여({reset}) {to} 계정으로 계속합니다.",
       "window": "{from} 계정이 {window}에 도달하여 {to} 계정으로 계속합니다.",

@@ -8,15 +8,21 @@ import { windowNameInSentence } from '../settings/window-name'
  * (`crates/provider-registry/src/rotation.rs`): "alex@example.com reached
  * its 5-hour limit, resetting at 9:00 PM. Continuing with sam@example.com."
  *
- * The line names the window in the viewer's language as a sentence names it,
- * and the reset in their time zone. It leaves out each part the block does not
- * know.
+ * The line says why the agent moved. For a limit it names the window in the
+ * viewer's language as a sentence names it, and the reset in their time zone,
+ * and leaves out each part the block does not know.
  */
 export function accountSwitchText(
-  block: Pick<AccountSwitchBlock, 'from' | 'to' | 'window' | 'resetsAt'>,
+  block: Pick<AccountSwitchBlock, 'cause' | 'from' | 'to' | 'window' | 'resetsAt'>,
   now: Date,
 ): string {
   const { from, to } = block
+  if (block.cause === 'signed_out') {
+    return t('transcript.accountSwitch.signedOut', { from, to })
+  }
+  if (block.cause === 'refused') {
+    return t('transcript.accountSwitch.refused', { from, to })
+  }
   const window = block.window ? windowNameInSentence(block.window) : null
   const reset = block.resetsAt ? formatVerbAt('resetting', block.resetsAt, now) : null
   if (window) {

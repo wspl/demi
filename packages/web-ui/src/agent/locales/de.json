@@ -29,6 +29,8 @@
   },
   "transcript": {
     "accountSwitch": {
+      "refused": "Der Anbieter hat {from} abgelehnt. Weiter mit {to}.",
+      "signedOut": "{from} wurde abgemeldet. Weiter mit {to}.",
       "usage": "{from} hat sein Nutzungslimit erreicht. Weiter mit {to}.",
       "usageReset": "{from} hat sein Nutzungslimit erreicht, {reset}. Weiter mit {to}.",
       "window": "{from} hat sein {window} erreicht. Weiter mit {to}.",

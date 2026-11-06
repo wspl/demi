@@ -7,8 +7,8 @@ use std::{sync::Arc, time::Duration};
 use demi_provider_common::{
     Secret,
     credentials::{
-        AccountDocument, AccountLabel, AuthFailure, AuthReason, CredentialPool, SecretDocument,
-        read_secret, renew,
+        AccountDocument, AccountLabel, AuthFailure, AuthReason, CredentialPool, RefreshFailure, SecretDocument,
+        read_secret, renew, sign_out_account,
     },
     oauth::{Lifetime, TokenRefusal, decode_json_response, jwt_claims},
     quota::unix_seconds,
@@ -227,6 +227,13 @@ impl GrokAuth {
         Ok(self.pool.document(account))
     }
 
+    /// Marks the account signed out: its vendor refused its sign-in.
+    pub(crate) async fn signed_out(&self) {
+        if let Some(account) = self.account.as_deref() {
+            sign_out_account(&*self.pool, FAMILY, account).await;
+        }
+    }
+
     /// The account's stored sign-in, as it is.
     pub(crate) async fn stored(&self) -> Result<GrokSecret, AuthFailure> {
         let doc = self.document()?;
@@ -256,10 +263,16 @@ impl GrokAuth {
             http: http.clone(),
             clock: self.clock.clone(),
         };
-        let renewed = renew(doc.into(), needs_refresh, |secret| refresh.run(secret)).await;
-        renewed
-            .map(|secret| secret.credentials())
-            .map_err(|error| AuthFailure::of_renewal(FAMILY, error))
+        match renew(doc.into(), needs_refresh, |secret| refresh.run(secret)).await {
+            Ok(secret) => Ok(secret.credentials()),
+            Err(error) => {
+                let failure = AuthFailure::of_renewal(FAMILY, error);
+                if failure.is_signed_out() {
+                    self.signed_out().await;
+                }
+                Err(failure)
+            }
+        }
     }
 }
 
@@ -274,9 +287,9 @@ impl Refresh {
     /// Asks the issuer for new tokens, for the principal the tokens act for.
     /// A refreshed sign-in keeps the refresh token the answer does not
     /// replace; its expiry comes from the answer, else from the new token.
-    async fn run(self, secret: GrokSecret) -> Result<GrokSecret, String> {
+    async fn run(self, secret: GrokSecret) -> Result<GrokSecret, RefreshFailure> {
         let Some(refresh_token) = &secret.refresh_token else {
-            return Err("The Grok sign-in has no refresh token".into());
+            return Err(RefreshFailure::Failed("The Grok sign-in has no refresh token".into()));
         };
         let mut form = vec![
             ("grant_type", "refresh_token"),
@@ -297,7 +310,7 @@ impl Refresh {
             .form(&form)
             .send()
             .await
-            .map_err(|error| format!("Grok token refresh failed: {}", error.without_url()))?;
+            .map_err(|error| RefreshFailure::Failed(format!("Grok token refresh failed: {}", error.without_url())))?;
         let status = response.status().as_u16();
         if !response.status().is_success() {
             // The refusal's code, never its description, which may quote
@@ -309,11 +322,11 @@ impl Refresh {
                 error = refusal.named(),
                 "Grok refused a token refresh"
             );
-            return Err(format!("Grok token refresh failed with HTTP {status}"));
+            return Err(RefreshFailure::refused(status, &refusal, format!("Grok token refresh failed with HTTP {status}")));
         }
         let tokens: RefreshedTokens = decode_json_response(response)
             .await
-            .map_err(|error| format!("Grok token refresh failed: {error}"))?;
+            .map_err(|error| RefreshFailure::Failed(format!("Grok token refresh failed: {error}")))?;
         let now = self.clock.now();
         let expires_at = match tokens.expires_in.0 {
             Some(lifetime) => {

@@ -33,7 +33,7 @@ use std::sync::Arc;
 use demi_provider_common::Secret;
 use demi_provider_common::credentials::{
     AccountError, AccountLabel, AccountMeta, AuthFailure, AuthReason, CredentialPool,
-    SecretDocument, read_secret,
+    SecretDocument, read_secret, sign_out_account,
 };
 use demi_shared_types::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -192,28 +192,11 @@ impl ClaudeAuth {
         }
     }
 
-    /// Marks the account signed out: its vendor refused its sign-in. A pool
-    /// that fails keeps the account as it was, and its next request fails
-    /// the same way.
+    /// Marks the account signed out: its vendor refused its sign-in.
     pub(crate) async fn signed_out(&self) {
         let Ok(account) = self.account() else {
             return;
         };
-        tracing::info!(
-            event = "claude_code_account.signed_out",
-            account,
-            by = "claude",
-            from = "signed_in",
-            to = "signed_out",
-            "Claude signed a Claude Code account out"
-        );
-        if let Err(error) = self.pool.sign_out(account).await {
-            tracing::warn!(
-                event = "claude_code_account.sign_out_mark_failed",
-                account,
-                %error,
-                "a signed-out Claude Code account was not marked"
-            );
-        }
+        sign_out_account(&*self.pool, FAMILY, account).await;
     }
 }

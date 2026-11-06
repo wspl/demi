@@ -29,6 +29,8 @@
   },
   "transcript": {
     "accountSwitch": {
+      "refused": "The provider refused {from}. Continuing with {to}.",
+      "signedOut": "{from} was signed out. Continuing with {to}.",
       "usage": "{from} reached its usage limit. Continuing with {to}.",
       "usageReset": "{from} reached its usage limit, {reset}. Continuing with {to}.",
       "window": "{from} reached its {window}. Continuing with {to}.",

@@ -94,6 +94,10 @@ pub(crate) fn run(
                     yield ProviderEvent::Call(CallEvent::Started);
                 }
                 Err(OpenError::Refused(refusal)) => {
+                    // A second 401: the vendor refuses the renewed sign-in too.
+                    if refusal.status == StatusCode::UNAUTHORIZED {
+                        shared.auth.signed_out().await;
+                    }
                     yield ProviderEvent::Error(refused(*refusal, &shared));
                     return;
                 }
