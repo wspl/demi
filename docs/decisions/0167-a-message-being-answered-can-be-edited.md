@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0297
 ---
 
 # A message being answered can be edited, and one stopped before its answer comes back

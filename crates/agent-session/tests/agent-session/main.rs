@@ -697,6 +697,83 @@ async fn comments_of(session: &AgentSession, turn: &str) -> Vec<demi_shared_type
 }
 
 #[tokio::test(flavor = "local")]
+async fn an_edit_of_a_steer_keeps_the_answer_before_it_and_starts_a_turn() {
+    let answer = |text: &str| Turn::Events(vec![event::text(text), event::response(0, 0)]);
+    let (first, release) = gated_turn(vec![event::text("Renamed it to billing."), event::response(0, 0)]);
+    let provider = ScriptedRuntime::new([first, answer("Updated the tests."), answer("Updated the tests and docs.")]);
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
+    let running = session.send(text("Rename the module."), turn("t1")).unwrap();
+    until(|| provider.requests().len() == 1).await;
+    session.steer(text("Also the tests."), BlockId::try_from("s1").unwrap()).unwrap();
+    let _ = release.send(());
+    running.await.unwrap();
+    session.settled().await;
+    let blocks = session.history().await.unwrap().blocks;
+    assert_eq!(kinds(&blocks), ["user", "text", "response", "steer", "text", "response"]);
+
+    let snapshot = session.history().await.unwrap();
+    let edit = EditSubmission {
+        operation_id: OperationId::try_from("op1").unwrap(),
+        target: BlockId::try_from("s1").unwrap(),
+        version: snapshot.version,
+        content: Some(vec![EditContent::Content(UserContentBlock::Text {
+            text: "Also the tests and docs.".to_owned(),
+        })]),
+        comments: None,
+        digest: "op1".to_owned(),
+    };
+    let edited = session.edit_and_send(edit).await.unwrap().turn_id;
+    session.settled().await;
+
+    // The answer before the steer stays, and the edit starts a turn in its
+    // place, which the model reads as a message after that answer.
+    let blocks = session.history().await.unwrap().blocks;
+    assert_eq!(kinds(&blocks), ["user", "text", "response", "user", "text", "response"]);
+    assert!(matches!(&blocks[3], Block::User(user)
+        if user.turn_id == edited
+            && user.content == [UserContentBlock::Text { text: "Also the tests and docs.".to_owned() }]));
+    let request = provider.requests().pop().unwrap();
+    assert_eq!(item_kinds(&request.items), ["user_message", "assistant_text", "user_message"]);
+}
+
+#[tokio::test(flavor = "local")]
+async fn an_edit_of_a_steer_whose_turn_runs_stops_the_turn_first() {
+    let answer = |text: &str| Turn::Events(vec![event::text(text), event::response(0, 0)]);
+    let (first, release) = gated_turn(vec![event::text("Renamed it to billing."), event::response(0, 0)]);
+    // The answer to the steer never comes: the edit stops it.
+    let (second, _held) = gated_turn(vec![event::text("Updated the tests."), event::response(0, 0)]);
+    let provider = ScriptedRuntime::new([first, second, answer("Updated the tests and docs.")]);
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
+    let running = session.send(text("Rename the module."), turn("t1")).unwrap();
+    until(|| provider.requests().len() == 1).await;
+    session.steer(text("Also the tests."), BlockId::try_from("s1").unwrap()).unwrap();
+    let _ = release.send(());
+    until(|| provider.requests().len() == 2).await;
+
+    let snapshot = session.history().await.unwrap();
+    let edit = EditSubmission {
+        operation_id: OperationId::try_from("op1").unwrap(),
+        target: BlockId::try_from("s1").unwrap(),
+        version: snapshot.version,
+        content: Some(vec![EditContent::Content(UserContentBlock::Text {
+            text: "Also the tests and docs.".to_owned(),
+        })]),
+        comments: None,
+        digest: "op1".to_owned(),
+    };
+    session.edit_and_send(edit).await.unwrap();
+    let _ = running.await;
+    session.settled().await;
+
+    let blocks = session.history().await.unwrap().blocks;
+    assert_eq!(kinds(&blocks), ["user", "text", "response", "user", "text", "response"]);
+    assert!(matches!(&blocks[3], Block::User(user)
+        if user.content == [UserContentBlock::Text { text: "Also the tests and docs.".to_owned() }]));
+}
+
+#[tokio::test(flavor = "local")]
 async fn an_edit_gives_its_version_the_comments_it_carries_and_keeps_them_without_any() {
     let answer = |text: &str| Turn::Events(vec![event::text(text), event::response(0, 0)]);
     let provider = ScriptedRuntime::new([answer("one"), answer("two"), answer("three")]);

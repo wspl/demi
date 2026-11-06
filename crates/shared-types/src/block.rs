@@ -169,9 +169,10 @@ impl Block {
         on_block!(self, block => block.request = request)
     }
 
-    /// Whether the block is an editable target: only a `user` block is.
+    /// Whether the block is an editable target: a message the user sent,
+    /// a `user` block that started its turn or a `steer` that joined one.
     pub fn is_editable(&self) -> bool {
-        matches!(self, Block::User(_))
+        matches!(self, Block::User(_) | Block::Steer(_))
     }
 }
 

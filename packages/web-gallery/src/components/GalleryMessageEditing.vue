@@ -25,6 +25,14 @@ import { demoImageUrl, demoModel } from '../fixtures/blocks'
 import { galleryUploads } from '../fixtures/upload-sweep'
 import { PROJECT_ROOT } from '../fixtures/project'
 
+const props = defineProps<{
+  /**
+   * The last message joined the turn as a steer just after its answer, and
+   * the user stopped the thinking that followed it.
+   */
+  steer?: boolean
+}>()
+
 /**
  * The stand-in backend's rows, in the order they were written, each naming
  * the row it follows, and the current leaf: what the conversation stores.
@@ -152,6 +160,14 @@ function reset(): void {
   ], testComments(`reply-${run}-1`)), `reply-${run}-1`)
   write(replyBlock(`reply-${run}-2a`, 'The padding matches; the result is ready.'), `user-${run}-2`)
   write(replyBlock(`reply-${run}-2`, 'The result is ready for review.'), `user-${run}-2`)
+  if (props.steer) {
+    const at = new Date().toISOString()
+    write({
+      type: 'steer', id: `steer-${run}`, turnId: `user-${run}-2`, createdAt: at, model: demoModel,
+      content: [{ type: 'text', text: 'Also check the dark theme.' }],
+    }, `reply-${run}-2`)
+    write({ type: 'abort', id: `abort-${run}`, createdAt: at, model: demoModel, isResumed: false }, `steer-${run}`)
+  }
   showPath()
 }
 reset()
@@ -218,7 +234,8 @@ const editHost: MessageEditHost = {
     } else {
       // The new version of the message beside the old one, and its turn.
       // As the backend would record it: each added file's upload becomes its attachment record.
-      const comments = request.comments ?? (target.block.type === 'user' ? target.block.comments ?? [] : [])
+      const comments = request.comments
+        ?? (target.block.type === 'user' || target.block.type === 'steer' ? target.block.comments ?? [] : [])
       write(userBlock(request.operationId, uploads.received(request.content), comments), target.follows)
       write(replyBlock(`reply-${request.operationId}`, 'This reply follows the edited message. The old version stays, ‹ 1/2 › under it.'), request.operationId)
     }

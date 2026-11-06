@@ -37,14 +37,23 @@ export function versionPlaces(
 ): Map<string, VersionPlace> {
   const places = new Map<string, VersionPlace>()
   let answer: VersionPlace | null = null
+  // Whether the answer since the last message has begun.
+  let answered = false
   for (const block of blocks) {
     const versions = versionsOf(block)
-    if (block.type === 'user') {
+    // A message shows its own versions. A steer after some of the answer has
+    // them once an edit put a message in its place; one that opens an answer,
+    // as a steer waiting for a Regenerate does, holds the answer's.
+    if (block.type === 'user' || (block.type === 'steer' && versions && answered)) {
       answer = null
+      answered = false
       if (versions) {
         places.set(block.id, { blockId: block.id, ...versions })
       }
       continue
+    }
+    if (block.type !== 'context' && block.type !== 'steer') {
+      answered = true
     }
     if (versions && !answer) {
       answer = { blockId: block.id, ...versions }
