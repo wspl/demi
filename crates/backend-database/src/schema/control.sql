@@ -477,7 +477,8 @@ CREATE TABLE conversations (
   title               TEXT NOT NULL,
   title_origin        TEXT NOT NULL
                         CHECK (title_origin IN ('placeholder', 'message', 'generated', 'user')),
-  archived            INTEGER NOT NULL CHECK (archived IN (0, 1)),
+  -- When it was archived; none while it is not.
+  archived_at         INTEGER,
   pinned              INTEGER NOT NULL CHECK (pinned IN (0, 1)),
   sort_order          INTEGER NOT NULL,
   read_revision       INTEGER NOT NULL,
@@ -539,7 +540,7 @@ CREATE TABLE conversations (
   -- A project's move to another workspace takes its conversations along.
   FOREIGN KEY (target_project_id, workspace_id) REFERENCES projects (id, workspace_id) ON UPDATE CASCADE
 ) STRICT;
-CREATE INDEX conversations_sidebar ON conversations (user_id, archived, pinned, sort_order);
+CREATE INDEX conversations_sidebar ON conversations (user_id, archived_at, pinned, sort_order);
 CREATE INDEX conversations_project ON conversations (target_project_id);
 CREATE INDEX conversations_of_workspace ON conversations (workspace_id);
 

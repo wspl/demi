@@ -68,7 +68,7 @@ pub(super) async fn owned(
 }
 
 /// `GET /conversations?archived=`: the caller's conversations that are
-/// archived, or that are not, in sidebar order.
+/// archived, the last archived first, or that are not, in sidebar order.
 pub(super) async fn list(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,

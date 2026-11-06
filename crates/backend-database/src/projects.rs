@@ -299,7 +299,7 @@ impl ControlService {
                 return Ok(ProjectDeletion::Changed);
             }
             for conversation in &held {
-                archive_in(&transaction, conversation)?;
+                archive_in(&transaction, conversation, now)?;
             }
             transaction.execute(
                 "UPDATE projects SET deleted_at = ?2 WHERE id = ?1",
@@ -571,7 +571,7 @@ fn project_conversations(
 ) -> Result<Vec<ConversationId>, StorageError> {
     connection
         .prepare_cached(
-            "SELECT id FROM conversations WHERE user_id = ?1 AND target_project_id = ?2 AND archived = 0",
+            "SELECT id FROM conversations WHERE user_id = ?1 AND target_project_id = ?2 AND archived_at IS NULL",
         )?
         .query_map(params![user.as_str(), id.as_str()], |row| row.get::<_, String>(0))?
         .map(|id| decode("conversations", "id", ConversationId::try_from(id?.as_str())))

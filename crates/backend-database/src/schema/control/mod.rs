@@ -83,6 +83,7 @@ mod from_0_1_5979_cloud_isolation;
 mod from_0_1_5979_format_3;
 mod from_0_1_5979_media_jobs;
 mod from_0_1_5979_network_policy;
+mod from_0_1_5979_port_forward_routes;
 
 pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
@@ -379,5 +380,9 @@ pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
         sql: include_str!("from_0_1_5979_network_policy.sql"),
         migration: from_0_1_5979_network_policy::MIGRATION,
+    },
+    Shipped {
+        sql: include_str!("from_0_1_5979_port_forward_routes.sql"),
+        migration: from_0_1_5979_port_forward_routes::MIGRATION,
     },
 ];

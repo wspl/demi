@@ -34,8 +34,8 @@ use crate::shard::Shard;
 use demi_backend_host_access::root_of;
 
 impl Shard {
-    /// The sidebar entries of the user's conversations that are archived, or
-    /// that are not, in sidebar order.
+    /// The entries of the user's conversations that are archived, the last
+    /// archived first, or that are not, in sidebar order.
     pub async fn conversation_summaries(
         &self,
         archived: bool,

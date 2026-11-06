@@ -237,11 +237,13 @@ pub enum Creation {
     Unselectable(Unselectable),
 }
 
-/// The sidebar's order within the active or the archived conversations:
-/// pinned first, then by the user's order.
-const SIDEBAR_ORDER: &str = "pinned DESC, sort_order, id";
+/// The order within the active or the archived conversations: the last
+/// archived first, which leaves the active ones, none archived, to the
+/// sidebar's order, pinned first, then by the user's order. What was archived
+/// at one moment, a project's conversations, keeps that order too.
+const CONVERSATION_ORDER: &str = "archived_at DESC, pinned DESC, sort_order, id";
 
-const CONVERSATION_COLUMNS: &str = "id, user_id, workspace_id, title, title_origin, archived, pinned, read_revision, target_kind, target_device_id,
+const CONVERSATION_COLUMNS: &str = "id, user_id, workspace_id, title, title_origin, archived_at IS NOT NULL AS archived, pinned, read_revision, target_kind, target_device_id,
      target_path, target_project_id, target_worktree_name, target_worktree_path, context_version, model, workflow_kind,
      workflow_id, workflow_worktree, created_at, updated_at, hosts_revision,
      COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
@@ -447,7 +449,7 @@ impl ControlService {
     }
 
     /// The owner's conversations that are archived, or that are not, in
-    /// sidebar order.
+    /// their order: the last archived first, or the sidebar's.
     pub async fn conversations(
         &self,
         owner: UserId,
@@ -455,8 +457,8 @@ impl ControlService {
     ) -> Result<Vec<ConversationRecord>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare(&format!(
-                "SELECT {CONVERSATION_COLUMNS} FROM conversations WHERE user_id = ?1 AND archived = ?2
-                 ORDER BY {SIDEBAR_ORDER}"
+                "SELECT {CONVERSATION_COLUMNS} FROM conversations WHERE user_id = ?1 AND (archived_at IS NOT NULL) = ?2
+                 ORDER BY {CONVERSATION_ORDER}"
             ))?;
             let mut rows = statement.query(params![owner.as_str(), archived])?;
             let mut conversations = Vec::new();
@@ -482,7 +484,7 @@ impl ControlService {
                 .query_map([device.as_str()], |row| row.get(0))?
                 .collect::<Result<_, _>>()?;
             let mut statement = connection.prepare(&format!(
-                "SELECT {CONVERSATION_COLUMNS} FROM conversations WHERE user_id = ?1 AND archived = 0"
+                "SELECT {CONVERSATION_COLUMNS} FROM conversations WHERE user_id = ?1 AND archived_at IS NULL"
             ))?;
             let mut rows = statement.query(params![owner.as_str()])?;
             let mut held = Vec::new();
@@ -500,14 +502,15 @@ impl ControlService {
     }
 
     /// The ids of the owner's conversations in the order the product state
-    /// lists them: the active ones in sidebar order, then the archived ones.
+    /// lists them: the active ones in sidebar order, then the archived ones,
+    /// the last archived first.
     pub async fn conversation_order(
         &self,
         owner: UserId,
     ) -> Result<Vec<ConversationId>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare(&format!(
-                "SELECT id FROM conversations WHERE user_id = ?1 ORDER BY archived, {SIDEBAR_ORDER}"
+                "SELECT id FROM conversations WHERE user_id = ?1 ORDER BY archived_at IS NOT NULL, {CONVERSATION_ORDER}"
             ))?;
             let mut rows = statement.query([owner.as_str()])?;
             let mut ids = Vec::new();
@@ -563,7 +566,7 @@ impl ControlService {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let archived: Option<bool> = transaction
-                .query_row("SELECT archived FROM conversations WHERE id = ?1", [id.as_str()], |row| row.get(0))
+                .query_row("SELECT archived_at IS NOT NULL FROM conversations WHERE id = ?1", [id.as_str()], |row| row.get(0))
                 .optional()?;
             let Some(archived) = archived else {
                 return Ok(ChangeOutcome::Missing);
@@ -577,7 +580,7 @@ impl ControlService {
                     // whose message was not delivered among them, and keeps the
                     // grants.
                     if *archived {
-                        archive_in(&transaction, &id)?;
+                        archive_in(&transaction, &id, now)?;
                     } else {
                         restore_in(&transaction, &id, now)?;
                     }
@@ -765,11 +768,11 @@ pub fn insert_conversation(
     let target = TargetColumns::of(new.target);
     let (workflow_kind, workflow_id, workflow_worktree) = workflow_columns(new.workflow);
     let inserted = connection.execute(
-        "INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
+        "INSERT INTO conversations (id, user_id, title, title_origin, pinned, sort_order,
            read_revision, target_kind, target_device_id, target_path, target_project_id, context_version,
            model, created_at, updated_at, workflow_kind, workflow_id, target_worktree_name, target_worktree_path,
            workflow_worktree, workspace_id)
-         VALUES (?1, ?2, ?3, ?4, 0, ?11,
+         VALUES (?1, ?2, ?3, ?4, ?11,
            (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?2),
            0, ?5, ?6, ?7, ?8, ?14, ?9, ?10, ?10, ?12, ?13, ?15, ?16, ?17, ?18)
          ON CONFLICT (id) DO NOTHING",
@@ -1111,7 +1114,7 @@ impl ControlService {
                    target_project_id = ?5, target_worktree_name = ?12, target_worktree_path = ?13,
                    last_switch = ?6, last_switch_revision = context_version + 1,
                    context_version = context_version + 1, updated_at = ?7
-                 WHERE id = ?1 AND archived = 0 AND target_kind = ?8 AND target_device_id IS ?9
+                 WHERE id = ?1 AND archived_at IS NULL AND target_kind = ?8 AND target_device_id IS ?9
                    AND target_path IS ?10 AND target_project_id IS ?11 AND target_worktree_path IS ?14
                  RETURNING context_version",
                 params![
@@ -1179,12 +1182,15 @@ impl ControlService {
     }
 }
 
-/// Archives the conversation `id`. An archive withdraws the permission
-/// requests, decided ones whose message was not delivered among them, and
-/// keeps the grants.
-pub(crate) fn archive_in(connection: &Connection, id: &ConversationId) -> Result<(), StorageError> {
+/// Archives the conversation `id` at `now`; one archived already keeps its
+/// time. An archive withdraws the permission requests, decided ones whose
+/// message was not delivered among them, and keeps the grants.
+pub(crate) fn archive_in(connection: &Connection, id: &ConversationId, now: Timestamp) -> Result<(), StorageError> {
     connection.execute("DELETE FROM permission_requests WHERE conversation_id = ?1", [id.as_str()])?;
-    connection.execute("UPDATE conversations SET archived = 1 WHERE id = ?1", [id.as_str()])?;
+    connection.execute(
+        "UPDATE conversations SET archived_at = ?2 WHERE id = ?1 AND archived_at IS NULL",
+        params![id.as_str(), now.as_millisecond()],
+    )?;
     Ok(())
 }
 
@@ -1199,7 +1205,7 @@ pub(crate) fn archive_in(connection: &Connection, id: &ConversationId) -> Result
 /// change a watch's command shows since, whose next check only records its
 /// output again.
 fn restore_in(connection: &Connection, id: &ConversationId, now: Timestamp) -> Result<(), StorageError> {
-    connection.execute("UPDATE conversations SET archived = 0 WHERE id = ?1", [id.as_str()])?;
+    connection.execute("UPDATE conversations SET archived_at = NULL WHERE id = ?1", [id.as_str()])?;
     connection.execute(
         "UPDATE schedules SET since = ?2, watch_stdout = NULL, watch_digest = NULL, watch_exit = NULL,
            watch_checked_at = NULL

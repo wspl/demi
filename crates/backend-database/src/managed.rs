@@ -224,7 +224,7 @@ impl ControlService {
                         EXISTS (SELECT 1 FROM conversation_hosts h
                                 WHERE h.conversation_id = c.id AND h.device_id = ?2) AS attached
                  FROM conversations c LEFT JOIN projects w ON w.id = c.target_project_id
-                 WHERE c.user_id = ?1 AND c.archived = 0
+                 WHERE c.user_id = ?1 AND c.archived_at IS NULL
                  ORDER BY c.id",
             )?;
             let mut rows = statement.query(params![user.as_str(), cloud])?;

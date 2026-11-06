@@ -28,7 +28,7 @@ impl ControlService {
             let mut statement = connection.prepare(
                 "SELECT conversations.id FROM conversations
                  JOIN conversation_panels ON conversation_panels.conversation_id = conversations.id
-                 WHERE conversations.user_id = ?1 AND conversations.archived = 0
+                 WHERE conversations.user_id = ?1 AND conversations.archived_at IS NULL
                    AND json_array_length(conversation_panels.document, '$.tabs') > 0",
             )?;
             let ids = statement
@@ -72,7 +72,7 @@ impl ControlService {
                 "SELECT conversations.id, conversation_panels.revision, conversation_panels.document
                  FROM conversation_panels
                  JOIN conversations ON conversations.id = conversation_panels.conversation_id
-                 WHERE conversations.user_id = ?1 AND conversations.archived = ?2",
+                 WHERE conversations.user_id = ?1 AND (conversations.archived_at IS NOT NULL) = ?2",
             )?;
             let mut rows = statement.query(params![owner.as_str(), archived])?;
             let mut panels = HashMap::new();

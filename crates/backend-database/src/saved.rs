@@ -222,7 +222,7 @@ impl ControlService {
                         let inside = transaction
                             .query_row(
                                 "SELECT id FROM conversations
-                                 WHERE id = ?1 AND user_id = ?2 AND target_project_id = ?3 AND archived = 0",
+                                 WHERE id = ?1 AND user_id = ?2 AND target_project_id = ?3 AND archived_at IS NULL",
                                 params![to.as_str(), user.as_str(), project.as_str()],
                                 |row| row.get::<_, String>(0),
                             )

@@ -22,7 +22,7 @@ const CALLS: &str = "schedule_calls";
 
 const COLUMNS: &str = "id, conversation_id, name, trigger, time_zone, max_runs_per_day, if_busy, prompt,
      paused, since, secret IS NOT NULL AS has_secret,
-     (SELECT archived FROM conversations WHERE id = schedules.conversation_id) AS conversation_archived,
+     (SELECT archived_at IS NOT NULL FROM conversations WHERE id = schedules.conversation_id) AS conversation_archived,
      watch_stdout, watch_digest, watch_exit, watch_checked_at, created_at, updated_at";
 
 const RUN_COLUMNS: &str = "id, schedule_id, cause, at, state, note, line, turn_id, notified, task_id";
