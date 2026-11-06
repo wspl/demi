@@ -2755,6 +2755,7 @@ dependencies = [
 name = "demi-host-paths"
 version = "0.1.65"
 dependencies = [
+ "schemars",
  "serde",
  "typed-path",
 ]
