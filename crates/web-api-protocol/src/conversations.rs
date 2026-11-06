@@ -488,13 +488,18 @@ pub struct ModelSettings {
 }
 
 /// Where a conversation stands: running or compacting while its live tree
-/// works, interrupted when its last checkpoint was saved in a turn and no
-/// session is live, otherwise what its latest terminal block says, or idle.
+/// works, resuming while Demi takes up by itself a turn a restart of the
+/// backend interrupted, interrupted when its last checkpoint was saved in a
+/// turn and no session is live, otherwise what its latest terminal block
+/// says, or idle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ConversationStatus {
     Running,
     Compacting,
+    /// From the start that took the turn's mark until the turn runs again or
+    /// its resume settles otherwise; a page shows it as running.
+    Resuming,
     Interrupted,
     Error,
     Stopped,

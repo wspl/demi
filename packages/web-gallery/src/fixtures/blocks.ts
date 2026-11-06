@@ -1325,6 +1325,21 @@ export function shortTranscriptBlocks(): Block[] {
   ])
 }
 
+/**
+ * The record of a turn a restart of the backend interrupted, which the agent
+ * session writes in its words, under `id`.
+ */
+export function interruptedErrorBlock(id: string): Block {
+  return {
+    type: 'error',
+    id,
+    createdAt: iso(30_000),
+    model: demoModel,
+    message: 'The agent session was shut down while this turn was running.',
+    code: 'interrupted',
+  }
+}
+
 /** The provider error that ends a turn, as the transcript records it. */
 export function generationErrorBlock(): Block {
   return {

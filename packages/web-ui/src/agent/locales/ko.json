@@ -89,7 +89,8 @@
       "nowFor": "{span} 동안 생각 중",
       "doneFor": "{span} 동안 생각함",
       "requesting": "요청 중",
-      "requestingFor": "{span} 동안 요청 중"
+      "requestingFor": "{span} 동안 요청 중",
+      "resuming": "재개 중"
     },
     "compaction": {
       "running": "컨텍스트 압축 중…",

@@ -1473,7 +1473,8 @@ function playStreamingThinking(): void {
   }, 120)
 }
 // Requesting covers a recovery in flight and the agent's own retries: one wait, one word.
-const activityKinds: ActivityKind[] = ['requesting']
+// Resuming is Demi's own wait to take up a turn a restart interrupted.
+const activityKinds: ActivityKind[] = ['requesting', 'resuming']
 // The wait the slot specimens show began when the page opened.
 const activitySince = Date.now()
 const compactionCases: { state: CompactionCase; variant: string }[] = [
@@ -2846,7 +2847,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="ActivitySlot"
-        note="Requesting while the provider is asked, from the send of a message, its delivery included, and a Resume or Continue alike, so a slow model reads as the provider’s wait. The word and its clock stay through the server’s confirmation of the message and the agent’s own retries after a failed attempt: they are the same wait, and a row that changed its word with each attempt would flicker. Elapsed time shows after one second. A step or a Stop that ends the wait takes the row’s place and rolls over it, as Continue rolls the Stopped row into it; the answer or a failure takes its place without a roll, as Requesting takes the error record’s on Resume: only rows of the same 28px face roll. The Turn specimens show each."
+        note="Requesting while the provider is asked, from the send of a message, its delivery included, and a Resume or Continue alike, so a slow model reads as the provider’s wait. The word and its clock stay through the server’s confirmation of the message and the agent’s own retries after a failed attempt: they are the same wait, and a row that changed its word with each attempt would flicker. Elapsed time shows after one second. A step or a Stop that ends the wait takes the row’s place and rolls over it, as Continue rolls the Stopped row into it; the answer or a failure takes its place without a roll, as Requesting takes the error record’s on Resume: only rows of the same 28px face roll. Resuming, with no time, is the wait for Demi to take up by itself a turn a restart of the server interrupted, before the turn asks the provider anything; it rolls into Requesting once the turn runs. The Turn specimens and Session Failures show each."
       >
         <div class="specimen-stack">
           <GallerySpecimen

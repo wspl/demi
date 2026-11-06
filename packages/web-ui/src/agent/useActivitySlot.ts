@@ -1,17 +1,17 @@
 import { computed, watch, type ComputedRef } from 'vue'
 import type { SessionPhase } from '@demicodes/protocol'
 import { pageLog } from '../infra/log'
-import { activitySlotKind, type ActivitySlotInput } from './activity-slot'
+import { activitySlotKind, type ActivityKind, type ActivitySlotInput } from './activity-slot'
 import { turnStartingMessage } from './send-way'
 import type { AgentActivity } from './agent-activity'
 import type { PendingSubmissionState } from './types'
 
 export interface ActivitySlotState {
-  kind: 'requesting'
+  kind: ActivityKind
   /**
-   * When the server began the wait, as `Date.now()`, which the row counts
-   * from; null while the page's own action has no answer yet, when the row
-   * shows no time.
+   * When the server began the wait for the provider, as `Date.now()`, which
+   * the row counts from; null while the page's own action has no answer yet,
+   * and while Demi resumes a turn, when the row shows no time.
    */
   since: number | null
 }
@@ -34,7 +34,8 @@ export interface ActivitySlotSources {
  * The transcript's tail row: why it waits, and since when.
  *
  * The row says Requesting while the server says the agent waits, or while an
- * action of this page's own is on its way (`activitySlotKind`). Only the
+ * action of this page's own is on its way, and Resuming while Demi takes up a
+ * turn a restart interrupted, with no time (`activitySlotKind`). Only the
  * server counts: while the page's action has no answer, the row shows no
  * time, and once the server tells the wait, the row counts from the wait's
  * start the server told, so a list drawn again, a reload or a reconnect
@@ -64,7 +65,9 @@ export function useActivitySlot(sources: ActivitySlotSources): {
   }))
 
   const slot = computed<ActivitySlotState | null>(() =>
-    kind.value === null ? null : { kind: 'requesting', since: activity().waitingSince })
+    kind.value === null
+      ? null
+      : { kind: kind.value, since: kind.value === 'requesting' ? activity().waitingSince : null })
 
   logTimer(slot, scope)
 
@@ -81,7 +84,7 @@ function logTimer(slot: ComputedRef<ActivitySlotState | null>, scope: ActivitySl
   let startedAt: number | null = null
   watch(slot, (now, before) => {
     const where = scope?.()
-    const fields = { timer: 'requesting', ...(where?.node ? { node: where.node } : {}) }
+    const fields = { timer: now?.kind ?? before?.kind ?? 'requesting', ...(where?.node ? { node: where.node } : {}) }
     const conversation = where?.conversation
     if (now !== null && !before) {
       startedAt = performance.now()

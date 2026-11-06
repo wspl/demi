@@ -9,7 +9,7 @@ import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import type { Block } from '@demicodes/protocol'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
-import { accountSwitchBlocks, deviceOfflineErrorBlock, deviceRemovedErrorBlock, generationErrorBlock, shortTranscriptBlocks, signedOutErrorBlock, usageLimitErrorBlock, WAITING_SHELL_SCRIPT, waitingShellCall } from '../fixtures/blocks'
+import { accountSwitchBlocks, deviceOfflineErrorBlock, deviceRemovedErrorBlock, generationErrorBlock, interruptedErrorBlock, shortTranscriptBlocks, signedOutErrorBlock, usageLimitErrorBlock, WAITING_SHELL_SCRIPT, waitingShellCall } from '../fixtures/blocks'
 import { ago } from '../fixtures/time'
 import { galleryMessages } from '../fixtures/send-while-running'
 import {
@@ -55,6 +55,11 @@ interface SessionCase {
    * disconnects; the offline card's move changes it.
    */
   primary?: HostMenuHost
+  /**
+   * Demi resumes the turn a restart interrupted: the specimen's button lets
+   * the resume give up, and starts it again.
+   */
+  resumes?: boolean
   composer: 'default' | 'none' | 'noModels' | 'archived'
 }
 
@@ -323,6 +328,24 @@ const cases: SessionCase[] = [
     composer: 'default',
   },
   {
+    variant: 'Interrupted by a restart · Demi resumes it',
+    note: 'Not a failure. The server restarted, such as for an update, while the turn ran, and Demi takes it up by itself once the backend is back, which may wait many seconds for the device’s runner. Meanwhile the record is hidden, the tail row says Resuming with no time, the dock offers no Resume, and the sidebar shows the conversation running. Once the turn runs, the row says Requesting. Give Up shows what a resume that fails leaves.',
+    session: state('restart-resuming', {
+      blocks: [...shortTranscriptBlocks(), interruptedErrorBlock('restart-resuming-error')],
+      resuming: true,
+    }),
+    resumes: true,
+    composer: 'default',
+  },
+  {
+    variant: 'Interrupted by a restart · waits for the user',
+    note: 'The turn waits for the user: the backend crashed, which marks nothing, the user turned off Resume after a restart, or Demi’s resume failed. The record at the tail says so, and Resume sits in the dock.',
+    session: state('restart-interrupted', {
+      blocks: [...shortTranscriptBlocks(), interruptedErrorBlock('restart-interrupted-error')],
+    }),
+    composer: 'default',
+  },
+  {
     variant: 'Compaction failed inside a turn · Resume',
     note: 'The turn compacted after its answer, and the summary request failed. The record ends the turn, so Resume sits in the dock.',
     session: state('compaction-turn', { blocks: failedCompactionTranscript(false) }),
@@ -430,6 +453,14 @@ const cases: SessionCase[] = [
               @click="toggleRunner(item)"
             >
               {{ item.primary.state === 'online' ? 'Disconnect Runner' : 'Connect Runner' }}
+            </Button>
+            <Button
+              v-if="item.resumes"
+              size="sm"
+              variant="ghost"
+              @click="item.session.resuming = !item.session.resuming"
+            >
+              {{ item.session.resuming ? 'Give Up' : 'Resume by Itself Again' }}
             </Button>
           </div>
         </GallerySpecimen>

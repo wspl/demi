@@ -36,6 +36,12 @@ export interface MessageRowsSource {
   phase: SessionPhase
   load?: SessionLoad
   pendingAction?: PendingAction
+  /**
+   * Demi resumes by itself the turn a restart of the backend interrupted:
+   * while the agent is idle, the list shows it as a recovery pressed, saying
+   * Resuming.
+   */
+  resuming?: boolean
   /** A session-level failure told at the tail of the transcript. */
   failure?: SessionFailureNotice | null
   /** The messages sent and not yet confirmed, in the order they were sent. */
@@ -134,18 +140,21 @@ export function useMessageRows(
 
   // A recovery this page asked for lasts from the press until the session
   // is idle again with nothing pending: the turn it ran ended, or the server
-  // refused it, and the record shows again. It is taken as the press is told
+  // refused it, and the record shows again. One Demi runs by itself after a
+  // restart lasts as long as the page is told it does, or until the session
+  // runs. It is taken as the press is told
   // (`flush: 'sync'`): a list that reads the rows before a later watcher took
   // it would key a list with both the record and the Requesting row, which no
   // frame draws, and Requesting would not succeed the record.
   const recovery = ref<Recovery | null>(null)
+  const resuming = computed(() => (source().resuming ?? false) && source().phase === 'idle')
   watch(
-    [() => source().pendingAction, () => source().phase, () => source().conversationId],
-    ([action, phase, scope], previous) => {
+    [() => source().pendingAction, () => source().phase, () => source().conversationId, resuming],
+    ([action, phase, scope, byItself], previous) => {
       if (previous && scope !== previous[2]) {
         recovery.value = null
       }
-      if (action === 'resume') {
+      if (action === 'resume' || byItself) {
         recovery.value ??= recoveryFrom(visibleBlocks.value)
       } else if (phase === 'idle') {
         recovery.value = null
@@ -153,6 +162,13 @@ export function useMessageRows(
     },
     { immediate: true, flush: 'sync' },
   )
+  // A conversation opened while Demi resumes it may hold its transcript only
+  // later: the record is found once it arrives.
+  watch(visibleBlocks, (shown) => {
+    if (resuming.value && recovery.value === null) {
+      recovery.value = recoveryFrom(shown)
+    }
+  }, { flush: 'sync' })
   // Where each message not delivered stands: before the first message sent
   // after it that shows, by the messages each row shows.
   const undelivered = computed(() => {
@@ -192,7 +208,7 @@ export function useMessageRows(
     })
   })
   const { slot, startingTurn } = useActivitySlot({
-    input: () => ({ load: source().load ?? 'ready' }),
+    input: () => ({ load: source().load ?? 'ready', resuming: resuming.value }),
     phase: () => source().phase,
     pendingSubmissions: () => source().pendingSubmissions ?? [],
     activity: () => source().activity ?? AT_REST,

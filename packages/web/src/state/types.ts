@@ -203,6 +203,11 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   terminals: TerminalRecord[]
   load: SessionLoad
   pendingAction: PendingAction
+  /**
+   * Demi resumes by itself the root's turn a restart of the backend
+   * interrupted, as the summary says (`takeResuming`).
+   */
+  resuming: boolean
   /** The failure facts of the error blocks, by block id, as the backend sends them. */
   failures: Record<string, ProviderFailureFacts>
   contextUsage: ConversationState['contextUsage']

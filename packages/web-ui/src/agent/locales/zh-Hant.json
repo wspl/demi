@@ -89,7 +89,8 @@
       "nowFor": "思考中 {span}",
       "doneFor": "已思考 {span}",
       "requesting": "請求中",
-      "requestingFor": "請求中 {span}"
+      "requestingFor": "請求中 {span}",
+      "resuming": "恢復中"
     },
     "compaction": {
       "running": "正在壓縮上下文…",

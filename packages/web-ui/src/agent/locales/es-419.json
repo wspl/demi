@@ -89,7 +89,8 @@
       "nowFor": "Pensando durante {span}",
       "doneFor": "Pensó durante {span}",
       "requesting": "Solicitando",
-      "requestingFor": "Solicitando durante {span}"
+      "requestingFor": "Solicitando durante {span}",
+      "resuming": "Reanudando"
     },
     "compaction": {
       "running": "Compactando el contexto…",

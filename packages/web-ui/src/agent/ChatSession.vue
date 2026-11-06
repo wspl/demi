@@ -631,9 +631,9 @@ const failureNotice = computed(() => {
   )
 })
 // One control in the dock: Resume after an error, Continue after the user's
-// Stop.
+// Stop. None while Demi resumes the turn by itself.
 const recovery = computed(() =>
-  canRecover.value
+  canRecover.value && !props.conversation.resuming
     ? turnRecovery(props.conversation.phase, latestVisible.value)
     : null,
 )
@@ -1058,6 +1058,7 @@ watch(
             :phase="conversation.phase"
             :load="conversation.load"
             :pending-action="conversation.pendingAction"
+            :resuming="conversation.resuming"
             :failures="conversation.failures"
             :load-error="conversation.lastError"
             :failure="failureNotice"

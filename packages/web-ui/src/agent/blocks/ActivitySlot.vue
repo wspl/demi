@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import ActivityMark from '@demicodes/web-ui/ui/ActivityMark.vue'
 import type { ActivityKind } from '../activity-slot'
 import { useElapsedTime } from '../../composables/useElapsedTime'
-import { providerWaitLabel } from '../thinking-label'
+import { activityLabel } from '../thinking-label'
 import FunctionalBlock from './FunctionalBlock.vue'
 
 /**
@@ -26,7 +26,7 @@ const requestingElapsed = useElapsedTime(
   () => props.kind === 'requesting' && props.since != null,
 )
 
-const label = computed(() => providerWaitLabel(requestingElapsed.value ?? 0))
+const label = computed(() => activityLabel(props.kind, requestingElapsed.value ?? 0))
 </script>
 
 <template>

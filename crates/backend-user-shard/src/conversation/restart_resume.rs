@@ -26,13 +26,25 @@
 //! - The start takes each mark before it acts on it, so a turn is resumed once
 //!   for each shutdown that interrupted it.
 //! - Its children come back with the tree, as a restored tree brings them.
+//!
+//! # The `resuming` status
+//!
+//! The restore may wait many seconds, such as for the runner of the
+//! conversation's device to come back and its running commands to be taken
+//! up. Meanwhile the conversation's status is `resuming`, from the moment its
+//! mark is taken with the preference on until its resume settles, so no page
+//! shows as failed a turn Demi is about to run. The shard holds the set in
+//! memory alone, since it lasts no longer than the process.
 
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use demi_agent_transcript::INTERRUPTED_CODE;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_host_access::conversation_of;
+use demi_backend_page_sync::Part;
 use demi_shared_types::{ErrorBlock, SessionPhase};
 use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::join_all;
@@ -41,6 +53,39 @@ use crate::shard::{Shard, Shards};
 
 /// What the resume tells the model.
 pub const RESTART_REASON: &str = "Demi resumed this turn after the backend restarted.";
+
+/// The conversations whose interrupted turn the shard is resuming.
+#[derive(Default)]
+pub(crate) struct RestartResumes(RefCell<HashSet<ConversationId>>);
+
+impl RestartResumes {
+    /// Whether the shard is resuming `conversation`'s turn.
+    pub(crate) fn contains(&self, conversation: &ConversationId) -> bool {
+        self.0.borrow().contains(conversation)
+    }
+}
+
+/// A conversation in the shard's `RestartResumes` while it lives; each entry
+/// and exit changes the conversation's summary.
+struct Resuming<'a> {
+    shard: &'a Shard,
+    conversation: ConversationId,
+}
+
+impl<'a> Resuming<'a> {
+    fn begin(shard: &'a Shard, conversation: &ConversationId) -> Self {
+        shard.restart_resumes().0.borrow_mut().insert(conversation.clone());
+        shard.mark(Part::Conversation(conversation.clone()));
+        Self { shard, conversation: conversation.clone() }
+    }
+}
+
+impl Drop for Resuming<'_> {
+    fn drop(&mut self) {
+        self.shard.restart_resumes().0.borrow_mut().remove(&self.conversation);
+        self.shard.mark(Part::Conversation(self.conversation.clone()));
+    }
+}
 
 impl Shard {
     /// Marks each live root whose turn runs, before the shutdown aborts it.
@@ -143,6 +188,7 @@ impl Shard {
             tracing::info!(event = "interrupted_turn.settled", %conversation, outcome = "held", reason = "user_preference", "a turn the shutdown interrupted waits for the user");
             return "held";
         }
+        let _resuming = Resuming::begin(self, &conversation);
         let interrupted = |record: &ErrorBlock| record.code.as_deref() == Some(INTERRUPTED_CODE);
         match self
             .resume_unfinished_turn(&conversation, interrupted, Some(RESTART_REASON))
