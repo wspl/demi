@@ -23,7 +23,7 @@ pub use moves::{Carried, PairPlace, PipeChannel, PipePairs};
 pub use uploads::{UPLOADS_AT_ONCE, UploadBody, causes};
 
 use bytes::Bytes;
-use crate::backend::Backend;
+use crate::backend::{Backend, BackendHttp, RequestError};
 use demi_runner_protocol::{values::DeviceToken, wire::{self, PipePath}};
 use futures_util::{Stream, StreamExt, stream::BoxStream};
 use std::{io, sync::Arc, time::Duration};
@@ -60,10 +60,10 @@ const ANSWER_BYTES: usize = 16 * 1024;
 #[derive(Clone)]
 pub struct PipeClient {
     backend: Backend,
-    http: reqwest::Client,
+    http: BackendHttp,
     /// The client of the files the backend offers for download, which
     /// keeps their bytes as served (`crates/shared-artifacts/src/download.rs`).
-    downloads: reqwest::Client,
+    downloads: BackendHttp,
     origin: reqwest::Url,
     /// How long a connection may take to open, the pipe connection's
     /// WebSocket handshake included.
@@ -119,8 +119,8 @@ impl PipeClient {
         let lanes = Arc::new(lanes::Lanes::new(backend, &origin, token.clone(), connect_timeout)?);
         Ok(Self {
             backend: backend.clone(),
-            http,
-            downloads,
+            http: backend.client(http),
+            downloads: backend.client(downloads),
             origin,
             connect_timeout,
             token,
@@ -164,7 +164,7 @@ impl PipeClient {
             _ = cancel.cancelled() => return Err(cancelled()),
             response = reconnecting(|| demi_command_sdk::descriptors::retry(&cancel, || async {
                 let request = self.request(reqwest::Method::GET, path).map_err(Attempt::Refused)?;
-                request.send().await.map_err(Attempt::of)
+                self.http.send(request).await.map_err(Attempt::of)
             })) => expect_ok(response?).await?,
         };
         let reading = Reading {
@@ -196,7 +196,7 @@ impl PipeClient {
                 let mut lost_since = None;
                 let response = loop {
                     let request = self.request(reqwest::Method::PUT, path)?;
-                    match request.body(reqwest::Body::wrap_stream(body.attempt())).send().await {
+                    match self.http.send(request.body(reqwest::Body::wrap_stream(body.attempt()))).await {
                         Ok(response) => break response,
                         // Out of open files, the connection waits for one
                         // (`crates/command-sdk/src/descriptors.rs`). Only an attempt that read none
@@ -206,7 +206,7 @@ impl PipeClient {
                         }
                         // A connection that failed before the body went is
                         // tried again on a new one.
-                        Err(error) if body.unread() && lost_connection(&error) => {
+                        Err(error) if body.unread() && error.lost_connection() => {
                             let since = *lost_since.get_or_insert_with(tokio::time::Instant::now);
                             if since.elapsed() >= RECONNECT_FOR {
                                 return Err(io::Error::other(error));
@@ -324,14 +324,14 @@ impl PipeClient {
         mut progress: impl FnMut(u64),
     ) -> io::Result<()> {
         let url = self.url(&offer.url)?;
-        let token = self.token()?;
-        let authorization = HeaderValue::from_str(&format!("Bearer {}", token.expose()))
-            .map_err(io::Error::other)?;
+        let authorization = self.authorization()?;
         let origin = self.origin.origin();
         // The device token goes only to the backend's origin.
         let headers = move |url: &reqwest::Url| {
             let mut headers = reqwest::header::HeaderMap::new();
-            if url.origin() == origin {
+            if let Some(authorization) = &authorization
+                && url.origin() == origin
+            {
                 headers.insert(AUTHORIZATION, authorization.clone());
             }
             headers
@@ -359,8 +359,11 @@ impl PipeClient {
 
     fn request(&self, method: reqwest::Method, path: &str) -> io::Result<reqwest::RequestBuilder> {
         let url = self.url(path)?;
-        let token = self.token()?;
-        Ok(self.http.request(method, url).bearer_auth(token.expose()))
+        let request = self.http.request(method, url);
+        Ok(match self.authorization()? {
+            Some(authorization) => request.header(AUTHORIZATION, authorization),
+            None => request,
+        })
     }
 
     /// The backend's URL of the pipe at `path`, which must stay on its origin.
@@ -381,15 +384,22 @@ impl PipeClient {
         Ok(url)
     }
 
-    /// The registration's device token, which every pipe bears.
-    fn token(&self) -> io::Result<DeviceToken> {
-        self.token.borrow().clone().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "runner has no device token",
-            )
-        })
+    fn authorization(&self) -> io::Result<Option<HeaderValue>> {
+        authorization(&self.token)
     }
+}
+
+/// The registration's device token as every pipe request bears it, when
+/// the runner has one: a runner on a channel has none, since its channel
+/// names its device.
+fn authorization(token: &watch::Receiver<Option<DeviceToken>>) -> io::Result<Option<HeaderValue>> {
+    let Some(token) = token.borrow().clone() else {
+        return Ok(None);
+    };
+    let mut authorization =
+        HeaderValue::from_str(&format!("Bearer {}", token.expose())).map_err(io::Error::other)?;
+    authorization.set_sensitive(true);
+    Ok(Some(authorization))
 }
 
 /// A stream pipe's source as it sends: on its lane, or on the direct channel
@@ -652,8 +662,8 @@ enum Attempt {
 }
 
 impl Attempt {
-    fn of(error: reqwest::Error) -> Self {
-        if lost_connection(&error) {
+    fn of(error: RequestError) -> Self {
+        if error.lost_connection() {
             Self::Lost(io::Error::other(error))
         } else {
             Self::Refused(io::Error::other(error))
@@ -682,12 +692,6 @@ impl std::error::Error for Attempt {
             Self::Lost(error) | Self::Refused(error) => Some(error),
         }
     }
-}
-
-/// Whether a request failed on its connection without an answer, as through
-/// a proxy that drops a request now and then: a new connection may succeed.
-fn lost_connection(error: &reqwest::Error) -> bool {
-    !error.is_builder() && !error.is_redirect() && !error.is_status() && !error.is_decode()
 }
 
 /// Runs `attempt`, a pipe request that sends nothing the backend could have

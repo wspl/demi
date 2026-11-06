@@ -43,11 +43,10 @@ use object_store::signer::Signer;
 use object_store::{GetOptions, GetRange, GetResult, ObjectStore, ObjectStoreExt as _};
 use tokio_util::sync::CancellationToken;
 
-use demi_core_hosts::packages::Packages;
+use demi_core_hosts::packages::{ARTIFACT_ROUTE, Packages, ReleasePackages};
 
 use crate::install::read_runner_release;
 use crate::prefetch::NextRelease;
-use demi_core_hosts::public_url::PublicUrl;
 use crate::publication::blob;
 use crate::sourcing::{ReleaseArtifact, Sourcing};
 
@@ -77,10 +76,6 @@ async fn stored_from(
     };
     store.get_opts(key, options).await.map(StoredBytes::Stored)
 }
-
-/// Where a local store's artifacts download from, at the root of the
-/// backend's public URL.
-pub const ROUTE: &str = "/native-artifacts";
 
 /// How long a runner's signed download URL stays valid.
 const SIGNED_FOR: Duration = Duration::from_secs(300);
@@ -116,11 +111,10 @@ impl Artifacts {
     }
 
     /// Where a runner downloads `artifact`, a package's executable, once the
-    /// store holds it: a signed S3 URL, or this backend at `backend`.
+    /// store holds it: a signed S3 URL, or this backend's path of it.
     async fn location(
         &self,
         artifact: &PackageArtifact,
-        backend: &PublicUrl,
         cancel: &CancellationToken,
     ) -> Result<ArtifactLocation, String> {
         let wanted = self
@@ -131,10 +125,8 @@ impl Artifacts {
         self.sourcing.ensure(wanted, cancel).await?;
         let key = blob(&artifact.sha256).map_err(|error| error.to_string())?;
         let Some(signer) = &self.signer else {
-            let backend = backend.get().ok_or("the backend does not listen yet")?;
-            let origin = backend.url().origin().ascii_serialization();
             return Ok(ArtifactLocation::Url(ArtifactUrl {
-                url: format!("{origin}{ROUTE}/{}", artifact.sha256),
+                url: format!("{ARTIFACT_ROUTE}/{}", artifact.sha256),
                 expires_at: None,
             }));
         };
@@ -173,26 +165,6 @@ impl NativeCatalog {
         Self {
             packages: Vec::new(),
             artifacts: None,
-        }
-    }
-
-    /// The calling thread's catalog; a local store's downloads are on
-    /// `backend`.
-    pub fn catalog(&self, backend: &PublicUrl) -> CommandCatalog {
-        CommandCatalog::new(self.packages.clone(), self.resolver(backend))
-            .expect("the packages were checked when the catalog was made")
-    }
-
-    /// The calling thread's resolver of the packages' executables, for the
-    /// work that binds a package without a manifest: a user stream or a
-    /// one-shot user call. A local store's downloads are on `backend`.
-    pub fn resolver(&self, backend: &PublicUrl) -> Rc<dyn ArtifactResolver> {
-        match &self.artifacts {
-            None => Rc::new(Unpublished),
-            Some(artifacts) => Rc::new(Resolver {
-                artifacts: artifacts.clone(),
-                backend: backend.clone(),
-            }),
         }
     }
 
@@ -268,12 +240,11 @@ impl NativeCatalog {
             .filter(|record| record.release == release)
             .ok_or_else(|| format!("{} holds no runner release {release}", root.display()))?;
         let sourcing = Sourcing::new(artifacts.sourcing.store().clone(), root.join(FILES));
-        let programs = match crate::publication::read_releases(&root.join(COMMANDS)).await {
-            Ok((releases, verified)) => {
-                let executables = crate::publication::executables(&releases, &verified);
+        let programs = match ReleasePackages::read(&root.join(COMMANDS)).await {
+            Ok(ReleasePackages { descriptors, executables }) => {
                 let files = Sourcing::new(artifacts.sourcing.store().clone(), root.join(FILES));
                 let next = Artifacts::new(files, artifacts.signer.clone(), executables);
-                NativeCatalog::new(verified, next).map_err(|error| error.to_string())
+                NativeCatalog::new(descriptors, next).map_err(|error| error.to_string())
             }
             Err(error) => Err(error.to_string()),
         };
@@ -285,32 +256,30 @@ impl NativeCatalog {
 
 }
 
-/// The packages a server's cores run: the published catalog, whose
-/// executables a local store serves at the server's address.
-pub struct ServedPackages {
-    pub native: NativeCatalog,
-    pub backend: PublicUrl,
-}
-
-impl Packages for ServedPackages {
+/// The packages a server's cores run: the published catalog.
+impl Packages for NativeCatalog {
     fn package(&self, id: &str) -> Option<&PackageDescriptor> {
-        self.native.packages.iter().find(|descriptor| descriptor.id == id)
+        self.packages.iter().find(|descriptor| descriptor.id == id)
     }
 
     fn resolver(&self) -> Rc<dyn ArtifactResolver> {
-        self.native.resolver(&self.backend)
+        match &self.artifacts {
+            None => Rc::new(Unpublished),
+            Some(artifacts) => Rc::new(Resolver {
+                artifacts: artifacts.clone(),
+            }),
+        }
     }
 
     fn catalog(&self) -> CommandCatalog {
-        self.native.catalog(&self.backend)
+        CommandCatalog::new(self.packages.clone(), self.resolver())
+            .expect("the packages were checked when the catalog was made")
     }
 }
 
-/// One thread's resolver: the release's artifacts, sourced on demand, at
-/// the URL of the backend that serves a local store's.
+/// One thread's resolver: the release's artifacts, sourced on demand.
 struct Resolver {
     artifacts: Arc<Artifacts>,
-    backend: PublicUrl,
 }
 
 impl ArtifactResolver for Resolver {
@@ -321,12 +290,11 @@ impl ArtifactResolver for Resolver {
         cancel: CancellationToken,
     ) -> LocalBoxFuture<'static, Result<ArtifactLocation, String>> {
         let artifacts = self.artifacts.clone();
-        let backend = self.backend.clone();
         let artifact = artifact.clone();
         Box::pin(async move {
             tokio::select! {
                 () = cancel.cancelled() => Err("the work that asked no longer runs".into()),
-                location = artifacts.location(&artifact, &backend, &cancel) => location,
+                location = artifacts.location(&artifact, &cancel) => location,
             }
         })
     }

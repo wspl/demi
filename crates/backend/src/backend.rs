@@ -72,7 +72,6 @@ use demi_backend_user_shard::services::{
 };
 use demi_core::pool::ShardPool;
 use demi_core::services::CoreSettings;
-use demi_backend_runners::native::ServedPackages;
 use demi_core_api::api::Api;
 use demi_backend_user_shard::cloud::{route_deaths, route_statuses};
 use tokio_util::task::AbortOnDropHandle;
@@ -480,10 +479,7 @@ impl Backend {
             families: config
                 .families
                 .with(demi_provider_relay::borrow::FAMILY, RelayFamily(public_url.clone())),
-            packages: Arc::new(ServedPackages {
-                native: config.native.clone(),
-                backend: public_url.clone(),
-            }),
+            packages: Arc::new(config.native.clone()),
             public_url,
             clock: config.clock,
             plugins: config.plugins,

@@ -28,7 +28,7 @@ use futures_util::{Stream, StreamExt};
 use tokio::{sync::oneshot, time::Instant};
 use tokio_util::sync::CancellationToken;
 
-use super::{Attempt, PipeClient, RECONNECT_FOR, RECONNECT_PAUSE, cancelled, expect_ok, lost_connection};
+use super::{Attempt, PipeClient, RECONNECT_FOR, RECONNECT_PAUSE, cancelled, expect_ok};
 
 /// The most uploads a runner sends at once, Docker's default for all of a
 /// daemon's pushes: more at once on a slow link through a proxy stalled
@@ -348,7 +348,7 @@ impl PipeClient {
                 .header(reqwest::header::CONTENT_LENGTH, end - offset)
                 .body(reqwest::Body::wrap_stream(body.range(offset, end)));
             // Why the chunk goes again, when it does.
-            let again = match request.send().await {
+            let again = match self.http.send(request).await {
                 Ok(response) => {
                     let status = response.status();
                     let taken = taken_offset(&response);
@@ -391,7 +391,7 @@ impl PipeClient {
                         backoff.wait().await;
                         continue;
                     }
-                    if !lost_connection(&error) {
+                    if !error.lost_connection() {
                         return Err(io::Error::other(causes(&error)));
                     }
                     causes(&error)
@@ -427,7 +427,7 @@ impl PipeClient {
     /// The offset of `path`'s upload the backend took.
     async fn taken(&self, path: &str) -> Result<u64, Attempt> {
         let request = self.request(reqwest::Method::HEAD, path).map_err(Attempt::Refused)?;
-        let response = request.send().await.map_err(Attempt::of)?;
+        let response = self.http.send(request).await.map_err(Attempt::of)?;
         match taken_offset(&response) {
             Some(taken) if response.status().is_success() => Ok(taken),
             _ => Err(Attempt::Refused(io::Error::other(format!(

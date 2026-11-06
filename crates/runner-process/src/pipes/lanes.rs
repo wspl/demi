@@ -33,7 +33,7 @@ use tokio::sync::{Semaphore, mpsc, watch};
 use tokio_tungstenite::tungstenite::{
     self, Message,
     client::IntoClientRequest,
-    http::{HeaderValue, header::AUTHORIZATION},
+    http::header::AUTHORIZATION,
     protocol::WebSocketConfig,
 };
 use tokio_util::sync::CancellationToken;
@@ -148,13 +148,10 @@ impl Lanes {
         {
             return Ok(connection.clone());
         }
-        let token = self.token.borrow().clone().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::PermissionDenied, "runner has no device token")
-        })?;
         let mut request = self.url.as_str().into_client_request().map_err(io::Error::other)?;
-        let authorization =
-            HeaderValue::from_str(&format!("Bearer {}", token.expose())).map_err(io::Error::other)?;
-        request.headers_mut().insert(AUTHORIZATION, authorization);
+        if let Some(authorization) = super::authorization(&self.token)? {
+            request.headers_mut().insert(AUTHORIZATION, authorization);
+        }
         let config = WebSocketConfig::default()
             .max_message_size(Some(MAX_FRAME_BYTES))
             .max_frame_size(Some(MAX_FRAME_BYTES));

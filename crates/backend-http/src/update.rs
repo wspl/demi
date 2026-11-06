@@ -22,7 +22,7 @@ use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get};
 use demi_backend_database::update::Update;
-use demi_backend_runners::native;
+use demi_core_hosts::packages::ARTIFACT_ROUTE;
 use demi_core_hosts::public_url::PublicUrl;
 use demi_web_api_protocol::state::UpdateState;
 
@@ -44,7 +44,7 @@ pub(crate) fn routes(update: Arc<Update>, web_directory: Option<PathBuf>, public
         "/install.sh",
         "/install.ps1",
         "/runner-artifacts/{*rest}",
-        &format!("{}/{{*rest}}", native::ROUTE),
+        &format!("{ARTIFACT_ROUTE}/{{*rest}}"),
     ] {
         app = app.route(path, any(not_yet));
     }

@@ -40,7 +40,7 @@ impl RunnerPrefetch for Core {
                 .as_deref()
                 .and_then(|target| next.release.targets.get(target))
                 .cloned();
-            let programs = next.programs(&self.services().public_url);
+            let programs = next.programs();
             let next = next.clone();
             self.tasks().spawn_local(async move {
                 let state = match artifact {

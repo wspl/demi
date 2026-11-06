@@ -16,7 +16,7 @@ use tokio::sync::watch;
 use demi_runner_client::CommandCatalog;
 
 use crate::native::{NativeCatalog, StoredBytes};
-use demi_core_hosts::public_url::PublicUrl;
+use demi_core_hosts::packages::Packages;
 use crate::sourcing::Sourcing;
 
 /// The runner release announced as next: its record, where its executables
@@ -40,10 +40,9 @@ impl NextRelease {
         }
     }
 
-    /// The calling thread's catalog of the release's command packages, whose
-    /// downloads from a local store are on `backend`.
-    pub fn programs(&self, backend: &PublicUrl) -> Option<CommandCatalog> {
-        self.programs.as_ref().map(|programs| programs.catalog(backend))
+    /// The calling thread's catalog of the release's command packages.
+    pub fn programs(&self) -> Option<CommandCatalog> {
+        self.programs.as_ref().map(Packages::catalog)
     }
 
     /// The stored object of the release's package executable whose SHA-256

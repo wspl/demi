@@ -26,6 +26,12 @@
 //! control (`set -m`). With `curl … | sh`, a shell turning it off again hands
 //! the terminal back to curl's already ended process group, and dash fails with
 //! exit code 2 after the runner has started.
+//!
+//! # A channel on the standard input and output
+//!
+//! A runner started with `run --stdio` takes its standard input and output
+//! for its channel to its backend first of all ([`take_channel`]); its
+//! console is its standard error alone.
 
 use std::{
     fmt::Display,
@@ -223,6 +229,48 @@ impl Log {
         }
         Ok(())
     }
+}
+
+/// The process's standard input and output, which carry the runner's
+/// channel from here on. The process's own become the null device and its
+/// standard error, so that nothing else, a line printed or a program the
+/// runner starts, reads from the channel or writes into it.
+#[cfg(unix)]
+pub fn take_channel() -> io::Result<(tokio::fs::File, tokio::fs::File)> {
+    use std::os::fd::AsFd as _;
+    let input = io::stdin().as_fd().try_clone_to_owned()?;
+    let output = io::stdout().as_fd().try_clone_to_owned()?;
+    rustix::stdio::dup2_stdin(File::open("/dev/null")?)?;
+    rustix::stdio::dup2_stdout(io::stderr().as_fd())?;
+    Ok((
+        tokio::fs::File::from_std(File::from(input)),
+        tokio::fs::File::from_std(File::from(output)),
+    ))
+}
+
+/// The process's standard input and output, which carry the runner's
+/// channel from here on. The process's own become the null device and its
+/// standard error, so that nothing else, a line printed or a program the
+/// runner starts, reads from the channel or writes into it.
+#[cfg(windows)]
+pub fn take_channel() -> io::Result<(tokio::fs::File, tokio::fs::File)> {
+    use std::os::windows::io::{AsHandle as _, IntoRawHandle as _};
+    use windows_sys::Win32::System::Console::{STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, SetStdHandle};
+    let input = io::stdin().as_handle().try_clone_to_owned()?;
+    let output = io::stdout().as_handle().try_clone_to_owned()?;
+    // The null device stays open as the standard input for good.
+    let null = File::open("NUL")?.into_raw_handle();
+    let error = io::stderr().as_handle().try_clone_to_owned()?.into_raw_handle();
+    for (standard, handle) in [(STD_INPUT_HANDLE, null), (STD_OUTPUT_HANDLE, error)] {
+        // SAFETY: each handle is open and never closed, as a standard one is.
+        if unsafe { SetStdHandle(standard, handle) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok((
+        tokio::fs::File::from_std(File::from(input)),
+        tokio::fs::File::from_std(File::from(output)),
+    ))
 }
 
 /// Makes `file` this process's standard output and standard error.

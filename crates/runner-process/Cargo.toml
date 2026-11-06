@@ -19,6 +19,12 @@ demi-runner-protocol = { path = "../runner-protocol" }
 demi-shared-lanes = { path = "../shared-lanes" }
 bytes.workspace = true
 futures-util.workspace = true
+# A runner on a channel: HTTP/2 on the channel's bytes, WebSockets by
+# extended CONNECT (`src/backend.rs`).
+http = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 # The line counts of a change, the diff gix's blob diff is.
 process-wrap.workspace = true
 # HTTP/2 where the backend's edge offers it over TLS, so concurrent pipes
@@ -27,6 +33,7 @@ process-wrap.workspace = true
 reqwest = { workspace = true, features = ["http2", "rustls", "stream"] }
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 # A private local socket's directory (`src/local_socket.rs`).
 tempfile = "3"
 tokio.workspace = true

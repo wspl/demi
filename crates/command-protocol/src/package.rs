@@ -124,8 +124,10 @@ impl PackageDescriptor {
 /// A URL the runner downloads an artifact from, valid until `expires_at`
 /// (milliseconds since the Unix epoch) when set.
 ///
-/// It is an HTTP or HTTPS URL without credentials: object storage answers with
-/// a signed HTTPS URL, and a local store with a URL on the backend itself.
+/// It is an HTTP or HTTPS URL without credentials, or a path from the
+/// backend's root, which the runner requests the way it reaches the backend:
+/// object storage answers with a signed HTTPS URL, and a local store with a
+/// path on the backend itself.
 ///
 /// The scheme cannot change what runs, because the runner checks the download
 /// against the size and SHA-256 its pinned descriptor declares
@@ -133,7 +135,7 @@ impl PackageDescriptor {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArtifactUrl {
-    #[garde(custom(download_url))]
+    #[garde(custom(artifact_url))]
     pub url: String,
     #[serde(
         default,
@@ -177,6 +179,18 @@ impl ResidentInfo {
         garde::Validate::validate(self)?;
         Ok(())
     }
+}
+
+/// A garde rule: an [`ArtifactUrl`]'s URL, a path from the backend's root
+/// or a [`download_url`].
+fn artifact_url(value: &str, context: &()) -> garde::Result {
+    if !value.starts_with('/') {
+        return download_url(value, context);
+    }
+    if value.starts_with("//") || value.contains('\\') {
+        return Err(garde::Error::new("a path on the backend starts at its root"));
+    }
+    Ok(())
 }
 
 pub(crate) fn download_url(value: &str, _: &()) -> garde::Result {

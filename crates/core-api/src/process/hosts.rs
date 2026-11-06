@@ -19,9 +19,10 @@ use axum::extract::{Path, Request, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::routing::any;
+use axum::routing::{any, get};
 use axum::{Extension, Json, Router};
 use demi_core_hosts::devices::RunnerSocket;
+use demi_core_hosts::packages::ARTIFACT_ROUTE;
 use demi_runner_protocol::wire::{LINK_FRAME_BYTES, Watched, WriteProgress};
 use demi_web_api_protocol::devices::{DeviceAnswer, DeviceKind};
 use hyper::ext::Protocol;
@@ -29,6 +30,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::service::TowerToHyperService;
 use tracing::Instrument as _;
 
+use super::packages::ReleaseFiles;
 use super::stream::stream_peer;
 use crate::api::Api;
 use crate::caller::Principal;
@@ -55,6 +57,7 @@ pub(crate) async fn channel(
     State(state): State<Api>,
     Principal(owner): Principal,
     Path(device): Path<String>,
+    Extension(release): Extension<Arc<ReleaseFiles>>,
     mut request: Request,
 ) -> Result<Response, ApiError> {
     let protocol = request.extensions().get::<Protocol>().map(Protocol::as_str);
@@ -78,7 +81,7 @@ pub(crate) async fn channel(
             // The channel is the runner's connection, as its TCP connection
             // is the server's: its link counts it lost once its writes stall.
             let (io, writes) = Watched::new(TokioIo::new(io));
-            let routes = runner_routes(state, device, ChannelWrites(writes));
+            let routes = runner_routes(state, device, release, ChannelWrites(writes));
             let served = hyper::server::conn::http2::Builder::new(TokioExecutor::new())
                 .enable_connect_protocol()
                 .serve_connection(TokioIo::new(io), TowerToHyperService::new(routes))
@@ -102,12 +105,14 @@ const CHANNEL_PROTOCOL: &str = "h2c";
 struct ChannelWrites(Arc<WriteProgress>);
 
 /// The routes a Host's channel serves its runner, as the device `device`.
-fn runner_routes(api: Api, device: RunnerDevice, writes: ChannelWrites) -> Router {
+fn runner_routes(api: Api, device: RunnerDevice, release: Arc<ReleaseFiles>, writes: ChannelWrites) -> Router {
     crate::runners::routes()
         .route("/api/runner", any(socket))
+        .route(&format!("{ARTIFACT_ROUTE}/{{sha256}}"), get(super::packages::artifact))
         .fallback(super::no_route)
         .with_state(api)
         .layer(Extension(RunnerOf(device)))
+        .layer(Extension(release))
         .layer(Extension(writes))
         .layer(middleware::from_fn(stream_peer))
         .layer(middleware::from_fn(crate::request_id::assign))

@@ -65,7 +65,7 @@ use demi_web_api_protocol::connection::CONNECT_ROUTE;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
-use demi_backend_runners::native;
+use demi_core_hosts::packages::ARTIFACT_ROUTE;
 use hyper::body::Incoming;
 use axum::serve::{Listener as _, ListenerExt as _};
 use std::os::unix::fs::PermissionsExt as _;
@@ -558,7 +558,7 @@ fn runners_and_downloads() -> Router<AppState> {
             get(install::artifact),
         )
         .route(
-            &format!("{}/{{sha256}}", native::ROUTE),
+            &format!("{ARTIFACT_ROUTE}/{{sha256}}"),
             get(install::native_artifact),
         )
         .route("/api/runner", get(runners::socket))

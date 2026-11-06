@@ -27,7 +27,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::{
     Message,
     client::IntoClientRequest,
-    http::{HeaderValue, header::AUTHORIZATION},
+    http::header::AUTHORIZATION,
     protocol::{CloseFrame, WebSocketConfig, frame::coding::CloseCode},
 };
 use tokio_util::sync::CancellationToken;
@@ -131,12 +131,9 @@ impl PipeClient {
             .as_str()
             .into_client_request()
             .map_err(|error| Attempt::Refused(io::Error::other(error)))?;
-        let authorization = HeaderValue::from_str(&format!(
-            "Bearer {}",
-            self.token().map_err(Attempt::Refused)?.expose()
-        ))
-        .map_err(|error| Attempt::Refused(io::Error::other(error)))?;
-        request.headers_mut().insert(AUTHORIZATION, authorization);
+        if let Some(authorization) = self.authorization().map_err(Attempt::Refused)? {
+            request.headers_mut().insert(AUTHORIZATION, authorization);
+        }
         let config = WebSocketConfig::default()
             .max_message_size(Some(wire::PIPE_SESSION_MESSAGE_BYTES))
             .max_frame_size(Some(wire::PIPE_SESSION_MESSAGE_BYTES));

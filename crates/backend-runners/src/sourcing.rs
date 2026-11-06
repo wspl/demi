@@ -19,22 +19,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
-use demi_command_protocol::PackageArtifact;
 use demi_shared_artifacts::Digest;
 use object_store::ObjectStore;
 use tokio_util::sync::CancellationToken;
 
 use crate::publication::{blob, in_place, put_immutable};
-
-/// An artifact of the release: the file of the release's files that holds
-/// it, what it stands for, and whether the file is its compressed copy,
-/// which is stored as it is, in the content coding.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReleaseArtifact {
-    pub file: String,
-    pub artifact: PackageArtifact,
-    pub encoded: bool,
-}
+pub use demi_core_hosts::packages::ReleaseArtifact;
 
 /// The store and the release's files it takes artifacts from.
 pub struct Sourcing {

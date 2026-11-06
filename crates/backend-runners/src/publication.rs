@@ -14,13 +14,12 @@
 //! one in place is success when those are the ones published, and a refusal
 //! otherwise.
 
-use std::collections::{HashMap, HashSet};
 use std::path::{Path as FilePath, PathBuf};
 
 use bytes::Bytes;
 use demi_core_blobs::store::Objects;
 use demi_command_protocol::{PackageArtifact, PackageDescriptor};
-use demi_runner_protocol::release::{RunnerRelease, compressed_file};
+use demi_runner_protocol::release::RunnerRelease;
 use object_store::path::Path;
 use object_store::{
     Attribute, Attributes, GetOptions, ObjectStore, PutMode, PutOptions, PutPayload,
@@ -30,7 +29,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::native::{Artifacts, NativeCatalog};
 use crate::retention::keep_releases;
-use crate::sourcing::{ReleaseArtifact, Sourcing};
+use crate::sourcing::Sourcing;
+use demi_core_hosts::packages::{ReleaseError, ReleasePackages};
 
 /// The key prefix of every command package object in the store
 /// (`crates/core-blobs/src/store.rs`).
@@ -54,14 +54,6 @@ pub(crate) const COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'(')
     .remove(b')');
 
-/// One release directory of `commands/`, named as its program, which holds
-/// its `descriptor.json`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Release {
-    directory: PathBuf,
-    executable: String,
-}
-
 /// Why publication stopped the start.
 #[derive(Debug, thiserror::Error)]
 pub enum PublicationError {
@@ -81,6 +73,15 @@ pub enum PublicationError {
     Cancelled,
 }
 
+impl From<ReleaseError> for PublicationError {
+    fn from(error: ReleaseError) -> Self {
+        match error {
+            ReleaseError::Commands { directory, reason } => Self::Commands { directory, reason },
+            ReleaseError::Release { directory, reason } => Self::Release { directory, reason },
+        }
+    }
+}
+
 /// Publishes the releases in `commands`, a server release's `commands/`,
 /// into `objects`, and makes the catalog of them, which the conversations'
 /// commands bind to and whose executables come from `files`, the root's
@@ -96,9 +97,9 @@ pub async fn publish_native(
     objects: &Objects,
     cancel: &CancellationToken,
 ) -> Result<NativeCatalog, PublicationError> {
-    let (releases, verified) = read_releases(commands).await?;
-    publish(&verified, &*objects.store, cancel).await?;
-    match keep_releases(&*objects.store, version, &verified, runners, cancel).await {
+    let ReleasePackages { descriptors, executables } = ReleasePackages::read(commands).await?;
+    publish(&descriptors, &*objects.store, cancel).await?;
+    match keep_releases(&*objects.store, version, &descriptors, runners, cancel).await {
         Ok(pruned) => tracing::info!(
             event = "native_store.pruned",
             records = pruned.records,
@@ -113,82 +114,16 @@ pub async fn publish_native(
         Err(error) => tracing::warn!(event = "native_store.prune_failed", %error, "the native store's older releases stay"),
     }
     let sourcing = Sourcing::new(objects.store.clone(), files);
-    let artifacts = Artifacts::new(sourcing, objects.signer.clone(), executables(&releases, &verified));
+    let artifacts = Artifacts::new(sourcing, objects.signer.clone(), executables);
     tracing::info!(
         event = "command_packages.published",
-        packages = verified.len(),
+        packages = descriptors.len(),
         "the command packages are published"
     );
-    NativeCatalog::new(verified, artifacts).map_err(|error| PublicationError::Commands {
+    NativeCatalog::new(descriptors, artifacts).map_err(|error| PublicationError::Commands {
         directory: commands.to_owned(),
         reason: error.to_string(),
     })
-}
-
-/// The releases in `commands` and their verified descriptors, in the same
-/// order.
-pub(crate) async fn read_releases(
-    commands: &FilePath,
-) -> Result<(Vec<Release>, Vec<PackageDescriptor>), PublicationError> {
-    let releases = releases(commands).await?;
-    let verified = verify_all(&releases).await?;
-    Ok((releases, verified))
-}
-
-/// Each package executable of `releases`, whose descriptors are `verified`,
-/// by SHA-256, as the release's `files/` holds its compressed copy.
-pub(crate) fn executables(
-    releases: &[Release],
-    verified: &[PackageDescriptor],
-) -> HashMap<String, ReleaseArtifact> {
-    let mut executables = HashMap::new();
-    for (release, descriptor) in releases.iter().zip(verified) {
-        for (target, artifact) in &descriptor.targets {
-            let wanted = ReleaseArtifact {
-                file: compressed_file(&release.executable, target),
-                artifact: artifact.clone(),
-                encoded: true,
-            };
-            executables.entry(artifact.sha256.clone()).or_insert(wanted);
-        }
-    }
-    executables
-}
-
-/// The releases in `commands`, one per directory, in the order of their
-/// names. An empty directory has none; a missing one is an error, since
-/// only the empty directory means none.
-async fn releases(commands: &FilePath) -> Result<Vec<Release>, PublicationError> {
-    let unreadable = |reason: String| PublicationError::Commands {
-        directory: commands.to_owned(),
-        reason,
-    };
-    let mut entries = tokio::fs::read_dir(commands)
-        .await
-        .map_err(|error| unreadable(error.to_string()))?;
-    let mut releases = Vec::new();
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|error| unreadable(error.to_string()))?
-    {
-        let name = entry.file_name();
-        let executable = name
-            .to_str()
-            .filter(|name| {
-                !name.is_empty()
-                    && name
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-            })
-            .ok_or_else(|| unreadable(format!("{} is no executable's name", name.display())))?;
-        releases.push(Release {
-            directory: entry.path(),
-            executable: executable.to_owned(),
-        });
-    }
-    releases.sort_by(|first, second| first.executable.cmp(&second.executable));
-    Ok(releases)
 }
 
 /// Publishes each descriptor's canonical JSON and then its package and
@@ -224,43 +159,6 @@ async fn publish(
         put_immutable(store, &claim, body, &artifact, None, cancel).await?;
     }
     Ok(())
-}
-
-/// Reads every release's descriptor. Two releases of one package are
-/// refused.
-async fn verify_all(releases: &[Release]) -> Result<Vec<PackageDescriptor>, PublicationError> {
-    let mut verified = Vec::with_capacity(releases.len());
-    let mut ids = HashSet::new();
-    for release in releases {
-        let descriptor = verify(release).await?;
-        if !ids.insert(descriptor.id.clone()) {
-            return Err(PublicationError::Release {
-                directory: release.directory.clone(),
-                reason: "the package is released twice".into(),
-            });
-        }
-        verified.push(descriptor);
-    }
-    Ok(verified)
-}
-
-/// Reads a release's descriptor, which must carry a target.
-async fn verify(release: &Release) -> Result<PackageDescriptor, PublicationError> {
-    let refused = |reason: String| PublicationError::Release {
-        directory: release.directory.clone(),
-        reason,
-    };
-    let text = tokio::fs::read(release.directory.join("descriptor.json"))
-        .await
-        .map_err(|error| refused(format!("descriptor.json: {error}")))?;
-    let value = serde_json::from_slice(&text)
-        .map_err(|error| refused(format!("descriptor.json: {error}")))?;
-    let descriptor = PackageDescriptor::parse(value)
-        .map_err(|error| refused(format!("descriptor.json: {error}")))?;
-    if descriptor.targets.is_empty() {
-        return Err(refused("it carries no target".into()));
-    }
-    Ok(descriptor)
 }
 
 /// The mapping of package `id`'s `version`,

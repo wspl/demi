@@ -73,7 +73,7 @@ use demi_shared_artifacts::{
     Staged,
 };
 use serde::{Deserialize, Serialize};
-use demi_runner_process::backend::Backend;
+use demi_runner_process::backend::{Backend, BackendHttp};
 use demi_runner_protocol::wire::{HostArtifact, HostDownload};
 use tokio::io::AsyncWrite;
 use futures_util::FutureExt;
@@ -198,8 +198,8 @@ pub struct ArtifactCache {
     checked: Mutex<Checked>,
     http: reqwest::Client,
     /// The backend that hands out the artifacts' URLs, with the client that
-    /// reaches it, when that takes its own way, as a Cloud's socket does.
-    backend: Option<(Backend, reqwest::Client)>,
+    /// reaches it.
+    backend: Option<(Backend, BackendHttp)>,
     holds: Holds,
     /// The installs in progress, by digest, which concurrent callers share.
     installs: Mutex<HashMap<String, InFlight>>,
@@ -375,6 +375,7 @@ impl ArtifactCache {
             Some(backend) => {
                 let http =
                     demi_shared_artifacts::download_client_through(|builder| backend.http(builder))?;
+                let http = backend.client(http);
                 Some((backend, http))
             }
             None => None,
@@ -1062,14 +1063,17 @@ impl ArtifactCache {
             )])
         };
         let received = loop {
-            // The backend's own store is fetched the way the runner
-            // reaches the backend, which no redirect may leave.
-            let local = self.backend.as_ref().and_then(|(backend, http)| {
-                let local = backend.local(&reqwest::Url::parse(&url).ok()?)?;
-                Some((http, local.to_string()))
-            });
-            let redirects = if local.is_some() { 0 } else { REDIRECTS };
-            let (http, location) = local.unwrap_or((&self.http, url.clone()));
+            // The backend's own store, at a path from its root, is fetched
+            // the way the runner reaches the backend, which no redirect may
+            // leave.
+            let place = match &self.backend {
+                Some((backend, http)) => backend.place(&url)?.map(|place| (http, place)),
+                None => None,
+            };
+            let (http, location, redirects): (&dyn demi_shared_artifacts::Fetch, _, _) = match place {
+                Some((http, place)) => (http, place.to_string(), 0),
+                None => (&self.http, url.clone(), REDIRECTS),
+            };
             // The runner was given each artifact's digest over its
             // authenticated connection, so plain HTTP cannot change what it
             // keeps, nor can the host a redirect names.

@@ -45,6 +45,14 @@ program                                         demi-core
   it dials, directly or through a socket, as today, or the stream it was
   given. Its requests and WebSockets go through the transport either way.
 - A runner on a stream presents no token: the channel names its device.
+- Its standard input and output carry nothing but the stream: the runner
+  takes them first of all, and what it prints, and what the programs it
+  starts write, goes to its standard error.
+- A core hands a runner the executables in its own keeping as a path from
+  its root, as it hands pipes and offers, and the runner requests the path
+  the way it reaches the core. A signed URL of object storage stays a URL
+  on the network. Today a server hands out its own address, which a runner
+  on a stream cannot reach.
 - When the stream ends, the runner ends. Its jobs go on in their shells'
   processes, which outlive it, and the next runner started in the same
   installation takes them over and lists them in its hello, as after an
@@ -62,6 +70,9 @@ program                                         demi-core
 - The runner's routes move out of `backend-http` into `core-api`, which
   both serve: the server to a runner its token names, the process to the
   runner its channel names.
+- The process serves the command packages of the release `DEMI_RELEASE`
+  names, as the server serves its release's: their descriptors from its
+  `commands/`, their executables from its `files/`, on each channel.
 
 ### The server
 
