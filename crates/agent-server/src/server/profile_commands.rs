@@ -7,8 +7,8 @@
 
 use std::rc::Weak;
 
-use demi_agent_tools::{HostResolver, ModelChoice, ModelEdit, NewProfileDraft, ProfileEdit};
-use demi_host_interface::{GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
+use demi_agent_tools::{DeviceResolver, ModelChoice, ModelEdit, NewProfileDraft, ProfileEdit};
+use demi_device_interface::{GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_shared_types::{ContextChoice, output::warning, trim};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -115,7 +115,7 @@ struct EditArgs {
 
 /// The `profiles` group of every node: its reads, and its changes under
 /// the category the `agent` group declares.
-pub(super) fn profiles_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> GroupBuilder {
+pub(super) fn profiles_group<H: DeviceResolver>(server: Weak<AgentServer<H>>) -> GroupBuilder {
     let (category, _, _) = PROFILES_CATEGORY;
     GroupBuilder::new("profiles", PROFILES_GROUP)
         .leaf(
@@ -181,7 +181,7 @@ pub(super) fn profiles_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> G
         )
 }
 
-async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn list<H: DeviceResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let listing = match call.tree.profiles().await {
         Ok(listing) => listing,
         Err(error) => return fail(&error),
@@ -198,12 +198,12 @@ async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Res
     out(&port, listing.render()).await
 }
 
-async fn show<H: HostResolver>(call: Invoked<H, NameArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn show<H: DeviceResolver>(call: Invoked<H, NameArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let shown = call.tree.profile(&call.args.name).await;
     answered(&port, call.json, shown).await
 }
 
-async fn create<H: HostResolver>(
+async fn create<H: DeviceResolver>(
     call: Invoked<H, CreateArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -244,7 +244,7 @@ async fn create<H: HostResolver>(
     answered(&port, call.json, created).await
 }
 
-async fn edit<H: HostResolver>(call: Invoked<H, EditArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn edit<H: DeviceResolver>(call: Invoked<H, EditArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let args = call.args;
     let choice = ModelChoice {
         model: args.model,
@@ -291,7 +291,7 @@ async fn edit<H: HostResolver>(call: Invoked<H, EditArgs>, port: RpcPort) -> Res
     answered(&port, call.json, changed).await
 }
 
-async fn delete<H: HostResolver>(
+async fn delete<H: DeviceResolver>(
     call: Invoked<H, NameArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {

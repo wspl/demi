@@ -7,7 +7,7 @@ import IconButton from '../ui/IconButton.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import FileBrowser from './FileBrowser.vue'
 import type {
-  FileBrowserHost,
+  FileBrowserDevice,
   FileBrowserMode,
   FileBrowserPlaceGroup,
   FileBrowserSource,
@@ -30,8 +30,8 @@ const props = defineProps<{
   title?: HeadlineText
   initialPath?: string
   places?: FileBrowserPlaceGroup[]
-  hosts?: FileBrowserHost[]
-  hostId?: string
+  devices?: FileBrowserDevice[]
+  deviceId?: string
   confirmLabel?: TitleText
   confirmDisabled?: boolean
   /** The operation the caller starts with what is chosen, which the confirm button shows (`FileBrowser.vue`). */
@@ -41,7 +41,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   select: [path: string]
-  'update:hostId': [id: string]
+  'update:deviceId': [id: string]
 }>()
 
 const showHidden = defineModel<boolean>('showHidden', { default: false })
@@ -81,14 +81,14 @@ const title = computed(
         :source="source"
         :initial-path="initialPath"
         :places="places"
-        :hosts="hosts"
-        :host-id="hostId"
+        :devices="devices"
+        :device-id="deviceId"
         :confirm-label="confirmLabel"
         :confirm-disabled="confirmDisabled"
         :confirm-operation="confirmOperation"
         @select="emit('select', $event)"
         @cancel="emit('close')"
-        @update:host-id="emit('update:hostId', $event)"
+        @update:device-id="emit('update:deviceId', $event)"
       />
     </div>
   </Dialog>

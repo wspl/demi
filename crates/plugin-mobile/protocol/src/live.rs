@@ -24,7 +24,7 @@ pub const OPERATION: &str = "mobile.live";
 /// A notice's code when the device's capture failed; the next picture ends
 /// it.
 pub const CAPTURE_FAILED: &str = "capture_failed";
-/// A notice's code when this Host cannot capture the device.
+/// A notice's code when this device cannot capture the simulator.
 pub const CAPTURE_UNAVAILABLE: &str = "capture_unavailable";
 /// A notice's code when the viewer's input did not reach the device.
 pub const INPUT_FAILED: &str = "input_failed";
@@ -269,7 +269,7 @@ pub enum LiveFold {
         #[garde(dive)]
         inner: LivePoints,
         /// The file of the device's 3D body Xcode installs, a USDZ on the
-        /// Host, which the page reads through the Host's files; none where
+        /// device, which the page reads through the device's files; none where
         /// Xcode installs none, and the view draws a stand-in.
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<String>")]

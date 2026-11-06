@@ -12,7 +12,7 @@
 //! It also lists a speech model's voices and the audio models. A failure is
 //! told in the design's words.
 
-use demi_host_interface::RpcInvocation;
+use demi_device_interface::RpcInvocation;
 use demi_plugin_interface::{
     AudioAsk, AudioFileFormat, AudioOption, MadeAudio, PluginError, PluginPort, VoiceInfo,
 };

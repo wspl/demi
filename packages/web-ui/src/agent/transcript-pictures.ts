@@ -116,11 +116,11 @@ function toolPictures(media: readonly ToolMedium[], context: TranscriptPicturesC
  * - A file the message holds, such as one sent from the computer, loads from
  *   where `address` says its media source does, with the size in bytes the
  *   message's reference to it carries.
- * - A file of the conversation's Host the message names, such as one Attach
- *   Remote File chose there, is that file, read through `files`, as a Host
+ * - A file of the conversation's device the message names, such as one Attach
+ *   Remote File chose there, is that file, read through `files`, as a device
  *   image of a message is; its kind comes from its name. One on another
  *   device shows nothing here, since `files` reads only the conversation's
- *   Host.
+ *   device.
  */
 export function capsuleMedium(
   capsule: MessageCapsule,
@@ -129,8 +129,8 @@ export function capsuleMedium(
 ): ShownMedium | null {
   const { image, video, name, reference, path } = capsule
   const contents = files?.contents
-  const onHost = reference?.type === 'device' ? reference.deviceId === files?.device : capsule.host === undefined
-  if (image === undefined && video === undefined && path !== undefined && contents && onHost) {
+  const onDevice = reference?.type === 'device' ? reference.deviceId === files?.device : capsule.device === undefined
+  if (image === undefined && video === undefined && path !== undefined && contents && onDevice) {
     const kind = previewKind(path)
     return kind === 'image' || kind === 'video' ? { kind, name, file: { path, contents } } : null
   }

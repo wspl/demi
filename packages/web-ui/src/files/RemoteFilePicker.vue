@@ -4,41 +4,41 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import FileBrowserDialog from './FileBrowserDialog.vue'
 import { t } from './locales/text'
 import type {
-  FileBrowserHost,
+  FileBrowserDevice,
   FileBrowserSource,
   FileBrowserPlaceGroup,
 } from './types'
 
-export interface RemoteFileHost extends FileBrowserHost {
+export interface RemoteFileDevice extends FileBrowserDevice {
   source: FileBrowserSource
   places: FileBrowserPlaceGroup[]
   cwd?: string
 }
 const props = defineProps<{
   overlayStore: OverlayStore
-  hosts: RemoteFileHost[]
+  devices: RemoteFileDevice[]
 }>()
 const emit = defineEmits<{
   select: [
     file: {
       deviceId: string
-      host: string
+      device: string
       path: string
     },
   ]
 }>()
-const hostId = ref<string | null>(null)
+const deviceId = ref<string | null>(null)
 const isOpen = ref(false)
-const host = computed(() => props.hosts.find((item) => item.id === hostId.value))
+const device = computed(() => props.devices.find((item) => item.id === deviceId.value))
 function open(): void {
-  hostId.value = props.hosts[0]?.id ?? null
-  isOpen.value = hostId.value !== null
+  deviceId.value = props.devices[0]?.id ?? null
+  isOpen.value = deviceId.value !== null
 }
 function select(path: string): void {
-  if (host.value) {
+  if (device.value) {
     emit('select', {
-      deviceId: host.value.id,
-      host: host.value.label,
+      deviceId: device.value.id,
+      device: device.value.label,
       path,
     })
   }
@@ -48,19 +48,19 @@ defineExpose({ open })
 </script>
 <template>
   <FileBrowserDialog
-    v-if="host"
+    v-if="device"
     :is-open="isOpen"
     :overlay-store="overlayStore"
     mode="file"
     :title="t('browser.attachRemoteFile')"
-    :source="host.source"
-    :initial-path="host.cwd"
-    :places="host.places"
-    :hosts="hosts"
-    :host-id="hostId ?? undefined"
+    :source="device.source"
+    :initial-path="device.cwd"
+    :places="device.places"
+    :devices="devices"
+    :device-id="deviceId ?? undefined"
     :confirm-label="t('browser.attach')"
     @select="select"
     @close="isOpen = false"
-    @update:host-id="hostId = $event"
+    @update:device-id="deviceId = $event"
   />
 </template>

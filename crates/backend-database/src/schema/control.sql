@@ -115,9 +115,10 @@ CREATE TABLE passkey_challenges (
 ) STRICT;
 CREATE INDEX passkey_challenges_expiry ON passkey_challenges (expires_at);
 
--- user_preferences.preferences: preferences format 2, the `Preferences` of
+-- user_preferences.preferences: preferences format 3, the `Preferences` of
 -- the web contract, whose shortcuts are two sets, `mac` and `pc`, each of
--- overrides in its own notation (format 1 held one set).
+-- overrides in its own notation (format 1 held one set, format 2 named the
+-- last project device `lastProjectHost`).
 CREATE TABLE user_preferences (
   user_id     TEXT PRIMARY KEY REFERENCES users (id),
   preferences TEXT NOT NULL
@@ -260,7 +261,7 @@ CREATE UNIQUE INDEX projects_directory ON projects (workspace_id, device_id, pat
 CREATE UNIQUE INDEX projects_of_workspace ON projects (id, workspace_id);
 
 -- The linked worktrees of the repository at a directory of a device, by
--- git's name and their directory, as the device's Host last reported them
+-- git's name and their directory, as the device last reported them
 -- for a project there; every project of the directory, in any workspace,
 -- reads them (`crates/backend-database/src/selection.rs` § Worktrees).
 CREATE TABLE directory_worktrees (
@@ -287,13 +288,13 @@ CREATE TABLE port_forwards (
 ) STRICT;
 CREATE INDEX port_forwards_of_user ON port_forwards (user_id, created_at);
 
--- The workflows of each directory of a Host as the backend last read them,
--- in the Workflow menu's form, with when (`crates/backend-host-access/src/kept.rs`):
--- what a page reads at once, also after a restart while the Host is
+-- The workflows of each directory of a device as the backend last read them,
+-- in the Workflow menu's form, with when (`crates/backend-device-access/src/kept.rs`):
+-- what a page reads at once, also after a restart while the device is
 -- offline. The revision rises when a read differs from what was kept; the
 -- rows of a device go with it.
--- host_workflows.list: conversation workflows format 1
-CREATE TABLE host_workflows (
+-- device_workflows.list: conversation workflows format 1
+CREATE TABLE device_workflows (
   device_id TEXT NOT NULL,
   directory TEXT NOT NULL,
   list      TEXT NOT NULL,
@@ -335,7 +336,7 @@ CREATE TABLE plugin_values (
   PRIMARY KEY (user_id, plugin, key)
 ) STRICT, WITHOUT ROWID;
 
--- Each plugin's Host directories for a user (`plugins.md` § Host
+-- Each plugin's device directories for a user (`plugins.md` § Device
 -- directories): the directory's name, its digest and its files, a JSON
 -- array of each file's path, whether it is executable and its SHA-256; and
 -- the workspace whose conversations' jobs install it, null for every job's.
@@ -483,7 +484,7 @@ CREATE TABLE conversations (
   sort_order          INTEGER NOT NULL,
   read_revision       INTEGER NOT NULL,
   -- target: where it runs (sessions-and-targets.md § Resolve a target): the
-  -- Cloud's directory of a conversation, its own without a path; a Host's
+  -- Cloud's directory of a conversation, its own without a path; a device's
   -- home, by its device; a project, with the device and directory it
   -- names; or a device's directory as a release before projects by
   -- directory kept it, until that device's runner first reports its home,
@@ -502,9 +503,9 @@ CREATE TABLE conversations (
   model               TEXT,
   created_at          INTEGER NOT NULL,
   updated_at          INTEGER NOT NULL,
-  -- The revision of its attached hosts, raised by each change of them; 0
+  -- The revision of its attached devices, raised by each change of them; 0
   -- before the first.
-  hosts_revision      INTEGER NOT NULL DEFAULT 0 CHECK (hosts_revision >= 0),
+  devices_revision    INTEGER NOT NULL DEFAULT 0 CHECK (devices_revision >= 0),
   -- Its Workflow menu choice (subagents.md § Workflows of a project): the
   -- user's settings, No Subagents, or the workflow whose file is
   -- .demi/workflows/<workflow_id>.yaml.
@@ -558,8 +559,8 @@ CREATE TABLE running_jobs (
 CREATE INDEX running_jobs_of_device ON running_jobs (device_id);
 
 -- A device attached to a conversation, which goes by its device's name; the
--- row id keeps the order of hosts attached at one time.
-CREATE TABLE conversation_hosts (
+-- row id keeps the order of devices attached at one time.
+CREATE TABLE conversation_devices (
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id),
   device_id       TEXT NOT NULL REFERENCES devices (id),
   -- The directory its commands start in, fixed when it was attached; null
@@ -568,7 +569,7 @@ CREATE TABLE conversation_hosts (
   attached_at     INTEGER NOT NULL,
   PRIMARY KEY (conversation_id, device_id)
 ) STRICT;
-CREATE INDEX conversation_hosts_device ON conversation_hosts (device_id);
+CREATE INDEX conversation_devices_device ON conversation_devices (device_id);
 
 -- A conversation's work panel: its tabs and the ids it ever had, one JSON
 -- document, with the revision that counts its changes.
@@ -579,9 +580,9 @@ CREATE TABLE conversation_panels (
   updated_at      INTEGER NOT NULL
 ) STRICT;
 
--- What a plugin's package on a Host last reported of a conversation, whole,
--- which the plugin's page reads at once and never asks the Host for: the
--- browser's tabs of the conversation on that Host.
+-- What a plugin's package on a device last reported of a conversation, whole,
+-- which the plugin's page reads at once and never asks the device for: the
+-- browser's tabs of the conversation on that device.
 -- value: the plugin's own JSON.
 CREATE TABLE plugin_reports (
   plugin_id       TEXT NOT NULL,
@@ -770,11 +771,11 @@ CREATE TABLE conversation_deletions (
 -- Records that make interrupted multi-step work discoverable. A Fork
 -- reserves its destination's conversation id, compared as the index
 -- compares it.
--- conversation_fork_operations.metadata: Fork metadata format 3, ForkMetadata
--- as JSON, whose attached hosts are their devices and directories without
+-- conversation_fork_operations.metadata: Fork metadata format 4, ForkMetadata
+-- as JSON, whose attached devices are their devices and directories without
 -- names and which holds the source's execution-context revision at the Fork
--- and its workflow (format 1 named the hosts and held no revision, format 2
--- held no workflow).
+-- and its workflow (format 1 named the devices and held no revision, format 2
+-- held no workflow, format 3 called them `attachedHosts`).
 CREATE TABLE conversation_fork_operations (
   id        TEXT PRIMARY KEY COLLATE NOCASE,
   user_id   TEXT NOT NULL REFERENCES users (id),

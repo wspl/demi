@@ -319,7 +319,7 @@
   }
 
   // A right click selects nothing, as Chrome's does on a link: Chrome on a
-  // Mac Host selects the link or word under it once the menu event has run,
+  // Mac selects the link or word under it once the menu event has run,
   // and the viewer's menu would then offer to copy it. A selection the press
   // starts before its release is refused; one the page already had stays.
   let rightPress = false;

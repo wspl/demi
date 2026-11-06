@@ -1,7 +1,7 @@
 import { NO_COST } from '@demicodes/web-ui/agent/context-cost'
 import type { AgentMessage, Block, JobModel } from '@demicodes/protocol'
 import type { AgentRun, SubagentRecord } from '@demicodes/web-ui/agent/subagents'
-import type { HostName } from '@demicodes/web-ui/agent/host-names'
+import type { DeviceName } from '@demicodes/web-ui/agent/device-names'
 import { demoModel, inRequests, inRun, screenshotTool, shellView, thinkingText, withEnd } from './blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { usageAt } from './catalog'
@@ -199,8 +199,8 @@ export const suitePathsUpdate: AgentMessage = {
 /** The device of a laptop a child works on after its conversation moved to the Cloud. */
 export const LAPTOP_DEVICE = 'dev-laptop'
 
-/** What the gallery calls each Host a child works on: the laptop by its name. */
-export function galleryHostName(device: string): HostName {
+/** What the gallery calls each device a child works on: the laptop by its name. */
+export function galleryDeviceName(device: string): DeviceName {
   return device === LAPTOP_DEVICE ? { name: 'alex-laptop', kind: 'device' } : { name: device, kind: 'device' }
 }
 

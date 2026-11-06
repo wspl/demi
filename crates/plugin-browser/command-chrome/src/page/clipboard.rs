@@ -25,7 +25,7 @@ use crate::page::protocol::{
 use crate::tabs::{environment::BrowserEnvironment, tab::BrowserTab};
 
 /// Why the pinned headless clipboard may not be the browser's own, or none
-/// where its isolation from the Host user's clipboard is verified.
+/// where its isolation from the device user's clipboard is verified.
 pub fn unisolated() -> Option<&'static str> {
     if cfg!(target_os = "macos")
         || (cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_none())
@@ -33,7 +33,7 @@ pub fn unisolated() -> Option<&'static str> {
         None
     } else {
         Some(
-            "clipboard isolation from the Host user's system clipboard has not been verified for this platform configuration",
+            "clipboard isolation from the device user's system clipboard has not been verified for this platform configuration",
         )
     }
 }

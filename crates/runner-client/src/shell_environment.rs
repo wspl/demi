@@ -1,4 +1,4 @@
-//! `RemoteShellEnvironment`: the shell behind the `shell_*` tools on a Host
+//! `RemoteShellEnvironment`: the shell behind the `shell_*` tools on a device
 //! reached through its runner (`crates/runner-shell/src/lib.rs`).
 //!
 //! Every exec is one job. The record holds two views of its output:
@@ -9,7 +9,7 @@
 //!   a page watches and the job is therefore followed
 //!   (`crates/agent-server/src/server/tree/live.rs`).
 //!
-//! Every job starts in its node's working directory on the Host, and nothing of
+//! Every job starts in its node's working directory on the device, and nothing of
 //! an earlier one carries over.
 //!
 //! A command outlives the environment: its keeper records it running before its
@@ -24,7 +24,7 @@
 //!
 //! - The backend stores what it received when that is the whole output: each
 //!   stream within its first 8 KiB and every byte received. Otherwise it reads
-//!   the Host's kept output once.
+//!   the device's kept output once.
 //! - A command lost with its connection keeps what the backend received up to
 //!   the first byte it missed, followed by a line that counts the bytes lost.
 //!
@@ -41,9 +41,9 @@ use std::{
 
 use bytes::Bytes;
 use demi_command_protocol::{CommandContext, EditKind as JobEditKind};
-use demi_host_interface::{
+use demi_device_interface::{
     BinaryOutput, CommandMedium, CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
-    DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
+    DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Device, DeviceError, DeviceErrorKind, DeviceKey,
     JobCaller, Missing, Numbers, OutputRecord, PageFeed, PageView, ProcessEnd, Seen,
     ShellEnvironment, ShellError, SpawnErrorKind, Streams, TakenUp, Unreachable, UnsentStart, WholeOutput,
     binary_line,
@@ -61,39 +61,39 @@ use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
-    CommandCatalog, JobEnd, JobMedium, JobOutput, JobStart, RemoteHost, RemoteJob, Withdrawal,
+    CommandCatalog, JobEnd, JobMedium, JobOutput, JobStart, RemoteDevice, RemoteJob, Withdrawal,
     device_jobs::Newest, manifest::CommandSelection,
 };
 
-/// The product's host access around one job: it holds what the Host needs,
+/// The product's device access around one job: it holds what the device needs,
 /// such as the conversation's file gate and a Cloud's admission, through the
 /// job's start, output and edit publication, and refuses when the
-/// conversation's Host is no longer `host`. `cancel` ends its waits before
-/// the job starts. While the job's start waits for its Host, a paired
+/// conversation's device is no longer `device`. `cancel` ends its waits before
+/// the job starts. While the job's start waits for its device, a paired
 /// device whose runner is away, it says so through `waiting`. It holds
-/// `withdrawal` while the job runs, and makes the request when the Host
+/// `withdrawal` while the job runs, and makes the request when the device
 /// leaves the conversation; the environment stops the command.
-pub trait HostAccess {
+pub trait DeviceAccess {
     fn run_job<'a>(
         &'a self,
-        host: &'a HostKey,
+        device: &'a DeviceKey,
         cancel: CancellationToken,
         waiting: JobWaiting<'a>,
         withdrawal: Rc<Withdrawal>,
         job: LocalBoxFuture<'a, ()>,
-    ) -> LocalBoxFuture<'a, Result<(), HostError>>;
+    ) -> LocalBoxFuture<'a, Result<(), DeviceError>>;
 
-    /// Registers a job taken up again after a restart, which runs on `host`,
+    /// Registers a job taken up again after a restart, which runs on `device`,
     /// with the conversation, as [`run_job`](Self::run_job) does a new one,
     /// until the answer is dropped.
     fn hold_adopted<'a>(
         &'a self,
-        host: &'a HostKey,
+        device: &'a DeviceKey,
         withdrawal: Rc<Withdrawal>,
     ) -> LocalBoxFuture<'a, Option<Box<dyn std::any::Any>>>;
 }
 
-/// How a job whose start may wait for its Host (`crates/backend-host-access/src/access.rs`) shows it: waiting for the device it names, and no
+/// How a job whose start may wait for its device (`crates/backend-device-access/src/access.rs`) shows it: waiting for the device it names, and no
 /// longer waiting with `None`, which the wait awaits before it goes on.
 #[derive(Clone, Copy)]
 pub struct JobWaiting<'a> {
@@ -105,7 +105,7 @@ pub struct JobWaiting<'a> {
 /// its whole output (`crates/agent-server/src/server/shell_output.rs`). A failure to keep
 /// them is the keeper's to record.
 pub trait CommandKeeper {
-    /// Records that `command` runs as the job `job` on the environment's Host,
+    /// Records that `command` runs as the job `job` on the environment's device,
     /// before the job starts, so that a backend that starts again takes it up,
     /// its reports name it by its title, and an interrupted call's command
     /// keeps whether it is a service (`crates/backend-database/src/command_outputs.rs`). A
@@ -116,9 +116,9 @@ pub trait CommandKeeper {
     fn started<'a>(&'a self, command: &'a CommandId, job: &'a str, start: &'a KeptStart) -> LocalBoxFuture<'a, ()>;
 
     /// Records that `command` waits to start as the job `job` until its
-    /// Host, a paired device whose runner is away, is back, with what it
+    /// device, a paired device whose runner is away, is back, with what it
     /// will send then, so a backend that starts again keeps it waiting and
-    /// sends it once the runner connects (`crates/backend-host-access/src/access.rs`). A failure to record it is the keeper's to log.
+    /// sends it once the runner connects (`crates/backend-device-access/src/access.rs`). A failure to record it is the keeper's to log.
     fn waiting<'a>(
         &'a self,
         command: &'a CommandId,
@@ -147,7 +147,7 @@ pub trait CommandKeeper {
     ) -> LocalBoxFuture<'a, Vec<Option<Result<String, String>>>>;
 
     /// The bytes of the blob `blob` when the conversation owner's
-    /// namespace holds it, so a medium it holds is not read from the Host.
+    /// namespace holds it, so a medium it holds is not read from the device.
     fn stored_blob<'a>(&'a self, blob: &'a BlobRef) -> LocalBoxFuture<'a, Option<Bytes>>;
 
     /// Records that the model has seen `command`'s output as far as `seen`,
@@ -182,11 +182,11 @@ pub struct KeptStart {
 }
 
 /// Builds each job's command context (`crates/command-protocol/src/invocation.rs`).
-pub type ContextSource = Rc<dyn Fn() -> LocalBoxFuture<'static, Result<CommandContext, HostError>>>;
+pub type ContextSource = Rc<dyn Fn() -> LocalBoxFuture<'static, Result<CommandContext, DeviceError>>>;
 
 /// What an environment runs with.
 pub struct EnvironmentOptions {
-    pub host: RemoteHost,
+    pub device: RemoteDevice,
     /// The commands its jobs may run; none for jobs without declared
     /// commands.
     pub commands: Option<CommandSelection>,
@@ -197,7 +197,7 @@ pub struct EnvironmentOptions {
     /// Where its commands' numbers come from: the conversation's
     /// sequences.
     pub numbers: Rc<dyn Numbers>,
-    pub access: Option<Rc<dyn HostAccess>>,
+    pub access: Option<Rc<dyn DeviceAccess>>,
     pub keeper: Option<Rc<dyn CommandKeeper>>,
     /// The variables every job starts with, above the device's own.
     pub initial_env: BTreeMap<String, String>,
@@ -209,13 +209,13 @@ pub struct EnvironmentOptions {
 
 impl EnvironmentOptions {
     pub fn new(
-        host: RemoteHost,
+        device: RemoteDevice,
         context: ContextSource,
         feed: Rc<dyn PageFeed>,
         numbers: Rc<dyn Numbers>,
     ) -> Self {
         Self {
-            host,
+            device,
             commands: None,
             context,
             feed,
@@ -239,7 +239,7 @@ impl RemoteShellEnvironmentFactory {
         Self { catalog }
     }
 
-    /// An environment whose jobs run `commands` on `options.host`.
+    /// An environment whose jobs run `commands` on `options.device`.
     pub fn create(
         &self,
         commands: &CommandSet,
@@ -250,7 +250,7 @@ impl RemoteShellEnvironmentFactory {
     }
 }
 
-/// A node's commands on a Host behind a runner.
+/// A node's commands on a device behind a runner.
 #[derive(Clone)]
 pub struct RemoteShellEnvironment(Rc<Environment>);
 
@@ -320,7 +320,7 @@ struct Running {
     stop: CancellationToken,
     /// Its job, once started.
     job: watch::Sender<Option<RemoteJob>>,
-    /// Asks it to stop, when its Host leaves the conversation.
+    /// Asks it to stop, when its device leaves the conversation.
     withdrawal: Rc<Withdrawal>,
     /// Asks its stop to end it as lost instead of waiting for a runner that
     /// is away, which only that runner could report the stop of.
@@ -338,7 +338,7 @@ impl Running {
         let _ = settled.wait_for(|settled| *settled).await;
     }
 
-    /// Its job, once it started: a command still acquiring its Host, such as
+    /// Its job, once it started: a command still acquiring its device, such as
     /// a Cloud that wakes, is waited for; none when it ended without one.
     async fn started(&self) -> Option<RemoteJob> {
         let mut job = self.job.subscribe();
@@ -387,7 +387,7 @@ impl RemoteShellEnvironment {
         let task_command = command.clone();
         let begin = Begin::Start {
             request,
-            job: RemoteHost::job_id(),
+            job: RemoteDevice::job_id(),
             recorded: false,
         };
         self.0.tasks.spawn_local(async move {
@@ -396,16 +396,16 @@ impl RemoteShellEnvironment {
         Ok(command)
     }
 
-    /// Takes up `taken`, which its call started on this environment's Host
+    /// Takes up `taken`, which its call started on this environment's device
     /// before the backend restarted or the environment that ran it let go of it
     /// (`crates/runner-client/src/device_jobs.rs`).
     ///
     /// The command is followed to its end as if nothing had happened, counting
     /// its time from its start and showing the model only output it has not
     /// seen. Its runner's next hello says whether it went on, ended or was
-    /// lost. One whose start was never sent waits for its Host again and is
+    /// lost. One whose start was never sent waits for its device again and is
     /// sent once its runner connects
-    /// (`crates/backend-host-access/src/access.rs`). A command the environment
+    /// (`crates/backend-device-access/src/access.rs`). A command the environment
     /// holds already stays as it is.
     pub fn adopt(&self, taken: TakenUp) {
         let TakenUp {
@@ -484,11 +484,11 @@ impl RemoteShellEnvironment {
         self.0.options.feed.changed(record);
     }
 
-    /// Runs one command to its end, inside the product's host access when there
+    /// Runs one command to its end, inside the product's device access when there
     /// is one. A command taken up again runs outside it, since it holds its
-    /// Host already and its runner may still be away. A command the environment
+    /// device already and its runner may still be away. A command the environment
     /// lets go of runs on, unsettled, and so does one whose start still waits
-    /// for its Host, which its record keeps waiting.
+    /// for its device, which its record keeps waiting.
     async fn run(
         &self,
         command: CommandId,
@@ -496,7 +496,7 @@ impl RemoteShellEnvironment {
         running: Rc<Running>,
         record: Rc<RefCell<CommandRecord>>,
     ) {
-        // The Host leaving the conversation stops the command as an abort
+        // The device leaving the conversation stops the command as an abort
         // does, and its end says why. A command whose runner is away at that
         // moment ends as lost, since only that runner could report the stop.
         self.0.tasks.spawn_local({
@@ -537,11 +537,11 @@ impl RemoteShellEnvironment {
         };
         let adopted = matches!(job, Begin::Adopt { .. });
         // A command taken up again counts as the conversation's job on its
-        // Host, so a detach of the Host stops it.
+        // device, so a detach of the device stops it.
         let _held = match (&self.0.options.access, adopted) {
             (Some(access), true) => {
                 access
-                    .hold_adopted(&self.0.options.host.key(), running.withdrawal.clone())
+                    .hold_adopted(&self.0.options.device.key(), running.withdrawal.clone())
                     .await
             }
             _ => None,
@@ -553,7 +553,7 @@ impl RemoteShellEnvironment {
                     self.execute(&command, request, &job, start, &running, &record).await
                 }
                 Begin::Adopt { job, caller } => {
-                    let job = self.0.options.host.adopt_job(
+                    let job = self.0.options.device.adopt_job(
                         job,
                         self.context().await,
                         Some(caller),
@@ -569,13 +569,13 @@ impl RemoteShellEnvironment {
                 Err(error) => *failure.borrow_mut() = Some(error),
             }
         };
-        // The pages show a command whose start waits for its Host as
+        // The pages show a command whose start waits for its device as
         // waiting for it, and its record keeps it, not yet sent, from the
         // wait's start.
-        let shown = |host: Option<String>| -> LocalBoxFuture<'_, ()> {
+        let shown = |device: Option<String>| -> LocalBoxFuture<'_, ()> {
             Box::pin(async {
-                let waits = host.is_some();
-                if record.borrow_mut().mark_waiting(host) {
+                let waits = device.is_some();
+                if record.borrow_mut().mark_waiting(device) {
                     self.report(&record);
                 }
                 if let (true, Some((job, start, unsent, recorded)), Some(keeper)) =
@@ -586,13 +586,13 @@ impl RemoteShellEnvironment {
                 }
             })
         };
-        // A wait for the Host ends when the command stops, and when the
+        // A wait for the device ends when the command stops, and when the
         // environment lets go of its commands, which leaves it waiting in
         // its record.
         let admission = running.stop.child_token();
         let access = match (&self.0.options.access, &wait) {
             (Some(access), Some(_)) if !adopted => {
-                let key = self.0.options.host.key();
+                let key = self.0.options.device.key();
                 let waiting = JobWaiting { shown: &shown };
                 let ran = access.run_job(&key, admission.clone(), waiting, running.withdrawal.clone(), Box::pin(job));
                 let let_go = async {
@@ -652,7 +652,7 @@ impl RemoteShellEnvironment {
         match (self.0.options.context)().await {
             Ok(context) => Some(context),
             Err(error) => {
-                tracing::warn!(event = "command_context.missing", host_id = self.0.options.host.device_id().as_deref(), %error, "a command taken up again has no command context");
+                tracing::warn!(event = "command_context.missing", device_id = self.0.options.device.device_id().as_deref(), %error, "a command taken up again has no command context");
                 None
             }
         }
@@ -675,24 +675,24 @@ impl RemoteShellEnvironment {
         if running.stop.is_cancelled() || running.withdrawal.reason().is_some() {
             return Err("Shell command aborted".into());
         }
-        // Every job starts in its node's working directory on the Host, the
+        // Every job starts in its node's working directory on the device, the
         // conversation's for the root (`crates/agent-tools/src/lib.rs`).
         let cwd = request
             .cwd
-            .unwrap_or_else(|| self.0.options.host.default_cwd().to_owned());
+            .unwrap_or_else(|| self.0.options.device.default_cwd().to_owned());
         let mut env = self.0.options.initial_env.clone();
         env.insert("PWD".into(), cwd.clone());
         if let Some(keeper) = &self.0.options.keeper {
             keeper.started(command, id, start).await;
         }
-        // A Host detached while the job waited for the keeper never starts it.
+        // A device detached while the job waited for the keeper never starts it.
         if let Some(reason) = running.withdrawal.reason() {
             return Err(reason);
         }
         let job = self
             .0
             .options
-            .host
+            .device
             .start_job(JobStart {
                 id: id.to_owned(),
                 script: request.script,
@@ -740,7 +740,7 @@ impl RemoteShellEnvironment {
                 self.report(record);
             }
             // A runner that is away when its command is being stopped for the
-            // Host's detach or the environment's end is not waited for.
+            // device's detach or the environment's end is not waited for.
             tokio::select! {
                 _ = job.stop() => {}
                 _ = async {
@@ -762,7 +762,7 @@ impl RemoteShellEnvironment {
                     // The job's end or the connection's loss says what
                     // happened; a following that could not change is
                     // diagnostic.
-                    tracing::debug!(event = "job_follow.change_failed", host_id = self.0.options.host.device_id().as_deref(), %command, %error, "the job's following could not change");
+                    tracing::debug!(event = "job_follow.change_failed", device_id = self.0.options.device.device_id().as_deref(), %command, %error, "the job's following could not change");
                 }
             }
             tokio::select! {
@@ -798,7 +798,7 @@ impl RemoteShellEnvironment {
     }
 
     /// Settles the record from the job's end: its edits and its whole
-    /// output, which the backend received or reads from the Host
+    /// output, which the backend received or reads from the device
     /// now; the runner then lets the job's directory go.
     async fn finish(
         &self,
@@ -850,7 +850,7 @@ impl RemoteShellEnvironment {
                 return self.end(command, record, settlement, Some(job)).await;
             }
             ProcessEnd::Lost(reason) => {
-                // What the Host held beyond what the backend received went
+                // What the device held beyond what the backend received went
                 // with the connection. The output keeps only what the
                 // command printed: the end says why it was lost
                 // (`crates/agent-server/src/server/shell_output.rs`).
@@ -912,7 +912,7 @@ impl RemoteShellEnvironment {
             None => (WholeOutput::new(received, None), String::new(), false),
             Some(Ok(output)) => (output, String::new(), true),
             Some(Err(error)) => {
-                tracing::warn!(event = "command_output.read_failed", host_id = self.0.options.host.device_id().as_deref(), %command, %error, "the command's kept output could not be read");
+                tracing::warn!(event = "command_output.read_failed", device_id = self.0.options.device.device_id().as_deref(), %command, %error, "the command's kept output could not be read");
                 // The output ends with each stream's newest bytes the
                 // runner sent, past what lies between them and the start.
                 let newest = Received::newest_bytes(&streams);
@@ -931,7 +931,7 @@ impl RemoteShellEnvironment {
                 }
                 let missing = Some(Missing {
                     bytes: unreceived.saturating_sub(kept),
-                    reason: format!("not read from the Host: {}", error.message),
+                    reason: format!("not read from the device: {}", error.message),
                 })
                 .filter(|missing| missing.bytes > 0);
                 let page = missing
@@ -953,7 +953,7 @@ impl RemoteShellEnvironment {
         // (`crates/agent-server/src/server/tree/live.rs`), whatever signal ended the job.
         let stopped = running.stop.is_cancelled();
         let end = if stopped {
-            // A stop that the Host's detach made says why, as the end of a
+            // A stop that the device's detach made says why, as the end of a
             // command that never ran does.
             if let Some(reason) = running.withdrawal.reason() {
                 page.push_str(&push_reason(output.records_mut(), &reason));
@@ -986,7 +986,7 @@ impl RemoteShellEnvironment {
     /// The media the job's commands returned
     /// (`crates/agent-tools/src/result.rs`), each with its bytes: from the
     /// conversation owner's namespace when it holds them, otherwise read from
-    /// the Host, all with one request; or why the backend does not have them.
+    /// the device, all with one request; or why the backend does not have them.
     async fn media(&self, job: &RemoteJob) -> Vec<CommandMedium> {
         let announced = job.media();
         let held = self.held(&announced).await;
@@ -1013,8 +1013,8 @@ impl RemoteShellEnvironment {
                     Some(bytes) => Ok(bytes),
                     None => match read.next().expect("one answer per medium read") {
                         Ok(bytes) if BlobRef::of(&bytes) == medium.sha256 => Ok(bytes),
-                        Ok(_) => Err("not read from the Host: its bytes are not the ones the runner announced".into()),
-                        Err(error) => Err(format!("not read from the Host: {}", error.message)),
+                        Ok(_) => Err("not read from the device: its bytes are not the ones the runner announced".into()),
+                        Err(error) => Err(format!("not read from the device: {}", error.message)),
                     },
                 };
                 command_medium(medium, bytes)
@@ -1274,7 +1274,7 @@ impl ShellEnvironment for RemoteShellEnvironment {
                 self.settled_or_let_go(&running).await;
             }
             // A command that ran keeps its output when its job ends, and
-            // its Host lets the job's directory go then.
+            // its device lets the job's directory go then.
             self.0.state.borrow_mut().records.remove(command);
             true
         })
@@ -1318,9 +1318,9 @@ impl ShellEnvironment for RemoteShellEnvironment {
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async move {
             let running: Vec<_> = self.0.state.borrow().running.values().cloned().collect();
-            // A command whose Host's runner is away ends as lost: its stop
+            // A command whose device's runner is away ends as lost: its stop
             // could only be reported by that runner, which stops the job when
-            // it is back, and nothing here waits for a Host that may never
+            // it is back, and nothing here waits for a device that may never
             // return.
             for running in &running {
                 running.loses_if_away.withdraw(LEFT_AWAY);
@@ -1337,14 +1337,14 @@ impl ShellEnvironment for RemoteShellEnvironment {
     }
 
     /// An environment for jobs without declared commands stays so.
-    fn replace_commands(&self, commands: &Rc<CommandSet>) -> Result<(), HostError> {
+    fn replace_commands(&self, commands: &Rc<CommandSet>) -> Result<(), DeviceError> {
         let mut held = self.0.commands.borrow_mut();
         let Some(selection) = held.as_ref() else {
             return Ok(());
         };
         let replaced = selection
             .of(commands)
-            .map_err(|error| HostError::new(HostErrorKind::Protocol, error.to_string()))?;
+            .map_err(|error| DeviceError::new(DeviceErrorKind::Protocol, error.to_string()))?;
         *held = Some(replaced);
         Ok(())
     }
@@ -1374,13 +1374,13 @@ fn ending_of(end: CommandEnd) -> Ending {
     }
 }
 
-/// Why a command ends that the environment was ended while its Host's runner
+/// Why a command ends that the environment was ended while its device's runner
 /// was away.
-const LEFT_AWAY: &str = "its Host was away when the work ended";
+const LEFT_AWAY: &str = "its device was away when the work ended";
 
-/// Why the backend does not have what a Host held when the connection to it
+/// Why the backend does not have what a device held when the connection to it
 /// was lost.
-const LOST: &str = "lost with the Host's connection";
+const LOST: &str = "lost with the device's connection";
 
 /// A medium the runner announced, with its bytes or why there are none.
 fn command_medium(medium: JobMedium, bytes: Result<Bytes, String>) -> CommandMedium {
@@ -1471,8 +1471,8 @@ struct Received {
     /// output never joins bytes across it, and the end reads the kept
     /// output.
     head: u64,
-    /// The stream's length on the Host, as its messages told it.
-    host: u64,
+    /// The stream's length on the device, as its messages told it.
+    device: u64,
     /// Where the pages' view of the stream's next bytes starts.
     next: u64,
     text: Utf8Stream,
@@ -1492,7 +1492,7 @@ impl Received {
         received: &RefCell<Vec<OutputRecord>>,
     ) -> bool {
         let end = chunk.offset + chunk.bytes.len() as u64;
-        self.host = self.host.max(end);
+        self.device = self.device.max(end);
         if chunk.offset < wire::JOB_VIEW_BYTES as u64 {
             // The device's jobs deliver a stream's first bytes without
             // overlap (`JobEntry::deliver`), so a message that does not
@@ -1560,10 +1560,10 @@ impl Received {
             .collect()
     }
 
-    /// The bytes of the stream the Host held beyond those, as far as its
+    /// The bytes of the stream the device held beyond those, as far as its
     /// messages told.
     fn unreceived(&self) -> u64 {
-        self.host.saturating_sub(self.head)
+        self.device.saturating_sub(self.head)
     }
 }
 

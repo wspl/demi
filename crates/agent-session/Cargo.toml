@@ -24,7 +24,7 @@ demi-command-protocol = { path = "../command-protocol" }
 demi-shared-types = { path = "../shared-types" }
 demi-shared-gates = { path = "../shared-gates" }
 demi-provider-common = { path = "../provider-common" }
-demi-host-interface = { path = "../host-interface" }
+demi-device-interface = { path = "../device-interface" }
 futures-util.workspace = true
 garde.workspace = true
 jiter = "0.17"

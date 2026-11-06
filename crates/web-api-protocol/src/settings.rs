@@ -116,7 +116,7 @@ pub struct SetCloudIsolation {
 pub enum NetworkPolicy {
     /// Nothing.
     NoNetwork,
-    /// Git hosts, package registries and the downloads of build tools.
+    /// Git devices, package registries and the downloads of build tools.
     DeveloperServices,
     /// Every public address.
     InternetOnly,
@@ -546,7 +546,7 @@ pub struct ShortcutSetsPatch {
 /// Where a new project lives: the user's Cloud or one of their devices.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ProjectHostKind {
+pub enum ProjectDeviceKind {
     Cloud,
     Device,
 }
@@ -556,9 +556,9 @@ pub enum ProjectHostKind {
 /// longer has stays here; the dialog chooses no device for it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProjectHostChoice {
+pub struct ProjectDeviceChoice {
     #[garde(skip)]
-    pub kind: ProjectHostKind,
+    pub kind: ProjectDeviceKind,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -761,9 +761,9 @@ pub struct Preferences {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
-    #[schemars(with = "ProjectHostChoice")]
+    #[schemars(with = "ProjectDeviceChoice")]
     #[garde(dive)]
-    pub last_project_host: Option<ProjectHostChoice>,
+    pub last_project_device: Option<ProjectDeviceChoice>,
     /// The language of the user's pages and of the mail the backend sends
     /// them.
     #[serde(
@@ -1062,9 +1062,9 @@ pub struct PreferencesPatch {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
-    #[schemars(with = "ProjectHostChoice")]
+    #[schemars(with = "ProjectDeviceChoice")]
     #[garde(dive)]
-    pub last_project_host: Option<ProjectHostChoice>,
+    pub last_project_device: Option<ProjectDeviceChoice>,
     /// The language of the user's pages and of the mail the backend sends
     /// them.
     #[serde(

@@ -5,7 +5,7 @@ import DeviceIcon from '@demicodes/web-ui/devices/DeviceIcon.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
-import { hostIcon } from '@demicodes/web-ui/hosts/icons'
+import { deviceIcon } from '@demicodes/web-ui/targets/icons'
 import { deviceStatusLabel } from '@demicodes/web-ui/devices/state'
 import type { SidebarDevice } from './types'
 
@@ -27,17 +27,17 @@ import type { SidebarDevice } from './types'
  * matches the row's buttons beside it.
  */
 const props = defineProps<{
-  host: SidebarDevice | { kind: 'cloud' }
+  device: SidebarDevice | { kind: 'cloud' }
 }>()
 
 const phone = usePhone()
 
 const label = computed(() => {
-  const host = props.host
-  if (host.kind === 'cloud') {
+  const device = props.device
+  if (device.kind === 'cloud') {
     return t('device.cloud')
   }
-  return host.kind === 'paired' ? `${host.name} · ${deviceStatusLabel(host)}` : t('device.removed')
+  return device.kind === 'paired' ? `${device.name} · ${deviceStatusLabel(device)}` : t('device.removed')
 })
 </script>
 
@@ -48,16 +48,16 @@ const label = computed(() => {
     class="flex h-6 w-4 shrink-0 items-center justify-center text-fg-muted phone:size-8"
   >
     <component
-      :is="hostIcon({ kind: 'cloud' })"
-      v-if="host.kind === 'cloud'"
+      :is="deviceIcon({ kind: 'cloud' })"
+      v-if="device.kind === 'cloud'"
       role="img"
       :aria-label="label"
       :size="phone ? ICON_PX.in32 : ICON_PX.in24"
     />
     <DeviceIcon
-      v-else-if="host.kind === 'paired'"
-      :state="host.state"
-      :mark="host.mark"
+      v-else-if="device.kind === 'paired'"
+      :state="device.state"
+      :mark="device.mark"
       :label="label"
       inherit-color
     />

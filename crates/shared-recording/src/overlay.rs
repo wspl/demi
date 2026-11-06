@@ -629,7 +629,7 @@ pub(crate) fn rounded(x: f32, y: f32, width: f32, height: f32, radius: f32) -> O
 }
 
 /// A key as the capsule names it: by the symbol macOS uses on a Mac, where
-/// the export runs on the Host that recorded, and by its name elsewhere.
+/// the export runs on the device that recorded, and by its name elsewhere.
 fn key_name(key: &str) -> String {
     let mac = cfg!(target_os = "macos");
     let named = match key {

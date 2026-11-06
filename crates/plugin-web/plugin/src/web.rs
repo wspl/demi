@@ -1,15 +1,15 @@
 //! The `demi web` group.
 //!
 //! - `search` runs in the plugin, against Exa.
-//! - `fetch` runs `fetch.get` of the `demi.fetch` package on the Host, its
+//! - `fetch` runs `fetch.get` of the `demi.fetch` package on the device, its
 //!   arguments declared from the `command-package-fetch-protocol` types.
 //!
 //! # Why they run in different places
 //!
 //! - `search` calls a search vendor with the user's account, whose token never
 //!   leaves the backend.
-//! - `fetch` reads a page as `curl` on the Host would, through the Host's
-//!   network, proxy and VPN, reaching what the Host reaches, `localhost` and
+//! - `fetch` reads a page as `curl` on the device would, through the device's
+//!   network, proxy and VPN, reaching what the device reaches, `localhost` and
 //!   the intranet included. It never goes through the backend, which would
 //!   otherwise fetch addresses for anyone who asks.
 //!
@@ -35,7 +35,7 @@ use demi_command_package_fetch_protocol::{
     DEFAULT_LENGTH, DEFAULT_TIMEOUT_MS, FetchArgs, Fetched, GET, MAX_TIMEOUT_MS,
     PACKAGE,
 };
-use demi_host_interface::{GroupBuilder, LeafBuilder};
+use demi_device_interface::{GroupBuilder, LeafBuilder};
 use demi_plugin_interface::{CommandPlugin, Feature, Placement, PortHandled};
 
 use crate::search::{DEFAULT_COUNT, SearchArgs, SearchedPage};
@@ -62,12 +62,12 @@ pub(crate) fn features() -> Vec<Feature> {
     };
     vec![
         feature("search", false, "Search the web.", "Searches the web."),
-        feature("fetch", true, "Read pages from this Host.", "Fetches a page as Markdown, or a file."),
+        feature("fetch", true, "Read pages from this device.", "Fetches a page as Markdown, or a file."),
     ]
 }
 
 fn web_group() -> GroupBuilder {
-    GroupBuilder::new("web", "Search the web and read pages from this Host.")
+    GroupBuilder::new("web", "Search the web and read pages from this device.")
         .index_entry(ENTRY)
         .leaf(
             LeafBuilder::rpc(
@@ -92,7 +92,7 @@ fn web_group() -> GroupBuilder {
         .leaf(
             LeafBuilder::native(
                 "fetch",
-                "Fetch a URL from this Host and print it, a page as Markdown, one part at a time; save a PDF, an image or any other file and print its path. It runs no JavaScript and signs in nowhere.",
+                "Fetch a URL from this device and print it, a page as Markdown, one part at a time; save a PDF, an image or any other file and print its path. It runs no JavaScript and signs in nowhere.",
                 NativeOperation {
                     package: PACKAGE.into(),
                     operation: GET.into(),
@@ -114,7 +114,7 @@ fn web_group() -> GroupBuilder {
             )
             .json_output::<Fetched>()
             .success_output(
-                "a line naming the URL, where its redirects led, its HTTP status, type and length; a line saying that what follows is untrusted web content; the part; and, when more remains, a line naming how many characters and the call that reads on. A page read is kept on this Host for 15 minutes, so reading on fetches it only once. A file that is no text is saved under the temporary directory's demi-fetch/, and its path, type and size are printed with the call that shows it",
+                "a line naming the URL, where its redirects led, its HTTP status, type and length; a line saying that what follows is untrusted web content; the part; and, when more remains, a line naming how many characters and the call that reads on. A page read is kept on this device for 15 minutes, so reading on fetches it only once. A file that is no text is saved under the temporary directory's demi-fetch/, and its path, type and size are printed with the call that shows it",
             )
             .failure_output(
                 "an HTTP status of 400 or more prints the page and exits 1; a Cloudflare challenge, no answer within the deadline, more than 10 redirects, more than 10 MiB of text or 64 MiB of a file write the reason to stderr and exit 1",

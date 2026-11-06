@@ -14,12 +14,12 @@
 //! The same commands run in two places:
 //!
 //! - On a developer's machine, whose cross tools compile the targets of the
-//!   Hosts in use whatever its platform.
+//!   devices in use whatever its platform.
 //! - In the build workflow, which builds every push and every release, a
 //!   deploy's pre-release included, on GitHub's hosted runners, each platform's
 //!   targets on a runner of that platform.
 //!
-//! A developer builds and packages only the targets of the Hosts in use: trying
+//! A developer builds and packages only the targets of the devices in use: trying
 //! a runner change on an x86_64 Linux machine that is also its own Cloud's
 //! execution host needs `x86_64-unknown-linux-musl` alone, which the machine
 //! runs as a paired device and the Cloud guest runs too. A published release
@@ -39,7 +39,7 @@
 //!    |                release's files, each program for each target
 //!    +-- the release --> the Cloud image build (`cloud_image`)
 //!    +-- the release --> a Linux server, whose backend takes each program
-//!                        from the files when a Host first needs it
+//!                        from the files when a device first needs it
 //! ```
 //!
 //! Every Rust check selects the same thing, the whole workspace: Cargo unifies
@@ -133,7 +133,7 @@ enum Command {
     /// Refreshes the vendors' marks from models.dev.
     #[cfg(all(unix, feature = "developer"))]
     Logos(logos::Options),
-    /// Pins the Android device art a Host downloads from AOSP.
+    /// Pins the Android emulator art a device downloads from AOSP.
     #[cfg(all(unix, feature = "developer"))]
     DeviceArt(device_art::Options),
     /// Removes the build products no current build of the checkout uses.

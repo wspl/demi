@@ -74,7 +74,7 @@ export function useCommandRevealer(): CommandRevealer {
 
 /**
  * The tag a report row carries, as a shell row marks its command's end: only
- * what went wrong. A report never finds its command waiting for its Host.
+ * what went wrong. A report never finds its command waiting for its device.
  */
 export function reportMark(report: CommandReport): Exclude<CommandEndMark, { kind: 'waiting' }> | null {
   const event = report.event

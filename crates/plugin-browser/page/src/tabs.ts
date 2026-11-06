@@ -22,7 +22,7 @@ import {
 const BIND_TIMEOUT_MS = 310_000
 
 /**
- * A refused call in the words the page shows for it, never the Host's own error
+ * A refused call in the words the page shows for it, never the device's own error
  * text: its reason's, or for an answer whose reason is not one of the plugin's,
  * its HTTP status. A call no answer came for, or whose answer could not be
  * read, says which.
@@ -87,7 +87,7 @@ export function browserTabsApi(plugin: ConversationPlugin, select: (panelTab: st
     history: (tab, action) => move('history', { tab, action } satisfies TabHistory),
     stop: (tab) => move('stop', { tab } satisfies StopTab),
     stream: plugin.stream('browser'),
-    hostStarting: () => plugin.hostStarting.value,
+    deviceStarting: () => plugin.deviceStarting.value,
     downloading: () => plugin.downloading.value,
   }
 }

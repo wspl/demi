@@ -5,7 +5,7 @@ import { t as ui } from '../ui/locales/text'
 import { t } from './locales/text'
 
 /**
- * The menus of a Host file and of a commit, each declared once.
+ * The menus of a device file and of a commit, each declared once.
  *
  * - A link that names the object offers all of it, Open first.
  * - The row the object has elsewhere offers the same less what the row already is:
@@ -24,7 +24,7 @@ export interface FileMenuActions {
   download?: () => void
 }
 
-/** A file's menu: Open and Show in Files, then Copy Path, its absolute path on the Host, and Download. */
+/** A file's menu: Open and Show in Files, then Copy Path, its absolute path on the device, and Download. */
 export function fileMenu(path: string, actions: FileMenuActions): ContextMenuGroup[] {
   const { open, showInFiles, download } = actions
   const opening: ContextMenuEntry[] = [

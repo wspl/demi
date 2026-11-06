@@ -1,6 +1,6 @@
 import { nextTick, watch } from 'vue'
-import { HOST_FILE_ATTRIBUTE, HOST_SRCSET_ATTRIBUTE, hostSrcsetCandidates, srcsetText } from '../markdown/document'
-import { useHostImagesAt } from '../markdown/host-images'
+import { DEVICE_FILE_ATTRIBUTE, DEVICE_SRCSET_ATTRIBUTE, deviceSrcsetCandidates, srcsetText } from '../markdown/document'
+import { useDeviceImagesAt } from '../markdown/device-images'
 import { imagePlaceholderHtml } from '../markdown/image-placeholder'
 import type { FileContents } from './types'
 
@@ -8,9 +8,9 @@ import type { FileContents } from './types'
  * The images of a Markdown document the page shows, in the element `root` holds
  * the rendering `html` in.
  *
- * Host images:
+ * Device images:
  *
- * - Each Host image of the document (`hostFiles` are their paths) is given the
+ * - Each device image of the document (`deviceFiles` are their paths) is given the
  *   address of its file's version the page keeps, where it stands, so a new
  *   version loads in place and nothing else of the document is rendered again.
  * - One whose file is still being read, or is not there, shows its alt text in
@@ -19,29 +19,29 @@ import type { FileContents } from './types'
  *
  * Sets of sources:
  *
- * - A `srcset` that names Host files (`HOST_SRCSET_ATTRIBUTE`) is written once
- *   each of its Host files is read, each candidate at the address of its file's
+ * - A `srcset` that names device files (`DEVICE_SRCSET_ATTRIBUTE`) is written once
+ *   each of its device files is read, each candidate at the address of its file's
  *   version. A candidate whose file is not there drops out.
  * - The image of a `<picture>` takes its address only once each of the picture's
  *   sets is written, and keeps its placeholder until then. So the web browser
  *   chooses among the sources once and fetches only the candidate it chooses: a
  *   dark theme does not also fetch the light logo the image falls back to.
  *
- * An image whose bytes do not load, as while the Host is away, or whose file is
+ * An image whose bytes do not load, as while the device is away, or whose file is
  * not there, shows its alt text in a quiet box in its place, as a web browser
  * shows a missing image's description, instead of its broken picture glyph. Each
  * box keeps its image, which tries again when the document is read again
- * (`reload`) and, for a Host image, when its file has a version it has not
+ * (`reload`) and, for a device image, when its file has a version it has not
  * tried.
  */
 export function useDocumentImages(options: {
   root: () => HTMLElement | undefined
   html: () => string
-  hostFiles: () => string[]
+  deviceFiles: () => string[]
   contents: () => FileContents | undefined
 }): { onError(event: Event): void; reload(): void } {
   const { html } = options
-  const hostImages = useHostImagesAt(options.contents, options.hostFiles)
+  const deviceImages = useDeviceImagesAt(options.contents, options.deviceFiles)
   /** Each placeholder shown, with its image. */
   const failed = new Map<HTMLElement, HTMLImageElement>()
   /**
@@ -73,7 +73,7 @@ export function useDocumentImages(options: {
 
   function reload(): void {
     for (const [placeholder, image] of failed) {
-      // A Host image whose file is not there has no address to try again.
+      // A Device image whose file is not there has no address to try again.
       if (!image.hasAttribute('src'))
         continue
       placeholder.replaceWith(image)
@@ -96,15 +96,15 @@ export function useDocumentImages(options: {
     const root = options.root()
     // The pictures with a set whose files are still being read.
     const choosing = new Set<Element>()
-    for (const element of root?.querySelectorAll(`[${HOST_SRCSET_ATTRIBUTE}]`) ?? []) {
+    for (const element of root?.querySelectorAll(`[${DEVICE_SRCSET_ATTRIBUTE}]`) ?? []) {
       const picture = element.closest('picture')
       if (!setSrcset(element) && picture)
         choosing.add(picture)
     }
     const placeholders = new Map([...failed].map(([placeholder, image]) => [image, placeholder]))
-    const images = [...root?.querySelectorAll<HTMLImageElement>(`img[${HOST_FILE_ATTRIBUTE}]`) ?? [], ...placeholders.keys()]
+    const images = [...root?.querySelectorAll<HTMLImageElement>(`img[${DEVICE_FILE_ATTRIBUTE}]`) ?? [], ...placeholders.keys()]
     for (const image of images) {
-      const shown = hostImages.value.get(image.getAttribute(HOST_FILE_ATTRIBUTE) ?? '')
+      const shown = deviceImages.value.get(image.getAttribute(DEVICE_FILE_ATTRIBUTE) ?? '')
       const placeholder = placeholders.get(image)
       const picture = (placeholder ?? image).closest('picture')
       // A file that is not there, or not read yet, shows its alt text, as an
@@ -124,7 +124,7 @@ export function useDocumentImages(options: {
         failed.delete(placeholder)
         unloaded.delete(placeholder)
         // Its own set, which the pass above did not find while it was away.
-        if (image.hasAttribute(HOST_SRCSET_ATTRIBUTE))
+        if (image.hasAttribute(DEVICE_SRCSET_ATTRIBUTE))
           setSrcset(image)
       }
       image.setAttribute('src', shown.src)
@@ -137,12 +137,12 @@ export function useDocumentImages(options: {
    */
   function setSrcset(element: Element): boolean {
     const candidates = []
-    for (const candidate of hostSrcsetCandidates(element)) {
+    for (const candidate of deviceSrcsetCandidates(element)) {
       if ('url' in candidate) {
         candidates.push(candidate)
         continue
       }
-      const shown = hostImages.value.get(candidate.path)
+      const shown = deviceImages.value.get(candidate.path)
       // Until every file is read, the set could pick a candidate it would not pick whole.
       if (shown === undefined || shown.state === 'loading') {
         element.removeAttribute('srcset')
@@ -159,7 +159,7 @@ export function useDocumentImages(options: {
       element.setAttribute('srcset', srcset)
     return true
   }
-  watch([html, hostImages], address, { immediate: true, flush: 'post' })
+  watch([html, deviceImages], address, { immediate: true, flush: 'post' })
 
   return { onError, reload }
 }

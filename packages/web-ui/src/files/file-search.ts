@@ -39,7 +39,7 @@ export function compareFound(a: FoundFile, b: FoundFile): number {
 
 /**
  * A search of a source's files, one at a time: a new one stops the one that
- * runs. The files found come in the order the Host finds them and are kept in
+ * runs. The files found come in the order the device finds them and are kept in
  * `compareFound`'s order, shown a frame at a time so a search that finds
  * thousands does not draw thousands of times.
  */

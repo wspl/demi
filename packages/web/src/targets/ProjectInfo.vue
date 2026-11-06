@@ -1,26 +1,26 @@
 <script setup lang="ts">
 import { keptComputed } from '@demicodes/web-ui/infra/keep-same'
 import { computed, ref } from 'vue'
-import ProjectDirectoryMenu from '@demicodes/web-ui/hosts/ProjectDirectoryMenu.vue'
-import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
-import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
+import ProjectDirectoryMenu from '@demicodes/web-ui/targets/ProjectDirectoryMenu.vue'
+import MoveConversationDialog from '@demicodes/web-ui/targets/MoveConversationDialog.vue'
+import { useMoveQuestion } from '@demicodes/web-ui/targets/move-question'
 import { homePath } from '@demicodes/web-ui/files/paths'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import type { ConversationTarget } from '../api/generated/web-api'
 import type { Conversation, Project } from '../state/types'
 import { useResources } from '../state/resources'
-import { hostKindOf, hostLabel } from '../state/hosts'
-import { browserHosts, fileSourceFor, placesFor } from '../devices/files'
+import { targetKindOf, deviceLabel } from '../state/devices'
+import { browserDevices, fileSourceFor, placesFor } from '../devices/files'
 import { useConversations } from '../conversation/store'
 import { executionFor, moveLock } from './execution'
-import HostMenu from './HostMenu.vue'
-import type { HostChoice } from '@demicodes/web-ui/hosts/types'
+import DeviceMenu from './DeviceMenu.vue'
+import type { DeviceChoice } from '@demicodes/web-ui/targets/types'
 
 /**
- * The header's place: the Host the conversation runs on and its directory.
- * Every move the two menus start, to another Host or another directory, comes
+ * The header's place: the device the conversation runs on and its directory.
+ * Every move the two menus start, to another device or another directory, comes
  * through `move`, which asks first when the conversation has messages; so does
- * one the offline primary Host's card above the composer starts, through
+ * one the offline primary device's card above the composer starts, through
  * `choose`. A move stops nothing.
  */
 const props = defineProps<{
@@ -36,21 +36,21 @@ const locked = computed(() => moveLock(props.conversation, conversations.pending
 const workspaceProjects = computed(() =>
   resources.projects.filter((project) => project.workspaceId === props.conversation.workspaceId),
 )
-/** The projects on the Host the conversation runs on, which the directory menu lists. */
-const hostProjects = keptComputed(() =>
+/** The projects on the device the conversation runs on, which the directory menu lists. */
+const deviceProjects = keptComputed(() =>
   workspaceProjects.value
     .filter((project) => project.deviceId === execution.value.deviceId)
     .map((project) => ({
       id: project.id,
       path: project.path,
-      disabled: project.hostKind === 'device' && !(project.device.kind === 'paired' && project.device.state === 'online'),
+      disabled: project.targetKind === 'device' && !(project.device.kind === 'paired' && project.device.state === 'online'),
     })),
 )
-const hosts = keptComputed(() =>
-  browserHosts(resources.devices).map((host) => {
-    const device = resources.devices.find((device) => device.id === host.id)!
+const devices = keptComputed(() =>
+  browserDevices(resources.devices).map((offered) => {
+    const device = resources.devices.find((each) => each.id === offered.id)!
     return {
-      ...host,
+      ...offered,
       source: fileSourceFor(device),
       places: placesFor(device, workspaceProjects.value),
     }
@@ -59,11 +59,11 @@ const hosts = keptComputed(() =>
 
 const moveQuestion = useMoveQuestion()
 
-/** Where `target` is, as the dialog names it: its Host, and its directory as a person reads it. */
-function place(target: ConversationTarget): { host: string; directory: string | null } {
+/** Where `target` is, as the dialog names it: its device, and its directory as a person reads it. */
+function place(target: ConversationTarget): { device: string; directory: string | null } {
   if (target.kind === 'cloud') {
     // Without a directory the Cloud runs it in one of its own, which the backend names.
-    return { host: hostLabel('cloud', null), directory: target.path ?? null }
+    return { device: deviceLabel('cloud', null), directory: target.path ?? null }
   }
   const project = target.kind === 'project'
     ? resources.projects.find((item) => item.id === target.projectId)
@@ -71,8 +71,8 @@ function place(target: ConversationTarget): { host: string; directory: string | 
   const deviceId = target.kind === 'device' ? target.deviceId : project?.deviceId ?? null
   const path = target.kind === 'device' ? target.path : project?.path ?? null
   const device = resources.deviceById(deviceId)
-  const host = hostLabel(hostKindOf(device), device)
-  return { host, directory: path === null ? null : homePath(path, device?.home) }
+  const label = deviceLabel(targetKindOf(device), device)
+  return { device: label, directory: path === null ? null : homePath(path, device?.home) }
 }
 
 function sameTarget(a: ConversationTarget, b: ConversationTarget): boolean {
@@ -113,29 +113,29 @@ function move(target: ConversationTarget): Promise<boolean> {
 }
 
 /**
- * A Host chosen in the host menu. Outside a project the conversation moves
+ * A device chosen in the device menu. Outside a project the conversation moves
  * there at once, to a device's home or the Cloud's directory of the
  * conversation; in a project a device opens its directory picker. The Cloud
  * lists no directories to a page, so choosing it moves the conversation to
  * that directory of its own in either case.
  */
-function choose(host: HostChoice) {
+function choose(choice: DeviceChoice) {
   const here = execution.value
-  if (host.kind === 'cloud') {
+  if (choice.kind === 'cloud') {
     if (here.kind !== 'cloud') {
       void move({ kind: 'cloud' })
     }
     return
   }
-  if (here.kind === 'device' && here.deviceId === host.id) {
+  if (here.kind === 'device' && here.deviceId === choice.id) {
     return
   }
-  const home = resources.deviceById(host.id)?.home
+  const home = resources.deviceById(choice.id)?.home
   if (props.conversation.target.kind === 'project' || !home) {
-    directory.value?.browse(host.id)
+    directory.value?.browse(choice.id)
     return
   }
-  void move({ kind: 'device', deviceId: host.id, path: home })
+  void move({ kind: 'device', deviceId: choice.id, path: home })
 }
 
 function selectProject(id: string) {
@@ -166,13 +166,13 @@ defineExpose({ choose })
     :device-id="execution.deviceId"
     :locked="locked !== undefined"
     :browse-enabled="execution.kind !== 'cloud'"
-    :projects="hostProjects"
-    :hosts="hosts"
+    :projects="deviceProjects"
+    :devices="devices"
     :worktree="conversation.worktree ? { name: conversation.worktree, path: conversation.cwd } : null"
     :select-folder="selectFolder"
     @select-project="selectProject"
   >
-    <HostMenu
+    <DeviceMenu
       :conversation="conversation"
       :locked="locked"
       @choose="choose"

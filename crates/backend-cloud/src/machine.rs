@@ -22,7 +22,7 @@
 //!
 //! The Cloud's admission is what keeps it running. Taking it wakes a stopped
 //! Cloud, joins a boot under way, or waits for a running reset to finish,
-//! holding nothing while it waits. Each operation of a Host handle an admission
+//! holding nothing while it waits. Each operation of a device handle an admission
 //! made takes a lease of its own, refused while the Cloud is not running.
 
 use std::cell::{Cell, RefCell, RefMut};
@@ -40,7 +40,7 @@ use demi_backend_database::managed::ManagedOperation;
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_runner_client::Admission;
 use demi_backend_runners::codes::new_device_token;
-use demi_host_interface::{HostError, HostErrorKind};
+use demi_device_interface::{DeviceError, DeviceErrorKind};
 use demi_backend_database::control::ControlService;
 use demi_machine_manager_protocol::{
     Capacity, HibernateParams, RuntimeState, RuntimeStateParams, SandboxMachine, WakeParams,
@@ -145,7 +145,7 @@ impl From<StorageError> for CloudError {
 }
 
 /// A hold of the Cloud's admission: the Cloud keeps running while it is
-/// held, and each operation of a Host made under it takes `per_operation`.
+/// held, and each operation of a device made under it takes `per_operation`.
 pub struct CloudAdmission {
     pub device: DeviceId,
     pub per_operation: Admission,
@@ -420,18 +420,18 @@ impl Machine {
         recent >= limit as usize
     }
 
-    /// A lease for one operation of a Host the admission made, refused while
+    /// A lease for one operation of a device the admission made, refused while
     /// the machine is not running or while a transition reserves it.
-    fn admit(&self) -> Result<GateLease, HostError> {
+    fn admit(&self) -> Result<GateLease, DeviceError> {
         if !self.is_running() {
-            return Err(HostError::new(
-                HostErrorKind::Unavailable,
+            return Err(DeviceError::new(
+                DeviceErrorKind::Unavailable,
                 "Cloud is not accepting operations",
             ));
         }
         self.gate
             .try_enter(Purpose::Demand)
-            .ok_or_else(|| HostError::new(HostErrorKind::Unavailable, "Cloud is changing state"))
+            .ok_or_else(|| DeviceError::new(DeviceErrorKind::Unavailable, "Cloud is changing state"))
     }
 }
 
@@ -463,7 +463,7 @@ impl dyn CloudShard {
         Ok(machine)
     }
 
-    /// What each operation of a Host on `device` takes while the Cloud runs,
+    /// What each operation of a device on `device` takes while the Cloud runs,
     /// without waking it or waiting for it: an operation while the Cloud is
     /// not running is refused.
     pub async fn operation_admission(&self, device: &DeviceRecord) -> Result<Admission, StorageError> {
@@ -472,7 +472,7 @@ impl dyn CloudShard {
     }
 
     /// Takes the Cloud's admission
-    /// (`crates/backend-host-access/src/access.rs`).
+    /// (`crates/backend-device-access/src/access.rs`).
     ///
     /// The admission wakes a stopped Cloud, joins a boot under way, or waits
     /// for a running reset to finish, holding nothing while it waits, since a
@@ -618,7 +618,7 @@ impl dyn CloudShard {
             // The boot's failure is the one reported; a save that fails too
             // is logged beside it.
             if let Err(saved) = self.cloud_services().machines.call(hibernate).await {
-                tracing::warn!(event = "cloud.boot_save_failed", host_id = %device, %error, save_error = %saved, "a Cloud whose boot failed was not saved");
+                tracing::warn!(event = "cloud.boot_save_failed", device_id = %device, %error, save_error = %saved, "a Cloud whose boot failed was not saved");
             }
             self.devices().disconnect(device, "Cloud boot failed");
         }
@@ -782,7 +782,7 @@ impl dyn CloudShard {
                 }
             }
         }
-        tracing::warn!(event = "cloud.sandbox_stopped", host_id = %device, cause = "by_itself", "the Cloud's sandbox stopped by itself");
+        tracing::warn!(event = "cloud.sandbox_stopped", device_id = %device, cause = "by_itself", "the Cloud's sandbox stopped by itself");
         self.devices()
             .disconnect(device, "the Cloud's sandbox stopped");
     }
@@ -852,12 +852,12 @@ impl dyn CloudShard {
         match tokio::time::timeout(self.cloud_services().tuning.sync_timeout, link.sync()).await {
             Ok(Ok(())) => {}
             Ok(Err(error)) => {
-                tracing::warn!(event = "cloud.flush_failed", host_id = %device, %error, "the Cloud did not flush its filesystems")
+                tracing::warn!(event = "cloud.flush_failed", device_id = %device, %error, "the Cloud did not flush its filesystems")
             }
             Err(_) => {
                 tracing::warn!(
                     event = "cloud.flush_timed_out",
-                    host_id = %device,
+                    device_id = %device,
                     waited_ms = u64::try_from(self.cloud_services().tuning.sync_timeout.as_millis()).unwrap_or(u64::MAX),
                     "the Cloud did not flush its filesystems in time"
                 )
@@ -920,7 +920,7 @@ impl dyn CloudShard {
                 return Ok(());
             }
         }
-        tracing::warn!(event = "cloud.capacity_refused", host_id = %device.id, outcome = "saved_and_stopped", "a running Cloud found no capacity at the start");
+        tracing::warn!(event = "cloud.capacity_refused", device_id = %device.id, outcome = "saved_and_stopped", "a running Cloud found no capacity at the start");
         let hibernate = HibernateParams {
             device_id: device.id.to_string(),
             machine: sandbox_machine(device),
@@ -949,7 +949,7 @@ fn joinable(task: tokio::task::JoinHandle<Result<(), CloudError>>) -> Transition
 pub(crate) fn operation_ended(device: &DeviceId, operation: &'static str, started: std::time::Instant, succeeded: bool) {
     tracing::info!(
         event = "cloud_operation.ended",
-        host_id = %device,
+        device_id = %device,
         operation,
         outcome = if succeeded { "ok" } else { "failed" },
         ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),

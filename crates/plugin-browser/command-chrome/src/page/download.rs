@@ -1,4 +1,4 @@
-//! Observe downloads before input and publish only completed Host files.
+//! Observe downloads before input and publish only completed device files.
 //!
 //! Without `--output` a download goes to the profile's download directory, not
 //! `/tmp`, which may be held in memory; it lives as long as the environment. A

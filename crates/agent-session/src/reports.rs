@@ -24,7 +24,7 @@
 //! - A report names its command by number and the title of the call that
 //!   started it, which the command's record keeps, so it reads the same
 //!   whatever became of the call or the process that watched it.
-//! - A command whose Host's connection is away sends no silence report, since
+//! - A command whose device's connection is away sends no silence report, since
 //!   the silence is the connection's and the node could do nothing with one.
 //!
 //! The loss of a service opens no turn: it joins the running turn at
@@ -202,7 +202,7 @@ async fn watch_command(session: Weak<SessionShared>, command: CommandId, watch: 
     let mut over = false;
     if watch == Watch::Unreported {
         // A silence the node has nothing to tell of, such as a command whose
-        // Host is away, is looked at again after another silence.
+        // device is away, is looked at again after another silence.
         loop {
             let silent = next_silence(&*runtime, &command, silence);
             tokio::select! {

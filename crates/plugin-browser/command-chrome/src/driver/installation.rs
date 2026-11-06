@@ -13,14 +13,14 @@
 //!
 //! # The Chrome runtime
 //!
-//! The Chrome runtime exists because a minimal Host (the Cloud image) lacks the
+//! The Chrome runtime exists because a minimal device (the Cloud image) lacks the
 //! libraries and fonts Chrome needs.
 //!
 //! - Shipping the libraries means no package manager and no root, only glibc
-//!   2.28 or newer. A Host below it fails the installation saying what it has
+//!   2.28 or newer. A device below it fails the installation saying what it has
 //!   and needs.
 //! - Chrome finds the runtime through its own environment alone (`launch`). Set
-//!   for the runner or a shell, its libraries would load into the Host's own
+//!   for the runner or a shell, its libraries would load into the device's own
 //!   programs.
 //! - The runtime is built and published by `demi-sh/demi-chrome-runtime`, whose
 //!   releases carry the licenses and the source packages the libraries' LGPL
@@ -43,7 +43,7 @@ use crate::driver::launch::Runtime;
 use crate::driver::operation::{BrowserError, Result};
 use crate::driver::text;
 
-/// Reads the Host's glibc version, none on a Host without glibc.
+/// Reads the device's glibc version, none on a device without glibc.
 type GlibcReader = dyn Fn() -> std::io::Result<Option<GlibcVersion>> + Send + Sync;
 
 /// The Chrome a resident starts, through the runner that installs it.
@@ -54,7 +54,7 @@ pub struct Chrome {
     /// Whether the resident's sweep of what its predecessors left has ended
     /// (`crate::tabs::environment::sweep_orphans`).
     swept: Arc<watch::Sender<bool>>,
-    /// The target whose archives the Host takes: this program's own.
+    /// The target whose archives the device takes: this program's own.
     target: &'static str,
     glibc: Arc<GlibcReader>,
 }
@@ -65,7 +65,7 @@ impl Default for Chrome {
             artifacts: Arc::new(watch::Sender::new(None)),
             swept: Arc::new(watch::Sender::new(false)),
             target: host_target(),
-            glibc: Arc::new(glibc::host),
+            glibc: Arc::new(glibc::device),
         }
     }
 }
@@ -89,7 +89,7 @@ impl Chrome {
     }
 
     /// Installs the pinned release for `invocation`, and on Linux the
-    /// pinned runtime, unless the Host has them; a Linux Host with too old
+    /// pinned runtime, unless the device has them; a Linux device with too old
     /// a glibc installs nothing. The lines that say how the downloads go
     /// reach `lines`.
     pub async fn install(
@@ -131,7 +131,7 @@ impl Chrome {
         })
     }
 
-    /// Fails unless the Host's glibc is one the runtime runs on, read on
+    /// Fails unless the device's glibc is one the runtime runs on, read on
     /// the blocking pool: the check reads the loader.
     async fn check_glibc(&self) -> Result<()> {
         let glibc = self.glibc.clone();
@@ -141,13 +141,13 @@ impl Chrome {
         }
         let found = found.map_or_else(|| "none".to_owned(), |found| found.to_string());
         Err(BrowserError::Installation(format!(
-            "Chrome on Linux needs glibc {} or newer; this Host has {found}",
+            "Chrome on Linux needs glibc {} or newer; this device has {found}",
             glibc::OLDEST
         )))
     }
 
     /// The pinned release to start, and on Linux the pinned runtime, when
-    /// the Host has them installed.
+    /// the device has them installed.
     pub async fn installation(&self) -> Result<Installation> {
         let release = release()?;
         let platform = platform(&release, self.target)?;

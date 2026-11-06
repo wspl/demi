@@ -22,7 +22,7 @@ demi-command-package-browser-chrome = { path = "../command-chrome" }
 demi-command-package-browser-protocol = { path = "../protocol" }
 demi-command-protocol = { path = "../../command-protocol" }
 demi-command-sdk = { path = "../../command-sdk" }
-demi-shared-cli = { path = "../../shared-cli", features = ["host-allocator"] }
+demi-shared-cli = { path = "../../shared-cli", features = ["device-allocator"] }
 demi-shared-openh264 = { path = "../../shared-openh264" }
 demi-shared-recording = { path = "../../shared-recording" }
 demi-shared-recording-protocol = { path = "../../shared-recording-protocol" }

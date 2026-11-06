@@ -153,7 +153,7 @@ pub trait SessionRuntime {
 
     /// The node's working directory now, where its `shell` calls start.
     ///
-    /// It is read as a step starts without reaching its Host: the files a call
+    /// It is read as a step starts without reaching its device: the files a call
     /// of the step changed outside it are left out of what the conversation
     /// shows (`crates/agent-store/src/changes.rs`). None when it cannot be
     /// read, as by default, and then the step's files all show.
@@ -173,7 +173,7 @@ pub trait SessionRuntime {
     ///
     /// For a root:
     ///
-    /// - A turn left undone because a call's Host was offline ends unfinished,
+    /// - A turn left undone because a call's device was offline ends unfinished,
     ///   with an error block that offers Resume.
     /// - A failed turn holds its waiting input until the user acts.
     ///

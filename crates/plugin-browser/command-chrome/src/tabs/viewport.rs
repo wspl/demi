@@ -231,7 +231,7 @@ impl BrowserTab {
         *self.state.history.borrow()
     }
 
-    /// The number of the last tab list the Host read before now: a list read
+    /// The number of the last tab list the device read before now: a list read
     /// later is numbered at least this, and higher once anything the browser
     /// shows changed since.
     pub fn list_number(&self) -> u64 {

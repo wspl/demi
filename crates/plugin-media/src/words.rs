@@ -1,6 +1,6 @@
 //! The words of a media refusal, for the plugin's kind.
 
-use demi_host_interface::RpcInvocation;
+use demi_device_interface::RpcInvocation;
 use demi_plugin_interface::{ImageAspect, MediaRefusal, PluginError, PortFailure, PortRefusal, Unable, VideoChange};
 use demi_shared_types::{MediaKind, Timestamp};
 use jiff::tz::TimeZone;

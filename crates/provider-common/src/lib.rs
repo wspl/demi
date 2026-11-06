@@ -25,7 +25,7 @@
 //! Credentials, catalogs and quota serve every user of a shared instance and
 //! the backend's request handlers, so a provider is used from any thread. A run
 //! serves one turn and, for Claude Code, drives a process reached through the
-//! user's Host connection, so a runtime lives on the user's shard and never
+//! user's device connection, so a runtime lives on the user's shard and never
 //! leaves it.
 //!
 //! A provider reads its key, endpoint and options only from the typed
@@ -33,12 +33,12 @@
 //! runs in.
 //!
 //! The crate depends on no concrete provider, no agent crate, no
-//! `host-interface` and no Host implementation. A vendor crate implements
+//! `device-interface` and no device implementation. A vendor crate implements
 //! [`Provider`] for one vendor family and keeps its transports, body builders,
 //! stream parsers and authentication stores private. Keys, tokens, custom
 //! headers and raw endpoint values stay inside the provider and never reach a
 //! frame or response the web app sees. The vendor crate depends on no agent
-//! crate, plugin or Host implementation.
+//! crate, plugin or device implementation.
 
 pub mod audio;
 mod body;

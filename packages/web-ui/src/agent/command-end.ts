@@ -5,7 +5,7 @@ import { t } from './locales/text'
 /**
  * Where a command is, as a stored view or the command's live frames say it:
  *
- * - running, and whether a stop waits for its end or its start for its Host,
+ * - running, and whether a stop waits for its end or its start for its device,
  *   the device `waitingFor` names
  * - exited with its code
  * - stopped (`aborted`)
@@ -25,8 +25,8 @@ export interface CommandEnd {
  * - how it ended
  * - that a stop waits for its runner to end it
  *   (`crates/runner-shell/src/job.rs`)
- * - that its start waits for its Host, an offline device
- *   (`crates/backend-host-access/src/access.rs`)
+ * - that its start waits for its device, an offline device
+ *   (`crates/backend-device-access/src/access.rs`)
  *
  * A row marks only what is not going as planned, and a call's row and its
  * notice mark it alike.
@@ -34,7 +34,7 @@ export interface CommandEnd {
 export type CommandEndMark =
   | { kind: 'failed', exitCode: number }
   | { kind: 'stopping' }
-  | { kind: 'waiting', host: string }
+  | { kind: 'waiting', device: string }
   | { kind: 'stopped' }
   | { kind: 'lost', reason: string }
 
@@ -48,7 +48,7 @@ export function commandEndMark(view: CommandEnd | null): CommandEndMark | null {
       if (view.stopping) {
         return { kind: 'stopping' }
       }
-      return view.waitingFor === undefined ? null : { kind: 'waiting', host: view.waitingFor }
+      return view.waitingFor === undefined ? null : { kind: 'waiting', device: view.waitingFor }
     case 'exited':
       return view.exitCode !== undefined && view.exitCode !== 0
         ? { kind: 'failed', exitCode: view.exitCode }
@@ -86,8 +86,8 @@ export function runningTime(elapsedMs: number | null): string | null {
  * - for a lost command, why, as its tag does, and no time
  * - for one a stop waits for, that it does, as its tag does
  *   (`crates/runner-shell/src/job.rs`)
- * - for one whose start waits for its Host, that it does
- *   (`crates/backend-host-access/src/access.rs`)
+ * - for one whose start waits for its device, that it does
+ *   (`crates/backend-device-access/src/access.rs`)
  *
  * It is none while the time is unknown.
  */
@@ -99,7 +99,7 @@ export function commandStatusLine(end: CommandEnd | null, elapsedMs: number | nu
     return t('transcript.commandStatus.stopping')
   }
   if (end?.waitingFor !== undefined) {
-    return t('transcript.commandStatus.waiting', { host: end.waitingFor })
+    return t('transcript.commandStatus.waiting', { device: end.waitingFor })
   }
   if (elapsedMs === null) {
     return null

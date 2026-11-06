@@ -6,7 +6,7 @@
 //! screen in the frame. A foldable's folder, such as `pixel_fold`, holds one
 //! such folder per posture: `default` open and `closed` folded.
 //!
-//! A Host downloads a device's folder the first time it opens the device, at
+//! A device downloads an emulator's folder the first time it opens the emulator, at
 //! the commit the pin names, and keeps it once each file matches the pin's
 //! SHA-256 (`art_pin.rs`).
 //!
@@ -34,7 +34,7 @@ const ROOT: &str = "artwork/resources/device-art-resources";
 /// are under a megabyte, and the archive is read into memory.
 const ARCHIVE_BYTES: u64 = 16 * 1024 * 1024;
 
-/// The devices' art a Host keeps, in a folder per pinned commit.
+/// The emulators' art a device keeps, in a folder per pinned commit.
 pub struct Store {
     /// The folder of the pinned commit's devices.
     skins: PathBuf,
@@ -51,7 +51,7 @@ impl Store {
         }
     }
 
-    /// The art of `device`, such as `pixel_10`, downloaded when this Host
+    /// The art of `device`, such as `pixel_10`, downloaded when this device
     /// has none; none for a device AOSP has no art for. A download that
     /// fails is said in the log and tried again the next time.
     pub async fn device(&self, device: &str) -> Option<Folders> {

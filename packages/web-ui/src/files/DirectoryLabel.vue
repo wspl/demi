@@ -18,7 +18,7 @@ import { directoryParts } from './paths'
  */
 const props = defineProps<{
   path: string
-  /** The Host's home, which `~` writes; without it the location is a plain path. */
+  /** The Device's home, which `~` writes; without it the location is a plain path. */
   home?: string | null
   name?: string
   /** Leaves the location out; a narrow list keeps it only for names that two rows share. */

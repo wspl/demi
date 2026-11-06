@@ -19,16 +19,16 @@
  * - The browser has a tab only once its tab list names it, since a panel tab
  *   may name one the browser lost.
  * - A request shows its loading before it leaves the page and ends only on a
- *   tab list numbered after it (the Host's numbers only grow), whatever order
+ *   tab list numbered after it (the device's numbers only grow), whatever order
  *   answer and lists arrive in.
- * - The view stays open while a shown tab opens, so the Host learns the panel's
+ * - The view stays open while a shown tab opens, so the device learns the panel's
  *   size before it creates the tab.
  * - A page that cannot decode H.264 opens no view, since it would lower the
  *   picture for every viewer with missing acknowledgements and decide the tab's
  *   size with blind clicks.
  * - A view nobody watches, as when another tab is selected, the panel closes,
  *   the conversation changes or the page hides, stays open watching no tab:
- *   the Host stops capturing, the stream says it is unwatched so nothing stays
+ *   the device stops capturing, the stream says it is unwatched so nothing stays
  *   awake for it, and shown again it watches at once on the same connection,
  *   over the tab's last picture.
  */
@@ -39,7 +39,7 @@ import { z } from 'zod'
 import { panelReasonSchema, type BrowserTabs, type LiveDownload, type LiveTab, type PanelReason } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
 import { picturesSupported } from '@demicodes/plugin-sdk'
-import type { HostDownload, OpenUserStream, PageContext, SentenceText } from '@demicodes/plugin-sdk'
+import type { DeviceDownload, OpenUserStream, PageContext, SentenceText } from '@demicodes/plugin-sdk'
 import { LiveSession, type LiveStream, type PanelReport } from './session'
 import { t } from '../locales/text'
 
@@ -59,7 +59,7 @@ export function addedPanelTab(tab: string): string {
 
 /**
  * How long after the viewer's click or key in a tab a tab that page opens is
- * the viewer's, which a browser selects: the window in which the Host takes
+ * the viewer's, which a browser selects: the window in which the device takes
  * text the page copies as the viewer's.
  */
 const OPENED_BY_USER_MS = 5000
@@ -74,7 +74,7 @@ export const browserTabDataSchema = z.object({
   /**
    * Why the plugin could not open a browser tab for it: the reason, or the
    * HTTP status a call would have answered the same failure with, and the
-   * Host's or the plugin's message, which the page never shows.
+   * device's or the plugin's message, which the page never shows.
    */
   failure: z.union([
     z.object({ code: panelReasonSchema, message: z.string() }),
@@ -100,8 +100,8 @@ export type TabFailure = NonNullable<BrowserTabData['failure']>
 
 /**
  * What every reason the page can be told means to the user, in the Writing
- * page's words rather than the Host's error text: the browser's own codes, the
- * view's capture notices, the conversation's host access's refusals and the
+ * page's words rather than the device's error text: the browser's own codes, the
+ * view's capture notices, the conversation's device access's refusals and the
  * plugin call route's own. The catalogue's `reasons` hold a sentence for each,
  * so a reason without one does not build.
  */
@@ -187,10 +187,10 @@ export interface BrowserTabsApi {
   /** Stops loading the tab's page; answers as `navigate` does. */
   stop(tab: string): Promise<number>
   stream: OpenUserStream
-  /** Whether the Host is a Cloud that does not run yet, read reactively. */
-  hostStarting(): boolean
-  /** What the Host downloads of the plugin's packages now, Chrome or its program, read reactively. */
-  downloading(): readonly HostDownload[]
+  /** Whether the device is a Cloud that does not run yet, read reactively. */
+  deviceStarting(): boolean
+  /** What the device downloads of the plugin's packages now, Chrome or its program, read reactively. */
+  downloading(): readonly DeviceDownload[]
 }
 
 /** Answers that will not change by asking again. */
@@ -201,8 +201,8 @@ export type PictureSupport = 'checking' | 'supported' | 'unsupported'
 
 /**
  * What Demi does for a panel tab before the browser has its tab: reads what the
- * Host is doing, starts the Cloud, downloads the browser or its program to the
- * Host, starts the browser on the Host, or has the browser open the tab.
+ * device is doing, starts the Cloud, downloads the browser or its program to the
+ * device, starts the browser on the device, or has the browser open the tab.
  */
 export type StartingPhase = 'connecting' | 'cloud' | 'download' | 'browser' | 'page'
 
@@ -274,7 +274,7 @@ export class BrowserTabsController {
    * A tab leaves once a view reports the browser without it.
    */
   private readonly known = shallowReactive(new Map<string, LiveTab>())
-  /** The number of the last tab list a view reported, in the Host's sequence; null before the first. */
+  /** The number of the last tab list a view reported, in the device's sequence; null before the first. */
   private readonly listed = shallowRef<number | null>(null)
   /** The user's latest request on each browser tab. */
   private readonly requests = shallowReactive(new Map<string, TabRequest>())
@@ -293,7 +293,7 @@ export class BrowserTabsController {
   /**
    * The panel tab whose content is shown, with its browser tab, which the
    * view watches while the page is visible; a content shown before the
-   * browser has its tab keeps the view open watching nothing, so the Host
+   * browser has its tab keeps the view open watching nothing, so the device
    * knows the panel's size for the tab it opens.
    */
   private readonly shownContent = shallowRef<{ panelTab: string; tab: string | null } | null>(null)
@@ -316,9 +316,9 @@ export class BrowserTabsController {
     // The watchers stop with the effect scope its store made it in.
     watch(this.visibility, (state) => this.visibilityChanged(state), { flush: 'sync' })
     // A view the stopped Cloud refused connects at once once the Cloud runs, so
-    // the Host knows the panel's size before it opens the tab a shown content
+    // the device knows the panel's size before it opens the tab a shown content
     // waits for.
-    watch(() => api.hostStarting(), (starting, was) => {
+    watch(() => api.deviceStarting(), (starting, was) => {
       if (was && !starting) {
         this.session.value?.reconnect()
       }
@@ -505,7 +505,7 @@ export class BrowserTabsController {
   /**
    * Whether the browser tab `tab` is shown with no picture yet, which the
    * view will bring: not in a web browser that cannot show the pictures, nor
-   * while the Host says it cannot capture the tab.
+   * while the device says it cannot capture the tab.
    */
   private awaitsPicture(tab: string): boolean {
     return tab === this.shownTab.value
@@ -544,7 +544,7 @@ export class BrowserTabsController {
     if (!opening && listed) {
       return null
     }
-    if (this.api.hostStarting()) {
+    if (this.api.deviceStarting()) {
       return 'cloud'
     }
     if (this.api.downloading().length > 0) {
@@ -691,7 +691,7 @@ export class BrowserTabsController {
    * when there is none.
    *
    * - One shown before the browser has its tab watches nothing, and the view
-   *   tells the Host the panel's size meanwhile.
+   *   tells the device the panel's size meanwhile.
    * - A view waiting to reconnect connects at once for a tab it did not show,
    *   as a tab that just got its browser tab: the view's end may have been only
    *   that there was no browser yet.

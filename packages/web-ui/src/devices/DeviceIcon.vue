@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import CornerDot from '../ui/CornerDot.vue'
 import { ICON_PX } from '../ui/icon-metrics'
-import { DEVICE_ICON } from '../hosts/icons'
+import { DEVICE_ICON } from '../targets/icons'
 import DeviceLogo from './DeviceLogo.vue'
 import type { DeviceMark } from './mark'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE, type DeviceState } from './state'

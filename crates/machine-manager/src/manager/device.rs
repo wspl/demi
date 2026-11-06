@@ -242,20 +242,20 @@ impl DeviceWorker {
             };
             match moved {
                 Ok(()) => {
-                    tracing::info!(event = "cloud_move.ended", host_id = %device, to = ?to, "a Cloud moved to the chosen isolation");
+                    tracing::info!(event = "cloud_move.ended", device_id = %device, to = ?to, "a Cloud moved to the chosen isolation");
                     self.runtime = DeviceRuntime::on(to, device.clone(), self.mover.core.clone(), self.mover.base.clone(), self.reports.clone());
                     placement.set(&device, None);
                     self.reports.change().await;
                 }
                 Err(_) if stop.is_cancelled() => {
-                    tracing::info!(event = "cloud_move.interrupted", host_id = %device, to = ?to, "a Cloud's move ended with the manager; the next manager makes it");
+                    tracing::info!(event = "cloud_move.interrupted", device_id = %device, to = ?to, "a Cloud's move ended with the manager; the next manager makes it");
                     placement.set(&device, None);
                     self.reports.change().await;
                     return;
                 }
                 Err(error) => {
                     let message = crate::server::chain(&error);
-                    tracing::error!(event = "cloud_move.failed", host_id = %device, to = ?to, error = %message, "a Cloud could not move to the chosen isolation; it stays where it was");
+                    tracing::error!(event = "cloud_move.failed", device_id = %device, to = ?to, error = %message, "a Cloud could not move to the chosen isolation; it stays where it was");
                     placement.set(&device, Some(MoveStatus::Failed { message: error.to_string() }));
                     self.reports.change().await;
                     return;

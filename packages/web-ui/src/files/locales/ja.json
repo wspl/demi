@@ -119,9 +119,9 @@
     "files": "{count} 個のファイル",
     "failedOf": "{failed} / {files}が失敗",
     "more": "ほか {count} 件",
-    "cannotRemove": "このホストではファイルを削除できません。",
-    "cannotCreateFolder": "このホストではフォルダーを作成できません。",
-    "cannotTake": "このホストにはアップロードできません。",
+    "cannotRemove": "このデバイスではファイルを削除できません。",
+    "cannotCreateFolder": "このデバイスではフォルダーを作成できません。",
+    "cannotTake": "このデバイスにはアップロードできません。",
     "nameTaken": "同じ名前のファイルがすでに存在します。"
   },
   "conflict": {

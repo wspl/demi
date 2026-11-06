@@ -26,7 +26,7 @@ CREATE TABLE nodes (
   -- was not forked.
   forked_from      INTEGER CHECK (forked_from >= 1),
   -- A child's own placement, which a move of the conversation leaves: its
-  -- Host's device, null for the user's Cloud not made yet, and its working
+  -- device, null for the user's Cloud not made yet, and its working
   -- directory there. Both null for the root and a side question, which work
   -- where the conversation does. Their reader refuses a child without a
   -- directory, since a migration adds no table CHECK.
@@ -112,7 +112,7 @@ CREATE TABLE blocks (
   -- it is then of that row's version. Null for every other row.
   replaces       INTEGER CHECK (replaces < idx),
   -- The block's format; a release reads each format it knows.
-  -- blocks.body: transcript block format 19
+  -- blocks.body: transcript block format 20
   format         INTEGER NOT NULL,
   type           TEXT NOT NULL,
   id             TEXT NOT NULL,
@@ -223,7 +223,7 @@ CREATE TABLE share_blocks (
   copy       INTEGER PRIMARY KEY,
   token      TEXT NOT NULL,
   idx        INTEGER NOT NULL CHECK (idx >= 0),
-  -- share_blocks.body: transcript block format 19
+  -- share_blocks.body: transcript block format 20
   format     INTEGER NOT NULL,
   type       TEXT NOT NULL,
   id         TEXT NOT NULL,
@@ -268,7 +268,7 @@ CREATE TABLE share_attachments (
 CREATE TABLE command_outputs (
   command_id     TEXT PRIMARY KEY,
   ended_at       INTEGER NOT NULL,
-  -- How it ended, a JSON object: its exit code, stopped, or with its Host's
+  -- How it ended, a JSON object: its exit code, stopped, or with its device's
   -- connection; null for a row a release before 0.1.21 wrote.
   -- command_outputs.ending: command ending format 2
   ending         TEXT,
@@ -308,7 +308,7 @@ CREATE TABLE running_commands (
   -- The turn whose shell call started it; null for a command recorded
   -- before records kept it.
   turn_id     TEXT,
-  -- What it starts once its Host is back, while its start waits for it and
+  -- What it starts once its device is back, while its start waits for it and
   -- was never sent; null once sent. running_commands.unsent: unsent start
   -- format 1.
   unsent      TEXT,
@@ -326,7 +326,7 @@ CREATE INDEX running_commands_of_node ON running_commands (node_id);
 -- a file the user sent or uploaded themselves; only that agent's replies,
 -- and those of the agents forked from it, show it (`file-previews.md`
 -- § Attachment blocks). An upload also keeps the file it was uploaded from:
--- the device the command ran on and the file's full path as that Host
+-- the device the command ran on and the file's full path as that device
 -- writes it, both null for a file the user sent and for an upload stored
 -- before uploads kept them.
 -- A row never changes; a Fork's seed copies the rows, and the blobs stay
@@ -340,8 +340,8 @@ CREATE TABLE attachments (
   height      INTEGER CHECK (height >= 1),
   blob        TEXT NOT NULL,
   node_id     TEXT,
-  source_host TEXT,
-  source_path TEXT CHECK ((source_path IS NULL) = (source_host IS NULL)),
+  source_device TEXT,
+  source_path TEXT CHECK ((source_path IS NULL) = (source_device IS NULL)),
   CHECK ((width IS NULL) = (height IS NULL))
 ) STRICT;
 

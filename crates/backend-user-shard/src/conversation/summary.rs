@@ -6,7 +6,7 @@
 //! work runs in, its root's latest ended turn, from that same checkpoint, the
 //! cost of its rows of no agent, and each list its view shows whole under its
 //! revision: its messages saved for later as the composer lists them, the
-//! states plugins hold for its work panel's tabs, its attached hosts, its
+//! states plugins hold for its work panel's tabs, its attached devices, its
 //! directory's workflows and its permission requests. Each is read with an
 //! indexed query that touches no transcript row. The work panel's tabs are the
 //! entry's, so the page draws the panel as soon as the conversation is listed.
@@ -23,7 +23,7 @@ use demi_web_api_protocol::conversations::{
     ConversationMetadata, ConversationShares, ConversationStatus, ConversationSummary, LastTurn, ModelSettings,
     TurnOutcome,
 };
-use demi_web_api_protocol::hosts::{AttachedHost, ConversationHosts};
+use demi_web_api_protocol::attached_devices::{AttachedDevice, ConversationDevices};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 use demi_web_api_protocol::panel::WorkPanel;
 use demi_web_api_protocol::shares::ConversationShare;
@@ -31,7 +31,7 @@ use futures_util::future::try_join_all;
 use tokio_util::sync::CancellationToken;
 
 use crate::shard::Shard;
-use demi_backend_host_access::root_of;
+use demi_backend_device_access::root_of;
 
 impl Shard {
     /// The entries of the user's conversations that are archived, the last
@@ -73,7 +73,7 @@ impl Shard {
             .tree(&root_of(&record.id))
             .map(|tree| (tree.is_running(), tree.root().session().phase()));
         let facts = self.summary_facts(&record.id).await;
-        let resolved = self.host_shard().resolve_target(&record).await?;
+        let resolved = self.device_shard().resolve_target(&record).await?;
         let archived = record.archived();
         let resuming = self.restart_resumes().contains(&record.id);
         Ok(ConversationSummary {
@@ -120,17 +120,17 @@ impl Shard {
             None => false,
         };
         let facts = self.summary_facts(&record.id).await;
-        let resolved = self.host_shard().resolve_target(&record).await?;
+        let resolved = self.device_shard().resolve_target(&record).await?;
         let services = self.services();
-        let hosts = services
+        let devices = services
             .control
-            .attached_host_listing(record.id.clone())
+            .attached_device_listing(record.id.clone())
             .await?
             .into_iter()
-            .map(|(host, attached_at)| AttachedHost {
-                device_id: host.device,
-                name: host.name,
-                cwd: host.cwd,
+            .map(|(attached, attached_at)| AttachedDevice {
+                device_id: attached.device,
+                name: attached.name,
+                cwd: attached.cwd,
                 attached_at,
             })
             .collect();
@@ -163,9 +163,9 @@ impl Shard {
             other_cost,
             first_call_at,
             panel_states,
-            hosts: ConversationHosts {
-                revision: record.hosts_revision,
-                hosts,
+            devices: ConversationDevices {
+                revision: record.devices_revision,
+                devices,
             },
             last_attachment: facts.last_attachment,
             plugin_revisions: self.plugins().plugin_revisions(&record.id),

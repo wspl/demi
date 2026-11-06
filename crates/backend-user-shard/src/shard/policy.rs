@@ -3,7 +3,7 @@
 //! # Who may call
 //!
 //! A call runs only for a live job on the connection whose command context names
-//! the conversation of the Host that started it, and it reaches that job's agent
+//! the conversation of the device that started it, and it reaches that job's agent
 //! node's commands.
 //!
 //! - A resident's conversation numbers come only from a conversation of
@@ -16,11 +16,11 @@
 //! # Registering a job
 //!
 //! The backend registers a job before sending it. Its live record binds the
-//! device, the shell, the invoking Host, the command context's conversation and
+//! device, the shell, the invoking device, the command context's conversation and
 //! the agent node. These stay fixed for the job even when another shell starts or
 //! another conversation uses the same device: node `a1`'s job on the primary
 //! laptop and its job on attached `ci` each call back for `a1`, each with its
-//! own invoking Host.
+//! own invoking device.
 //!
 //! # Callbacks
 //!
@@ -30,27 +30,27 @@
 //!
 //! - An unknown, completed or disconnected job cannot invoke a callback.
 //! - A device token never authorizes another user's jobs.
-//! - A job that runs on another Host carries its originating job's context, and
+//! - A job that runs on another device carries its originating job's context, and
 //!   its pipes stay bound to the participating device endpoints.
 //!
 //! The callback is authorized here, where the backend holds the device's runner
-//! connection, in the owner's shard, rather than delegated to the generic Host
+//! connection, in the owner's shard, rather than delegated to the generic device
 //! adapter, which knows no user policy.
 
 use std::rc::{Rc, Weak};
 
 use bytes::Bytes;
 use demi_backend_database::sequences;
-use demi_backend_host_access::host_commands::{reachable, resolve_host};
-use demi_backend_host_access::root_of;
+use demi_backend_device_access::device_commands::{reachable, resolve_device};
+use demi_backend_device_access::root_of;
 use demi_plugin_host::Lost;
 use demi_backend_database::server_log::ServerLog;
-use demi_runner_client::{CommandCatalog, DirectAdmission, ForwardEvent, HostLog, JobOrigin, LinkPolicy, PackageEvent};
-use demi_runner_protocol::wire::{HostLogLine, LinkedWorktree};
-use demi_backend_runners::host_key::conversation_of;
+use demi_runner_client::{CommandCatalog, DirectAdmission, ForwardEvent, DeviceLog, JobOrigin, LinkPolicy, PackageEvent};
+use demi_runner_protocol::wire::{DeviceLogLine, LinkedWorktree};
+use demi_backend_runners::device_key::conversation_of;
 use demi_backend_permissions::Need;
 use demi_command_protocol::ResidentSequence;
-use demi_host_interface::{BroughtHost, RpcError, RpcInvocation, RpcPort};
+use demi_device_interface::{BroughtDevice, RpcError, RpcInvocation, RpcPort};
 use demi_shared_gates::{GateLease, Purpose};
 use demi_shared_types::{BlobRef, Sequence};
 use demi_web_api_protocol::devices::DeviceKind;
@@ -81,33 +81,33 @@ impl ShardPolicy {
     }
 }
 
-/// One Host's runner lines, stored in the backend's log under the Host's ID.
-struct HostLines {
+/// One device's runner lines, stored in the backend's log under the device's ID.
+struct DeviceLines {
     log: ServerLog,
-    host: String,
+    device: String,
     /// Weak: the shard owns the connection this store serves.
     shard: Weak<Shard>,
 }
 
-impl HostLog for HostLines {
+impl DeviceLog for DeviceLines {
     fn since(&self) -> LocalBoxFuture<'static, Option<u64>> {
         let log = self.log.clone();
-        let host = self.host.clone();
-        Box::pin(async move { log.host_since(&host).await })
+        let device = self.device.clone();
+        Box::pin(async move { log.device_since(&device).await })
     }
 
-    fn store(&self, lines: Vec<HostLogLine>, missed: u64) {
+    fn store(&self, lines: Vec<DeviceLogLine>, missed: u64) {
         let Some(shard) = self.shard.upgrade() else {
             return;
         };
-        // The Host's lines are its owner's.
+        // The device's lines are its owner's.
         self.log
-            .store_host(&self.host, shard.user().as_str(), lines, missed);
+            .store_device(&self.device, shard.user().as_str(), lines, missed);
     }
 }
 
 /// A demand lease of the conversation's stream gate, which holds it active
-/// as a watched stream does, with its idle watch started, as a Host
+/// as a watched stream does, with its idle watch started, as a device
 /// admission starts it (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 async fn watches(shard: &Shard, conversation: &ConversationId) -> GateLease {
     let lease = shard
@@ -127,23 +127,23 @@ impl LinkPolicy for ShardPolicy {
         Some(services.native.catalog(&services.public_url))
     }
 
-    fn host_log(&self) -> Option<Rc<dyn HostLog>> {
+    fn device_log(&self) -> Option<Rc<dyn DeviceLog>> {
         let shard = self.shard.upgrade()?;
-        Some(Rc::new(HostLines {
+        Some(Rc::new(DeviceLines {
             log: shard.services().log.clone(),
-            host: self.device.to_string(),
+            device: self.device.to_string(),
             shard: self.shard.clone(),
         }))
     }
 
     fn admit_call<'a>(&'a self, job: &'a JobOrigin) -> LocalBoxFuture<'a, Result<(), String>> {
         Box::pin(async move {
-            let conversation = match conversation_of(&job.host) {
+            let conversation = match conversation_of(&job.device) {
                 Some(conversation) if conversation == job.context.conversation => conversation,
                 Some(_) => return Err("rpc job belongs to another conversation".into()),
                 None => return Err("rpc requires a live job dispatched to this device".into()),
             };
-            // Work a command left running on a Host that is no longer the
+            // Work a command left running on a device that is no longer the
             // conversation's, such as one started there with `&` or `nohup`,
             // goes on as after an ssh session ends, but its calls are
             // refused. A conversation that cannot be read is refused by what
@@ -152,10 +152,10 @@ impl LinkPolicy for ShardPolicy {
             let Ok(conversation) = ConversationId::try_from(conversation) else {
                 return Ok(());
             };
-            if let Ok(hosts) = shard.host_shard().conversation_hosts(&conversation).await
-                && !hosts.iter().any(|host| host.device == self.device)
+            if let Ok(devices) = shard.device_shard().conversation_devices(&conversation).await
+                && !devices.iter().any(|each| each.device == self.device)
             {
-                return Err("this host is no longer one of the conversation's".into());
+                return Err("this device is no longer one of the conversation's".into());
             }
             Ok(())
         })
@@ -165,7 +165,7 @@ impl LinkPolicy for ShardPolicy {
     ///
     /// Once the command set checked the call, what it needs is checked against the
     /// conversation's grants before the handler runs: its leaf's category, or
-    /// the device its `bringsHost` argument brings into the conversation, which
+    /// the device its `bringsDevice` argument brings into the conversation, which
     /// the grant of the user's devices covers. A call that lacks it waits for the
     /// user's answer.
     fn dispatch(
@@ -184,28 +184,28 @@ impl LinkPolicy for ShardPolicy {
             let run = async {
                 let checked = commands.check(&invocation)?;
                 let handler = checked.handler.clone();
-                // The host is resolved here once: the check asks for that very
+                // The device is resolved here once: the check asks for that very
                 // device, and the handler acts on it without reading the name
                 // again, so a rename meanwhile cannot make them differ.
-                let brought = match &checked.brings_host {
+                let brought = match &checked.brings_device {
                     Some(named) => {
                         let conversation = ConversationId::try_from(invocation.context.conversation.as_str())
                             .map_err(|_| RpcError::Failed("the call names no conversation".into()))?;
-                        let host = resolve_host(shard.host_shard(), &conversation, named).await?;
-                        Some(BroughtHost {
-                            device: host.device.to_string(),
-                            name: host.name,
-                            cloud: host.cloud,
+                        let named = resolve_device(shard.device_shard(), &conversation, named).await?;
+                        Some(BroughtDevice {
+                            device: named.device.to_string(),
+                            name: named.name,
+                            cloud: named.cloud,
                         })
                     }
                     None => None,
                 };
-                // A leaf declares a category or brings a host, never both
+                // A leaf declares a category or brings a device, never both
                 // (`command-declarations`).
                 let need = match (&brought, checked.category) {
                     (Some(brought), _) => Some(Need::Device {
                         id: DeviceId::try_from(brought.device.clone())
-                            .map_err(|_| RpcError::Failed("the resolved host has no id".into()))?,
+                            .map_err(|_| RpcError::Failed("the resolved device has no id".into()))?,
                         name: brought.name.clone(),
                     }),
                     (None, Some(category)) => Some(Need::Category(category)),
@@ -227,7 +227,7 @@ impl LinkPolicy for ShardPolicy {
         let shard = self.shard();
         Box::pin(async move {
             shard?
-                .host_shard()
+                .device_shard()
                 .blobs()
                 .get(&blob)
                 .await
@@ -290,7 +290,7 @@ impl LinkPolicy for ShardPolicy {
     }
 
     /// Reserves the numbers in the conversation's sequence, for a
-    /// conversation of the user that reaches this device as its primary Host or
+    /// conversation of the user that reaches this device as its primary device or
     /// an attached one.
     fn reserve_numbers(
         &self,
@@ -321,7 +321,7 @@ impl LinkPolicy for ShardPolicy {
     /// device as an open user stream.
     ///
     /// It holds the conversation active with a demand lease of its stream gate,
-    /// and its idle watch started, as a Host admission starts it
+    /// and its idle watch started, as a device admission starts it
     /// (`crates/backend-user-shard/src/lifecycle/mod.rs`). It installs what a
     /// relay stream of the user stream `name` may: the executable of the package
     /// the name binds, which the runner fetches from where the published catalog
@@ -381,7 +381,7 @@ impl LinkPolicy for ShardPolicy {
                             .await;
                     }
                     Err(error) => {
-                        tracing::warn!(event = "package_event.dropped", host_id = %device, %package, cause = "conversation_unreachable", %error, "a package message was dropped");
+                        tracing::warn!(event = "package_event.dropped", device_id = %device, %package, cause = "conversation_unreachable", %error, "a package message was dropped");
                     }
                 },
                 PackageEvent::Lost { package } => {
@@ -408,14 +408,14 @@ impl LinkPolicy for ShardPolicy {
 }
 
 /// `conversation`, a conversation of the user that reaches `device`, as its
-/// primary Host or an attached one; or why it is none.
+/// primary device or an attached one; or why it is none.
 async fn reaching(shard: &Shard, conversation: &str, device: &DeviceId) -> Result<ConversationId, String> {
     let conversation = ConversationId::try_from(conversation)
         .map_err(|_| format!("no conversation {conversation}"))?;
-    let hosts = reachable(shard.host_shard(), &conversation)
+    let devices = reachable(shard.device_shard(), &conversation)
         .await
         .map_err(|error| error.to_string())?;
-    if !hosts.iter().any(|host| &host.device == device) {
+    if !devices.iter().any(|each| &each.device == device) {
         return Err("the conversation does not reach this device".into());
     }
     Ok(conversation)

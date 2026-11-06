@@ -339,7 +339,7 @@ impl JobTable {
                             },
                         );
                     }
-                    // What the job changed of the Host's projects goes
+                    // What the job changed of the device's projects goes
                     // first, so what follows its end finds it (`Backlog::report`).
                     if let (WorkId::Job(_), Some(commands)) = (&key, &config.commands) {
                         commands.connection.backlog().report();

@@ -1,0 +1,269 @@
+//! Filesystem and working-tree requests for one backend connection.
+
+use std::{
+    future::Future,
+    io,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
+
+use demi_runner_process::pipes::PipeClient;
+use demi_runner_protocol::wire::{self, Inbound, Outbound};
+use tokio::sync::{Semaphore, mpsc};
+use tokio_util::{
+    sync::CancellationToken,
+    task::{AbortOnDropHandle, TaskTracker},
+};
+
+use crate::{
+    files::FileTransfers,
+    git::{GitService, MAX_FILES},
+    subscriptions::{Report, Subscriptions},
+    watches::Watches,
+};
+
+pub struct DeviceServer {
+    default_cwd: PathBuf,
+    /// The connection's file system watches, which a direct channel's
+    /// watches share (`crates/runner-device/src/subscriptions.rs`).
+    shared_watches: Watches,
+    output: mpsc::UnboundedSender<wire::Frame>,
+    filesystem: TaskTracker,
+    /// The slots of filesystem and working-tree requests, which bound the
+    /// blocking threads and the disk load a flood of requests would take
+    /// (`crates/runner-device/src/lib.rs`).
+    filesystem_capacity: Arc<Semaphore>,
+    git: GitService,
+    git_capacity: Arc<Semaphore>,
+    files: FileTransfers,
+    /// The backend's subscriptions, until the connection closes.
+    subscriptions: Mutex<Option<Subscriptions>>,
+    /// Sends their reports as messages.
+    _reports: AbortOnDropHandle<()>,
+    /// The link's backlog, which reports the projects' worktrees.
+    backlog: wire::Backlog,
+    cancel: CancellationToken,
+}
+
+impl Drop for DeviceServer {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+        self.filesystem.close();
+    }
+}
+
+impl DeviceServer {
+    /// `backlog` reports what changed of the projects' worktrees before a
+    /// folder's listing is answered (`crate::worktrees`).
+    pub fn new(output: mpsc::UnboundedSender<wire::Frame>, default_cwd: PathBuf, pipes: PipeClient, backlog: wire::Backlog) -> Self {
+        let cancel = CancellationToken::new();
+        // The working tree's changes and the backend's subscriptions share
+        // one watch per tree (`crates/runner-device/src/subscriptions.rs`).
+        let watches = Watches::default();
+        let (subscriptions, reports) = Subscriptions::new(watches.clone(), default_cwd.clone());
+        let reporting = AbortOnDropHandle::new(tokio::spawn(report(reports, output.clone(), cancel.clone())));
+        Self {
+            shared_watches: watches.clone(),
+            subscriptions: Mutex::new(Some(subscriptions)),
+            _reports: reporting,
+            default_cwd,
+            files: FileTransfers::new(output.clone(), pipes, cancel.clone()),
+            output,
+            filesystem: TaskTracker::new(),
+            filesystem_capacity: Arc::new(Semaphore::new(32)),
+            git: GitService::new(watches, MAX_FILES),
+            git_capacity: Arc::new(Semaphore::new(8)),
+            backlog,
+            cancel,
+        }
+    }
+
+    /// Filesystem work never blocks the connection's control-message loop.
+    /// A file's contents go to the transfers, whose pipes pace them.
+    pub fn handle_filesystem(&self, message: Inbound) -> io::Result<()> {
+        match message {
+            Inbound::FsReadFile { .. } => return self.files.read(message, &self.default_cwd),
+            Inbound::FsWriteFile { .. } => return self.files.write(message, &self.default_cwd),
+            Inbound::FsDownloadFile { .. } => return self.files.download(message, &self.default_cwd),
+            Inbound::FsLook { .. } => return self.files.look(message, &self.default_cwd),
+            Inbound::FsSearch { .. } => return self.files.search(message, &self.default_cwd),
+            Inbound::FsReadFiles { .. } => {
+                return self.files.read_files(message, &self.default_cwd);
+            }
+            Inbound::FsWriteDirectory { .. } => {
+                return self.files.write_directory(message, &self.default_cwd);
+            }
+            _ => {}
+        }
+        if message.fs_request_id().is_none() {
+            return Err(io::Error::other("not a filesystem request"));
+        }
+        let cwd = self.default_cwd.clone();
+        let cancel = self.cancel.clone();
+        let backlog = matches!(message, Inbound::FsReaddir { .. }).then(|| self.backlog.clone());
+        self.admit(&self.filesystem_capacity, "filesystem", async move {
+            let answer = crate::fs::handle(&message, &cwd, &cancel)
+                .await
+                .expect("validated filesystem request");
+            // A worktree the listing shows is reported before it, so a move
+            // to it the user picks finds its project.
+            if let Some(backlog) = backlog {
+                backlog.report();
+            }
+            answer
+        })
+    }
+
+    /// Working-tree work has its own admission: past eight requests in
+    /// flight, later ones wait for a slot.
+    pub fn handle_git(&self, message: Inbound) -> io::Result<()> {
+        if message.git_request_id().is_none() {
+            return Err(io::Error::other("not a working-tree request"));
+        }
+        if let Inbound::GitShow { .. } = message {
+            if self.cancel.is_cancelled() {
+                return Err(io::Error::other("device connection closed"));
+            }
+            return self.files.show(
+                message,
+                &self.default_cwd,
+                self.git.clone(),
+                self.git_capacity.clone(),
+            );
+        }
+        let cwd = self.default_cwd.clone();
+        let cancel = self.cancel.clone();
+        let git = self.git.clone();
+        self.admit(&self.git_capacity, "working-tree", async move {
+            crate::git::handle(&git, &message, &cwd, &cancel)
+                .await
+                .expect("validated working-tree request")
+        })
+    }
+
+    /// Runs `reply` once `capacity` has a slot (`crates/runner-device/src/lib.rs`) and sends
+    /// what it answers; a request whose connection closes while it waits or
+    /// runs ends without an answer.
+    fn admit(
+        &self,
+        capacity: &Arc<Semaphore>,
+        work: &'static str,
+        reply: impl Future<Output = Result<wire::Frame, wire::WireError>> + Send + 'static,
+    ) -> io::Result<()> {
+        if self.cancel.is_cancelled() {
+            return Err(io::Error::other("device connection closed"));
+        }
+        let capacity = capacity.clone();
+        let cancel = self.cancel.clone();
+        let output = self.output.clone();
+        self.filesystem.spawn(async move {
+            let _permit = tokio::select! {
+                permit = capacity.acquire_owned() => permit.expect("request capacity is never closed"),
+                _ = cancel.cancelled() => return,
+            };
+            let reply = tokio::select! {
+                _ = cancel.cancelled() => return,
+                reply = reply => reply,
+            };
+            match reply {
+                Ok(reply) => {
+                    if output.send(reply).is_err() {
+                        // The connection owner has closed its receiver.
+                        cancel.cancel();
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(event = "reply.encode_failed", what = work, %error, "a response was not encoded");
+                    cancel.cancel();
+                }
+            }
+        });
+        Ok(())
+    }
+
+    /// Subscribes, renews or ends a subscription of the backend's
+    /// (`crates/runner-device/src/subscriptions.rs`), which reports as messages of its
+    /// own until it ends.
+    pub fn handle_watch(&self, message: Inbound) -> io::Result<()> {
+        if self.cancel.is_cancelled() {
+            return Err(io::Error::other("device connection closed"));
+        }
+        let held = self.subscriptions.lock().expect("the subscriptions are intact");
+        let Some(subscriptions) = held.as_ref() else {
+            return Err(io::Error::other("device connection closed"));
+        };
+        match message {
+            Inbound::FsSubscribe { id, kind, path, suffix } => subscriptions.subscribe(id, kind, path, suffix),
+            Inbound::FsUnsubscribe { id } => subscriptions.unsubscribe(id),
+            Inbound::FsRenew { ids } => subscriptions.renew(ids),
+            _ => return Err(io::Error::other("not a subscription request")),
+        }
+        Ok(())
+    }
+
+    /// The connection's file system watches, which a direct channel's
+    /// subscriptions follow too.
+    pub fn watches(&self) -> &Watches {
+        &self.shared_watches
+    }
+
+    /// The connection's working-tree service.
+    pub fn git(&self) -> &GitService {
+        &self.git
+    }
+
+    pub async fn close(&self) {
+        self.cancel.cancel();
+        let ended = self.subscriptions.lock().expect("the subscriptions are intact").take();
+        drop(ended);
+        self.filesystem.close();
+        tokio::join!(
+            self.filesystem.wait(),
+            self.files.close(),
+            self.shared_watches.close(),
+        );
+    }
+}
+
+/// Sends the backend's subscriptions' reports as messages, until the
+/// connection closes.
+async fn report(mut reports: mpsc::UnboundedReceiver<Report>, output: mpsc::UnboundedSender<wire::Frame>, cancel: CancellationToken) {
+    loop {
+        let report = tokio::select! {
+            () = cancel.cancelled() => return,
+            report = reports.recv() => match report {
+                Some(report) => report,
+                None => return,
+            },
+        };
+        let mut held = None;
+        let message = match report {
+            Report::Live { id, since } => Outbound::FsLive {
+                id,
+                since,
+                epoch: crate::numbers::epoch().to_owned(),
+            },
+            Report::Failed { id, reason } => Outbound::FsFailed { id, reason },
+            Report::Changed(changes, taken) => {
+                held = Some(taken);
+                Outbound::FsChanged { changes }
+            }
+        };
+        let frame = match wire::encode(&message) {
+            Ok(frame) => frame,
+            Err(error) => {
+                tracing::warn!(event = "reply.encode_failed", what = "subscription_report", %error, "a subscription's report was not encoded");
+                continue;
+            }
+        };
+        // The batch's `Taken` goes with its frame, and is released as the
+        // writer takes the frame.
+        let frame = match held {
+            Some(taken) => frame.held_by(taken),
+            None => frame,
+        };
+        if output.send(frame).is_err() {
+            return;
+        }
+    }
+}

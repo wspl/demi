@@ -83,7 +83,7 @@ place of systemd, and runs the release's own supervisor after each switch
 ## One release on a server
 
 A server runs one release at a time, and every part of Demi on it, and every
-Host it serves, follows that release.
+device it serves, follows that release.
 
 Nothing negotiates versions. The backend, the machine manager, the web app,
 the runners and the command programs of a deployment are always built from one

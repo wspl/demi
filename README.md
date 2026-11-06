@@ -114,7 +114,7 @@ shell. The browser, other machines and subagents are `demi` commands in it:
 
 ```sh
 T=$(demi browser tab new) && demi browser open $T http://localhost:5173 && demi browser screenshot $T | demi file view
-demi host shell --host windows 'cargo test'
+demi device shell --device windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```
 

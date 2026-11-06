@@ -5,7 +5,7 @@
 //! last saw running. A page reads a node's live commands with its latest page.
 
 use demi_conversation_lane_protocol::{CommandView, ServerFrame, ShellStatus};
-use demi_host_interface::{PageState, PageView};
+use demi_device_interface::{PageState, PageView};
 use demi_shared_types::{Block, CommandId, NodeId, ShellViewStatus, ToolView};
 
 /// The `shell_output` frame of `view`, a command of the node `node`.
@@ -35,10 +35,10 @@ pub fn shell_status(view: PageView) -> ShellStatus {
             stopping: false,
             waiting_for: None,
         },
-        PageState::Waiting { host } => ShellStatus::Running {
+        PageState::Waiting { device } => ShellStatus::Running {
             command,
             stopping: false,
-            waiting_for: Some(host),
+            waiting_for: Some(device),
         },
         PageState::Stopping => ShellStatus::Running {
             command,

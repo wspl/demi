@@ -1,4 +1,4 @@
-//! The Host's open devices (`crates/plugin-mobile/command/src/operations.rs`):
+//! The device's open simulators and emulators (`crates/plugin-mobile/command/src/operations.rs`):
 //! which conversation has each simulator open and under which handle, and when
 //! each ends.
 //!
@@ -14,7 +14,7 @@
 //!   resident, each under its handle, while it is *resuming*: listed as open,
 //!   its tab saying it reconnects, and a command on it waiting, as long as
 //!   its caller does. The take-back waits for a simulator to finish booting,
-//!   and tries again while the Host cannot say whether the simulator is there
+//!   and tries again while the device cannot say whether the simulator is there
 //!   or the device cannot be attached. Only a simulator that is not there, or
 //!   is shut down, closes the device as lost.
 //! - A device whose helper or picture stream ends while its simulator runs
@@ -23,7 +23,7 @@
 //! - A device being erased is resuming too, from its shutdown until it is
 //!   attached again after its boot.
 //! - A conversation whose devices the record holds but which is no longer on
-//!   this Host, as one deleted while the Host was offline, is released as
+//!   this device, as one deleted while the device was offline, is released as
 //!   the resident starts.
 //!
 //! One owner changes the registry: opening and closing take turns on one lock,
@@ -405,19 +405,19 @@ struct State {
     erasing: HashSet<String>,
 }
 
-/// What the Host says of a device's simulator.
+/// What the device says of a simulator.
 enum Probe {
     /// It is not there, or shut down: the device is lost.
     Gone(String),
     /// It is still booting.
     Booting,
     Booted(crate::driver::Simulator),
-    /// The Host could not say whether the simulator is there, as while it
+    /// The device could not say whether the simulator is there, as while it
     /// starts: no proof the device is gone, so taking it back tries again.
     Unknown(String),
 }
 
-/// The Host's open devices.
+/// The device's open simulators and emulators.
 pub struct Devices {
     drivers: Vec<Arc<dyn Driver>>,
     state: Mutex<State>,
@@ -435,14 +435,14 @@ pub struct Devices {
     /// The simulators Demi booted and the open devices, across the
     /// programs' ends.
     kept: Kept,
-    /// Whether a conversation is still on this Host.
+    /// Whether a conversation is still on this device.
     exists: Box<dyn Fn(&str) -> bool + Send + Sync>,
 }
 
 impl Devices {
     /// The registry over `drivers` and the record `kept`. `exists` says
-    /// whether a conversation is still on this Host: the record's devices of
-    /// one that is not are released as the registry starts. The devices of
+    /// whether a conversation is still on this device: the record's simulators
+    /// of one that is not are released as the registry starts. The simulators of
     /// the conversations that are on it are taken back one conversation at a
     /// time, when it first reaches the registry ([`Self::reached`]).
     pub fn new(
@@ -469,7 +469,7 @@ impl Devices {
     }
 
     /// Releases what the record holds for the conversations that are no
-    /// longer on this Host, which no release reached: the Host was offline
+    /// longer on this device, which no release reached: the device was offline
     /// when they ended, or no resident ran. A simulator Demi booted for one
     /// shuts down, as its conversation's release shuts it down.
     async fn sweep(self: Arc<Self>) {
@@ -537,7 +537,7 @@ impl Devices {
         claimed
     }
 
-    /// What the Host says of the simulator `native_id` now.
+    /// What the device says of the simulator `native_id` now.
     async fn probe(&self, platform: MobilePlatform, native_id: &str) -> Probe {
         let driver = self.driver(platform);
         if let Some(reason) = driver.unavailable() {
@@ -560,7 +560,7 @@ impl Devices {
 
     /// Takes `entry`'s device back, after `first`: waits for its simulator
     /// to finish booting, and tries again, with growing waits, while the
-    /// Host cannot say whether the simulator is there or the device cannot
+    /// device cannot say whether the simulator is there or the simulator cannot
     /// be attached. Only a simulator that is not there, or is shut down,
     /// closes the device as lost, and a close, a release or the resident's
     /// end stops the task.
@@ -686,7 +686,7 @@ impl Devices {
         }
     }
 
-    /// `entry`'s device is lost: the Host lists its devices without its
+    /// `entry`'s simulator is lost: the device lists its simulators without its
     /// simulator, or the simulator is shut down.
     fn lose(&self, entry: &Opened, why: &str) {
         let removed = {
@@ -810,7 +810,7 @@ impl Devices {
         names
     }
 
-    /// `conversation`'s connected devices on this Host, by handle.
+    /// `conversation`'s connected simulators on this device, by handle.
     pub fn of(&self, conversation: &str) -> Vec<Arc<OpenDevice>> {
         let state = self.state.lock().expect("the registry is intact");
         let mut devices: Vec<Arc<OpenDevice>> = state
@@ -851,7 +851,7 @@ impl Devices {
         found.ok_or_else(|| MobileError::NotOpen(handle.clone()))
     }
 
-    /// Every simulator of the Host, as `conversation` sees them.
+    /// Every simulator of the device, as `conversation` sees them.
     pub async fn list(self: &Arc<Self>, conversation: &str) -> Result<ListResult, MobileError> {
         let mut devices = Vec::new();
         let mut unavailable = Vec::new();
@@ -1314,8 +1314,8 @@ impl Devices {
         }
     }
 
-    /// Detaches a device, and shuts it down when `shut_down`; answers why
-    /// the shutdown failed. A failed detach is the Host log's: the device
+    /// Detaches a simulator, and shuts it down when `shut_down`; answers why
+    /// the shutdown failed. A failed detach is the device log's: the simulator
     /// leaves the registry either way.
     async fn let_go(
         &self,

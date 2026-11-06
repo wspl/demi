@@ -19,7 +19,7 @@
 //! - The git root bounds the search, as walking to the file system's root would
 //!   read unrelated files above the project.
 //! - Home directories are not read: `~/.claude/CLAUDE.md` would differ between
-//!   the Hosts a conversation moves to, and instructions for every project are
+//!   the devices a conversation moves to, and instructions for every project are
 //!   the personal instructions, which follow the user.
 //! - Nothing is cut. Dropping the end of a project's rules without telling
 //!   anyone is worse than a large request the context usage shows, and a file
@@ -28,9 +28,9 @@
 use std::future::Future;
 
 use demi_agent_tools::ContextAnswer;
-use demi_host_interface::project;
-use demi_host_interface::{HostFile, HostRead};
-use demi_host_paths::HostPaths;
+use demi_device_interface::project;
+use demi_device_interface::{DeviceFile, DeviceRead};
+use demi_device_paths::DevicePaths;
 use demi_shared_types::InstructionEntry;
 
 /// The names read in each directory, the first that is a file taken.
@@ -76,13 +76,13 @@ pub struct Search {
     /// The files to watch: each one read or that would be read, and the
     /// `.git` whose coming moves the root nearer.
     pub watch: Vec<String>,
-    /// The files the Host could not read, each with its reason.
+    /// The files the device could not read, each with its reason.
     pub unreadable: Vec<(String, String)>,
     /// The files left out because they kept growing while they were read.
     pub growing: Vec<String>,
 }
 
-/// The project files for a node in `cwd` on a Host whose paths are `paths`,
+/// The project files for a node in `cwd` on a device whose paths are `paths`,
 /// read through `read`.
 ///
 /// It reads in two requests: one finds `.git` and each name in every directory
@@ -93,10 +93,10 @@ pub struct Search {
 /// searched its names, and the `.git` whose coming moves the root nearer.
 /// Outside a repository, the `.git` of every directory above. The root's own
 /// `.git` is left out: git writes in it at every command.
-pub async fn search<E, R, F>(paths: HostPaths, cwd: &str, mut read: R) -> Result<Search, E>
+pub async fn search<E, R, F>(paths: DevicePaths, cwd: &str, mut read: R) -> Result<Search, E>
 where
-    R: FnMut(Vec<HostRead>) -> F,
-    F: Future<Output = Result<Vec<HostFile>, E>>,
+    R: FnMut(Vec<DeviceRead>) -> F,
+    F: Future<Output = Result<Vec<DeviceFile>, E>>,
 {
     let join = |directory: &str, name: &str| paths.join(directory, name);
     let ancestors = paths.ancestors(cwd);
@@ -105,9 +105,9 @@ where
     let mut reads = project::root_reads(paths, &ancestors);
     for directory in &ancestors {
         for name in NAMES {
-            reads.push(HostRead::new(join(directory, name), 0));
+            reads.push(DeviceRead::new(join(directory, name), 0));
         }
-        reads.push(HostRead::new(demi_file(directory), 0));
+        reads.push(DeviceRead::new(demi_file(directory), 0));
     }
     let found = read(reads).await?;
     let (git, named) = found.split_at(ancestors.len());
@@ -118,16 +118,16 @@ where
         watch.push(demi_file(directory));
     }
     let mut unreadable = Vec::new();
-    let mut taken_file = |path: String, answer: &HostFile| match answer {
-        HostFile::File { size, .. } => Some(HostRead::new(path, *size)),
-        HostFile::Unreadable { message } => {
+    let mut taken_file = |path: String, answer: &DeviceFile| match answer {
+        DeviceFile::File { size, .. } => Some(DeviceRead::new(path, *size)),
+        DeviceFile::Unreadable { message } => {
             unreadable.push((path, message.clone()));
             None
         }
-        HostFile::Missing | HostFile::Directory { .. } | HostFile::Other => None,
+        DeviceFile::Missing | DeviceFile::Directory { .. } | DeviceFile::Other => None,
     };
     // Each directory's files in their order, nearest directory first.
-    let mut by_directory: Vec<Vec<HostRead>> = Vec::new();
+    let mut by_directory: Vec<Vec<DeviceRead>> = Vec::new();
     for (directory, answers) in ancestors.iter().zip(named.chunks(NAMES.len() + 1)).take(searched) {
         let (shared, own) = answers.split_at(NAMES.len());
         let file = NAMES
@@ -137,22 +137,22 @@ where
         let demi = taken_file(demi_file(directory), &own[0]);
         by_directory.push(file.into_iter().chain(demi).collect());
     }
-    let mut taken: Vec<HostRead> = by_directory.into_iter().rev().flatten().collect();
+    let mut taken: Vec<DeviceRead> = by_directory.into_iter().rev().flatten().collect();
     let mut texts: Vec<Option<String>> = vec![None; taken.len()];
     for _ in 0..=REREADS {
         let pending: Vec<usize> = (0..taken.len()).filter(|&index| texts[index].is_none()).collect();
         if pending.is_empty() {
             break;
         }
-        let reads: Vec<HostRead> = pending.iter().map(|&index| taken[index].clone()).collect();
+        let reads: Vec<DeviceRead> = pending.iter().map(|&index| taken[index].clone()).collect();
         let answers = read(reads).await?;
         for (index, answer) in pending.into_iter().zip(answers) {
             match answer {
-                HostFile::File { bytes, size } if size <= taken[index].limit => {
+                DeviceFile::File { bytes, size } if size <= taken[index].limit => {
                     texts[index] = Some(String::from_utf8_lossy(bytes.as_bytes()).into_owned());
                 }
                 // It grew since its size was read: read it again at its new size.
-                HostFile::File { size, .. } => taken[index].limit = size,
+                DeviceFile::File { size, .. } => taken[index].limit = size,
                 // Gone or changed into something else since: it is left out.
                 _ => texts[index] = Some(String::new()),
             }

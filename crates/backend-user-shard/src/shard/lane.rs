@@ -261,7 +261,7 @@ pub fn open_lane(
         kind = origin.kind.name(),
         user = %origin.user,
         conversation = origin.conversation.as_ref().map(tracing::field::display),
-        host_id = origin.device.as_ref().map(tracing::field::display),
+        device_id = origin.device.as_ref().map(tracing::field::display),
         stream = origin.stream.as_deref(),
         "a lane opened"
     );
@@ -365,7 +365,7 @@ impl Lane {
                     kind = self.origin.kind.name(),
                     user = %self.origin.user,
                     conversation = self.origin.conversation.as_ref().map(tracing::field::display),
-                    host_id = self.origin.device.as_ref().map(tracing::field::display),
+                    device_id = self.origin.device.as_ref().map(tracing::field::display),
                     reason,
                     close_code = code,
                     close_reason,

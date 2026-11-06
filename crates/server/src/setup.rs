@@ -568,7 +568,7 @@ async fn check_outside(choices: &Choices) -> Result<(), Box<dyn std::error::Erro
     let client = demi_shared_artifacts::client()?;
     let domain = &choices.domain;
     let proxy = format!(
-        "The proxy in front of Demi must serve https://{domain} and forward to {}, passing Origin and Host unchanged and allowing WebSocket upgrades; set it up and run the same command again.",
+        "The proxy in front of Demi must serve https://{domain} and forward to {}, passing Origin and device unchanged and allowing WebSocket upgrades; set it up and run the same command again.",
         choices.listen
     );
     let login = |origin: &str| {

@@ -9,7 +9,7 @@ import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Menu from '../ui/Menu.vue'
 import Tooltip from '../ui/Tooltip.vue'
-import HostOfflinePage from './HostOfflinePage.vue'
+import DeviceOfflinePage from './DeviceOfflinePage.vue'
 import PaneScope from './PaneScope.vue'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
@@ -68,11 +68,11 @@ const props = withDefaults(defineProps<{
    */
   beforeFirstMessage?: boolean
   /**
-   * The name of the conversation's primary Host while its runner is not
+   * The name of the conversation's primary device while its runner is not
    * connected; the body then shows that, in place of the tabs' contents, which
    * stay mounted behind it.
    */
-  hostOffline?: string | null
+  deviceOffline?: string | null
   /**
    * Whether a phone draws the panel as an overlay over the conversation: only
    * the selected view, its own bar ending with Close, with no tab strip. The tabs button
@@ -80,7 +80,7 @@ const props = withDefaults(defineProps<{
    */
   sheet?: boolean
 }>(), {
-  hostOffline: null,
+  deviceOffline: null,
   tabsRead: true,
   sheet: false,
 })
@@ -180,9 +180,9 @@ const overlay = computed(() => phone.value && props.sheet)
 provide(sheetDismissKey, computed(() => (overlay.value ? () => emit('close') : null)))
 /**
  * Whether a view shows in the overlay, whose own bar then ends with its Close; in its place the
- * overlay keeps a bar of its own for it, over a Host that is offline or a tab the panel cannot show.
+ * overlay keeps a bar of its own for it, over a device that is offline or a tab the panel cannot show.
  */
-const viewShown = computed(() => props.hostOffline === null && contents.value.some((content) => content.id === selection.value))
+const viewShown = computed(() => props.deviceOffline === null && contents.value.some((content) => content.id === selection.value))
 /** The tab menu's commands that close several tabs at once. */
 const closeManyItems = computed<readonly { scope: Exclude<TabCloseScope, 'self'>; label: TitleText; icon: Component }[]>(() => [
   { scope: 'right', label: t('panel.closeRight'), icon: ArrowRightToLine },
@@ -271,7 +271,7 @@ function reorder(from: number, to: number): void {
     <!--
       The overlay shows no bar of its own over a view: the view's own bar
       ends with Close (`SheetCloseButton`), so Close and the view's controls
-      read as one bar. Over a Host that is offline or a tab the panel cannot
+      read as one bar. Over a device that is offline or a tab the panel cannot
       show, which have no bar, the overlay keeps one for Close. The overlay
       itself holds off the notch, which the frame's bar does in the full panel.
     -->
@@ -337,7 +337,7 @@ function reorder(from: number, to: number): void {
           :key="item.tab.id"
           :title="item.title"
           :is-active="item.tab.id === selection"
-          :busy="hostOffline === null && (item.kind?.busy?.(item.data, item.tab.id) ?? false)"
+          :busy="deviceOffline === null && (item.kind?.busy?.(item.data, item.tab.id) ?? false)"
           :icon="item.kind?.icon?.(item.data, item.tab.id) ?? null"
           @select="emit('select', item.tab.id)"
           v-context-menu="tabMenu(item.tab.id)"
@@ -378,8 +378,8 @@ function reorder(from: number, to: number): void {
     <div v-else-if="!viewShown" class="flex h-11 shrink-0 items-center justify-end pr-1.5">
       <SheetCloseButton />
     </div>
-    <HostOfflinePage v-if="hostOffline !== null" :name="hostOffline" />
-    <div v-show="hostOffline === null" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <DeviceOfflinePage v-if="deviceOffline !== null" :name="deviceOffline" />
+    <div v-show="deviceOffline === null" class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <!--
         A host that shows only the strip, as a specimen of it does, fills the
         body itself.

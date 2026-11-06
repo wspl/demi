@@ -22,9 +22,7 @@
   "device": {
     "title": "Allow this conversation to use “{name}”?",
     "description": "Its agents can run commands as you on “{name}” until you detach it.",
-    "use": "use “{name}”"
-  },
-  "host": {
+    "use": "use “{name}”",
     "pair": "pair a computer and reach it"
   },
   "categories": {
@@ -32,7 +30,7 @@
       "action": "use your credentials",
       "description": "Use Your Credentials lets the agents of this conversation list, read, save, replace and remove your saved credentials, and ask you for new ones."
     },
-    "host_use": {
+    "device_use": {
       "action": "use your devices",
       "description": "Use Your Devices lets the agents of this conversation run commands as you on any of your devices and the Cloud, move this conversation to one, pair a computer with your account, and add and remove port forwards, which outlive this conversation."
     },

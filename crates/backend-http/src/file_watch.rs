@@ -4,13 +4,13 @@
 //!
 //! - The opens of a conversation's watch and of a device's folder dialog's,
 //!   lanes of the page connection.
-//! - The relay of the Hosts' reports to the page, and of the page's
+//! - The relay of the devices' reports to the page, and of the page's
 //!   `subscribe`, `unsubscribe` and `renew` messages to the shard, which holds
-//!   the Hosts' subscriptions.
+//!   the devices' subscriptions.
 //!
-//! Only a conversation's watch takes a subscription that names a host.
+//! Only a conversation's watch takes a subscription that names a device.
 
-use demi_backend_host_access::file_watch::{FileWatchChannel, OpenedWatch};
+use demi_backend_device_access::file_watch::{FileWatchChannel, OpenedWatch};
 use demi_backend_user_shard::shard::lane::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader};
 use demi_web_api_protocol::files::{ConversationWatchRequest, FileWatchMessage, FileWatchRequest};
 use demi_web_api_protocol::ids::UserId;
@@ -23,7 +23,7 @@ use super::devices::owned_device;
 use super::error::ApiError;
 
 /// The watch of the caller's conversation `id`: one that is not the user's,
-/// or is archived or changing, is refused; a Host out of reach is answered on
+/// or is archived or changing, is refused; a device out of reach is answered on
 /// the lane, with `offline`, once a subscription names it.
 pub(super) async fn open(state: &AppState, user: &UserId, id: &str) -> Result<Opened, ApiError> {
     let record = owned(&state.services, user, id).await?;
@@ -31,7 +31,7 @@ pub(super) async fn open(state: &AppState, user: &UserId, id: &str) -> Result<Op
     let channel = state
         .shards
         .of(user)
-        .call(move |shard, _| async move { shard.host_shard().open_file_watch(&record.id).await })
+        .call(move |shard, _| async move { shard.device_shard().open_file_watch(&record.id).await })
         .await??;
     // A lane that never opens drops the channel, which ends the watch.
     Ok(Opened {
@@ -41,7 +41,7 @@ pub(super) async fn open(state: &AppState, user: &UserId, id: &str) -> Result<Op
 }
 
 /// A device's folder dialog's watch, through device access
-/// (`crates/backend-host-access/src/lib.rs`). A device that is not the
+/// (`crates/backend-device-access/src/lib.rs`). A device that is not the
 /// caller's paired device is refused; one whose runner is not connected is
 /// answered on the lane, with `offline`.
 pub(super) async fn open_device(state: &AppState, user: &UserId, id: &str) -> Result<Opened, ApiError> {
@@ -53,7 +53,7 @@ pub(super) async fn open_device(state: &AppState, user: &UserId, id: &str) -> Re
         state
             .shards
             .of(user)
-            .call(move |shard, _| async move { shard.host_shard().open_device_watch(&device).await })
+            .call(move |shard, _| async move { shard.device_shard().open_device_watch(&device).await })
             .await?
     };
     Ok(Opened {
@@ -79,8 +79,8 @@ const MESSAGE_BYTES: usize = 1024 * 1024;
 /// How a watch ended, which its lane closes with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum End {
-    /// The Host became unreachable, after `offline`.
-    HostUnreachable,
+    /// The device became unreachable, after `offline`.
+    DeviceUnreachable,
     /// The page sent a message it should not have.
     Refused,
     /// A transition ended the watch.
@@ -95,7 +95,7 @@ impl End {
     fn lane_end(self) -> LaneEnd {
         let close = |code, reason| LaneEnd::Close(LaneClose { code, reason });
         match self {
-            Self::HostUnreachable => close(1011, "host_unreachable"),
+            Self::DeviceUnreachable => close(1011, "device_unreachable"),
             Self::Refused => close(1003, "invalid_message"),
             Self::Changed => close(4000, "conversation_changed"),
             Self::PageClosed => LaneEnd::Gone,
@@ -103,10 +103,10 @@ impl End {
     }
 }
 
-/// Tells the page that the Host is out of reach, and closes.
+/// Tells the page that the device is out of reach, and closes.
 async fn offline(mut page: Lane, page_in: LaneReader) {
     let end = match page.send(text(&FileWatchMessage::Offline)).await {
-        Ok(()) => End::HostUnreachable,
+        Ok(()) => End::DeviceUnreachable,
         Err(_) => End::PageClosed,
     };
     page.end(page_in, end.lane_end());
@@ -130,7 +130,7 @@ async fn relay(
         let deliver = async {
             loop {
                 let Some(message) = to_page.recv().await else {
-                    return End::HostUnreachable;
+                    return End::DeviceUnreachable;
                 };
                 for text in message.into_texts(MESSAGE_BYTES) {
                     if page.send(text).await.is_err() {

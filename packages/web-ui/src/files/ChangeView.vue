@@ -54,7 +54,7 @@ import { formatCount } from '../ui/numbers'
 import { COMMITS_HEIGHT, TREE_WIDTH } from './file-view'
 import { baseName } from '@demicodes/utils'
 import SheetCloseButton from './SheetCloseButton.vue'
-import { relativePath, resolveHostPath } from './paths'
+import { relativePath, resolveDevicePath } from './paths'
 import { hasSourceView, previewKind, svgImageUrl } from './preview'
 import type { FileContents } from './types'
 
@@ -282,7 +282,7 @@ function chooseEdit(id: string, close: () => void): void {
   showEdit(id === 'all' ? null : edits.value[Number(id)])
   close()
 }
-const absolutePath = computed(() => resolveHostPath(props.root, selectedChange.value?.path ?? ''))
+const absolutePath = computed(() => resolveDevicePath(props.root, selectedChange.value?.path ?? ''))
 /**
  * The file the view shows, named over it as a diff's file header names it on
  * GitHub: its folder from the root, its name, and where a renamed file came
@@ -299,7 +299,7 @@ const heading = computed(() => {
   const renamed = mode.value === 'conversation' && start
     ? start.path !== change.path ? start.path : undefined
     : change.from
-  const from = renamed ? relativePath(props.root, resolveHostPath(props.root, renamed)) : null
+  const from = renamed ? relativePath(props.root, resolveDevicePath(props.root, renamed)) : null
   return { folder, name: baseName(absolutePath.value), from, deleted: change.kind === 'deleted' }
 })
 const treeAvailable = computed(() => mode.value === 'commits'
@@ -520,7 +520,7 @@ const readRequest = computed<ReadCallChange | null>(() => {
     : read
 })
 
-/** Why the Host does not watch the list or the change shown, while it says so. */
+/** Why the device does not watch the list or the change shown, while it says so. */
 const unwatched = computed(() => mode.value === 'commits' && !showsCommit.value
   ? workingTree.value.unwatched ?? (workingSides.entry.value?.answer ? workingSides.entry.value.unwatched : null)
   : null)

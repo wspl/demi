@@ -2,7 +2,7 @@
 
 use demi_command_package_browser_protocol::browser::DrawResult;
 use demi_command_protocol::{MAX_MEDIUM_BYTES, MediumFacts};
-use demi_host_interface::{HostFile, HostRead, RpcInvocation, RpcPort};
+use demi_device_interface::{DeviceFile, DeviceRead, RpcInvocation, RpcPort};
 use demi_plugin_interface::{CallKind, PluginError, PluginPort, Scope};
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -60,7 +60,7 @@ pub(crate) async fn create(invocation: &RpcInvocation, port: &PluginPort) -> Res
     Ok(0)
 }
 
-/// Hands the call's job the widget drawn light and dark; a Host whose
+/// Hands the call's job the widget drawn light and dark; a device whose
 /// browser cannot draw it says so on stderr instead.
 async fn screenshots(
     port: &PluginPort,
@@ -118,14 +118,14 @@ async fn screenshots(
             ))
             .await?;
         }
-        // The picture is on the conversation's primary Host, which a job on
-        // an attached Host does not read: its screenshots are skipped.
+        // The picture is on the conversation's primary device, which a job on
+        // an attached device does not read: its screenshots are skipped.
         let read = port
-            .read_host_files(vec![HostRead::content(drawn.path.clone(), MAX_MEDIUM_BYTES)])
+            .read_device_files(vec![DeviceRead::content(drawn.path.clone(), MAX_MEDIUM_BYTES)])
             .await;
-        let Ok(Some(HostFile::File { bytes, size })) = read.map(|files| files.into_iter().next()) else {
+        let Ok(Some(DeviceFile::File { bytes, size })) = read.map(|files| files.into_iter().next()) else {
             rpc.stderr(format!(
-                "{CREATE}: screenshots skipped: the picture the conversation's primary Host drew cannot be read from this Host\n"
+                "{CREATE}: screenshots skipped: the picture the conversation's primary device drew cannot be read from this device\n"
             ))
             .await?;
             return Ok(());

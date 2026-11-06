@@ -15,7 +15,7 @@
 //!   Thinking, scripts and command output are most of a transcript's text and
 //!   would drown what was said.
 //!
-//! The commands reach no Host, but for the one write of a saved attachment,
+//! The commands reach no device, but for the one write of a saved attachment,
 //! and need no permission, not even to read another conversation of the
 //! user's (`--conversation`).
 //!
@@ -29,10 +29,10 @@ use std::rc::{Rc, Weak};
 use demi_agent_tools::duration;
 use demi_backend_database::search::{HistoryBound, HistoryQuery, SearchKind, occurrences, searchable_text};
 use demi_backend_database::tree::{self, Transcript};
-use demi_backend_host_access::host_commands::conversation_of;
-use demi_backend_host_access::{HostShard, root_of};
-use demi_host_interface::{
-    Call, FileContents, GroupBuilder, Host as _, LeafBuilder, RpcError, RpcPort, TypedRpc, WhenExists, WriteOptions,
+use demi_backend_device_access::device_commands::conversation_of;
+use demi_backend_device_access::{DeviceShard, root_of};
+use demi_device_interface::{
+    Call, FileContents, GroupBuilder, Device as _, LeafBuilder, RpcError, RpcPort, TypedRpc, WhenExists, WriteOptions,
 };
 use demi_shared_types::{
     AgentMessageEvent, Block, DocumentSource, MediaSource, NodeId, ShellViewStatus, Timestamp, ToolCallBlock,
@@ -1267,10 +1267,10 @@ fn next_line(reader: &Reader, at: usize, page: u64, pages: u64) -> String {
     )
 }
 
-/// Saves a message's file in the calling agent's scratch directory on the Host
+/// Saves a message's file in the calling agent's scratch directory on the device
 /// the calling job runs on, and answers the path.
 ///
-/// The directory is inside the one the Host's runner names
+/// The directory is inside the one the device's runner names
 /// (`crates/runner-jobs/src/scratch.rs`). The file is named
 /// `<name>-<file name>` or the first free name after it. A call stopped before
 /// the file is written, `cancel`, writes nothing.
@@ -1295,22 +1295,22 @@ async fn save<A>(
         UserContentBlock::Text { .. } | UserContentBlock::Reference { .. } => unreachable!("not a file"),
     };
     let invocation = &call.invocation;
-    let hosts: &dyn HostShard = shard;
-    let bytes = hosts
+    let devices: &dyn DeviceShard = shard;
+    let bytes = devices
         .blobs()
         .get(blob)
         .await
         .map_err(failed)?
         .ok_or_else(|| failed("the file's bytes are no longer stored"))?;
     let conversation = conversation_of(invocation)?;
-    let device = DeviceId::try_from(invocation.host.as_str())
-        .map_err(|_| failed(format!("{}: names no device", invocation.host)))?;
+    let device = DeviceId::try_from(invocation.device.as_str())
+        .map_err(|_| failed(format!("{}: names no device", invocation.device)))?;
     let file = format!("{name}-{file_name}");
-    hosts
-        .with_host(&conversation, Some(&device), cancel, async |host| {
-            let identity = host.host.identity();
+    devices
+        .with_device(&conversation, Some(&device), cancel, async |admitted| {
+            let identity = admitted.device.identity();
             if identity.scratch_root.is_empty() {
-                return Err("the Host has not named its scratch directory".to_owned());
+                return Err("the device has not named its scratch directory".to_owned());
             }
             // The directory the runner makes for the calling agent, named
             // as the job's command context names it, which its job made.
@@ -1328,8 +1328,8 @@ async fn save<A>(
             if cancel.is_cancelled() {
                 return Err("the command was stopped".to_owned());
             }
-            let written = host
-                .host
+            let written = admitted
+                .device
                 .fs()
                 .write_file(&path, FileContents::Bytes(bytes), options)
                 .await

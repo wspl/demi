@@ -5,7 +5,7 @@
 use std::{collections::HashMap, rc::Rc, time::Duration};
 
 use demi_conversation_lane_protocol::{AgentEntry, CacheChart, ClientContent, ClientFrame, ServerFrame};
-use demi_agent_tools::HostResolver;
+use demi_agent_tools::DeviceResolver;
 use demi_shared_types::{NodeId, PictureFailure, SessionPhase};
 use futures_util::future::LocalBoxFuture;
 
@@ -60,11 +60,11 @@ impl AgentsSource for NoKeptAgents {
     }
 }
 
-/// A Host without files: no path a reply writes is a file, and no picture is
+/// A device without files: no path a reply writes is a file, and no picture is
 /// copied.
-pub struct NoHostFiles;
+pub struct NoDeviceFiles;
 
-impl ReplyFiles for NoHostFiles {
+impl ReplyFiles for NoDeviceFiles {
     fn files<'a>(
         &'a self,
         _root: &'a NodeId,
@@ -100,7 +100,7 @@ const HANG_GUARD: Duration = Duration::from_secs(10);
 
 /// A client of one connection: it hands frames to the connection as the
 /// backend's socket task would, and reads what the outbox sends back.
-pub struct TestClient<H: HostResolver> {
+pub struct TestClient<H: DeviceResolver> {
     root: NodeId,
     /// The root's phase as the frames read so far tell it.
     root_phase: std::cell::Cell<SessionPhase>,
@@ -113,7 +113,7 @@ pub struct TestClient<H: HostResolver> {
     hang_guard: Duration,
 }
 
-impl<H: HostResolver> TestClient<H> {
+impl<H: DeviceResolver> TestClient<H> {
     /// A client of the conversation `root`, whose frames refer to no file.
     pub fn connect(server: &Rc<AgentServer<H>>, root: &NodeId) -> Self {
         let (connection, frames) = server.connect(root.clone(), Rc::new(NoFiles));

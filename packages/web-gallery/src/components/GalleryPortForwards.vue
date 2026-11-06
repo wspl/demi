@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsPortForwards from '@demicodes/web-ui/settings/SettingsPortForwards.vue'
-import type { ForwardHost, PortForwardChange, SettingsPortForward } from '@demicodes/web-ui/settings/port-forwards'
+import type { ForwardDevice, PortForwardChange, SettingsPortForward } from '@demicodes/web-ui/settings/port-forwards'
 import { GALLERY_MARKS, shownAmong } from '../fixtures/device-marks'
 import { slow } from '../fixtures/slow'
 
@@ -16,7 +16,7 @@ import { slow } from '../fixtures/slow'
  * - Try Again finds the port free.
  * - Delete… and Remove Forward drop them.
  */
-const hosts = ref<ForwardHost[]>(shownAmong([
+const devices = ref<ForwardDevice[]>(shownAmong([
   { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null },
   { id: 'mac', name: 'alex-mbp', kind: 'device', state: 'online', mark: GALLERY_MARKS.mac },
   { id: 'build', name: 'build-01', kind: 'device', state: 'offline', mark: GALLERY_MARKS.ubuntu },
@@ -52,7 +52,7 @@ async function change(id: string, change: PortForwardChange): Promise<void> {
     if (forward.id !== id)
       return forward
     const next = { ...forward, ...change }
-    // Listening again on another port or Host, or turned on, it starts idle.
+    // Listening again on another port or device, or turned on, it starts idle.
     const relisten = change.listenPort !== undefined || change.listenDevice !== undefined || change.enabled === true
     return relisten ? { ...next, state: { kind: 'listening', direct: 0, relay: 0 } } : change.enabled === false ? { ...next, state: null } : next
   })
@@ -74,7 +74,7 @@ async function remove(id: string): Promise<void> {
 <template>
   <SettingsPortForwards
     :forwards="forwards"
-    :hosts="hosts"
+    :devices="devices"
     :shown="shown"
     load="ready"
     :overlay-store="appOverlayStore"

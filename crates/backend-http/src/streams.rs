@@ -1,8 +1,8 @@
 //! User streams at the edge.
 //!
 //! - The open of a declared stream, a lane of the page connection.
-//! - The relay of its bytes between the lane and the Host's pipes, taken from
-//!   the Host only as fast as the page takes them.
+//! - The relay of its bytes between the lane and the device's pipes, taken from
+//!   the device only as fast as the page takes them.
 //! - The page's word on whether it watches the stream, a text message of the
 //!   user stream's own layer (`crates/runner-protocol/src/direct.rs`,
 //!   `StreamWatched`), which decides whether the stream is activity.
@@ -17,11 +17,11 @@ use super::AppState;
 use super::connection::Opened;
 use super::conversations::owned;
 use super::error::ApiError;
-use demi_backend_host_access::stream::UserStream;
+use demi_backend_device_access::stream::UserStream;
 use demi_runner_protocol::direct::StreamWatched;
 
 /// The stream `name` of the caller's conversation `id`: everything that can
-/// refuse it refuses the open, the Host's opening of it included.
+/// refuse it refuses the open, the device's opening of it included.
 pub(super) async fn open(state: &AppState, user: &UserId, id: &str, name: String) -> Result<Opened, ApiError> {
     let unknown = || {
         ApiError::new(
@@ -47,7 +47,7 @@ pub(super) async fn open(state: &AppState, user: &UserId, id: &str, name: String
                     return Ok(None);
                 };
                 let stream = shard
-                    .host_shard()
+                    .device_shard()
                     .open_user_stream(&record.id, &binding, &cancel)
                     .await?;
                 Ok::<_, ApiError>(Some((stream, plugin_off)))
@@ -71,8 +71,8 @@ enum End {
     /// The page sent a text message that says nothing of the user stream's
     /// layer: the stream's own bytes are binary.
     BinaryOnly,
-    /// The Host became unreachable, or a pipe to it failed.
-    HostUnreachable,
+    /// The device became unreachable, or a pipe to it failed.
+    DeviceUnreachable,
     /// A transition ended the stream.
     Changed,
     /// The user turned off the stream's plugin.
@@ -89,7 +89,7 @@ impl End {
         match self {
             Self::Completed => frame(1000, "completed"),
             Self::BinaryOnly => frame(1003, "binary_only"),
-            Self::HostUnreachable => frame(1011, "host_unreachable"),
+            Self::DeviceUnreachable => frame(1011, "device_unreachable"),
             Self::Changed => frame(4000, "conversation_changed"),
             Self::PluginDisabled => frame(4001, "plugin_disabled"),
             Self::PageClosed => LaneEnd::Gone,
@@ -99,9 +99,9 @@ impl End {
 
 /// Relays an open stream.
 ///
-/// - The page's binary messages go to the Host in order, each after the Host
+/// - The page's binary messages go to the device in order, each after the device
 ///   took the one before.
-/// - The Host's bytes go to the page, each after the connection wrote the one
+/// - The device's bytes go to the page, each after the connection wrote the one
 ///   before.
 /// - Message boundaries mean nothing.
 /// - The page's text message says whether it watches the stream.
@@ -115,21 +115,21 @@ async fn relay(
     plugin_off: CancellationToken,
 ) {
     let UserStream {
-        mut to_host,
-        mut from_host,
+        mut to_device,
+        mut from_device,
         watched,
         lease,
     } = stream;
     let end = {
         let deliver = async {
             loop {
-                match from_host.next().await {
+                match from_device.next().await {
                     Some(Ok(bytes)) => {
                         if to_page.send_bytes(bytes).await.is_err() {
                             return End::PageClosed;
                         }
                     }
-                    Some(Err(_)) => return End::HostUnreachable,
+                    Some(Err(_)) => return End::DeviceUnreachable,
                     None => return End::Completed,
                 }
             }
@@ -138,8 +138,8 @@ async fn relay(
             loop {
                 match from_page.next().await {
                     Some(LaneMessage::Binary(bytes)) => {
-                        if to_host.write(bytes).await.is_err() {
-                            return End::HostUnreachable;
+                        if to_device.write(bytes).await.is_err() {
+                            return End::DeviceUnreachable;
                         }
                     }
                     Some(LaneMessage::Text(text)) => {

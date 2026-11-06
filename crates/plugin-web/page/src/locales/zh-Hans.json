@@ -7,7 +7,7 @@
     "search": "网页搜索",
     "searchDescription": "模型用 Exa 搜索网页：用你的账号或密钥，或在所有用户共享的额度内。",
     "fetch": "网页抓取",
-    "fetchDescription": "模型从会话的 Host 读取网页或下载文件。"
+    "fetchDescription": "模型从会话的设备读取网页或下载文件。"
   },
   "account": {
     "label": "Exa 账户",

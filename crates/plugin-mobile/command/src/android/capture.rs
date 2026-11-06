@@ -1,7 +1,7 @@
 //! One capture of the live view for an emulator
 //! (`crates/plugin-mobile/command/src/android/mod.rs`): the emulator's one
 //! stream of pictures (`screen.rs`), each scaled to the size the view asked
-//! for and encoded as H.264, Annex B, in real time, by the Host's hardware
+//! for and encoded as H.264, Annex B, in real time, by the device's hardware
 //! encoder where it has one.
 //!
 //! The emulator sends a picture only when its screen changed, so a still screen

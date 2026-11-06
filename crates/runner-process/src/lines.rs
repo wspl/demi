@@ -1,4 +1,4 @@
-//! The split of a stream into lines, for the Host log: the runner's own
+//! The split of a stream into lines, for the device log: the runner's own
 //! diagnostics, a resident's standard error and a job's shell's lines.
 
 /// A longer line of text continues on the next line.
@@ -44,11 +44,11 @@ impl LineSplitter {
     }
 }
 
-/// Hands one line another of Demi's processes wrote to the Host's log: a
+/// Hands one line another of Demi's processes wrote to the device's log: a
 /// resident's standard error, or a job's shell (`crates/runner-shell/src/remote/mod.rs`).
 /// Such a process writes its `tracing` events as JSON lines
 /// (`demi_command_sdk::log_to_stderr`), which the log keeps as they are, in the
-/// `resident_line` field that `crates/runner/src/host_log.rs` reads; any other
+/// `resident_line` field that `crates/runner/src/device_log.rs` reads; any other
 /// line is kept as text, as a panic's report is.
 pub fn log_line(source: &str, line: &str) {
     use demi_runner_protocol::wire;

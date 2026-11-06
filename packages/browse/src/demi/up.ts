@@ -121,7 +121,7 @@ async function startBackend(tool: Tool, options: UpOptions): Promise<void> {
   const began = Date.now()
   const command = [process.execPath, 'scripts/xtask.ts', 'dev', '--port', String(port), '--data', slotPaths(tool.slot).backendData]
   if (options.publicHost !== undefined) {
-    command.push('--public-host', options.publicHost)
+    command.push('--public-device', options.publicHost)
   }
   if (options.offerUpdates !== undefined) {
     command.push('--offer-updates', options.offerUpdates)

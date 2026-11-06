@@ -16,7 +16,7 @@
 //!
 //! - A message either outlasts the connection or does not ([`Carriage`]). One
 //!   that does not asks something of the connection that the connection's end
-//!   fails, such as a Host request: a new connection must not run it late. Such
+//!   fails, such as a device request: a new connection must not run it late. Such
 //!   a message is kept and numbered all the same, so the numbers stay whole, and
 //!   a connection that replaces another writes its number again with nothing in
 //!   it ([`Read::Skipped`]).
@@ -302,11 +302,11 @@ pub fn own_frame(message: Vec<u8>) -> Vec<u8> {
 /// came.
 ///
 /// It also holds what reports, ahead of a message that could follow a change
-/// on the Host, the changes the backend must know of first ([`Backlog::report`]).
+/// on the device, the changes the backend must know of first ([`Backlog::report`]).
 #[derive(Clone, Default)]
 pub struct Backlog(std::sync::Arc<BacklogInner>);
 
-/// What pushes the Host's reports of what changed since its last call.
+/// What pushes the device's reports of what changed since its last call.
 pub type Reporter = Box<dyn Fn(&Backlog) + Send + Sync>;
 
 #[derive(Default)]
@@ -323,7 +323,7 @@ impl Backlog {
         let _ = self.0.reporter.set(reporter);
     }
 
-    /// Pushes the reports of what changed on the Host, so they go before
+    /// Pushes the reports of what changed on the device, so they go before
     /// whatever is queued after this call: a command's request, a job's
     /// end, a folder's listing. Nothing without a reporter.
     pub fn report(&self) {

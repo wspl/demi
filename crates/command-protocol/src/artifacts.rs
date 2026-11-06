@@ -5,7 +5,7 @@
 //! Before it answers an install, the runner reports how its download goes, so a
 //! command that installs on purpose can say so in its own output.
 //!
-//! An artifact is any file the runner installs on its Host for a package: the
+//! An artifact is any file the runner installs on its device for a package: the
 //! package's executable, or software its program needs, such as Chrome for
 //! Testing or the Claude Code CLI. All go through one cache and are reported
 //! the same way. What differs is who asks and where the digest comes from:
@@ -81,7 +81,7 @@ pub struct ArtifactInstall {
     pub url: Option<String>,
 }
 
-/// Which artifacts of the line `name` the Host has.
+/// Which artifacts of the line `name` the device has.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactsInstalled {
@@ -146,7 +146,7 @@ impl ArtifactRequest {
     }
 }
 
-/// One artifact of a line the Host has: its version and SHA-256, and the
+/// One artifact of a line the device has: its version and SHA-256, and the
 /// absolute path of the file or of the archive's entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

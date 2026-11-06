@@ -94,7 +94,7 @@ Get-ChildItem 'C:/Windows/Web' -Filter *.png -Recurse | Select-Object -ExpandPro
 Get-Date
 \`\`\`
 
-| Host | Address | Started |
+| Device | Address | Started |
 | --- | --- | --- |
 | Alexs-MacBook-Pro.local | http://127.0.0.1:64921/c3t25fk3dbh3a67e5xyovsnhle/index.html | a minute ago |
 

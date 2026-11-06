@@ -1,13 +1,13 @@
 //! What the user's runners report of their projects' linked worktrees
 //! (`crates/backend-database/src/selection.rs` § Worktrees).
 //!
-//! Each connected runner is told the directories of its Host's projects when
+//! Each connected runner is told the directories of its device's projects when
 //! it connects and whenever they change, and reports each one's worktrees
-//! (`crates/runner-host/src/worktrees.rs`). A report reaches the shard before
+//! (`crates/runner-device/src/worktrees.rs`). A report reaches the shard before
 //! the runner's next message, which a move may be; the shard stores the
 //! reports one after another, and a move waits for the ones that came before
-//! it ([`Shard::worktrees_stored`]), so it selects by what the Host said, never
-//! asking the Host.
+//! it ([`Shard::worktrees_stored`]), so it selects by what the device said, never
+//! asking the device.
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
@@ -19,7 +19,7 @@ use demi_web_api_protocol::ids::DeviceId;
 use futures_util::FutureExt as _;
 use futures_util::future::{LocalBoxFuture, Shared};
 
-use demi_backend_host_access::root_of;
+use demi_backend_device_access::root_of;
 use crate::shard::Shard;
 
 /// The shard's part.
@@ -50,7 +50,7 @@ impl Shard {
         }
         let mut told = self.worktrees.told.borrow_mut();
         told.retain(|device, _| self.devices().connected(device));
-        // A Host whose last project went is told it has none, so that one
+        // A device whose last project went is told it has none, so that one
         // made again in the same directory is new to it.
         for device in told.keys() {
             directories.entry(device.clone()).or_default();
@@ -92,7 +92,7 @@ impl Shard {
             let stored = match shard.services().control.store_worktrees(device.clone(), directory, worktrees).await {
                 Ok(stored) => stored,
                 Err(error) => {
-                    tracing::warn!(event = "worktrees.store_failed", host_id = %device, error = &error as &dyn std::error::Error, "a project's worktrees were not stored");
+                    tracing::warn!(event = "worktrees.store_failed", device_id = %device, error = &error as &dyn std::error::Error, "a project's worktrees were not stored");
                     return;
                 }
             };

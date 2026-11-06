@@ -14,7 +14,7 @@ bench = false
 [dependencies]
 demi-command-declarations = { path = "../../command-declarations" }
 demi-command-package-browser-protocol = { path = "../protocol" }
-demi-host-interface = { path = "../../host-interface" }
+demi-device-interface = { path = "../../device-interface" }
 demi-plugin-interface = { path = "../../plugin-interface" }
 demi-web-api-protocol = { path = "../../web-api-protocol" }
 futures-util.workspace = true

@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use demi_command_declarations::{LeafKind, NativeOperation, Node};
-use demi_host_interface::RegisterError;
+use demi_device_interface::RegisterError;
 use demi_plugin_interface::{
     Commands, DEMI_ROOT, Manifest, Page, Placement, PluginFactory, PluginFile, PluginId, Scope, State, Stream,
 };

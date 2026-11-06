@@ -3,7 +3,7 @@
     "turnStopped": "輪次因錯誤而停止。",
     "saveCredential": "儲存憑證「{name}」？"
   },
-  "hosts": {
+  "devices": {
     "unavailableDevice": "無法使用的裝置"
   },
   "failures": {

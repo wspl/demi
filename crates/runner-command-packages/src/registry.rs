@@ -60,7 +60,7 @@ use demi_command_protocol::{
 };
 use demi_command_sdk::{Client, ResidentError};
 use demi_runner_process::backend::Backend;
-use demi_runner_protocol::wire::HostArtifact;
+use demi_runner_protocol::wire::DeviceArtifact;
 use tokio::{
     sync::{mpsc, oneshot, watch},
     task::JoinSet,
@@ -95,14 +95,14 @@ const REQUESTS: usize = 64;
 /// The registry's owner task and the handle to it.
 pub struct ResidentRegistry {
     handle: ResidentHandle,
-    contents: watch::Receiver<Vec<HostArtifact>>,
+    contents: watch::Receiver<Vec<DeviceArtifact>>,
     downloading: watch::Receiver<Vec<Downloading>>,
     owner: tokio::task::JoinHandle<()>,
 }
 
 impl ResidentRegistry {
     /// Residents start in `cwd` with exactly `env`; their artifacts are
-    /// cached in `cache`, or taken from the copies the Host's image
+    /// cached in `cache`, or taken from the copies the device's image
     /// preinstalled in `image`, when given, and those the backend serves
     /// itself come the way `backend` reaches it.
     pub async fn new(
@@ -148,7 +148,7 @@ impl ResidentRegistry {
 
     /// What the artifact cache holds, and each later list
     /// (`crates/runner-command-packages/src/cache.rs`).
-    pub fn installed(&self) -> watch::Receiver<Vec<HostArtifact>> {
+    pub fn installed(&self) -> watch::Receiver<Vec<DeviceArtifact>> {
         self.contents.clone()
     }
 
@@ -243,7 +243,7 @@ pub struct ProgramsKept {
 }
 
 impl ResidentHandle {
-    /// Puts the program of each of `packages` for this Host's target in the
+    /// Puts the program of each of `packages` for this device's target in the
     /// artifact cache, located by `resolver`, one at a time, so a resident's
     /// start finds it there. Ahead of an update (`ahead`) the programs the
     /// runner runs now stay, and those of a release downloaded ahead before
@@ -311,7 +311,7 @@ impl ResidentHandle {
         lease
     }
 
-    /// The resident of `descriptor`'s artifact for this host, started when
+    /// The resident of `descriptor`'s artifact for this device, started when
     /// none runs, with its requests to the backend going to `backend`. Callers asking
     /// at once share one start.
     pub async fn acquire(

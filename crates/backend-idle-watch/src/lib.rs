@@ -15,7 +15,7 @@
 //! never retired.
 //!
 //! The watch does not know what its resource is: its callers read, reserve and
-//! retire it through an [`IdlePolicy`]. A watch never asks a Host or a service
+//! retire it through an [`IdlePolicy`]. A watch never asks a device or a service
 //! whether it is busy: activity is what the resource's gates admitted.
 
 use std::future::Future;
@@ -78,7 +78,7 @@ pub trait IdlePolicy {
 /// tight loop.
 ///
 /// A line the watch logs names no resource: the caller runs the watch in a
-/// span that holds the resource's ID (`conversation`, `host_id`).
+/// span that holds the resource's ID (`conversation`, `device_id`).
 ///
 /// The retirement is a task of `tasks`, so a watch that is stopped lets a
 /// retirement already running finish, and the owner's close waits for it.

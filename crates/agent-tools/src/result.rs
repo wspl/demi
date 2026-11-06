@@ -44,7 +44,7 @@ use std::sync::Arc;
 use demi_agent_session::ToolOutcome;
 use demi_agent_store::images;
 use demi_agent_transcript::REPLAY_CHARS;
-use demi_host_interface::{
+use demi_device_interface::{
     BinaryOutput, CommandMedium, CommandState, CommandStatus, Newest, OutputText,
     Piece, Seen, Streams, Unreachable, WholeOutput, WholeView,
 };
@@ -75,8 +75,8 @@ const NEWEST_LINES: u64 = 50;
 pub struct Look {
     /// Why the call returned while its command runs, which its result says.
     pub moved: Option<Moved>,
-    /// The command's Host is unreachable, so its silence is not the command's:
-    /// a look from another Host says so
+    /// The command's device is unreachable, so its silence is not the command's:
+    /// a look from another device says so
     /// (`crates/agent-server/src/server/shell_output.rs`).
     pub unreachable: Option<Unreachable>,
 }
@@ -241,7 +241,7 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look) -> String 
     before.push(format!("commandId: {command}"));
     if running {
         before.push(format!("runningMs: {}", status.running_ms));
-        // While its Host is unreachable, the silence is not the command's.
+        // While its device is unreachable, the silence is not the command's.
         if unreachable.is_none() {
             before.push(format!("idleMs: {}", status.idle_ms));
         }
@@ -296,11 +296,11 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look) -> String 
 
 /// The line that says where the command is, as the model reads it
 /// (`crates/agent-server/src/server/shell_output.rs`): running, as far as Demi knows
-/// while its Host is `unreachable`; exited; stopped; or lost, with why.
+/// while its device is `unreachable`; exited; stopped; or lost, with why.
 fn status_line(state: &CommandState, unreachable: Option<Unreachable>) -> String {
     match (state, unreachable) {
         (CommandState::Running { .. }, Some(unreachable)) => format!(
-            "status: running, as far as Demi knows; its Host has been unreachable for {}, and its runner keeps it running",
+            "status: running, as far as Demi knows; its device has been unreachable for {}, and its runner keeps it running",
             super::duration(unreachable.away_ms),
         ),
         (CommandState::Running { .. }, None) => "status: running".to_owned(),

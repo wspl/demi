@@ -20,8 +20,8 @@ import {
 import { productWould } from '../product-would'
 import { PROJECT_ROOT } from '../fixtures/project'
 import { demoDeviceStart } from '../fixtures/device-installation'
-import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
-import type { HostChoice, HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { OfflineDevice } from '@demicodes/web-ui/agent/offline-device'
+import type { DeviceChoice, DeviceOption, MenuDevice } from '@demicodes/web-ui/targets/types'
 import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
@@ -54,7 +54,7 @@ interface SessionCase {
    * Where the conversation runs now, whose runner the specimen connects and
    * disconnects; the offline card's move changes it.
    */
-  primary?: HostMenuHost
+  primary?: MenuDevice
   /**
    * Demi resumes the turn a restart interrupted: the specimen's button lets
    * the resume give up, and starts it again.
@@ -64,16 +64,16 @@ interface SessionCase {
 }
 
 /** The user's devices, as the offline card's move lists them. */
-const errorDevices: HostDeviceOption[] = shownAmong([
+const errorDevices: DeviceOption[] = shownAmong([
   { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer', mark: GALLERY_MARKS.mac },
   { id: 'studio', name: 'Studio PC', state: 'online', path: 'localNetwork', mark: GALLERY_MARKS.windows },
 ])
 
-/** The primary Host's card above the dock's chips, while it is an offline device. */
+/** The primary device's card above the dock's chips, while it is an offline device. */
 /** When an offline specimen's runner was last connected: once, so its card ticks on as time passes. */
 const OFFLINE_SEEN = new Date(Date.now() - 7 * 60_000).toISOString()
 
-function offlineCard(primary: HostMenuHost | undefined): OfflineHost | null {
+function offlineCard(primary: MenuDevice | undefined): OfflineDevice | null {
   if (primary?.kind !== 'device' || primary.state === 'online') {
     return null
   }
@@ -81,17 +81,17 @@ function offlineCard(primary: HostMenuHost | undefined): OfflineHost | null {
     name: primary.name,
     seen: OFFLINE_SEEN,
     start: demoDeviceStart('macos'),
-    primaryHost: primary,
+    primaryDevice: primary,
     devices: errorDevices.map((device) => device.id === primary.id ? { ...device, state: 'offline' } : device),
   }
 }
 
 /**
- * The offline card moved the conversation: it runs on the chosen Host now,
+ * The offline card moved the conversation: it runs on the chosen device now,
  * online, and each command that waited for the device it left ends without
  * having run, saying where the conversation runs now.
  */
-function move(item: SessionCase, host: HostChoice, name: string): void {
+function move(item: SessionCase, choice: DeviceChoice, name: string): void {
   if (!item.primary) {
     return
   }
@@ -107,7 +107,7 @@ function move(item: SessionCase, host: HostChoice, name: string): void {
       })
     }
   }
-  Object.assign(item.primary, { id: host.kind === 'cloud' ? 'cloud' : host.id, kind: host.kind, name, state: 'online' })
+  Object.assign(item.primary, { id: choice.kind === 'cloud' ? 'cloud' : choice.id, kind: choice.kind, name, state: 'online' })
 }
 
 /**
@@ -309,9 +309,9 @@ const cases: SessionCase[] = [
     composer: 'default',
   },
   {
-    variant: 'Host went offline · the agent waits for the device',
-    note: 'Not a failure. The conversation’s device went offline while the agent was about to run its tests: the command waits for the device, its row saying Waiting for MacBook Pro, and the turn stays running. Connect Runner starts the command, which then runs as any command does. Move to Another Host… on the device’s offline card moves the conversation at once: the waiting command never ran, it ends saying where the conversation runs now, and the agent goes on there. Stop ends the wait.',
-    session: state('host-offline', {
+    variant: 'Device went offline · the agent waits for the device',
+    note: 'Not a failure. The conversation’s device went offline while the agent was about to run its tests: the command waits for the device, its row saying Waiting for MacBook Pro, and the turn stays running. Connect Runner starts the command, which then runs as any command does. Move to Another Device… on the device’s offline card moves the conversation at once: the waiting command never ran, it ends saying where the conversation runs now, and the agent goes on there. Stop ends the wait.',
+    session: state('device-offline', {
       blocks: [...shortTranscriptBlocks(), waitingShellCall()],
       phase: 'running',
       terminals: [{
@@ -325,7 +325,7 @@ const cases: SessionCase[] = [
         waitingFor: 'MacBook Pro',
       }],
     }),
-    primary: reactive<HostMenuHost>({ id: 'mac', name: 'MacBook Pro', kind: 'device', state: 'offline', mark: GALLERY_MARKS.mac }),
+    primary: reactive<MenuDevice>({ id: 'mac', name: 'MacBook Pro', kind: 'device', state: 'offline', mark: GALLERY_MARKS.mac }),
     composer: 'default',
   },
   {
@@ -419,7 +419,7 @@ const cases: SessionCase[] = [
                 :conversation="item.session"
                 has-provider
                 :fork="forkFromAnswer"
-                :primary-host="item.primary"
+                :primary-device="item.primary"
                 v-model:resume-at-retry="galleryMessages.resumeAtRetry"
                 @retry="productWould('Resume the Turn')"
                 @continue-with="(_provider, account) => productWould(`Make ${account === 'a2' ? 'sam@example.com' : account} the Active Account and Resume the Turn`)"
@@ -439,10 +439,10 @@ const cases: SessionCase[] = [
                     :providers="item.composer === 'noModels' ? [] : undefined"
                     :models="item.composer === 'noModels' ? {} : undefined"
                     :archived="item.composer === 'archived'"
-                    :offline-host="offlineCard(item.primary)"
+                    :offline-device="offlineCard(item.primary)"
                     :running="item.session.phase === 'running'"
                     @stop="stopTurn(item)"
-                    @moved="(host, name) => move(item, host, name)"
+                    @moved="(device, name) => move(item, device, name)"
                   />
                 </template>
               </ChatSession>

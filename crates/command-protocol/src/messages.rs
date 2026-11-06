@@ -25,7 +25,7 @@
 //! ```
 //!
 //! The backend accepts a message only for a conversation of the device's user
-//! that reaches the device, as its primary Host or an attached one, and logs
+//! that reaches the device, as its primary device or an attached one, and logs
 //! and drops any other. It hands one connection's messages on one after
 //! another.
 //!

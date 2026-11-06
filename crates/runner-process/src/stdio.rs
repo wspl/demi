@@ -30,7 +30,7 @@ pub fn standard_file(descriptor: u32) -> io::Result<File> {
 }
 
 /// Whether `file` is the null device: a command whose stdin it is has no
-/// input, so it passes none on, as `demi host shell` would to its far job.
+/// input, so it passes none on, as `demi device shell` would to its far job.
 pub fn is_null_device(file: &File) -> io::Result<bool> {
     #[cfg(unix)]
     {

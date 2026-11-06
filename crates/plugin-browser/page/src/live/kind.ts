@@ -34,7 +34,7 @@ export function browserTabTitle(data: BrowserTabData, session: BrowserTabsContro
 
 /**
  * The `browser` tab kind over `store`. Its content watches the conversation's
- * browser while it is mounted and reaches the Host through it; its title, icon
+ * browser while it is mounted and reaches the device through it; its title, icon
  * and commands read it without watching; the panel sees only this
  * declaration.
  */

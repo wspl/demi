@@ -1,8 +1,8 @@
-//! What an uploaded file becomes (`crates/backend-host-access/src/uploads.rs`).
+//! What an uploaded file becomes (`crates/backend-device-access/src/uploads.rs`).
 //!
 //! This module decides the media type and, for a text file, the opening the
 //! upload is recorded with. It also decides the blocks the upload becomes in a
-//! message once the backend has written it to the conversation's Host. The
+//! message once the backend has written it to the conversation's device. The
 //! backend's upload route and its content resolution both use these rules; the
 //! agent never reads a file's bytes itself.
 

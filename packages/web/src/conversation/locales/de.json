@@ -51,7 +51,7 @@
     "cloudResetting": "Die Cloud wird zurückgesetzt."
   },
   "workflows": {
-    "hostSilent": "Der Host hat nicht geantwortet."
+    "deviceSilent": "Das Gerät hat nicht geantwortet."
   },
   "uploads": {
     "notUploaded": "{name} wurde nicht hochgeladen. {reason}",

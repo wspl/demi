@@ -43,7 +43,7 @@
       "allowed": "Du hast diesem Chat erlaubt, {action}",
       "denied": "Du hast diesem Chat verweigert, {action}",
       "reached": "Ein anderer Chat hat diesen Chat kontaktiert, daher wurde ihm erlaubt, {action}",
-      "moved": "Du hast diesen Chat nach {host} · {path} verschoben",
+      "moved": "Du hast diesen Chat nach {device} · {path} verschoben",
       "moveFailed": "Verschieben fehlgeschlagen: {reason}",
       "fromMain": "Nachricht von {agent}",
       "mainAgent": "Hauptagent",
@@ -67,7 +67,7 @@
       "failed": "Fehlgeschlagen",
       "stopped": "Gestoppt",
       "stopping": "Wird gestoppt …",
-      "waiting": "Warten auf {host}",
+      "waiting": "Warten auf {device}",
       "lost": "Verloren",
       "exitCode": "Exit-Code {code}"
     },
@@ -75,7 +75,7 @@
       "lost": "Verloren",
       "lostWhy": "Verloren: {reason}",
       "stopping": "Wird gestoppt …",
-      "waiting": "Warten auf {host}",
+      "waiting": "Warten auf {device}",
       "running": "Läuft seit {span}",
       "exited": "Beendet nach {span}",
       "exitedZero": "Mit 0 beendet nach {span}",
@@ -238,7 +238,7 @@
     "tabsOpen": "Tabs, {count} geöffnet",
     "closePanel": "Panel schließen",
     "options": "{title}, Chat-Optionen",
-    "hostState": "{name} ist {state}",
+    "deviceState": "{name} ist {state}",
     "renameTitle": "Chat umbenennen",
     "titleLabel": "Chat-Titel",
     "runsOn": "Läuft auf",
@@ -281,9 +281,9 @@
     "lastTurnRate": "Letzte Runde: {rate} Tok./s"
   },
   "notices": {
-    "hostOffline": "{name} ist offline.",
-    "moveHost": "Zu einem anderen Host verschieben …",
-    "hostOfflineLastSeen": "{name} ist offline. Zuletzt gesehen {time}.",
+    "deviceOffline": "{name} ist offline.",
+    "moveDevice": "Auf ein anderes Gerät verschieben …",
+    "deviceOfflineLastSeen": "{name} ist offline. Zuletzt gesehen {time}.",
     "pluginsChanged": "Plug-ins geändert"
   },
   "composer": {
@@ -435,7 +435,7 @@
     "nothingOpen": "Nichts geöffnet",
     "noFiles": "Keine Dateien oder Änderungen",
     "reading": "{name} wird gelesen",
-    "hostOffline": "{name} ist offline.",
-    "hostOfflineDetail": "Dateien, Änderungen und der Browser erscheinen wieder, sobald die Verbindung wieder besteht."
+    "deviceOffline": "{name} ist offline.",
+    "deviceOfflineDetail": "Dateien, Änderungen und der Browser erscheinen wieder, sobald die Verbindung wieder besteht."
   }
 }

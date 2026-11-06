@@ -1,9 +1,9 @@
 //! The conversation idle clock.
 //!
 //! A conversation that has not been active for the idle window (`super`) has
-//! every Host it reaches, primary or attached, told to let go of it.
+//! every device it reaches, primary or attached, told to let go of it.
 //!
-//! - Its watch starts with the conversation's first Host admission and ends once
+//! - Its watch starts with the conversation's first device admission and ends once
 //!   it released.
 //! - A won target switch starts it again, so a deadline of the old binding never
 //!   releases the new one.
@@ -11,11 +11,11 @@
 //!
 //! # The release
 //!
-//! The release is one generic runner message, sent to each connected Host's
-//! runner (`crates/backend-host-access/src/access.rs`). Telling takes no file
+//! The release is one generic runner message, sent to each connected device's
+//! runner (`crates/backend-device-access/src/access.rs`). Telling takes no file
 //! gate beyond the transition's own commit, wakes nothing, stores nothing and
-//! waits for no Host. It also goes to the Host a conversation stops using (a
-//! target switch, a detach) and to every Host when the conversation is
+//! waits for no device. It also goes to the device a conversation stops using (a
+//! target switch, a detach) and to every device when the conversation is
 //! archived or deleted.
 //!
 //! The runner forwards it to each resident on the device, which ends
@@ -33,29 +33,29 @@
 //! send it only while the backend holds the conversation's file gate, and
 //! every job runs in a lease of that gate; a move and a detach send it once
 //! the jobs of the conversation on the device they left ended
-//! (`crates/backend-host-access/src/transition.rs`). Repeating one is
+//! (`crates/backend-device-access/src/transition.rs`). Repeating one is
 //! harmless, and it never starts a resident.
 //!
-//! # What a Host holds
+//! # What a device holds
 //!
 //! The message is an effort, never a record: a runner that is away or loses it
 //! keeps what it holds until its next connection, whose hello names the
 //! conversations it is to hold (`crates/backend-user-shard/src/shard/adoption.rs`)
-//! and has it release every other. A Host is to hold a conversation that is not
+//! and has it release every other. A device is to hold a conversation that is not
 //! archived, deleted or detached from it, and that the idle clock did not
-//! release; a conversation used on a Host again is held there again, since its
+//! release; a conversation used on a device again is held there again, since its
 //! next admission starts the watch afresh and takes it off the idle-released
 //! ones. The idle-released conversations are kept in memory only: after a
 //! restart of the backend a runner told nothing meanwhile is named them again,
 //! which releases nothing it still holds for a conversation in use, as a
 //! release never starts a resident and the next use starts them.
 //!
-//! A release that does not end in an answer is logged with the Host and the
+//! A release that does not end in an answer is logged with the device and the
 //! reason, and changes nothing. A release has no time limit; the connection's
-//! own liveness ends it when the Host is gone.
+//! own liveness ends it when the device is gone.
 //!
 //! An archive, a move and a detach are the user's changes to their own
-//! conversation, and none waits for a Host's cleanup, so the watch ends as soon
+//! conversation, and none waits for a device's cleanup, so the watch ends as soon
 //! as its release is sent.
 //!
 //! Forking releases nothing.
@@ -70,15 +70,15 @@ use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument as _;
 
 use crate::shard::Shard;
-use demi_backend_host_access::root_of;
+use demi_backend_device_access::root_of;
 
-/// The idle watch of each conversation that reached a Host.
+/// The idle watch of each conversation that reached a device.
 #[derive(Default)]
 pub(crate) struct ConversationWatches {
     watches: RefCell<HashMap<ConversationId, AbortOnDropHandle<()>>>,
-    /// The conversations whose idle watch released them and that no Host
-    /// admission has started again: what the Hosts' `hello` does not name as
-    /// held. Not stored; see the module's § What a Host holds.
+    /// The conversations whose idle watch released them and that no device
+    /// admission has started again: what the devices' `hello` does not name as
+    /// held. Not stored; see the module's § What a device holds.
     released: RefCell<HashSet<ConversationId>>,
 }
 
@@ -87,14 +87,14 @@ impl Shard {
     /// holding its file gate, or a user stream someone has open.
     pub(crate) fn conversation_activity(&self, id: &ConversationId) -> Activity {
         let slot = self.conversations().slot(id);
-        let host = Activity::of(&slot.file_gate().state()).and(Activity::of(&slot.streams.state()));
+        let device = Activity::of(&slot.file_gate().state()).and(Activity::of(&slot.streams.state()));
         match self.agent().tree(&root_of(id)) {
-            Some(tree) => host.and(Activity::of(&tree.admission().state())),
-            None => host,
+            Some(tree) => device.and(Activity::of(&tree.admission().state())),
+            None => device,
         }
     }
 
-    /// Whether the conversation's idle watch runs: from its first Host
+    /// Whether the conversation's idle watch runs: from its first device
     /// admission until it released the conversation or was ended.
     pub(crate) fn tracks_idle(&self, id: &ConversationId) -> bool {
         self.idle_watches()
@@ -104,7 +104,7 @@ impl Shard {
             .is_some_and(|watch| !watch.is_finished())
     }
 
-    /// Starts the conversation's idle watch unless one runs, as each Host
+    /// Starts the conversation's idle watch unless one runs, as each device
     /// admission does.
     pub(crate) fn track_idle(&self, id: &ConversationId) {
         if self.is_closing() || self.tracks_idle(id) {
@@ -137,7 +137,7 @@ impl Shard {
         self.track_idle(id);
     }
 
-    /// The conversations the idle clock released and nothing used on a Host
+    /// The conversations the idle clock released and nothing used on a device
     /// since.
     pub(crate) fn idle_released(&self) -> HashSet<ConversationId> {
         self.idle_watches().released.borrow().clone()
@@ -195,12 +195,12 @@ impl IdlePolicy for ConversationIdle {
         Ok(Some(Box::pin(async move {
             let _held = (files, tree);
             let record = shard
-                .host_shard()
+                .device_shard()
                 .owned_conversation(&id)
                 .await
                 .map_err(|error| error.to_string())?;
             shard
-                .host_shard()
+                .device_shard()
                 .release_everywhere(&record)
                 .await
                 .map_err(|error| error.to_string())?;

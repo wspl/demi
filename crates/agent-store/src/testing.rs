@@ -226,7 +226,7 @@ struct Stored {
     /// The commands each node ran that are recorded running.
     running: BTreeMap<NodeId, Vec<RunningCommand>>,
     /// How far each node looked in each running command's output.
-    places: BTreeMap<(CommandId, NodeId), demi_host_interface::Seen>,
+    places: BTreeMap<(CommandId, NodeId), demi_device_interface::Seen>,
 }
 
 /// The in-memory tree store: the contract's semantics with nothing durable.
@@ -832,7 +832,7 @@ impl AgentTreeStore for MemoryTreeStore {
         &'a self,
         command: &'a CommandId,
         node: &'a NodeId,
-        seen: demi_host_interface::Seen,
+        seen: demi_device_interface::Seen,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         let mut stored = self.stored.borrow_mut();
         let runs = stored.running.values().flatten().any(|running| running.command == *command);
@@ -851,7 +851,7 @@ impl AgentTreeStore for MemoryTreeStore {
         &'a self,
         command: &'a CommandId,
         node: &'a NodeId,
-    ) -> LocalBoxFuture<'a, Result<Option<demi_host_interface::Seen>, StoreError>> {
+    ) -> LocalBoxFuture<'a, Result<Option<demi_device_interface::Seen>, StoreError>> {
         let place = self.stored.borrow().places.get(&(command.clone(), node.clone())).copied();
         Box::pin(async move { Ok(place) })
     }

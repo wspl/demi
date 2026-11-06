@@ -27,9 +27,9 @@ pub enum FileReference {
 }
 
 /// Where the backend resolves the files of one frame's content
-/// (`crates/backend-host-access/src/uploads.rs`).
+/// (`crates/backend-device-access/src/uploads.rs`).
 ///
-/// - An upload is written to the conversation's Host and becomes its native
+/// - An upload is written to the conversation's device and becomes its native
 ///   media block, when it has one, then its attachment record, or the text that
 ///   says it is unavailable.
 /// - A remote file becomes its reference once its device may be read.

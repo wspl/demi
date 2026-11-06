@@ -6,7 +6,7 @@
 //!
 //! - a control a request can close it through;
 //! - an idle deadline a file transfer arms
-//!   (`crates/backend-host-access/src/access.rs`): a connection on which no
+//!   (`crates/backend-device-access/src/access.rs`): a connection on which no
 //!   byte moves for the deadline is closed, whoever stopped moving them.
 //!
 //! The edge serves its connections itself, with hyper's HTTP/1 server, since

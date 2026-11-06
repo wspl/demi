@@ -3,7 +3,7 @@
     "turnStopped": "Die Runde wurde mit einem Fehler beendet.",
     "saveCredential": "Zugangsdaten „{name}“ speichern?"
   },
-  "hosts": {
+  "devices": {
     "unavailableDevice": "Nicht verfügbares Gerät"
   },
   "failures": {

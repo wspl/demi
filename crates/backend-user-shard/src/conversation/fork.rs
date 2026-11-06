@@ -45,7 +45,7 @@
 //! command, permission grant or request (the user decides for the new
 //! conversation again).
 //!
-//! Attached hosts are copied as configuration, but a device revoked before
+//! Attached devices are copied as configuration, but a device revoked before
 //! publication is left out, as its revocation detached it from the source.
 //!
 //! The destination's execution-context revision starts where the source's
@@ -56,7 +56,7 @@ use demi_backend_database::Selection;
 use demi_agent_session::ForkError;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
-use demi_backend_database::conversation_index::{AttachedHost, ConversationRecord};
+use demi_backend_database::conversation_index::{AttachedDevice, ConversationRecord};
 use demi_backend_database::conversations::ConversationStores;
 use demi_backend_database::forks::{ForkMetadata, ForkOperation};
 use demi_backend_database::tree;
@@ -67,7 +67,7 @@ use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::ids::ConversationId;
 
 use crate::shard::Shard;
-use demi_backend_host_access::root_of;
+use demi_backend_device_access::root_of;
 
 /// A Fork's destination, and whether this request created it.
 pub struct Forked {
@@ -165,7 +165,7 @@ impl Shard {
             None => {
                 // The destination keeps the source's directory: on the
                 // Cloud, the source's own.
-                let resolved = self.host_shard().resolve_target(&source).await?;
+                let resolved = self.device_shard().resolve_target(&source).await?;
                 let target = match &source.target {
                     Selection::Cloud { path: None } => ConversationTarget::Cloud {
                         path: Some(resolved.path().to_owned()),
@@ -186,11 +186,11 @@ impl Shard {
                         // And its workflow.
                         workflow: source.workflow.clone(),
                         created_at: services.clock.now(),
-                        attached_hosts: control
-                            .attached_hosts(source.id.clone())
+                        attached_devices: control
+                            .attached_devices(source.id.clone())
                             .await?
                             .iter()
-                            .map(AttachedHost::record)
+                            .map(AttachedDevice::record)
                             .collect(),
                         context_version: source.context_version,
                     },
@@ -232,7 +232,7 @@ impl Shard {
                 .await?;
         }
         // The attachments its messages name are its too, with the blobs shared
-        // (`crates/backend-host-access/src/attachment_commands.rs`). They are read
+        // (`crates/backend-device-access/src/attachment_commands.rs`). They are read
         // before the sequences, so every number copied lies below the next one.
         //
         // The source's root uploaded what the destination's root, which holds its

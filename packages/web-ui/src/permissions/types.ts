@@ -114,7 +114,7 @@ export function useDeviceAction(name: string): string {
 
 /** What a decision recorded before a permission covered all devices let the conversation do by a pairing. */
 export function pairAction(): string {
-  return t('host.pair')
+  return t('device.pair')
 }
 
 /**

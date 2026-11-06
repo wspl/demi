@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// Every reason the page's methods and its view's
 /// notices give: the package's own codes, the view's notices, the
-/// conversation's host access's refusals and the plugin call route's own.
+/// conversation's device access's refusals and the plugin call route's own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PanelReason {
@@ -29,24 +29,24 @@ pub enum PanelReason {
     DriverError,
     DeviceLost,
     Cancelled,
-    /// The package's resident did not start on the Host.
+    /// The package's resident did not start on the device.
     MobileUnavailable,
     // The view's notices.
     CaptureFailed,
     CaptureUnavailable,
     InputFailed,
     NoFocusedField,
-    // The conversation's host access (`crates/backend-host-access/src/access.rs`).
+    // The conversation's device access (`crates/backend-device-access/src/access.rs`).
     ConversationNotFound,
     ConversationArchived,
     ConversationBusy,
-    HostStopped,
+    DeviceStopped,
     DeviceOffline,
     CloudUnavailable,
     CloudResetting,
     CloudCapacity,
     CloudCrashLoop,
-    HostOperationFailed,
+    DeviceOperationFailed,
     // The plugin call route's own.
     UnknownPluginMethod,
     PluginDisabled,
@@ -78,21 +78,21 @@ impl From<MobileErrorCode> for PanelReason {
 }
 
 impl PanelReason {
-    /// The host access's refusal `code` as a reason; none for one the page
+    /// The device access's refusal `code` as a reason; none for one the page
     /// has no words of its own for, which it says by its HTTP status.
-    pub fn of_host(code: ErrorCode) -> Option<Self> {
+    pub fn of_device(code: ErrorCode) -> Option<Self> {
         Some(match code {
             ErrorCode::ConversationNotFound => Self::ConversationNotFound,
             ErrorCode::ConversationArchived => Self::ConversationArchived,
             ErrorCode::ConversationBusy => Self::ConversationBusy,
-            ErrorCode::HostStopped => Self::HostStopped,
+            ErrorCode::DeviceStopped => Self::DeviceStopped,
             ErrorCode::DeviceOffline => Self::DeviceOffline,
             ErrorCode::DeviceNotFound => Self::DeviceNotFound,
             ErrorCode::CloudUnavailable => Self::CloudUnavailable,
             ErrorCode::CloudResetting => Self::CloudResetting,
             ErrorCode::CloudCapacity => Self::CloudCapacity,
             ErrorCode::CloudCrashLoop => Self::CloudCrashLoop,
-            ErrorCode::HostOperationFailed => Self::HostOperationFailed,
+            ErrorCode::DeviceOperationFailed => Self::DeviceOperationFailed,
             _ => return None,
         })
     }

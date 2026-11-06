@@ -306,7 +306,7 @@ pub async fn settle(core: &Rc<Core>, device: &DeviceId) -> Result<(), OpError> {
         Ok(modified(&record)? > modified(&store).unwrap_or(SystemTime::UNIX_EPOCH))
     })
     .await?;
-    tracing::warn!(event = "cloud_move.settled", host_id = %device, kept = if simple_newer { "simple" } else { "gvisor" }, "a Cloud's storage was on both runtimes after a move was cut short; the newer was kept");
+    tracing::warn!(event = "cloud_move.settled", device_id = %device, kept = if simple_newer { "simple" } else { "gvisor" }, "a Cloud's storage was on both runtimes after a move was cut short; the newer was kept");
     match simple_newer {
         true => remove_gvisor(core, device).await,
         false => core.simple.remove(device).await,

@@ -337,7 +337,7 @@ impl<'de> Deserialize<'de> for UserCode {
 /// trusted with passes.
 ///
 /// - `https` anywhere.
-/// - `http` on the loopback host.
+/// - `http` on the loopback device.
 /// - No control characters, which would make the link read differently from the
 ///   one shown.
 struct VerificationUri(String);

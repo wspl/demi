@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use demi_host_interface::{Process, ProcessControl, ProcessEnd, ProcessOutput, Signal};
+use demi_device_interface::{Process, ProcessControl, ProcessEnd, ProcessOutput, Signal};
 use demi_provider_common::quota::Observation;
 use demi_provider_common::wire::Tagged;
 use demi_provider_common::{
@@ -1297,7 +1297,7 @@ fn failure(message: String) -> ProviderFailure {
 }
 
 /// The failure of a process that ended as `end` says: one whose machine went
-/// away, as when the Host's runner reconnected, had no answer and is
+/// away, as when the device's runner reconnected, had no answer and is
 /// retried; any other end is the CLI's own failure.
 fn ended(end: &ProcessEnd, message: String) -> ProviderFailure {
     match end {

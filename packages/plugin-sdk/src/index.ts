@@ -87,7 +87,7 @@ export type {
   UserStream,
   UserStreamHandlers,
 } from '@demicodes/web-ui/plugins/streams'
-export type { DownloadProgress, HostArtifact, HostDownload } from '@demicodes/web-ui/devices/installed'
+export type { DownloadProgress, DeviceArtifact, DeviceDownload } from '@demicodes/web-ui/devices/installed'
 export { downloadProgress } from '@demicodes/web-ui/devices/installed'
 export type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
 // What the page says of a failure, in the page's language.
@@ -218,7 +218,7 @@ export {
 // The repositories Commits offers for a conversation's directory.
 export type { Repositories, RepositoryEntry } from '@demicodes/web-ui/files/repositories'
 export type { FileBrowserSource } from '@demicodes/web-ui/files/types'
-export { baseName, isAbsoluteHostPath, joinPath, relativePath } from '@demicodes/web-ui/files/paths'
+export { baseName, isAbsoluteDevicePath, joinPath, relativePath } from '@demicodes/web-ui/files/paths'
 export { downloadUrl } from '@demicodes/web-ui/files/download'
 export { formatByteRatio, formatBytes } from '@demicodes/web-ui/files/format'
 export { treeLayout } from '@demicodes/web-ui/files/tree-layout'

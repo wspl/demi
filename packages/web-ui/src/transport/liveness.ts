@@ -527,7 +527,7 @@ export function pendingReturnCheck(): Promise<void> | null {
  * Each connection and lane that waits to connect again connects now. This happens in two
  * cases:
  *
- * - The page's path to a Host changed, as when a direct channel opened or failed
+ * - The page's path to a device changed, as when a direct channel opened or failed
  *   (`packages/web/src/direct/index.ts`), and a view its owner just ended for the
  *   move connects on the new path.
  * - The page connection reaches the backend again after it was lost.

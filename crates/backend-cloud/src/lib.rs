@@ -1,5 +1,5 @@
 //! The Cloud (`crates/machine-manager/src/lib.rs`): each user's one managed
-//! device, a Host behind a runner like a paired device, which the machine
+//! device, a device behind a runner like a paired device, which the machine
 //! manager runs as a gVisor sandbox.
 //!
 //! The user's shard holds the Cloud's machine:
@@ -72,7 +72,7 @@
 //! network rules and a capacity permit. It differs in whom it serves: the
 //! deployment, not a user.
 //!
-//! - It is in no user's Hosts, and no conversation binds it.
+//! - It is in no user's devices, and no conversation binds it.
 //! - Nobody pairs it, opens a shell in it or resets it.
 //! - Only the backend's machine access reaches it.
 //!

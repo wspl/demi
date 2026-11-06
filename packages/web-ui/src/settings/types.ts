@@ -1,5 +1,5 @@
 import { t } from './locales/text'
-/** Presentation models for the settings surfaces. Hosts map their own state onto these. */
+/** Presentation models for the settings surfaces. Pages map their own state onto these. */
 import type { ShownError } from '../infra/errors'
 import { VIDEO_FILE_EXTENSIONS, type QuotaWindowName } from '@demicodes/protocol'
 import type { Component } from 'vue'
@@ -97,7 +97,7 @@ export interface SettingsEntryMedia<K extends SettingsMediaKind = SettingsMediaK
   models?: SettingsMediaModel[]
 }
 
-/** A section id. Hosts choose their own set; the built-in four cover the product today. */
+/** A section id. Pages choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
 
 /**
@@ -165,14 +165,14 @@ export interface SettingsAccountInfo {
   name: string
 }
 
-/** A paired device as the Devices page lists it, with what its runner last reported. */
+/** A paired device as the devices page lists it, with what its runner last reported. */
 export interface SettingsDevice extends DeviceReport {
   id: string
   name: string
   state: DeviceState
   /** How much of its next runner it has downloaded, while that download moves (`DeviceStatus`). */
   downloadPercent?: number | null
-  /** When the host was last seen, as an ISO 8601 timestamp; shown while it is offline. */
+  /** When the device was last seen, as an ISO 8601 timestamp; shown while it is offline. */
   seen?: string
   /** How to start its runner again; its page's header gives it while it is offline. */
   start?: DeviceStart | null

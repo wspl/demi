@@ -1,7 +1,7 @@
 /**
  * A live view's pictures on a canvas (`crates/plugin-mobile/page/src/index.ts`).
  *
- * WebCodecs decodes the Host's H.264 frames in sequence, and the page draws each
+ * WebCodecs decodes the device's H.264 frames in sequence, and the page draws each
  * picture as soon as it is decoded. Whatever the source, a browser tab or a
  * simulator, its pictures come so.
  */
@@ -11,7 +11,7 @@ import type { LiveVideoFrame } from './frames'
 /** The live protocol's codec, as every source encodes it, decoded with the least delay. */
 const DECODER: VideoDecoderConfig = { codec: LIVE_VIDEO_CODEC, optimizeForLatency: true }
 
-/** A generation of pictures, as the Host announced it. */
+/** A generation of pictures, as the device announced it. */
 export interface LivePictureStream {
   generation: number
 }
@@ -34,13 +34,13 @@ export interface PictureHandlers<S extends LivePictureStream> {
    * when the view has nothing to wait for, as without this.
    */
   ready?(stream: S): boolean
-  /** A frame could not be decoded; the Host must send a key frame. */
+  /** A frame could not be decoded; the device must send a key frame. */
   lost(): void
 }
 
 /**
  * Whether this web browser can show a live view: its WebCodecs must decode
- * the Host's H.264. A Chromium
+ * the device's H.264. A Chromium
  * built without proprietary codecs has a `VideoDecoder`, but not for H.264.
  */
 export async function picturesSupported(defect: (message: string, error: unknown) => void): Promise<boolean> {

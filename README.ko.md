@@ -107,7 +107,7 @@ Demi는 Claude Code나 Codex를 감싼 도구가 아니라, 자체 런타임이 
 
 ```sh
 T=$(demi browser tab new) && demi browser open $T http://localhost:5173 && demi browser screenshot $T | demi file view
-demi host shell --host windows 'cargo test'
+demi device shell --device windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```
 

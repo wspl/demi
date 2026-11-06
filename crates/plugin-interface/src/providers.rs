@@ -409,7 +409,7 @@ pub struct VideoAsk {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VideoSourceAsk {
     pub change: VideoChange,
-    /// An MP4's bytes, as the Host's file holds them.
+    /// An MP4's bytes, as the device's file holds them.
     pub bytes: B64Bytes,
 }
 

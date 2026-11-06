@@ -14,7 +14,7 @@
 //!   which holds what is positioned out of the flow, but not of what an
 //!   element that clips holds, such as a scroller's rows.
 //! - The picture is a file in a directory of its own beside the profiles,
-//!   readable only by its user, which its caller reads as a Host file, since
+//!   readable only by its user, which its caller reads as a device file, since
 //!   bulk bytes never travel in an answer. Each drawing removes its user's
 //!   pictures older than `DRAWING_KEPT`.
 //! - A drawing runs in a task of its own, its cleanup included, so a
@@ -114,7 +114,7 @@ async fn drawn(
         executable,
         runtime,
     } = installation;
-    let mut directories = EnvironmentDirectories::create(&DirectoryBases::host())?;
+    let mut directories = EnvironmentDirectories::create(&DirectoryBases::device())?;
     let mut process = ChromeProcess::new(directories.runtime(), &executable);
     let builder = BrowserConfig::builder()
         .chrome_executable(executable)
@@ -225,7 +225,7 @@ async fn picture(browser: &Browser, input: &DrawInput, html: &str) -> Result<Dra
 /// readable only by its user, after removing that user's pictures older than
 /// `DRAWING_KEPT`.
 async fn keep(png: Vec<u8>) -> Result<PathBuf> {
-    let base = DirectoryBases::host().profiles;
+    let base = DirectoryBases::device().profiles;
     tokio::task::spawn_blocking(move || {
         remove_old(&base);
         let mut directory = tempfile::Builder::new();

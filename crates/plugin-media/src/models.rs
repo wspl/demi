@@ -7,7 +7,7 @@
 //!
 //! Notes, such as an entry whose models could not be listed, go to stderr.
 
-use demi_host_interface::RpcInvocation;
+use demi_device_interface::RpcInvocation;
 use demi_plugin_interface::{EntryStatus, MediaModel, PluginError, PluginPort};
 use demi_shared_types::MediaKind;
 use demi_shared_types::thousands;

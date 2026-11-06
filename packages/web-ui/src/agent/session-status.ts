@@ -1,7 +1,7 @@
 import type { SentenceText } from '../ui/ui-text'
 import type { ShownError } from '../infra/errors'
 import { isCompactionDivider } from './visible-blocks'
-import type { HostMenuHost } from '../hosts/types'
+import type { MenuDevice } from '../targets/types'
 import { t } from './locales/text'
 
 /** Sidebar conversation list, or a session that is not reconnecting. */

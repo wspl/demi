@@ -28,13 +28,13 @@ use demi_agent_store::media::HeldMedia;
 use demi_agent_store::{AgentTreeStore, NodeRecord, Placement, SideOf, StoreError};
 use demi_conversation_lane_protocol::{AgentEntry, CacheChart, Version};
 use demi_agent_tools::{
-    CALL_WINDOW_MS, ContextSource, HostResolver, ProfileModel, ShellEnvironmentFactory,
+    CALL_WINDOW_MS, ContextSource, DeviceResolver, ProfileModel, ShellEnvironmentFactory,
     SubagentSource, Toolset, ToolsetSource, Unavailable,
 };
 use demi_agent_transcript::{ForkEnd, IdSource};
 
 use demi_provider_common::{Ahead, ProviderRuntime};
-use demi_host_interface::{CommandSet, RegisterError};
+use demi_device_interface::{CommandSet, RegisterError};
 use demi_shared_gates::KeyedSerialGate;
 use demi_shared_types::{AgentMessage, BlockId, Clock, ModelSelection, NodeId, SessionPhase, UserContentBlock};
 use futures_util::future::{LocalBoxFuture, join_all};
@@ -179,7 +179,7 @@ impl Default for ServerConfig {
 
 /// What a product gives the agent server: what every node is assembled
 /// from, and the answers it asks for while a node runs.
-pub struct ServerDeps<H: HostResolver> {
+pub struct ServerDeps<H: DeviceResolver> {
     /// What a tree opens with: the commands every node starts from, on
     /// which the server grafts its own groups per node.
     pub toolsets: Rc<dyn ToolsetSource>,
@@ -193,12 +193,12 @@ pub struct ServerDeps<H: HostResolver> {
     /// identity, which no profile replaces.
     pub guide: Rc<str>,
     /// Where a node's shell tools run.
-    pub hosts: Rc<H>,
+    pub devices: Rc<H>,
     /// What the model must learn before each request, in this order.
     pub context: Rc<[Rc<dyn ContextSource>]>,
     pub providers: Rc<dyn ProviderResolver>,
-    /// Makes each node's shell environment on each Host it uses.
-    pub shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
+    /// Makes each node's shell environment on each device it uses.
+    pub shells: Rc<dyn ShellEnvironmentFactory<H::Device>>,
     pub stores: TreeStores,
     pub clock: Arc<dyn Clock>,
     pub ids: Rc<dyn IdSource>,
@@ -216,7 +216,7 @@ pub struct ServerDeps<H: HostResolver> {
     /// that ([`Tree::cost_changed`], [`Tree::side_card_changed`]).
     pub agents: Rc<dyn AgentsSource>,
     /// Which paths a complete text's code spans name are files on the
-    /// conversation's Host (`crates/agent-server/src/node/reply_files.rs`).
+    /// conversation's device (`crates/agent-server/src/node/reply_files.rs`).
     pub reply_files: Rc<dyn crate::node::ReplyFiles>,
 }
 
@@ -252,7 +252,7 @@ pub trait AgentsSource {
 pub struct Working;
 
 /// The agent server of one user shard.
-pub struct AgentServer<H: HostResolver> {
+pub struct AgentServer<H: DeviceResolver> {
     deps: ServerDeps<H>,
     /// Each open conversation's live tree, by its root.
     trees: RefCell<HashMap<NodeId, Rc<Tree<H>>>>,
@@ -266,7 +266,7 @@ pub struct AgentServer<H: HostResolver> {
     command_sets: commands::NodeCommandSets,
 }
 
-impl<H: HostResolver> AgentServer<H> {
+impl<H: DeviceResolver> AgentServer<H> {
     pub fn new(deps: ServerDeps<H>) -> Rc<Self> {
         Rc::new(Self {
             deps,
@@ -682,10 +682,10 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// The conversation `root` works elsewhere now, after a move or a switch of
-    /// its Host.
+    /// its device.
     ///
     /// Its children stay where they work (`crates/agent-server/src/node/mod.rs`);
-    /// the pages hear which of them now work on another Host than the
+    /// the pages hear which of them now work on another device than the
     /// conversation's, and each such child's next request learns it from its
     /// `working_directory` block.
     pub async fn placement_changed(&self, root: &NodeId) {

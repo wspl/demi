@@ -1,7 +1,7 @@
 //! The `widget` plugin: `demi widget`, and the widgets a reply shows in place.
 //!
 //! An agent writes an HTML page into `demi widget create`, which keeps it as
-//! the user's next widget, `w1`, draws it with the Host's browser light and
+//! the user's next widget, `w1`, draws it with the device's browser light and
 //! dark for the agent to see, and prints its ID. The reply places it on a
 //! line of its own, `<widget id="w1" />`, and the page's reply block draws it
 //! there in a sandboxed frame, the size its page declares
@@ -11,7 +11,7 @@
 //!   agent ── demi widget create ──> plugin ── keeps ──> value w1 + blob
 //!                                     │ draw, light and dark
 //!                                     v
-//!                        browser package on the Host ──> two screenshots
+//!                        browser package on the device ──> two screenshots
 //!   reply "<widget id="w1" />" ── its facts, frame and title, with the reply
 //!                             └── page ── frames the widget's document
 //! ```

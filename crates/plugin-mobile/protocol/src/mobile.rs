@@ -32,7 +32,7 @@ pub const WAIT_SECONDS: u64 = 30;
 pub const FIND_SECONDS: u64 = 10;
 pub const MAX_WAIT_SECONDS: u64 = 300;
 /// The longest output path, in characters: the longest path the systems the
-/// Host runs on take.
+/// device runs on take.
 pub const PATH_LENGTH: usize = 4096;
 /// The most bytes of a device's log Demi keeps, as its entries' JSON: the
 /// log is followed into memory, never to the disk, for as long as the
@@ -44,7 +44,7 @@ pub const LOG_ENTRIES: usize = 100;
 
 numbered!(
     /// A device's handle in the conversation, which `open` answers: `m` and
-    /// the device's number, given once across the conversation's Hosts.
+    /// the device's number, given once across the conversation's devices.
     DeviceId,
     "m",
     "a device handle, such as m1"
@@ -303,7 +303,7 @@ pub struct Simulator {
     pub elsewhere: bool,
 }
 
-/// A platform this Host cannot run simulators of, and why.
+/// A platform this device cannot run simulators of, and why.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Unavailable {
@@ -463,7 +463,7 @@ macro_rules! device_input {
     };
 }
 
-/// `list`: every simulator of this Host.
+/// `list`: every simulator of this device.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ListInput {}
@@ -478,7 +478,7 @@ impl DeviceInput for ListInput {
 #[serde(deny_unknown_fields)]
 pub struct ListResult {
     pub devices: Vec<Simulator>,
-    /// The platforms this Host runs no simulators of, and why.
+    /// The platforms this device runs no simulators of, and why.
     pub unavailable: Vec<Unavailable>,
 }
 
@@ -536,7 +536,7 @@ pub struct CloseResult {
 device_input! {
     /// `screenshot`: a PNG of the settled screen.
     pub struct ScreenshotInput {
-        /// New output file on this Host; without it the PNG goes to stdout
+        /// New output file on this device; without it the PNG goes to stdout
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
         #[garde(length(chars, min = 1, max = PATH_LENGTH))]
@@ -813,7 +813,7 @@ pub struct WaitResult {
 device_input! {
     /// `install`: an app's build onto the device.
     pub struct InstallInput {
-        /// The build on this Host: an .apk for an Android emulator, an .app for an iOS simulator
+        /// The build on this device: an .apk for an Android emulator, an .app for an iOS simulator
         #[garde(length(chars, min = 1, max = PATH_LENGTH))]
         pub file: String,
     }
@@ -988,11 +988,11 @@ closed_set! {
         /// The ref names no element of the device's last `inspect`.
         StaleRef = "stale_ref",
         Timeout = "timeout",
-        /// This Host cannot run the platform's simulators, or not yet.
+        /// This device cannot run the platform's simulators, or not yet.
         Unavailable = "unavailable",
         /// The device already records.
         Recording = "recording",
-        /// The recording is not on this Host, or was removed.
+        /// The recording is not on this device, or was removed.
         RecordingNotFound = "recording_not_found",
         /// Five recordings run, so no other starts.
         TooManyRecordings = "too_many_recordings",

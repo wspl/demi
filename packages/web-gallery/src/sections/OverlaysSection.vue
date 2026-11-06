@@ -38,18 +38,18 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { computed, reactive, ref } from 'vue'
 import { effortIcon } from '@demicodes/web-ui/agent/reasoning'
 import { THINKING_OFF } from '@demicodes/web-ui/agent/model-selection'
-import type { HostDeviceOption } from '@demicodes/web-ui/hosts/types'
-import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
-import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
-import GalleryHostMenu from '../components/GalleryHostMenu.vue'
+import type { DeviceOption } from '@demicodes/web-ui/targets/types'
+import MoveConversationDialog from '@demicodes/web-ui/targets/MoveConversationDialog.vue'
+import { useMoveQuestion } from '@demicodes/web-ui/targets/move-question'
+import GalleryDeviceMenu from '../components/GalleryDeviceMenu.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
 import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE, deviceStatusLabel } from '@demicodes/web-ui/devices/state'
-import { hostGlyph } from '@demicodes/web-ui/devices/device-glyphs'
-import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import { targetGlyph } from '@demicodes/web-ui/devices/device-glyphs'
+import type { MenuDevice } from '@demicodes/web-ui/targets/types'
 import { vendorGlyph } from '@demicodes/web-ui/ui/vendor-glyphs'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { namedKeyCap, shortcutFor } from '@demicodes/web-ui/ui/shortcut'
@@ -59,12 +59,12 @@ const longScript = Array.from({ length: 120 }, (_, index) => `sed -i 's/legacyAc
 
 const { view } = useGalleryView()
 
-const hostDevices: HostDeviceOption[] = shownAmong([
+const pairedDevices: DeviceOption[] = shownAmong([
   { id: 'mac', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
   { id: 'build', name: 'build-01', state: 'updating', downloadPercent: 26, mark: GALLERY_MARKS.ubuntu },
   { id: 'studio', name: 'studio', state: 'offline', mark: GALLERY_MARKS.windows },
 ])
-const hostStatusItems = hostDevices.map((device) => ({
+const deviceStatusItems = pairedDevices.map((device) => ({
   id: device.id,
   label: device.name,
   indicator: DEVICE_STATE_TONE[device.state],
@@ -72,11 +72,11 @@ const hostStatusItems = hostDevices.map((device) => ({
   value: device.state === 'online' ? undefined : deviceStatusLabel(device),
 }))
 /**
- * The devices the host menu specimens list: one for each path this page
+ * The devices the device menu specimens list: one for each path this page
  * can reach a device by, one it has not reached this session with the path
  * this browser found last time, one it never reached, and one offline.
  */
-const menuDevices: HostDeviceOption[] = shownAmong([
+const menuDevices: DeviceOption[] = shownAmong([
   { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer', mark: GALLERY_MARKS.mac },
   // A Windows computer keeps the name Windows gave it, which fits the button whole.
   { id: 'studio', name: 'DESKTOP-4KQ7M2A', state: 'online', path: 'localNetwork', mark: GALLERY_MARKS.windows },
@@ -94,7 +94,7 @@ const menuDevices: HostDeviceOption[] = shownAmong([
 const askedMove = useMoveQuestion()
 function askMove() {
   void askedMove.ask(
-    { host: 'MacBook Pro', directory: '~/code/photo-album', from: 'Cloud', fromCloud: true },
+    { device: 'MacBook Pro', directory: '~/code/photo-album', from: 'Cloud', fromCloud: true },
     async () => {
       productWould('Move the Conversation')
       return true
@@ -274,15 +274,15 @@ const detailChosen = computed(() => detailEntries.find((entry) => entry.id === d
 /** The face's icon: the chosen entry's vendor mark, or Automatic's own, as the menu rows draw them. */
 const detailIcon = computed(() => detailChosen.value?.icon ?? Feather)
 
-/** The Hosts the Host field chooses among, as Settings › Port Forwarding lists them: the Cloud first. */
-const fieldHosts: HostMenuHost[] = [
+/** The Devices the device field chooses among, as Settings › Port Forwarding lists them: the Cloud first. */
+const fieldDevices: MenuDevice[] = [
   { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null },
-  ...hostDevices.map((device): HostMenuHost => ({ ...device, kind: 'device' })),
+  ...pairedDevices.map((device): MenuDevice => ({ ...device, kind: 'device' })),
 ]
-const fieldHostChoice = ref('mac')
-const fieldHost = computed(() => fieldHosts.find((host) => host.id === fieldHostChoice.value)!)
-const bareHostChoice = ref('mac')
-const bareHost = computed(() => fieldHosts.find((host) => host.id === bareHostChoice.value)!)
+const fieldDeviceChoice = ref('mac')
+const fieldDevice = computed(() => fieldDevices.find((device) => device.id === fieldDeviceChoice.value)!)
+const bareDeviceChoice = ref('mac')
+const bareDevice = computed(() => fieldDevices.find((device) => device.id === bareDeviceChoice.value)!)
 /** What Automatic resolves to, in brackets that stay whole while the name inside truncates. */
 const detailAutomatic = { text: 'Codex', open: '(', close: ')' }
 const detailHaiku = { text: 'Claude Haiku 5.5', open: '(', close: ')' }
@@ -567,29 +567,29 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
         <GallerySpecimen variant="status dots · virtual list without icons">
           <Menu
             :autofocus="false"
-            :items="hostStatusItems"
+            :items="deviceStatusItems"
             :item-height="28"
             :selected-id="statusSelected"
             @select="statusSelected = $event"
           />
         </GallerySpecimen>
-        <GallerySpecimen variant="host menu · a conversation with messages: a move asks first">
-          <GalleryHostMenu :devices="menuDevices" primary-id="mac" :attached-ids="['build', 'old']" has-messages />
+        <GallerySpecimen variant="device menu · a conversation with messages: a move asks first">
+          <GalleryDeviceMenu :devices="menuDevices" primary-id="mac" :attached-ids="['build', 'old']" has-messages />
         </GallerySpecimen>
-        <GallerySpecimen variant="host menu · a new conversation moves at once">
-          <GalleryHostMenu :devices="menuDevices" :primary-id="null" />
+        <GallerySpecimen variant="device menu · a new conversation moves at once">
+          <GalleryDeviceMenu :devices="menuDevices" :primary-id="null" />
         </GallerySpecimen>
-        <GallerySpecimen variant="host menu · in a project: a device opens its directory picker">
-          <GalleryHostMenu :devices="menuDevices" primary-id="studio" in-project has-messages />
+        <GallerySpecimen variant="device menu · in a project: a device opens its directory picker">
+          <GalleryDeviceMenu :devices="menuDevices" primary-id="studio" in-project has-messages />
         </GallerySpecimen>
-        <GallerySpecimen variant="host menu · a name longer than the button, whole on hover">
-          <GalleryHostMenu :devices="menuDevices" primary-id="lab" />
+        <GallerySpecimen variant="device menu · a name longer than the button, whole on hover">
+          <GalleryDeviceMenu :devices="menuDevices" primary-id="lab" />
         </GallerySpecimen>
-        <GallerySpecimen variant="host menu · on a device downloading its next runner while it serves">
-          <GalleryHostMenu :devices="menuDevices" primary-id="hk" has-messages />
+        <GallerySpecimen variant="device menu · on a device downloading its next runner while it serves">
+          <GalleryDeviceMenu :devices="menuDevices" primary-id="hk" has-messages />
         </GallerySpecimen>
-        <GallerySpecimen variant="host menu · on a device updating after its server switched">
-          <GalleryHostMenu :devices="menuDevices" primary-id="nas" has-messages />
+        <GallerySpecimen variant="device menu · on a device updating after its server switched">
+          <GalleryDeviceMenu :devices="menuDevices" primary-id="nas" has-messages />
         </GallerySpecimen>
         <GallerySpecimen variant="move dialog">
           <Button @click="askMove()">Move to MacBook Pro…</Button>
@@ -784,10 +784,10 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
               <DropdownTrigger
                 variant="field"
                 size="sm"
-                :icon="hostGlyph(fieldHosts[1]!)"
+                :icon="targetGlyph(fieldDevices[1]!)"
                 :is-open="triggerFieldIcon"
                 @click="triggerFieldIcon = !triggerFieldIcon"
-              ><span class="min-w-0 truncate">{{ fieldHosts[1]!.name }}</span></DropdownTrigger>
+              ><span class="min-w-0 truncate">{{ fieldDevices[1]!.name }}</span></DropdownTrigger>
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="field · detail · narrow">
@@ -806,7 +806,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="Dropdown"
-        note="Trigger plus slotted Menu. A choice that stands for a thing with an icon of its own shows that icon, from the one component web-ui draws it with, in the menu and on the closed dropdown alike: a Host is its system’s logo with its status dot (as Run On draws it, the Cloud its cloud), a provider entry its vendor mark. A choice with no icon of its own, such as a language or a time, stays text; nothing gets an icon just to have one. A field’s value may carry a detail after it on the same line, smaller and in the secondary color: what Automatic resolves to, in brackets, Automatic (Codex), whose brackets stay whole while the name inside truncates. Both sit on one text baseline. A menu row shows its detail the same way, an entry’s account after its name; a choice without one, such as OpenAI here, reads its name alone. The detail truncates first, the name only once the detail is gone; field and row keep their height."
+        note="Trigger plus slotted Menu. A choice that stands for a thing with an icon of its own shows that icon, from the one component web-ui draws it with, in the menu and on the closed dropdown alike: a device is its system’s logo with its status dot (as Run On draws it, the Cloud its cloud), a provider entry its vendor mark. A choice with no icon of its own, such as a language or a time, stays text; nothing gets an icon just to have one. A field’s value may carry a detail after it on the same line, smaller and in the secondary color: what Automatic resolves to, in brackets, Automatic (Codex), whose brackets stay whole while the name inside truncates. Both sit on one text baseline. A menu row shows its detail the same way, an entry’s account after its name; a choice without one, such as OpenAI here, reads its name alone. The detail truncates first, the name only once the detail is gone; field and row keep their height."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="default · md · actions">
@@ -920,53 +920,53 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
               </Dropdown>
             </div>
           </GallerySpecimen>
-          <GallerySpecimen variant="field · Host">
+          <GallerySpecimen variant="field · Device">
             <div class="w-48">
               <Dropdown
                 variant="field"
                 size="sm"
                 width="fill"
-                trigger-label="Host"
-                :icon="hostGlyph(fieldHost)"
+                trigger-label="Device"
+                :icon="targetGlyph(fieldDevice)"
                 :overlay-store="appOverlayStore"
               >
                 <template #trigger>
-                  <span class="min-w-0 truncate">{{ fieldHost.name }}</span>
+                  <span class="min-w-0 truncate">{{ fieldDevice.name }}</span>
                 </template>
                 <template #content="{ close }">
                   <Menu>
                     <MenuItem
-                      v-for="host in fieldHosts"
-                      :key="host.id"
-                      :icon="hostGlyph(host)"
-                      :label="host.name"
+                      v-for="device in fieldDevices"
+                      :key="device.id"
+                      :icon="targetGlyph(device)"
+                      :label="device.name"
                       choice
-                      :is-selected="host.id === fieldHostChoice"
-                      @select="fieldHostChoice = host.id; close()"
+                      :is-selected="device.id === fieldDeviceChoice"
+                      @select="fieldDeviceChoice = device.id; close()"
                     />
                   </Menu>
                 </template>
               </Dropdown>
             </div>
           </GallerySpecimen>
-          <GallerySpecimen variant="bare · Host, a table's cell">
+          <GallerySpecimen variant="bare · Device, a table's cell">
             <Dropdown
               variant="bare"
-              trigger-label="Host"
-              :icon="hostGlyph(bareHost)"
+              trigger-label="Device"
+              :icon="targetGlyph(bareDevice)"
               :overlay-store="appOverlayStore"
             >
-              <template #trigger>{{ bareHost.name }}</template>
+              <template #trigger>{{ bareDevice.name }}</template>
               <template #content="{ close }">
                 <Menu>
                   <MenuItem
-                    v-for="host in fieldHosts"
-                    :key="host.id"
-                    :icon="hostGlyph(host)"
-                    :label="host.name"
+                    v-for="device in fieldDevices"
+                    :key="device.id"
+                    :icon="targetGlyph(device)"
+                    :label="device.name"
                     choice
-                    :is-selected="host.id === bareHostChoice"
-                    @select="bareHostChoice = host.id; close()"
+                    :is-selected="device.id === bareDeviceChoice"
+                    @select="bareDeviceChoice = device.id; close()"
                   />
                 </Menu>
               </template>
@@ -1214,7 +1214,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
     <template v-if="view === 'dialogs'">
       <GallerySection
         title="Toast"
-        note="Toasts stand in the top-right corner, below the bar atop the page, the newest nearest the corner, as macOS places its notifications: they never cover the composer or the actions at the bottom of a pane. The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. A toast may offer one action, which closes it. A failure stays until it is closed; any other closes after six seconds, or ten when it offers an action such as Undo, as Gmail keeps its Undo, paused while the pointer is over the toasts. Danger, a rejected action whose title wraps, an error the page found itself with the ID of its line in the log, a fact, Copied, Undo, a file ready to save, and live host. On an iPhone's or an iPad's Home Screen, where a download covers the app, a download hands the file to the share sheet; one that took longer than the press allows waits in Ready to Save, whose Save… opens the sheet."
+        note="Toasts stand in the top-right corner, below the bar atop the page, the newest nearest the corner, as macOS places its notifications: they never cover the composer or the actions at the bottom of a pane. The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. A toast may offer one action, which closes it. A failure stays until it is closed; any other closes after six seconds, or ten when it offers an action such as Undo, as Gmail keeps its Undo, paused while the pointer is over the toasts. Danger, a rejected action whose title wraps, an error the page found itself with the ID of its line in the log, a fact, Copied, Undo, a file ready to save, and live device. On an iPhone's or an iPad's Home Screen, where a download covers the app, a download hands the file to the share sheet; one that took longer than the press allows waits in Ready to Save, whose Save… opens the sheet."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="danger">

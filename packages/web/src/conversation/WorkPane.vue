@@ -19,7 +19,7 @@ const props = defineProps<{ conversationId: string }>()
 const emit = defineEmits<{ close: [] }>()
 
 const product = useProduct()
-const host = usePageHost()
+const device = usePageHost()
 const work = useWorkPanel()
 const conversations = useConversations()
 
@@ -31,11 +31,11 @@ const recorded = computed(() => work.recorded(props.conversationId))
 const listed = computed(() => conversations.items.some((item) => item.id === props.conversationId))
 
 /**
- * The name of the conversation's primary Host while it is a paired device whose runner is
+ * The name of the conversation's primary device while it is a paired device whose runner is
  * not connected, which the panel says in place of its tabs' contents. A Cloud that is stopped
  * or starting is not offline: its tabs say what starts.
  */
-const offlineHost = computed(() => {
+const offlineDevice = computed(() => {
   const item = conversations.items.find((entry) => entry.id === props.conversationId)
   if (!item) {
     return null
@@ -52,7 +52,7 @@ const offlineHost = computed(() => {
  */
 const kinds = useBoundKinds(
   () => PLUGIN_PAGES.filter((page) => pluginEnabled(product.snapshot, page.plugin)),
-  host,
+  device,
   () => (state.value.open && recorded.value ? props.conversationId : null),
 )
 
@@ -66,7 +66,7 @@ const kinds = useBoundKinds(
     :pinned="state.pinned"
     :kinds="kinds"
     :before-first-message="!recorded"
-    :host-offline="offlineHost"
+    :device-offline="offlineDevice"
     :sheet="state.sheet"
     @select="work.select(conversationId, $event)"
     @move-tab="(id, index) => work.move(conversationId, id, index)"

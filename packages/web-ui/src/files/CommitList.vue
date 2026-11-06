@@ -65,7 +65,7 @@ useIntersectionObserver(end, ([entry]) => {
   atEnd.value = entry?.isIntersecting ?? false
 })
 // The end in view asks for more; a page that left it in view asks again.
-// A page that could not be read waits for Retry, so a Host that keeps
+// A page that could not be read waits for Retry, so a device that keeps
 // failing is not asked again and again.
 watch([atEnd, () => props.more, () => props.loading, () => props.failure], ([seen, more, loading, failure]) => {
   if (seen && more && !loading && !failure)

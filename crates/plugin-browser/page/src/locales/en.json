@@ -39,14 +39,14 @@
     "conversation_not_found": "This conversation no longer exists.",
     "conversation_archived": "This conversation is archived.",
     "conversation_busy": "The conversation is busy. Try again in a moment.",
-    "host_stopped": "The Cloud is stopped.",
+    "device_stopped": "The Cloud is stopped.",
     "device_offline": "The device is offline.",
     "device_not_found": "The device was removed from your account.",
     "cloud_unavailable": "The Cloud isn’t available right now.",
     "cloud_resetting": "The Cloud is resetting.",
     "cloud_capacity": "The server has no room to start the Cloud.",
     "cloud_crash_loop": "The Cloud stopped starting after repeated failures.",
-    "host_operation_failed": "The connection to the device broke.",
+    "device_operation_failed": "The connection to the device broke.",
     "unknown_plugin_method": "This server can’t run a browser.",
     "plugin_disabled": "The Browser plugin is off."
   },
@@ -73,13 +73,13 @@
     "stopLoading": "Could Not Stop Loading",
     "openPage": "Could Not Open the Page",
     "saveDownload": "Could Not Save the Download",
-    "hostFilesUnreachable": "The Host’s files can’t be reached."
+    "deviceFilesUnreachable": "The device’s files can’t be reached."
   },
   "region": {
     "couldntOpen": "Couldn’t open this page.",
     "couldntShow": "Couldn’t show this page.",
     "noH264": "This browser can’t decode H.264 video.",
-    "waiting": "Waiting for the Host…"
+    "waiting": "Waiting for the device…"
   },
   "menu": {
     "copyLink": "Copy Link Address",
@@ -108,7 +108,7 @@
   },
   "dialog": {
     "leavePage": "Leave the page?",
-    "says": "{host} says",
+    "says": "{device} says",
     "thisPageSays": "This page says",
     "answer": "Answer",
     "stay": "Stay",

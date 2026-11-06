@@ -5,7 +5,7 @@
 //!
 //! - the commands a tree opens with;
 //! - the user's subagent settings each spawn reads;
-//! - the Host a node's shell tools reach;
+//! - the device a node's shell tools reach;
 //! - the context sources asked before each request.
 
 use std::num::NonZeroU32;
@@ -13,7 +13,7 @@ use std::rc::Rc;
 
 use demi_conversation_lane_protocol::JobModel;
 use demi_agent_store::Placement;
-use demi_host_interface::{CommandSet, Host, HostError, HostErrorKind};
+use demi_device_interface::{CommandSet, Device, DeviceError, DeviceErrorKind};
 use demi_shared_types::{
     ContextChoice, InstructionEntry, ModelSelection, NodeId, ProviderModel, THINKING_OFF, TurnId,
     WorkflowChoice,
@@ -222,7 +222,7 @@ pub struct WorkflowListing {
     /// The directory that holds them, `.demi/workflows` of the nearest
     /// directory that has one; null when none has.
     pub directory: Option<String>,
-    /// Why that directory cannot be used, as the Host could not read it; null
+    /// Why that directory cannot be used, as the device could not read it; null
     /// while it can.
     pub unavailable: Option<String>,
     /// By id.
@@ -238,9 +238,9 @@ pub struct ListedWorkflow {
     pub worktree: bool,
     /// What the menu shows; null for a file that cannot be used.
     pub name: Option<String>,
-    /// The file on the Host.
+    /// The file on the device.
     pub path: String,
-    /// Why it cannot be used: the parser's whole error, or why the Host could
+    /// Why it cannot be used: the parser's whole error, or why the device could
     /// not read it; null while it can.
     pub unavailable: Option<String>,
 }
@@ -407,7 +407,7 @@ pub trait SubagentSource {
     }
 
     /// The text of the file `path`, read against `directory`, on the
-    /// conversation `root`'s Host, which `demi agent workflows check` parses.
+    /// conversation `root`'s device, which `demi agent workflows check` parses.
     fn read_workflow_file<'a>(
         &'a self,
         _root: &'a NodeId,
@@ -418,7 +418,7 @@ pub trait SubagentSource {
     }
 }
 
-/// Why a product without a Host to read workflows from lists none.
+/// Why a product without a device to read workflows from lists none.
 const NO_WORKFLOWS: &str = "this product reads no workflows";
 
 /// Why a source whose settings never change refuses a change.
@@ -440,7 +440,7 @@ pub struct NodeContext<'a> {
     /// The conversation's root node, which works on the conversation's
     /// execution target.
     pub root: &'a NodeId,
-    /// The placement the question is about, a Host and a directory there: a
+    /// The placement the question is about, a device and a directory there: a
     /// child's own now (`crates/agent-server/src/node/mod.rs`), or one its
     /// caller read; none for where the conversation works now, as for the
     /// root.
@@ -453,50 +453,50 @@ pub struct NodeContext<'a> {
     async_fn_in_trait,
     reason = "a resolver runs on the user's shard: its futures are never sent to another thread"
 )]
-pub trait HostResolver: 'static {
-    /// The Hosts the conversations' shell tools run on. The agent only asks
+pub trait DeviceResolver: 'static {
+    /// The devices the conversations' shell tools run on. The agent only asks
     /// one for its key; the product's shell environment factory
     /// (`ServerDeps::shells`) makes a node's environment on it.
-    type Host: Host;
+    type Device: Device;
 
-    /// The Host a node's shell tools reach now: a child's own placement's, and
+    /// The device a node's shell tools reach now: a child's own placement's, and
     /// the conversation's current execution target for the root
-    /// (`crates/backend-host-access/src/access.rs`).
+    /// (`crates/backend-device-access/src/access.rs`).
     ///
     /// Two answers for the same target have equal keys, so a node keeps one
     /// shell environment per target it used. By default there is none, and a
     /// shell tool's call fails.
-    async fn host(&self, _context: NodeContext<'_>) -> Result<Rc<Self::Host>, HostError> {
-        Err(HostError::new(
-            HostErrorKind::Unavailable,
+    async fn device(&self, _context: NodeContext<'_>) -> Result<Rc<Self::Device>, DeviceError> {
+        Err(DeviceError::new(
+            DeviceErrorKind::Unavailable,
             "this agent runs no shell tools",
         ))
     }
 
-    /// The Host a node's commands are taken up on, which admits nothing:
-    /// what [`Self::host`] answers, without waiting for the Host to be
-    /// reachable or waking it. By default the Host itself.
-    async fn adopted_host(&self, context: NodeContext<'_>) -> Result<Rc<Self::Host>, HostError> {
-        self.host(context).await
+    /// The device a node's commands are taken up on, which admits nothing:
+    /// what [`Self::device`] answers, without waiting for the device to be
+    /// reachable or waking it. By default the device itself.
+    async fn adopted_device(&self, context: NodeContext<'_>) -> Result<Rc<Self::Device>, DeviceError> {
+        self.device(context).await
     }
 
-    /// The name of the Host whose device is `device`, as the user's pages
+    /// The name of the device whose device is `device`, as the user's pages
     /// name it; none when it is not known, and by default.
-    async fn host_name(&self, _device: &str) -> Option<String> {
+    async fn device_name(&self, _device: &str) -> Option<String> {
         None
     }
 
-    /// Where the conversation works now: its primary Host's device and its
+    /// Where the conversation works now: its primary device's device and its
     /// directory there, which a child's working directory is read against
     /// (`crates/agent-server/src/node/mod.rs`).
     ///
-    /// By default its Host's key and the directory the Host starts its work in
-    /// ([`Host::default_cwd`]).
-    async fn placement(&self, context: NodeContext<'_>) -> Result<Placement, HostError> {
-        let host = self.host(context).await?;
+    /// By default its device's key and the directory the device starts its work in
+    /// ([`Device::default_cwd`]).
+    async fn placement(&self, context: NodeContext<'_>) -> Result<Placement, DeviceError> {
+        let remote = self.device(context).await?;
         Ok(Placement {
-            device: Some(host.key().to_string()),
-            directory: host.default_cwd().to_owned(),
+            device: Some(remote.key().to_string()),
+            directory: remote.default_cwd().to_owned(),
         })
     }
 }
@@ -524,7 +524,7 @@ impl From<String> for ContextAnswer {
 /// What the model must learn between its requests, and what differs by user or
 /// conversation, reaches it as `context` blocks, never through the system
 /// prompt. For example, when the user moves the conversation from the Cloud to
-/// a laptop, the execution context source answers the new Host before the
+/// a laptop, the execution context source answers the new device before the
 /// node's next request.
 ///
 /// The session asks each source before every request, in the product's order,

@@ -1,6 +1,6 @@
 //! The conversation's attachments, the files its messages sent and those the
 //! agent uploaded
-//! (`crates/backend-host-access/src/attachment_commands.rs`).
+//! (`crates/backend-device-access/src/attachment_commands.rs`).
 //!
 //! A sent file's bytes, and those `demi attachment upload` stores, are a blob of
 //! the conversation owner's namespace. The conversation's `attachments` table
@@ -102,19 +102,19 @@ impl AttachmentRow {
             height: self.pixels.map(|pixels| pixels.height),
             blob: self.blob,
             source: self.source.map(|source| AttachmentSourceDto {
-                host: source.host,
+                device: source.device,
                 path: source.path,
             }),
         }
     }
 }
 
-/// The file of a Host an attachment was copied from.
+/// The file of a device an attachment was copied from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttachmentSource {
     /// The device whose runner ran the upload.
-    pub host: DeviceId,
-    /// The file's full path, as that Host writes it.
+    pub device: DeviceId,
+    /// The file's full path, as that device writes it.
     pub path: String,
 }
 
@@ -131,7 +131,7 @@ pub struct StoredAttachment {
 /// or copies them; a number that has a row keeps it.
 pub fn insert(transaction: &Transaction<'_>, rows: &[StoredAttachment]) -> Result<(), StorageError> {
     let mut insert = transaction.prepare_cached(
-        "INSERT INTO attachments (number, name, media_type, size, width, height, blob, node_id, source_host, source_path)
+        "INSERT INTO attachments (number, name, media_type, size, width, height, blob, node_id, source_device, source_path)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
          ON CONFLICT (number) DO NOTHING",
     )?;
@@ -145,7 +145,7 @@ pub fn insert(transaction: &Transaction<'_>, rows: &[StoredAttachment]) -> Resul
             row.pixels.map(|pixels| pixels.height),
             row.blob.as_str(),
             node.as_ref().map(NodeId::as_str),
-            row.source.as_ref().map(|source| source.host.as_str()),
+            row.source.as_ref().map(|source| source.device.as_str()),
             row.source.as_ref().map(|source| source.path.as_str()),
         ])?;
     }
@@ -159,7 +159,7 @@ pub fn read(
 ) -> Result<Option<AttachmentRow>, StorageError> {
     connection
         .prepare_cached(
-            "SELECT number, name, media_type, size, width, height, blob, source_host, source_path
+            "SELECT number, name, media_type, size, width, height, blob, source_device, source_path
              FROM attachments WHERE number = ?1",
         )?
         .query_row([column(number.0)], |row| Ok(decode_row(row)))
@@ -173,7 +173,7 @@ pub fn read(
 pub fn with_blob(connection: &Connection, blob: &BlobRef) -> Result<Option<AttachmentRow>, StorageError> {
     connection
         .prepare_cached(
-            "SELECT number, name, media_type, size, width, height, blob, source_host, source_path
+            "SELECT number, name, media_type, size, width, height, blob, source_device, source_path
              FROM attachments WHERE blob = ?1 ORDER BY number LIMIT 1",
         )?
         .query_row([blob.as_str()], |row| Ok(decode_row(row)))
@@ -198,7 +198,7 @@ pub fn read_all(
 pub fn uploaded_after(connection: &Connection, after: u64) -> Result<Vec<AttachmentRow>, StorageError> {
     connection
         .prepare_cached(
-            "SELECT number, name, media_type, size, width, height, blob, source_host, source_path
+            "SELECT number, name, media_type, size, width, height, blob, source_device, source_path
              FROM attachments WHERE number > ?1 AND node_id IS NOT NULL ORDER BY number",
         )?
         .query_map([column(after)], |row| Ok(decode_row(row)))?
@@ -216,7 +216,7 @@ pub fn read_shared(
     connection
         .prepare_cached(
             "SELECT number, name, media_type, size, width, height, blob,
-               NULL AS source_host, NULL AS source_path
+               NULL AS source_device, NULL AS source_path
              FROM share_attachments WHERE token = ?1 AND number = ?2",
         )?
         .query_row(params![token, column(number.0)], |row| Ok(decode_row(row)))
@@ -238,7 +238,7 @@ pub fn last(connection: &Connection) -> Result<u64, StorageError> {
 /// which a Fork copies into its destination.
 pub fn all(connection: &Connection) -> Result<Vec<StoredAttachment>, StorageError> {
     let mut statement = connection.prepare_cached(
-        "SELECT number, name, media_type, size, width, height, blob, node_id, source_host, source_path
+        "SELECT number, name, media_type, size, width, height, blob, node_id, source_device, source_path
          FROM attachments ORDER BY number",
     )?;
     let mut rows = statement.query([])?;
@@ -278,15 +278,15 @@ fn decode_row(row: &Row<'_>) -> Result<AttachmentRow, StorageError> {
 
 /// A row's source, which it holds both halves of or neither.
 fn decode_source(row: &Row<'_>) -> Result<Option<AttachmentSource>, StorageError> {
-    let host: Option<String> = row.get("source_host")?;
+    let device: Option<String> = row.get("source_device")?;
     let path: Option<String> = row.get("source_path")?;
-    match (host, path) {
-        (Some(host), Some(path)) => Ok(Some(AttachmentSource {
-            host: decode(TABLE, "source_host", DeviceId::try_from(host))?,
+    match (device, path) {
+        (Some(device), Some(path)) => Ok(Some(AttachmentSource {
+            device: decode(TABLE, "source_device", DeviceId::try_from(device))?,
             path,
         })),
         (None, None) => Ok(None),
-        _ => decode(TABLE, "source_path", Err("a row holds a source's host and path, or neither")),
+        _ => decode(TABLE, "source_path", Err("a row holds a source's device and path, or neither")),
     }
 }
 

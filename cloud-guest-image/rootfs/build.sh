@@ -224,7 +224,7 @@ rm -rf "$work/var/lib/apt/lists/"*
 in_chroot userdel --remove ubuntu
 in_chroot groupadd -g 1000 demi
 in_chroot useradd -m -u 1000 -g 1000 -s /bin/bash demi
-# The runner's Host log, its job output and the temporary directory its TMPDIR
+# The runner's device log, its job output and the temporary directory its TMPDIR
 # names live on the system layer, so the log outlives a stop and a wake, and a
 # build's temporary files do not fill /tmp's memory
 # (`crates/runner/src/host_log.rs`,

@@ -135,18 +135,18 @@ export function useShare(service: () => ShareService | undefined) {
   }
 
   /** The share of `target` the host lists, else a new one the host makes. */
-  function listedOrMade(host: ShareService, target: ShareTarget): Promise<ShareLink & { existing: boolean }> {
-    return host.list().then((shares) => {
+  function listedOrMade(device: ShareService, target: ShareTarget): Promise<ShareLink & { existing: boolean }> {
+    return device.list().then((shares) => {
       const held = shares.find((share) => holdsTarget(share, target))
       return held
-        ? { token: held.token, url: host.link(held.token), existing: true }
-        : host.create(target).then((link) => ({ ...link, existing: false }))
+        ? { token: held.token, url: device.link(held.token), existing: true }
+        : device.create(target).then((link) => ({ ...link, existing: false }))
     })
   }
 
   function start(target: ShareTarget): void {
-    const host = service()
-    if (!host) {
+    const device = service()
+    if (!device) {
       return
     }
     isOpen.value = true
@@ -155,28 +155,28 @@ export function useShare(service: () => ShareService | undefined) {
       // Its link is still being made: the dialog shows that one.
       return
     }
-    show(target, listedOrMade(host, target))
+    show(target, listedOrMade(device, target))
   }
 
   /** Try Again, after making the link failed. */
   function retry(): void {
-    const host = service()
+    const device = service()
     const current = shown.value
-    if (host && current?.status === 'failed') {
-      show(current.target, host.create(current.target).then((link) => ({ ...link, existing: false })))
+    if (device && current?.status === 'failed') {
+      show(current.target, device.create(current.target).then((link) => ({ ...link, existing: false })))
     }
   }
 
   async function update(): Promise<void> {
-    const host = service()
+    const device = service()
     const current = shown.value
-    if (!host || current?.status !== 'ready' || current.target.kind !== 'conversation') {
+    if (!device || current?.status !== 'ready' || current.target.kind !== 'conversation') {
       return
     }
     const updating: ShownShare = { ...current, status: 'updating' }
     shown.value = updating
     try {
-      await host.update(current.token)
+      await device.update(current.token)
     } catch (error) {
       reportError(t('share.failedUpdate'), error, { site: 'share.failedUpdate', userVisible: true })
       return
@@ -189,13 +189,13 @@ export function useShare(service: () => ShareService | undefined) {
   }
 
   async function stop(): Promise<void> {
-    const host = service()
+    const device = service()
     const current = shown.value
-    if (!host || current?.status !== 'ready') {
+    if (!device || current?.status !== 'ready') {
       return
     }
     try {
-      await host.remove(current.token)
+      await device.remove(current.token)
     } catch (error) {
       // A share another page stopped meanwhile is stopped: that is done.
       if (errorCode(error) !== 'share_not_found') {

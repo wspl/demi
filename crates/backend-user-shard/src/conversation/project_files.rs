@@ -1,16 +1,16 @@
 //! What the shard keeps of its conversations' project files
 //! (`crates/backend-user-shard/src/conversation/workflows.rs`).
 //!
-//! The shard keeps three things, per Host and directory:
+//! The shard keeps three things, per device and directory:
 //!
 //! - the instruction files of each node's working directory;
 //! - the workflows of each conversation's directory;
 //! - each plugin's project search of it.
 //!
-//! The runner's file watch keeps them current through host access ([`Kept`]). An
+//! The runner's file watch keeps them current through device access ([`Kept`]). An
 //! agent's request takes what is held; only a directory's first search holds
 //! it, for at most 5 seconds. The workflows a page shows are stored as each
-//! search finds them (`host_workflows`), and the page reads what is stored at
+//! search finds them (`device_workflows`), and the page reads what is stored at
 //! once.
 
 use std::rc::{Rc, Weak};
@@ -19,9 +19,9 @@ use demi_agent_server::instructions::ProjectFile;
 use demi_agent_store::Placement;
 use demi_backend_database::Selection;
 use demi_backend_database::conversation_index::ExecutionTarget;
-use demi_backend_host_access::access::HostAccessError;
-use demi_backend_host_access::conversation_of;
-use demi_backend_host_access::kept::{Found, Kept, SearchError, Shown, Subscribe};
+use demi_backend_device_access::access::DeviceAccessError;
+use demi_backend_device_access::conversation_of;
+use demi_backend_device_access::kept::{Found, Kept, SearchError, Shown, Subscribe};
 use demi_backend_page_sync::Part;
 use demi_plugin_interface::{PluginId, WatchSubject};
 use demi_runner_protocol::files::Subject;
@@ -91,7 +91,7 @@ impl ProjectFiles {
                     Box::pin(async move {
                         let shard = shard.upgrade().ok_or_else(closing)?;
                         let paths = shard
-                            .host_paths(&conversation)
+                            .primary_device_paths(&conversation)
                             .await
                             .map_err(|error| SearchError::Failed(error.to_string()))?;
                         let found = shard
@@ -125,7 +125,7 @@ impl ProjectFiles {
         }
     }
 
-    /// The Host of `device` came online again.
+    /// The device of `device` came online again.
     pub(crate) fn online(&self, device: &DeviceId) {
         self.instructions.online(device);
         self.workflows.online(device);
@@ -142,7 +142,7 @@ impl ProjectFiles {
 
 /// Where a conversation's project files are kept.
 pub(crate) struct KeptAt {
-    /// Its primary Host's device; none for a Cloud not made yet.
+    /// Its primary device's device; none for a Cloud not made yet.
     device: Option<DeviceId>,
     /// The directory it works in there.
     directory: String,
@@ -173,11 +173,11 @@ impl KeptAt {
 
 impl Shard {
     /// Where the conversation `id`'s project files are kept, read without
-    /// reaching its Host.
-    async fn kept_at(&self, id: &ConversationId) -> Result<KeptAt, HostAccessError> {
-        let host = self.host_shard();
-        let record = host.owned_conversation(id).await?;
-        let target = host.resolve_target(&record).await?;
+    /// reaching its device.
+    async fn kept_at(&self, id: &ConversationId) -> Result<KeptAt, DeviceAccessError> {
+        let access = self.device_shard();
+        let record = access.owned_conversation(id).await?;
+        let target = access.resolve_target(&record).await?;
         let project_directory = match &record.target {
             Selection::Project { path, worktree: Some(_), .. } => Some(path.clone()),
             _ => None,
@@ -187,11 +187,11 @@ impl Shard {
             directory: target.path().to_owned(),
             project_directory,
             in_project: matches!(target, ExecutionTarget::Project { .. }),
-            loaded: self.agent().tree(&demi_backend_host_access::root_of(id)).is_some(),
+            loaded: self.agent().tree(&demi_backend_device_access::root_of(id)).is_some(),
         })
     }
 
-    /// The instruction files of the directory `placement` names, on its Host
+    /// The instruction files of the directory `placement` names, on its device
     /// or else the conversation `id`'s.
     pub(crate) async fn kept_instructions(&self, id: &ConversationId, placement: &Placement) -> Rc<[ProjectFile]> {
         let at = match self.kept_at(id).await {
@@ -201,7 +201,7 @@ impl Shard {
                 return Rc::from([]);
             }
         };
-        // A subagent's own Host, or the conversation's.
+        // A subagent's own device, or the conversation's.
         let device = match placement.device.as_deref().map(|device| DeviceId::try_from(device.to_owned())) {
             Some(Ok(device)) => device,
             Some(Err(_)) => return Rc::from([]),
@@ -228,10 +228,10 @@ impl Shard {
 
     /// The workflows of the conversation `id`'s project's directory, or with
     /// `worktree` of the linked worktree it works in, or that no search of it
-    /// is held, such as on a Host that never ran; the refusal when the last
+    /// is held, such as on a device that never ran; the refusal when the last
     /// search was refused or failed and nothing is held. A conversation in no
     /// worktree has its own directory's either way.
-    pub(crate) async fn kept_workflows(&self, id: &ConversationId, worktree: bool) -> Result<KeptWorkflows, Rc<HostAccessError>> {
+    pub(crate) async fn kept_workflows(&self, id: &ConversationId, worktree: bool) -> Result<KeptWorkflows, Rc<DeviceAccessError>> {
         let at = self.kept_at(id).await.map_err(Rc::new)?;
         let Some(device) = at.device.clone() else {
             return Ok(KeptWorkflows::None);
@@ -284,7 +284,7 @@ impl Shard {
     /// refused or failed and nothing was ever stored. A loaded conversation
     /// keeps it current, which announces each change in its metadata.
     pub async fn conversation_workflows(&self, id: &ConversationId) -> ConversationWorkflowList {
-        let refused = |error: &HostAccessError| {
+        let refused = |error: &DeviceAccessError| {
             let (code, status) = error.code();
             ConversationWorkflowList {
                 revision: 0,
@@ -314,7 +314,7 @@ impl Shard {
         }
         // The worktree's, beside the project's while the two differ by what
         // their files say, which the menu's list does not hold whole. Never
-        // waiting for the Host: by the searches held now, or until both are,
+        // waiting for the device: by the searches held now, or until both are,
         // by the stored menus, and a first search that finds something is
         // announced.
         let worktree = self.stored_workflows(id, &device, at.workflows_directory(true), at.loaded).await;
@@ -341,7 +341,7 @@ impl Shard {
     /// The workflows the backend stored of `directory` on `device` for the
     /// conversation `id`, kept current while its tree is `loaded`.
     async fn stored_workflows(&self, id: &ConversationId, device: &DeviceId, directory: &str, loaded: bool) -> ConversationWorkflowList {
-        let refused = |error: &HostAccessError| {
+        let refused = |error: &DeviceAccessError| {
             let (code, status) = error.code();
             ConversationWorkflowList {
                 revision: 0,
@@ -357,7 +357,7 @@ impl Shard {
         if loaded {
             kept.keep(id, device, directory.to_owned());
         }
-        match self.services().control.host_workflows(device.clone(), directory.to_owned()).await {
+        match self.services().control.device_workflows(device.clone(), directory.to_owned()).await {
             Ok(Some(stored)) => ConversationWorkflowList {
                 revision: stored.revision,
                 list: KeptWorkflowList::Read {
@@ -374,7 +374,7 @@ impl Shard {
                     worktree: None,
                 },
             },
-            Err(error) => refused(&HostAccessError::from(error)),
+            Err(error) => refused(&DeviceAccessError::from(error)),
         }
     }
 }
@@ -405,7 +405,7 @@ fn shown_workflows(shard: Weak<Shard>) -> Shown<String, Rc<ProjectWorkflows>> {
                 shard
                     .services()
                     .control
-                    .keep_host_workflows(device, directory, list)
+                    .keep_device_workflows(device, directory, list)
                     .await
                     .map_err(|error| error.to_string())
             })
@@ -424,7 +424,7 @@ fn shown_workflows(shard: Weak<Shard>) -> Shown<String, Rc<ProjectWorkflows>> {
 pub(crate) enum KeptWorkflows {
     /// What the last search found.
     Found(Rc<ProjectWorkflows>),
-    /// No search of the conversation's working directory is held: its Host
+    /// No search of the conversation's working directory is held: its device
     /// is not running, or the first search has not finished.
     None,
 }
@@ -441,15 +441,15 @@ fn subjects(watch: &[WatchSubject]) -> Vec<Subject> {
         .collect()
 }
 
-/// Subscriptions on a Host the conversation works on, its primary one or a
-/// live subagent's, through its host access.
+/// Subscriptions on a device the conversation works on, its primary one or a
+/// live subagent's, through its device access.
 fn subscribe(shard: Weak<Shard>) -> Subscribe {
     Box::new(move |conversation, device| {
         let shard = shard.clone();
         Box::pin(async move {
             let shard = shard.upgrade().ok_or_else(closing)?;
             let watching = shard
-                .host_shard()
+                .device_shard()
                 .watch_files(&conversation, &device, &CancellationToken::new())
                 .await?;
             Ok(watching)

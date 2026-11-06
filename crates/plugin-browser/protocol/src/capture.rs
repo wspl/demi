@@ -101,7 +101,7 @@ pub enum CaptureEvent {
         captured: Option<Vec<CapturedTab>>,
     },
     /// Chrome keeps a capture request the extension cannot release, which
-    /// fails every later capture until the Host recreates the extension.
+    /// fails every later capture until the device recreates the extension.
     Recreate {},
 }
 

@@ -1,7 +1,7 @@
 //! The HTML files the File view shows as pages, from a conversation's files.
 //!
 //! An HTML file loads from `/api/html/<token>/<place>`, where `<place>` is its
-//! path's names from the root of the conversation's Host, so its relative
+//! path's names from the root of the conversation's device, so its relative
 //! URLs resolve as a web server's would and reach the files around it, as the
 //! File view reads them. Every answer
 //! keeps what loads in an opaque origin (`sandbox`): its scripts hold no
@@ -25,7 +25,7 @@ use axum::http::header::{
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use demi_backend_database::accounts::TokenHash;
-use demi_backend_host_access::transfer::{Download, DownloadPath, DownloadRequest};
+use demi_backend_device_access::transfer::{Download, DownloadPath, DownloadRequest};
 use demi_shared_types::{HTML_SANDBOX, html_view_media_type};
 use demi_web_api_protocol::files::{HtmlRequest, HtmlUrl};
 use demi_web_api_protocol::ids::ConversationId;
@@ -130,7 +130,7 @@ pub(super) async fn grant(
         .of(&user.id)
         .call(move |shard, cancel| async move {
             shard
-                .host_shard()
+                .device_shard()
                 .html_place(&asked, path.as_str(), &cancel)
                 .await
         })
@@ -145,7 +145,7 @@ pub(super) async fn grant(
     }))
 }
 
-/// `GET` and `HEAD /api/html/:token/*place`: the file at `place` on the Host
+/// `GET` and `HEAD /api/html/:token/*place`: the file at `place` on the device
 /// of the conversation the token's session may read, a folder's `index.html`
 /// for a folder.
 pub(super) async fn serve(
@@ -159,7 +159,7 @@ pub(super) async fn serve(
 }
 
 /// `GET` and `HEAD /api/html/:token/`: the `index.html` at the root of a
-/// Posix Host.
+/// Posix device.
 pub(super) async fn serve_root(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<Peer>,
@@ -198,7 +198,7 @@ async fn answer(
             .of(&session.user.id)
             .call(move |shard, cancel| async move {
                 shard
-                    .host_shard()
+                    .device_shard()
                     .open_download(&conversation, request, &cancel)
                     .await
             })

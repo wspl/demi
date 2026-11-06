@@ -288,7 +288,7 @@ impl Delivery {
         if !changed {
             return;
         }
-        // Why a picture changed quality is found in the Host's log, not guessed.
+        // Why a picture changed quality is found in the device's log, not guessed.
         tracing::info!(
             event = "live_view.rate_changed",
             bps = encoding.0,

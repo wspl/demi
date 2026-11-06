@@ -786,7 +786,7 @@ impl TranscriptLog {
             return false;
         }
         text.forkable = true;
-        // The pictures of the Host the text shows are named in the same step
+        // The pictures of the device the text shows are named in the same step
         // that completes it, so a page never sees a complete text whose
         // pictures are not yet named as being copied.
         if text.pictures.is_none() {

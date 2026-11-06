@@ -22,7 +22,7 @@ export interface LineHighlight {
 
 /**
  * How a link or a bare URL in a message opens: a web address in a new tab, a
- * Host file in the File view, and anything else not at all, shown as text
+ * device file in the File view, and anything else not at all, shown as text
  * (`message-links.ts`).
  */
 export function linkAttributes(target: string): Record<string, string> {

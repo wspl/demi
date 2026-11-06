@@ -18,7 +18,7 @@ export type AttachmentPhase = 'attaching' | 'uploading' | 'ready' | 'failed' | '
 /**
  * A local file on its way to the message. It is uploaded as it is added, and
  * the message names the upload; on send the backend writes the file to the
- * Host.
+ * device.
  */
 export interface ComposerFileAttachment {
   kind: 'file'
@@ -34,12 +34,12 @@ export interface ComposerFileAttachment {
   reference?: FileReference
 }
 
-/** A host path. The tile is the same; the tooltip is `host · filename`. */
+/** A path on a device. The tile is the same; the tooltip is `device · filename`. */
 export interface ComposerRemoteAttachment {
   kind: 'reference'
   id: string
   name: string
-  host: string
+  device: string
   path: string
   /** Its device, which a copy of the message carries. */
   reference?: FileReference
@@ -49,7 +49,7 @@ export type ComposerAttachment = ComposerFileAttachment | ComposerRemoteAttachme
 
 export type ComposerFileInput = Pick<ComposerFileAttachment, 'name'> &
   Partial<ComposerFileAttachment>
-export type ComposerRemoteInput = Pick<ComposerRemoteAttachment, 'host' | 'path'> &
+export type ComposerRemoteInput = Pick<ComposerRemoteAttachment, 'device' | 'path'> &
   Partial<ComposerRemoteAttachment>
 export type ComposerAttachmentInput = ComposerFileInput | ComposerRemoteInput
 
@@ -126,7 +126,7 @@ export function pastedTextIsLong(text: string): boolean {
 /**
  * The file a long paste becomes. Every one is `pasted-text.txt`, as every
  * pasted picture is `image.png`: a message holds files of one name, and the
- * Host keeps each under a suffix of its own.
+ * device keeps each under a suffix of its own.
  */
 export function pastedTextFile(text: string): File {
   return new File([text], PASTED_TEXT_NAME, { type: 'text/plain' })
@@ -178,7 +178,7 @@ export function composerRemoteAttachment(
     kind: 'reference',
     id: input.id ?? crypto.randomUUID(),
     name: input.name ?? baseName(input.path),
-    host: input.host,
+    device: input.device,
     path: input.path,
   }
 }
@@ -193,7 +193,7 @@ export function composerAttachment(
 export function composerAttachment(
   input: ComposerAttachmentInput,
 ): ComposerAttachment {
-  if ('host' in input) {
+  if ('device' in input) {
     return composerRemoteAttachment(input)
   }
   return {
@@ -237,10 +237,10 @@ export function attachmentsReady(items: readonly ComposerAttachment[]): boolean 
  * A file on a paired device as the backend names it in a message, for a
  * specimen or a test.
  */
-export function encodeRemoteReference(host: string, path: string, deviceId?: string): string {
+export function encodeRemoteReference(device: string, path: string, deviceId?: string): string {
   const url = new URL('file:///')
   url.pathname = path.startsWith('/') ? path : `/${path}`
-  url.searchParams.set('host', host)
+  url.searchParams.set('device', device)
   if (deviceId) {
     url.searchParams.set('deviceId', deviceId)
   }
@@ -252,7 +252,7 @@ export function encodeRemoteReference(host: string, path: string, deviceId?: str
  * with the device's name and, as the backend writes it, the device's id.
  */
 export function decodeRemoteReference(reference: string): {
-  host?: string
+  device?: string
   deviceId?: string
   path: string
   name: string
@@ -261,10 +261,10 @@ export function decodeRemoteReference(reference: string): {
     try {
       const url = new URL(reference)
       const path = decodeURIComponent(url.pathname)
-      const host = url.searchParams.get('host') ?? undefined
+      const device = url.searchParams.get('device') ?? undefined
       const deviceId = url.searchParams.get('deviceId') ?? undefined
       return {
-        host,
+        device,
         deviceId,
         path,
         name: baseName(path),

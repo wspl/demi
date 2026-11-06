@@ -215,7 +215,7 @@ useEscapeClose(() => props.isOpen && !pinned.value && props.overlayStore.isTop(i
         v-if="isOpen"
         :class="inline
           ? 'dialog-scrim relative grid'
-          : ['dialog-scrim dialog-host fixed inset-0 z-50 grid bg-black/40', anchor === 'top' ? 'items-start justify-items-center pt-[12vh]' : 'place-items-center']"
+          : ['dialog-scrim dialog-device fixed inset-0 z-50 grid bg-black/40', anchor === 'top' ? 'items-start justify-items-center pt-[12vh]' : 'place-items-center']"
         :style="inline || depth === 0 ? undefined : { zIndex: LAYER_Z + depth }"
         v-bind="overlayLayerAttributes(id, LAYER_Z + depth)"
         @click.self="!inline && emit('close')"
@@ -305,7 +305,7 @@ useEscapeClose(() => props.isOpen && !pinned.value && props.overlayStore.isTop(i
 }
 
 /* The scrim is the container a panel fills; an inline panel has no scrim to fill. */
-.dialog-host {
+.dialog-device {
   container-type: inline-size;
 }
 

@@ -162,7 +162,7 @@ impl ExecutionContext {
         self.ended.load(Ordering::SeqCst)
     }
 
-    /// Whether the context's manifest carries `digest` for this host.
+    /// Whether the context's manifest carries `digest` for this device.
     pub fn carries(&self, digest: &str) -> bool {
         self.manifest
             .packages
@@ -349,7 +349,7 @@ impl Drop for ContextTable {
     }
 }
 
-/// The resident leases of a manifest's packages for this host, by package
+/// The resident leases of a manifest's packages for this device, by package
 /// id.
 pub type PackageLeases = BTreeMap<String, ResidentLease>;
 
@@ -522,7 +522,7 @@ pub async fn install(
     })
 }
 
-/// Leases on the residents of `manifest`'s packages for this host.
+/// Leases on the residents of `manifest`'s packages for this device.
 pub async fn leases(manifest: &Manifest, residents: &ResidentHandle) -> PackageLeases {
     let mut leases = PackageLeases::new();
     for package in manifest.packages.values() {

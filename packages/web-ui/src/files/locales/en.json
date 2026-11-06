@@ -119,9 +119,9 @@
     "files": "{count} file | {count} files",
     "failedOf": "{failed} / {files} failed",
     "more": "and {count} more",
-    "cannotRemove": "This host can’t delete files.",
-    "cannotCreateFolder": "This host can’t create folders.",
-    "cannotTake": "This host can’t take uploads.",
+    "cannotRemove": "This device can’t delete files.",
+    "cannotCreateFolder": "This device can’t create folders.",
+    "cannotTake": "This device can’t take uploads.",
     "nameTaken": "A file with this name now exists."
   },
   "conflict": {

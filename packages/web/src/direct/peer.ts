@@ -51,7 +51,7 @@ export class ChannelRefused extends Error {
     readonly code: ChannelErrorCode,
     readonly status: number,
     message: string,
-    /** What a refusal that is a file's answer carries: its version and the Host's number before it read. */
+    /** What a refusal that is a file's answer carries: its version and the device's number before it read. */
     readonly facts: { version?: string | null; readAt?: ReadAt | null } = {},
   ) {
     super(message)
@@ -159,7 +159,7 @@ function note(addresses: DirectAddresses, line: string): void {
   const candidate = candidateOf(line)
   if (!candidate)
     return
-  const kind = candidate.type === 'host' ? addresses.local : candidate.type === 'srflx' || candidate.type === 'prflx' ? addresses.public : null
+  const kind = candidate.type === 'device' ? addresses.local : candidate.type === 'srflx' || candidate.type === 'prflx' ? addresses.public : null
   if (kind && !kind.includes(candidate.address))
     kind.push(candidate.address)
 }

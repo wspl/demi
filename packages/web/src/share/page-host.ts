@@ -7,7 +7,7 @@ import { BLOCK_PAGES } from '../plugins/generated/blocks'
  * The plugin pages' host of a shared conversation's page: the pages that draw
  * reply blocks, whose facts the share's pages bring with its texts and whose
  * documents its routes serve for the blocks its text names
- * (`crates/backend-http/src/shares.rs`). A shared page has no account, Host,
+ * (`crates/backend-http/src/shares.rs`). A shared page has no account, Device,
  * work panel or plugin calls, so whatever else a page asks of it is refused or
  * empty; its plugins are on, as their blocks' facts came.
  */
@@ -28,7 +28,7 @@ export function sharePageHost(token: string): PageHost {
     stream: () => none('streams'),
     installed: () => [],
     downloading: () => [],
-    hostStarting: () => false,
+    deviceStarting: () => false,
     files: () => none('files'),
     intents: { open: () => none('work panel'), canOpen: () => false },
     panel: { tabs: () => [], select: () => none('work panel'), canGo: () => false, go: () => {} },

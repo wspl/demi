@@ -109,7 +109,7 @@ pub struct RecordDevice {
     pub action: PanelRecord,
 }
 
-/// What Screenshot and a stopped Record answer: the file on the Host the
+/// What Screenshot and a stopped Record answer: the file on the device the
 /// page saves on the user's computer through the file route.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -135,7 +135,7 @@ pub(crate) fn page() -> Page {
         .reasons::<PanelReason>()
 }
 
-/// The Host's simulators, as a look that wakes nothing; none while the
+/// The device's simulators, as a look that wakes nothing; none while the
 /// conversation's Cloud is stopped, which says nothing of its simulators.
 pub(crate) async fn list(port: &PluginPort) -> Result<Option<ListResult>, PluginError> {
     match run::<ListResult, _>(port, MobileOperation::List, ListInput {}, CallKind::Looks).await {
@@ -145,7 +145,7 @@ pub(crate) async fn list(port: &PluginPort) -> Result<Option<ListResult>, Plugin
     }
 }
 
-/// Closes the device `device`; one the Host no longer has, or a stopped
+/// Closes the simulator `device`; one the device no longer has, or a stopped
 /// Cloud's, is closed already.
 pub(crate) async fn close(port: &PluginPort, device: &str) -> Result<(), PluginError> {
     let Ok(device) = DeviceId::try_from(device.to_owned()) else {
@@ -273,7 +273,7 @@ async fn run<T: DeserializeOwned, I: Serialize>(
     })
 }
 
-/// The device a call names; one that is no handle is a device the Host
+/// The simulator a call names; one that is no handle is a simulator the device
 /// does not have.
 fn device_id(device: String) -> Result<DeviceId, PluginError> {
     DeviceId::try_from(device)
@@ -287,8 +287,8 @@ fn refusal(reason: PanelReason, message: String) -> PluginError {
 fn stopped(failure: &PortFailure) -> bool {
     matches!(
         failure,
-        PortFailure::Refused(PortRefusal::Host {
-            code: ErrorCode::HostStopped,
+        PortFailure::Refused(PortRefusal::Device {
+            code: ErrorCode::DeviceStopped,
             ..
         })
     )
@@ -308,7 +308,7 @@ fn mobile_failure(failure: &PortFailure) -> Option<FailureDocument> {
 
 /// A failed call as the page sees it: the package's refusal under its own
 /// code; a package whose resident did not start as `mobile_unavailable`,
-/// with the runner's words; or the host access's refusal, which passes on.
+/// with the runner's words; or the device access's refusal, which passes on.
 pub(crate) fn refused(failure: PortFailure) -> PluginError {
     if let Some(document) = mobile_failure(&failure) {
         return refusal(document.error.code.into(), document.error.message);

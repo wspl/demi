@@ -29,7 +29,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
-use demi_host_interface::HostErrorKind;
+use demi_device_interface::DeviceErrorKind;
 use demi_provider_common::{DeviceAnswer, DeviceRefusal, DeviceRequest, DeviceRoute};
 use demi_provider_registry::entry::ProviderEntry;
 use demi_runner_client::HttpRequest;
@@ -45,10 +45,10 @@ use super::{Shard, Shards};
 
 impl Shard {
     /// A request the backend makes for the user from `request`'s device, one
-    /// of the user's Hosts, through its runner.
+    /// of the user's devices, through its runner.
     async fn device_request(&self, request: DeviceRequest, cancel: CancellationToken) -> Result<DeviceAnswer, DeviceRefusal> {
         let devices = self
-            .host_records()
+            .device_records()
             .await
             .map_err(|error| DeviceRefusal::Failed(error.to_string()))?;
         let device = devices
@@ -100,7 +100,7 @@ impl Shard {
             Err(error) => {
                 reader.fail(&error.message);
                 return Err(match error.kind {
-                    HostErrorKind::Offline => DeviceRefusal::Offline { device: device.name },
+                    DeviceErrorKind::Offline => DeviceRefusal::Offline { device: device.name },
                     _ => DeviceRefusal::Failed(error.message),
                 });
             }

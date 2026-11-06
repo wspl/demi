@@ -1,4 +1,4 @@
-//! Attach validated Host files to a page input or an observed file chooser.
+//! Attach validated device files to a page input or an observed file chooser.
 
 use chromiumoxide::cdp::browser_protocol::{
     dom::SetFileInputFilesParams,
@@ -17,7 +17,7 @@ use crate::page::{
     protocol::{BrowserOperation, UploadResult},
 };
 
-/// Attach Host files only after all paths have passed validation.
+/// Attach device files only after all paths have passed validation.
 pub async fn execute(
     context: &InvocationContext,
     _environment: &BrowserEnvironment,

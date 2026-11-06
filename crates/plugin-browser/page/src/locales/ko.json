@@ -39,14 +39,14 @@
     "conversation_not_found": "이 대화는 더 이상 없습니다.",
     "conversation_archived": "이 대화는 보관되었습니다.",
     "conversation_busy": "대화가 작업 중입니다. 잠시 후 다시 시도하십시오.",
-    "host_stopped": "클라우드가 중지되었습니다.",
+    "device_stopped": "클라우드가 중지되었습니다.",
     "device_offline": "기기가 오프라인입니다.",
     "device_not_found": "기기가 계정에서 제거되었습니다.",
     "cloud_unavailable": "클라우드를 지금은 사용할 수 없습니다.",
     "cloud_resetting": "클라우드를 초기화하는 중입니다.",
     "cloud_capacity": "서버에 클라우드를 시작할 여유가 없습니다.",
     "cloud_crash_loop": "클라우드 시작이 반복해서 실패하여 중지되었습니다.",
-    "host_operation_failed": "기기와의 연결이 끊어졌습니다.",
+    "device_operation_failed": "기기와의 연결이 끊어졌습니다.",
     "unknown_plugin_method": "이 서버에서는 브라우저를 실행할 수 없습니다.",
     "plugin_disabled": "브라우저 플러그인이 꺼져 있습니다."
   },
@@ -73,13 +73,13 @@
     "stopLoading": "불러오기를 중지할 수 없습니다",
     "openPage": "페이지를 열 수 없습니다",
     "saveDownload": "다운로드를 저장할 수 없습니다",
-    "hostFilesUnreachable": "호스트의 파일에 액세스할 수 없습니다."
+    "deviceFilesUnreachable": "기기의 파일에 액세스할 수 없습니다."
   },
   "region": {
     "couldntOpen": "이 페이지를 열 수 없습니다.",
     "couldntShow": "이 페이지를 표시할 수 없습니다.",
     "noH264": "이 브라우저는 H.264 동영상을 디코딩할 수 없습니다.",
-    "waiting": "호스트를 기다리는 중…"
+    "waiting": "기기를 기다리는 중…"
   },
   "menu": {
     "copyLink": "링크 주소 복사",
@@ -108,7 +108,7 @@
   },
   "dialog": {
     "leavePage": "이 페이지를 나가시겠습니까?",
-    "says": "{host}의 메시지",
+    "says": "{device}의 메시지",
     "thisPageSays": "이 페이지의 메시지",
     "answer": "답변",
     "stay": "페이지에 머무르기",

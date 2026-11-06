@@ -21,7 +21,7 @@ demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }
 # The releases it reads and the package that installs them.
 demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
-demi-host-interface = { path = "../host-interface" }
+demi-device-interface = { path = "../device-interface" }
 # The build version the SDK MCP server names.
 demi-shared-artifacts = { path = "../shared-artifacts" }
 async-stream = "0.3"

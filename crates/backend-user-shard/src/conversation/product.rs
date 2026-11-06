@@ -1,10 +1,10 @@
 //! What the backend's conversations are assembled from.
 //!
 //! - The product's instructions.
-//! - The toolset of the plugins the user has on, with the product's `demi host`
+//! - The toolset of the plugins the user has on, with the product's `demi device`
 //!   and `demi attachment` groups.
 //! - The user's subagent settings, which each spawn reads.
-//! - The Host each node reaches, and the conversation's current primary Host.
+//! - The device each node reaches, and the conversation's current primary device.
 //! - The execution context source, which tells a node that the conversation's
 //!   execution context changed.
 //! - The plugins that are context sources.
@@ -12,7 +12,7 @@
 use std::rc::{Rc, Weak};
 
 use demi_agent_tools::{
-    ContextAnswer, ContextSource, ConversationProfiles, HostResolver, NewProfileDraft, NodeContext, Profile, WorkflowListing,
+    ContextAnswer, ContextSource, ConversationProfiles, DeviceResolver, NewProfileDraft, NodeContext, Profile, WorkflowListing,
     ProfileEdit, ProfileModel, SubagentSettings, SubagentSource, Toolset, ToolsetSource,
     runs_on as job_model,
 };
@@ -20,17 +20,17 @@ use demi_conversation_lane_protocol::{CacheChart, JobModel};
 use demi_shared_types::{ModelSelection, NodeId, PictureFailure, WorkflowChoice};
 
 use super::runs_on::runs_on;
-use demi_backend_host_access::attachment_commands::attachment_group;
-use demi_backend_host_access::host_commands::host_group;
+use demi_backend_device_access::attachment_commands::attachment_group;
+use demi_backend_device_access::device_commands::device_group;
 
 use super::organize::conversation_group;
 use crate::shard::provider_commands::providers_group;
-use demi_backend_host_access::{HostShard, conversation_of};
+use demi_backend_device_access::{DeviceShard, conversation_of};
 use demi_plugin_host::ContextAsk;
-use demi_runner_client::RemoteHost;
+use demi_runner_client::RemoteDevice;
 use demi_agent_store::Placement;
 use demi_web_api_protocol::ids::DeviceId;
-use demi_host_interface::{HostError, HostErrorKind};
+use demi_device_interface::{DeviceError, DeviceErrorKind};
 use demi_plugin_interface::{EXECUTION_SOURCE, PluginId};
 use demi_shared_types::TurnId;
 use demi_backend_database::StorageError;
@@ -50,10 +50,10 @@ pub(crate) const INSTRUCTIONS: &str = "You are Demi, an agent that works for the
 
 /// The harness guide every node's system prompt carries after its identity,
 /// a profile's node too.
-pub(crate) const HARNESS_GUIDE: &str = "Guidelines:\n- Commands run on the conversation's primary Host, in its working directory; a context block names both. The directory stays between turns, and the work panel shows it.\n- To wait for a command or a subagent, end your turn: its end or its message wakes you, and you continue then. Never wait with sleep or a loop.\n- The user reads only your replies, rendered as Markdown. Be concise.\n- Deliver a file as an attachment: `demi attachment upload`, then `<attachment id=\"a3\" />` on its own line; a medium a tool result showed you has its `attachment_id` already.\n- Link what the user can open: a Host file `[runner.md](docs/runner.md#L438)`, a subagent `[File icons](agent:4)`, a commit `[Fix the cart total](commit:3f2a9c1)`, or `commit:src/v8@86229da` in another repository, a conversation `[Login test](conversation:<id>)`.";
+pub(crate) const HARNESS_GUIDE: &str = "Guidelines:\n- Commands run on the conversation's primary device, in its working directory; a context block names both. The directory stays between turns, and the work panel shows it.\n- To wait for a command or a subagent, end your turn: its end or its message wakes you, and you continue then. Never wait with sleep or a loop.\n- The user reads only your replies, rendered as Markdown. Be concise.\n- Deliver a file as an attachment: `demi attachment upload`, then `<attachment id=\"a3\" />` on its own line; a medium a tool result showed you has its `attachment_id` already.\n- Link what the user can open: a device file `[runner.md](docs/runner.md#L438)`, a subagent `[File icons](agent:4)`, a commit `[Fix the cart total](commit:3f2a9c1)`, or `commit:src/v8@86229da` in another repository, a conversation `[Login test](conversation:<id>)`.";
 
 /// What a conversation's tree opens with: the commands of the plugins the
-/// user has on, with the product's `demi host`, `demi attachment`, `demi
+/// user has on, with the product's `demi device`, `demi attachment`, `demi
 /// conversation`, `demi credentials`, `demi providers` and `demi notify`
 /// groups.
 pub(crate) struct ShardToolsets {
@@ -83,12 +83,12 @@ impl ToolsetSource for ShardToolsets {
                 .shard
                 .upgrade()
                 .ok_or_else(|| "the backend is shutting down".to_owned())?;
-            let hosts: Weak<dyn HostShard> = self.shard.clone();
+            let devices: Weak<dyn DeviceShard> = self.shard.clone();
             let toolset = shard
                 .plugins()
                 .toolset(vec![
-                    host_group(hosts.clone()),
-                    attachment_group(hosts),
+                    device_group(devices.clone()),
+                    attachment_group(devices),
                     conversation_group(self.shard.clone()),
                     credentials_group(self.shard.clone()),
                     schedule_group(self.shard.clone()),
@@ -264,60 +264,60 @@ fn profile_of(profile: SubagentProfile, entries: &[ProviderEntry]) -> Profile {
     }
 }
 
-/// Where a shard's agents run: a subagent's own Host, and each conversation's
-/// current primary Host for its root.
-pub(crate) struct ShardHosts {
+/// Where a shard's agents run: a subagent's own device, and each conversation's
+/// current primary device for its root.
+pub(crate) struct ShardDevices {
     /// Weak: the shard owns the agent server that holds the resolver.
     pub(crate) shard: Weak<Shard>,
 }
 
-impl HostResolver for ShardHosts {
-    type Host = RemoteHost;
+impl DeviceResolver for ShardDevices {
+    type Device = RemoteDevice;
 
-    async fn host(&self, context: NodeContext<'_>) -> Result<Rc<RemoteHost>, HostError> {
+    async fn device(&self, context: NodeContext<'_>) -> Result<Rc<RemoteDevice>, DeviceError> {
         let shard = self
             .shard
             .upgrade()
-            .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
+            .ok_or_else(|| DeviceError::offline("the backend is shutting down"))?;
         let conversation = conversation_of(context.root);
         match agent_device(context.placement) {
-            Some(device) => shard.host_shard().agent_host(&conversation, &device).await,
-            None => shard.host_shard().conversation_host(&conversation).await,
+            Some(device) => shard.device_shard().agent_device(&conversation, &device).await,
+            None => shard.device_shard().conversation_device(&conversation).await,
         }
     }
 
-    async fn adopted_host(&self, context: NodeContext<'_>) -> Result<Rc<RemoteHost>, HostError> {
+    async fn adopted_device(&self, context: NodeContext<'_>) -> Result<Rc<RemoteDevice>, DeviceError> {
         let shard = self
             .shard
             .upgrade()
-            .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
+            .ok_or_else(|| DeviceError::offline("the backend is shutting down"))?;
         let conversation = conversation_of(context.root);
         match agent_device(context.placement) {
-            Some(device) => shard.host_shard().adopting_agent_host(&conversation, &device).await,
-            None => shard.host_shard().adopting_host(&conversation).await,
+            Some(device) => shard.device_shard().adopting_agent_device(&conversation, &device).await,
+            None => shard.device_shard().adopting_device(&conversation).await,
         }
     }
 
-    async fn host_name(&self, device: &str) -> Option<String> {
+    async fn device_name(&self, device: &str) -> Option<String> {
         let shard = self.shard.upgrade()?;
         let device = DeviceId::try_from(device.to_owned()).ok()?;
         shard.services().control.device(device).await.ok().flatten().map(|record| record.name)
     }
 
-    /// The conversation's target, read without reaching the Host.
-    async fn placement(&self, context: NodeContext<'_>) -> Result<Placement, HostError> {
+    /// The conversation's target, read without reaching the device.
+    async fn placement(&self, context: NodeContext<'_>) -> Result<Placement, DeviceError> {
         let shard = self
             .shard
             .upgrade()
-            .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
+            .ok_or_else(|| DeviceError::offline("the backend is shutting down"))?;
         shard
             .placement(&conversation_of(context.root))
             .await
-            .map_err(|error| HostError::new(HostErrorKind::Failed { code: None }, error.to_string()))
+            .map_err(|error| DeviceError::new(DeviceErrorKind::Failed { code: None }, error.to_string()))
     }
 }
 
-/// The device of a subagent's own Host, by its `placement`; none for the
+/// The device of a subagent's own device, by its `placement`; none for the
 /// root, and for a subagent on the user's Cloud not made yet, which works
 /// where the conversation does until it is made.
 fn agent_device(placement: Option<&Placement>) -> Option<DeviceId> {
@@ -326,7 +326,7 @@ fn agent_device(placement: Option<&Placement>) -> Option<DeviceId> {
 }
 
 /// The context source that announces a change of the conversation's
-/// execution context: a target switch, attached hosts, a Cloud reset.
+/// execution context: a target switch, attached devices, a Cloud reset.
 pub(crate) struct ExecutionContext {
     pub(crate) shard: Weak<Shard>,
 }
@@ -379,7 +379,7 @@ impl ContextSource for PluginContext {
             };
             let conversation = conversation_of(node.root);
             let paths = shard
-                .host_paths(&conversation)
+                .primary_device_paths(&conversation)
                 .await
                 .map_err(|error| format!("the plugin {} was not asked: {error}", self.plugin))?;
             let cwd = shard
@@ -431,7 +431,7 @@ impl demi_agent_server::AgentsSource for ShardAgents {
     fn resuming(&self, root: &NodeId) -> bool {
         self.shard
             .upgrade()
-            .is_some_and(|shard| shard.restart_resumes().contains(&demi_backend_host_access::conversation_of(root)))
+            .is_some_and(|shard| shard.restart_resumes().contains(&demi_backend_device_access::conversation_of(root)))
     }
 
     fn kept<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, demi_agent_server::KeptAgents> {
@@ -440,7 +440,7 @@ impl demi_agent_server::AgentsSource for ShardAgents {
             let Some(shard) = self.shard.upgrade() else {
                 return kept;
             };
-            let conversation = demi_backend_host_access::conversation_of(root);
+            let conversation = demi_backend_device_access::conversation_of(root);
             let services = shard.services();
             match services.control.conversation_costs(conversation.clone()).await {
                 Ok(costs) => {
@@ -491,7 +491,7 @@ impl demi_agent_server::AgentsSource for ShardAgents {
             let Some(shard) = self.shard.upgrade() else {
                 return std::collections::HashMap::new();
             };
-            let conversation = demi_backend_host_access::conversation_of(root);
+            let conversation = demi_backend_device_access::conversation_of(root);
             match shard.services().control.conversation_charts(conversation.clone()).await {
                 Ok(charts) => charts.into_iter().collect(),
                 // The cards show no rate and no chart until the agent's next
@@ -512,8 +512,8 @@ impl demi_agent_server::AgentsSource for ShardAgents {
 }
 
 /// Which paths a complete reply names are files on its conversation's primary
-/// Host: one look for them all, admitted as a user's look is, which never
-/// wakes a stopped Cloud (`crates/backend-host-access/src/stream.rs`).
+/// device: one look for them all, admitted as a user's look is, which never
+/// wakes a stopped Cloud (`crates/backend-device-access/src/stream.rs`).
 pub(crate) struct ShardReplyFiles {
     /// Weak: the shard owns the agent server that holds the source.
     pub(crate) shard: Weak<Shard>,
@@ -529,8 +529,8 @@ impl demi_agent_server::ReplyFiles for ShardReplyFiles {
         Box::pin(async move {
             let shard = self.shard.upgrade()?;
             let conversation = conversation_of(root);
-            let host_paths = match shard.host_paths(&conversation).await {
-                Ok(host_paths) => host_paths,
+            let device_paths = match shard.primary_device_paths(&conversation).await {
+                Ok(device_paths) => device_paths,
                 Err(error) => {
                     tracing::warn!(event = "conversation_state.read_failed", %conversation, what = "reply_paths", error = &error as &dyn std::error::Error, "a reply's code paths were not looked at");
                     return None;
@@ -539,26 +539,26 @@ impl demi_agent_server::ReplyFiles for ShardReplyFiles {
             let resolved: Vec<(String, String)> = paths
                 .into_iter()
                 .map(|path| {
-                    let on_host = host_paths.resolve(cwd, &path);
-                    (path, on_host)
+                    let on_device = device_paths.resolve(cwd, &path);
+                    (path, on_device)
                 })
                 .collect();
             // Released with the shard's tasks' cancellation, which a look
             // needs only to end its wait.
             let cancel = tokio_util::sync::CancellationToken::new();
             let looked = shard
-                .host_shard()
-                .look_at_host(&conversation, &cancel, async move |host| {
-                    use demi_host_interface::HostFs as _;
+                .device_shard()
+                .look_at_device(&conversation, &cancel, async move |device| {
+                    use demi_device_interface::DeviceFs as _;
                     let stats = futures_util::future::join_all(
-                        resolved.iter().map(|(_, on_host)| host.host.stat(on_host.as_str())),
+                        resolved.iter().map(|(_, on_device)| device.device.stat(on_device.as_str())),
                     )
                     .await;
                     resolved
                         .into_iter()
                         .zip(stats)
                         .filter(|(_, stat)| {
-                            matches!(stat, Ok(demi_host_interface::FileStat { kind: demi_host_interface::FileKind::File, .. }))
+                            matches!(stat, Ok(demi_device_interface::FileStat { kind: demi_device_interface::FileKind::File, .. }))
                         })
                         .map(|(paths, _)| paths)
                         .collect::<std::collections::HashMap<String, String>>()
@@ -585,29 +585,29 @@ impl demi_agent_server::ReplyFiles for ShardReplyFiles {
         path: &'a str,
     ) -> LocalBoxFuture<'a, Result<String, PictureFailure>> {
         Box::pin(async move {
-            // The backend closing, a conversation with no Host yet, a device
-            // that is no device and a home not known are each a Host the
+            // The backend closing, a conversation with no device yet, a device
+            // that is no device and a home not known are each a device the
             // picture cannot be copied from.
-            let shard = self.shard.upgrade().ok_or(PictureFailure::HostUnavailable)?;
+            let shard = self.shard.upgrade().ok_or(PictureFailure::DeviceUnavailable)?;
             let conversation = conversation_of(root);
             let device = device
                 .and_then(|device| demi_web_api_protocol::ids::DeviceId::try_from(device).ok())
-                .ok_or(PictureFailure::HostUnavailable)?;
-            // A path from the Host's home is read from the home its runner
+                .ok_or(PictureFailure::DeviceUnavailable)?;
+            // A path from the device's home is read from the home its runner
             // reported.
             let paths = shard
-                .host_paths(&conversation)
+                .primary_device_paths(&conversation)
                 .await
-                .map_err(|_| PictureFailure::HostUnavailable)?;
+                .map_err(|_| PictureFailure::DeviceUnavailable)?;
             let path = match paths.home_relative(path) {
                 Some(_) => {
-                    let home = shard.devices().home(&device).ok_or(PictureFailure::HostUnavailable)?;
+                    let home = shard.devices().home(&device).ok_or(PictureFailure::DeviceUnavailable)?;
                     paths.from_home(&home, path)
                 }
                 None => path.to_owned(),
             };
-            demi_backend_host_access::attachment_commands::copy_picture(
-                shard.host_shard(),
+            demi_backend_device_access::attachment_commands::copy_picture(
+                shard.device_shard(),
                 &conversation,
                 &device,
                 cwd,

@@ -76,7 +76,7 @@ const props = withDefaults(defineProps<{
    */
   cwd?: string
   /**
-   * The subagent works on another Host than the conversation's, whose files
+   * The subagent works on another device than the conversation's, whose files
    * the conversation's panels do not show: its rows offer no file to open.
    */
   elsewhere?: boolean
@@ -396,9 +396,9 @@ const requests = computed(() => storedRequests(props.blocks))
 // transcript.
 const directories = computed(() => props.cwd === undefined ? null : blockDirectories(props.blocks, props.cwd))
 const shownFiles = useMessageFiles()
-// A subagent on another Host than the conversation's names files the
+// A subagent on another device than the conversation's names files the
 // conversation's panels do not show: its rows keep the conversation's
-// attachments, such as the copies of its pictures, and open no Host file.
+// attachments, such as the copies of its pictures, and open no device file.
 const conversationFiles = (): MessageFiles | undefined => {
   const files = shownFiles()
   if (!props.elsewhere || !files)

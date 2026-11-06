@@ -7,7 +7,7 @@
 //! decoded frames of one conversation lane, which the backend owns.
 //!
 //! ```text
-//! web app (ConversationClient)    backend: the user's shard           Host
+//! web app (ConversationClient)    backend: the user's shard           device
 //!   send ---------------------->  conversation lane
 //!                                   -> Connection -> Tree -> root Node
 //!                                        provider request;
@@ -21,8 +21,8 @@
 //! - the commands, instructions, harness guide and context sources every node
 //!   is assembled with;
 //! - the user's subagent settings each spawn reads;
-//! - the Host its shell tools reach
-//!   ([`HostResolver`](demi_agent_tools::HostResolver));
+//! - the device its shell tools reach
+//!   ([`DeviceResolver`](demi_agent_tools::DeviceResolver));
 //! - each conversation's model selection and the provider runtimes
 //!   ([`ProviderResolver`]);
 //! - a tree store per conversation.
@@ -49,7 +49,7 @@
 //!
 //! The crate:
 //!
-//! - depends on no concrete provider, Host implementation or user interface;
+//! - depends on no concrete provider, device implementation or user interface;
 //! - owns no shell interpreter;
 //! - owns no socket: the backend owns the conversation lane and hands the
 //!   server decoded frames.

@@ -95,8 +95,8 @@ use super::attachment_facts::StreamedText;
 use super::failure_facts;
 use crate::sync::etag_of;
 use crate::shard::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader, Shard};
-use demi_backend_host_access::remote_files::{RemoteFile, RemoteFileRefusal};
-use demi_backend_host_access::root_of;
+use demi_backend_device_access::remote_files::{RemoteFile, RemoteFileRefusal};
+use demi_backend_device_access::root_of;
 
 /// The close code of a lane whose page fell a full outbox behind; the page
 /// reconnects and adopts the running tree.
@@ -521,7 +521,7 @@ impl Shard {
     async fn handle_message(
         &self,
         conversation: &ConversationId,
-        connection: &demi_agent_server::Connection<super::ShardHosts>,
+        connection: &demi_agent_server::Connection<super::ShardDevices>,
         text: &str,
     ) -> Handled {
         match decode_client_frame(text) {
@@ -566,7 +566,7 @@ impl Shard {
     async fn handle_frame(
         &self,
         conversation: &ConversationId,
-        connection: &demi_agent_server::Connection<super::ShardHosts>,
+        connection: &demi_agent_server::Connection<super::ShardDevices>,
         frame: ClientFrame,
     ) -> Handled {
         let started = std::time::Instant::now();
@@ -616,8 +616,8 @@ impl Shard {
         };
         // The frame is handled under the conversation's file gate, which a
         // transition holding the conversation makes it wait for, never refuse
-        // (`crates/backend-cloud/src/uses.rs`). Its uploads go to no Host
-        // (`crates/backend-host-access/src/uploads.rs`).
+        // (`crates/backend-cloud/src/uses.rs`). Its uploads go to no device
+        // (`crates/backend-device-access/src/uploads.rs`).
         let files = self
             .conversations()
             .slot(conversation)
@@ -1282,8 +1282,8 @@ fn to_text(frame: &ServerFrame) -> String {
 /// The uploads are numbered first, in the order of the content, so a frame whose
 /// upload cannot be read grants no remote file.
 ///
-/// A send writes nothing to the Host: most files are only for the model to read,
-/// which it does from the blob, so a Host that is slow to reach, offline or a
+/// A send writes nothing to the device: most files are only for the model to read,
+/// which it does from the blob, so a device that is slow to reach, offline or a
 /// stopped Cloud never holds a message. A command that needs the file fetches it
 /// with `demi attachment download`.
 pub(super) struct ConversationFiles {
@@ -1334,11 +1334,11 @@ impl ContentResolver for ConversationFiles {
             let mut written = Vec::new().into_iter();
             if !uploads.is_empty() {
                 // One at a time, so the numbers follow the content's order.
-                let host_shard = shard.host_shard();
+                let device_shard = shard.device_shard();
                 let mut writes = Vec::with_capacity(uploads.len());
                 for (reference, file_name) in uploads {
                     writes.push(
-                        host_shard
+                        device_shard
                             .resolve_upload(&self.conversation, reference, file_name)
                             .await
                             .map_err(refused)?,
@@ -1362,7 +1362,7 @@ impl ContentResolver for ConversationFiles {
                 Vec::new().into_iter()
             } else {
                 shard
-                    .host_shard()
+                    .device_shard()
                     .reference_remote_files(&self.conversation, &remote)
                     .await
                     .map_err(remote_file_refused)?

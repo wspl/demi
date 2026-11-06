@@ -36,7 +36,7 @@ export interface Placement {
   height: number
 }
 
-/** The largest size the protocol and the Host's capture take. */
+/** The largest size the protocol and the device's capture take. */
 const MAX_SIDE = 4096
 
 /** The panel the module hears about: whole CSS pixels within the protocol's range. */

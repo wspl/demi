@@ -3,7 +3,7 @@
 //! the machine manager.
 //!
 //! A line holds the event's spans' fields, outermost first, then its own, the
-//! later naming a field winning. The request, user, conversation, turn, Host
+//! later naming a field winning. The request, user, conversation, turn, device
 //! and page IDs go to the line's own fields. An event names what happened with
 //! its `event` field, `noun.verb` in the past tense; one that names nothing is
 //! written under its target, its message among the fields.
@@ -111,7 +111,7 @@ where
         line.user_id = take(&["user", "user_id"]);
         line.conversation_id = take(&["conversation", "conversation_id"]);
         line.turn_id = take(&["turn", "turn_id"]);
-        line.host_id = take(&["host_id"]);
+        line.device_id = take(&["device_id"]);
         line.page_id = take(&["page_id"]);
         if !fields.message.is_empty() {
             values.insert("message".into(), fields.message.into());

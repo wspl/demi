@@ -1,7 +1,7 @@
 //! What `demi video` does:
 //!
 //! 1. It reads the call's prompt, its frames and references, and the video
-//!    an edit or an extension changes from the Host the command runs on.
+//!    an edit or an extension changes from the device the command runs on.
 //! 2. It asks the Providers service for the video's job and names it on stderr
 //!    at once.
 //! 3. It says each change of the job's state.
@@ -12,7 +12,7 @@
 //!
 //! A failure is told in the design's words.
 
-use demi_host_interface::RpcInvocation;
+use demi_device_interface::RpcInvocation;
 use demi_plugin_interface::{
     AskedVideo, ImageAspect, MadeVideo, PluginError, PluginPort, SentSource, VideoAsk, VideoChange, VideoResolution,
     VideoSourceAsk, VideoStep,
@@ -52,7 +52,7 @@ pub(crate) async fn run(invocation: RpcInvocation, port: &PluginPort) -> Result<
 }
 
 /// The call's ask: its prompt, from stdin for `-`, its options, and its
-/// frames and references read together from the Host.
+/// frames and references read together from the device.
 async fn ask(port: &PluginPort, args: GenerateArgs) -> Result<VideoAsk, PluginError> {
     let model = required_model(args.model, MediaKind::Video)?;
     if args.last_frame.is_some() && args.image.is_none() {
@@ -91,7 +91,7 @@ async fn ask(port: &PluginPort, args: GenerateArgs) -> Result<VideoAsk, PluginEr
 }
 
 /// An edit's or an extension's ask: its prompt, its options, its
-/// references and the video it changes, read together from the Host.
+/// references and the video it changes, read together from the device.
 async fn change_ask(port: &PluginPort, args: ChangeArgs, change: VideoChange) -> Result<VideoAsk, PluginError> {
     let model = required_model(args.model, MediaKind::Video)?;
     let prompt = prompt(port, args.prompt).await?;

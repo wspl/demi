@@ -1,5 +1,5 @@
 /**
- * The conversation's simulators without a Host
+ * The conversation's simulators without a runner
  * (`crates/plugin-mobile/page/src/index.ts`).
  *
  * It has two parts:
@@ -32,7 +32,7 @@ import {
   mobileTabDataSchema,
 } from '@demicodes/plugin-mobile'
 import { PluginCallError } from '@demicodes/web-ui/plugins/page'
-import type { HostDownload } from '@demicodes/web-ui/devices/installed'
+import type { DeviceDownload } from '@demicodes/web-ui/devices/installed'
 import { encodeControl, encodeVideo } from '@demicodes/web-ui/live/frames'
 import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
 import type { PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
@@ -47,7 +47,7 @@ const FPS = 10
 /** How long the gallery's runner takes to restart. */
 const RESTART_MS = 6000
 /** The plugin's program as an updated runner downloads it, of a typical size. */
-const PROGRAM_DOWNLOAD: HostDownload = {
+const PROGRAM_DOWNLOAD: DeviceDownload = {
   package: 'demi.mobile',
   name: 'demi-mobile',
   version: '0.1.0',
@@ -231,7 +231,7 @@ function litAfter(degrees: number, from: number, lit: 'outer' | 'inner'): 'outer
   return degrees > (Math.abs(degrees - from) < 20 ? 120 : 90) ? 'inner' : lit
 }
 
-/** How the device folds and is folded, as the Host says; none for one that does not fold. */
+/** How the device folds and is folded, as the runner says; none for one that does not fold. */
 function foldOf(device: OpenDevice, body: string | null): LiveFold | null {
   const fold = device.simulator.fold
   if (!fold) {
@@ -291,7 +291,7 @@ function beat(ms: number): Promise<void> {
  */
 export interface GalleryScreen {
   paint(context: CanvasRenderingContext2D, points: { width: number; height: number }): void
-  /** The file on the Host of the 3D body a hinged foldable wears, as the product reads Apple's; the stand-in's without one. */
+  /** The file on the runner's device of the 3D body a hinged foldable wears, as the product reads Apple's; the stand-in's without one. */
   body?: string
 }
 
@@ -312,16 +312,16 @@ export interface GalleryMobile {
   agentFolds(): Promise<void>
   /** Each open device's screen turns off by itself, as a device's sleep turns it. */
   devicesSleep(): void
-  /** The Host sends each looked-at view a frame whose image does not decode, as a damaged frame would be. */
+  /** The runner sends each looked-at view a frame whose image does not decode, as a damaged frame would be. */
   sendsBrokenFrames(): void
   /**
-   * The Host's runner restarts: every device's stream ends and cannot open
+   * The runner restarts: every device's stream ends and cannot open
    * again for a few seconds, while the devices and their tabs stay, as the
-   * Host's resident keeps them.
+   * runner's resident keeps them.
    */
   runnerRestarts(): void
   /**
-   * The Host's runner updates while its new program still downloads: every
+   * The runner updates while its new program still downloads: every
    * device's stream ends and opens again once the download is done, as the
    * resident of the new version starts only then.
    */
@@ -333,7 +333,7 @@ export function galleryMobile(panel: GalleryPanel, screen: GalleryScreen | null 
   let numbers = 0
   const views = new Set<MobileView>()
 
-  /** Device `id` changed: its own views say so, as the Host's do, and no other device's. */
+  /** Device `id` changed: its own views say so, as the runner's do, and no other device's. */
   function changed(id: string): void {
     for (const view of views) {
       if (view.watching === id) {
@@ -409,7 +409,7 @@ export function galleryMobile(panel: GalleryPanel, screen: GalleryScreen | null 
         const shown = device(id)
         const at = TURNS.indexOf(shown.orientation)
         shown.orientation = TURNS[(at + (turn === 'left' ? 1 : 3)) % 4] ?? 'portrait'
-        // The device's views hear of the turn in its state, as the Host's do.
+        // The device's views hear of the turn in its state, as the runner's do.
         changed(id)
         restart(id)
         const size = upright(shown)
@@ -477,7 +477,7 @@ export function galleryMobile(panel: GalleryPanel, screen: GalleryScreen | null 
         const { device: id } = onDeviceSchema.parse(params)
         device(id)
         await beat(300)
-        // The Host writes the picture into the conversation's scratch directory; the gallery's project holds one.
+        // The runner writes the picture into the conversation's scratch directory; the gallery's project holds one.
         return { path: `${PROJECT_ROOT}/assets/photo.png` }
       }
       case 'record': {
@@ -506,7 +506,7 @@ export function galleryMobile(panel: GalleryPanel, screen: GalleryScreen | null 
     return start ? { recording: { id: 'r1', target: shown.id, running: true, durationMs: 0, frames: 0, missed: 0 } } : stoppedRecording(shown)
   }
 
-  /** The Host's answer to a stop: the recording and its video. */
+  /** The runner's answer to a stop: the recording and its video. */
   function stoppedRecording(shown: OpenDevice): object {
     return {
       recording: { id: 'r1', target: shown.id, running: false, ended: 'stopped', durationMs: 4200, frames: 37, missed: 0 },
@@ -514,7 +514,7 @@ export function galleryMobile(panel: GalleryPanel, screen: GalleryScreen | null 
     }
   }
 
-  /** Turns `shown`'s screen on or off; every view of it hears, as the Host tells each. */
+  /** Turns `shown`'s screen on or off; every view of it hears, as the runner tells each. */
   function power(shown: OpenDevice, on: boolean): void {
     if (shown.off === !on) {
       return
@@ -535,8 +535,8 @@ export function galleryMobile(panel: GalleryPanel, screen: GalleryScreen | null 
 
   /** While the runner restarts, no stream opens. */
   let restartingUntil = 0
-  /** What the Host downloads of the plugin's packages, as the product state says. */
-  const downloading = shallowRef<readonly HostDownload[]>([])
+  /** What the runner downloads of the plugin's packages, as the product state says. */
+  const downloading = shallowRef<readonly DeviceDownload[]>([])
   /** The download an update runs, until it has every byte. */
   let download: ReturnType<typeof setInterval> | null = null
 

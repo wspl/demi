@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
-import { HostFiles } from '@demicodes/web-ui/files/file-cache'
+import { DeviceFiles } from '@demicodes/web-ui/files/file-cache'
 import { keptSource } from '@demicodes/web-ui/files/kept-source'
 import {
   FileBrowserError,
@@ -57,7 +57,7 @@ function failingSource(failure: (typeof failures)[number]): FileBrowserSource {
     async list() {
       throw new FileBrowserError(failure.kind, failure.message)
     },
-  }, { files: new HostFiles() })
+  }, { files: new DeviceFiles() })
 }
 const readOnlySource: FileBrowserSource = keptSource({
   platform: 'linux',
@@ -75,7 +75,7 @@ const readOnlySource: FileBrowserSource = keptSource({
       'Could not create the folder: this project is read-only.',
     )
   },
-}, { files: new HostFiles() })
+}, { files: new DeviceFiles() })
 </script>
 
 <template>

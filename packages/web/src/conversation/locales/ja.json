@@ -51,7 +51,7 @@
     "cloudResetting": "クラウドをリセットしています。"
   },
   "workflows": {
-    "hostSilent": "ホストが応答しませんでした。"
+    "deviceSilent": "デバイスが応答しませんでした。"
   },
   "uploads": {
     "notUploaded": "{name} をアップロードできませんでした。{reason}",

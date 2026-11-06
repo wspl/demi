@@ -11,7 +11,7 @@ use crate::ids::AttachmentId;
 
 /// The most bytes an upload holds.
 ///
-/// Bounded because an upload is held in memory until the Host has written it,
+/// Bounded because an upload is held in memory until the device has written it,
 /// and the vendors limit the size of a file they take.
 pub const ATTACHMENT_MAX_BYTES: usize = 25 * 1024 * 1024;
 

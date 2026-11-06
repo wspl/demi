@@ -1,7 +1,7 @@
 import { FileBrowserError } from '@demicodes/web-ui/files/types'
 import type { FileBrowserSource } from '@demicodes/web-ui/files/types'
 import type { UploadItem } from '@demicodes/web-ui/files/file-uploads'
-import { HostFiles } from '@demicodes/web-ui/files/file-cache'
+import { DeviceFiles } from '@demicodes/web-ui/files/file-cache'
 import { keptSource } from '@demicodes/web-ui/files/kept-source'
 import { createMemoryFileSource, dir, file, link, memoryFileReads, textFile, type MemoryDirectory, type MemoryFileSource } from '@demicodes/web-ui/files/memory-source'
 import { baseName } from '@demicodes/utils'
@@ -87,7 +87,7 @@ export function stuckSource(slowPath: string): FileBrowserSource {
   return keptSource({
     ...reads,
     list: (path) => path === slowPath ? new Promise(() => {}) : reads.list(path),
-  }, { files: new HostFiles() })
+  }, { files: new DeviceFiles() })
 }
 
 /** The rows project with `src/auth` refusing and `tests` failing. */
@@ -227,12 +227,12 @@ function searchTree(): MemoryDirectory {
   })
 }
 
-/** The search project, answering as a Host does. */
+/** The search project, answering as a device does. */
 export function searchSource(): FileBrowserSource {
   return wrap(searchTree(), 150)
 }
 
-/** The search project on a Host whose search reaches its limit: it stops after what it found, and says so. */
+/** The search project on a device whose search reaches its limit: it stops after what it found, and says so. */
 export function limitedSearchSource(): FileBrowserSource {
   const source = wrap(searchTree())
   const search = source.search!
@@ -245,7 +245,7 @@ export function limitedSearchSource(): FileBrowserSource {
   }
 }
 
-/** The search project on a Host whose search never ends, until more typing or closing the field stops it. */
+/** The search project on a device whose search never ends, until more typing or closing the field stops it. */
 export function searchingSource(): FileBrowserSource {
   return {
     ...wrap(searchTree()),

@@ -42,7 +42,7 @@ import { agentLinkWindow, findAgent, provideMessageAgents } from './agent-links'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import type { ChatSessionState, PendingSubmissionState } from './types'
 import { rootActivity } from './agent-activity'
-import type { HostMenuHost } from '../hosts/types'
+import type { MenuDevice } from '../targets/types'
 import type { MessageForkHandler } from './message-fork'
 import { useShare, type ShareService } from './sharing'
 import ShareDialog from './ShareDialog.vue'
@@ -147,16 +147,16 @@ const props = withDefaults(defineProps<{
    */
   schedules?: readonly ConversationSchedule[]
   /**
-   * The conversation's Host files its messages name; absent, their paths stay
+   * The conversation's device files its messages name; absent, their paths stay
    * text.
    */
   files?: ConversationFiles
   /**
-   * The conversation's current primary Host, live over its state updates. The
+   * The conversation's current primary device, live over its state updates. The
    * dock's Resume continues an unfinished turn there, so it waits while that
-   * Host is an offline device. Absent, Resume waits for nothing.
+   * device is an offline device. Absent, Resume waits for nothing.
    */
-  primaryHost?: HostMenuHost | null
+  primaryDevice?: MenuDevice | null
   /**
    * The conversation's undecided requests of any kind, oldest first, which the
    * card above the composer shows.
@@ -510,10 +510,10 @@ const titleSheetOpen = ref(false)
 const tabsIcon = computed(() => tabCountIcon(props.panelTabs))
 /** Where the title sheet shows the conversation's place, while it is open. */
 const placeTarget = ref<HTMLElement | null>(null)
-/** The primary Host's state on the title, while it is not ready to run. */
-const hostNotReady = computed(() => {
-  const host = props.primaryHost
-  return host && host.state !== 'online' ? host : null
+/** The primary device's state on the title, while it is not ready to run. */
+const deviceNotReady = computed(() => {
+  const device = props.primaryDevice
+  return device && device.state !== 'online' ? device : null
 })
 /**
  * On a phone, a rename asks in a dialog, as a phone's own apps do. The bar has
@@ -858,9 +858,9 @@ watch(
         @click="titleSheetOpen = true"
       >
         <StatusDot
-          v-if="hostNotReady"
-          :tone="DEVICE_STATE_TONE[hostNotReady.state]"
-          :label="t('session.hostState', { name: hostNotReady.name, state: DEVICE_STATE_LABEL[hostNotReady.state].toLowerCase() })"
+          v-if="deviceNotReady"
+          :tone="DEVICE_STATE_TONE[deviceNotReady.state]"
+          :label="t('session.deviceState', { name: deviceNotReady.name, state: DEVICE_STATE_LABEL[deviceNotReady.state].toLowerCase() })"
         />
         <h1 class="min-w-0 truncate text-[15px] font-medium">{{ shownTitle }}</h1>
         <ChevronDown :size="ICON_PX.in20" class="shrink-0 text-fg-subtle" />

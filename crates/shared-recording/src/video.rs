@@ -102,7 +102,7 @@ impl Part {
 /// What a video asks for.
 pub(crate) struct Video<'a> {
     pub parts: &'a [Part],
-    /// The coder's library, none on a Host that cannot load it.
+    /// The coder's library, none on a device that cannot load it.
     pub load: Option<&'a Load>,
     /// Whether it draws the inputs and the notes.
     pub drawn: bool,
@@ -225,7 +225,7 @@ fn write_drawn(
     over: Over,
     load: &Load,
 ) -> Result<Written, Error> {
-    // A library that cannot load is the Host's, which an export without
+    // A library that cannot load is the device's, which an export without
     // drawing does without.
     load().map_err(|error| Error::Unavailable(error.to_string()))?;
     let mut caption = Caption::new();

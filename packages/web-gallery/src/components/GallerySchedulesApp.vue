@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
-import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { MenuDevice } from '@demicodes/web-ui/targets/types'
 import type { SidebarConversation } from '@demicodes/web-ui/sidebar/types'
 import { GALLERY_MARKS } from '../fixtures/device-marks'
 import { schedulesOfConversations, switched, wokenConversations } from '../fixtures/schedules'
@@ -30,8 +30,8 @@ const projects = ref(demoProjects())
 const activeId = ref(props.start)
 const sidebarOpen = ref(false)
 
-/** Where each woken conversation runs, which its header's Host button shows. */
-const HOSTS: Record<string, HostMenuHost> = {
+/** Where each woken conversation runs, which its header's Device button shows. */
+const DEVICES: Record<string, MenuDevice> = {
   'c-price-watch': { id: 'mac', name: 'MacBook Pro', kind: 'device', state: 'online', mark: GALLERY_MARKS.mac },
   'c-cloud-orders': { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null },
 }
@@ -95,7 +95,7 @@ function remove(id: string): void {
         :key="activeId"
         :title="title"
         :schedules="schedules[activeId] ?? []"
-        :host="HOSTS[activeId]!"
+        :device="DEVICES[activeId]!"
         @pause-schedule="pause"
         @delete-schedule="remove"
       />

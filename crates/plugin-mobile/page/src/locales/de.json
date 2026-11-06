@@ -42,7 +42,7 @@
   "failures": {
     "control": "Der Simulator konnte das nicht ausführen",
     "save": "Datei konnte nicht gespeichert werden",
-    "hostFilesUnreachable": "Die Dateien des Geräts sind gerade nicht erreichbar."
+    "deviceFilesUnreachable": "Die Dateien des Geräts sind gerade nicht erreichbar."
   },
   "reasons": {
     "invalid_input": "Der Simulator kann das nicht annehmen.",
@@ -68,13 +68,13 @@
     "conversation_not_found": "Dieser Chat existiert nicht mehr.",
     "conversation_archived": "Dieser Chat ist archiviert.",
     "conversation_busy": "Der Chat ist beschäftigt. Versuche es gleich noch einmal.",
-    "host_stopped": "Das Gerät ist gestoppt.",
+    "device_stopped": "Das Gerät ist gestoppt.",
     "device_offline": "Das Gerät ist offline.",
     "cloud_unavailable": "Die Cloud ist gerade nicht verfügbar.",
     "cloud_resetting": "Die Cloud wird zurückgesetzt.",
     "cloud_capacity": "In der Cloud ist gerade kein Platz.",
     "cloud_crash_loop": "Die Cloud stoppt immer wieder.",
-    "host_operation_failed": "Das Gerät konnte das nicht ausführen.",
+    "device_operation_failed": "Das Gerät konnte das nicht ausführen.",
     "unknown_plugin_method": "Diese Seite ist veraltet. Lade sie neu.",
     "plugin_disabled": "Simulatoren sind deaktiviert."
   },

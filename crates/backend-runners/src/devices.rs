@@ -2,7 +2,7 @@
 //!
 //! Each device has one slot holding its connection, `Online` with the
 //! connection's link or `Offline` with the account its runner last reported,
-//! and every Host handle of the device watches that slot. A device holds one
+//! and every device handle of the device watches that slot. A device holds one
 //! live connection: a new hello with its token is refused while the held
 //! connection answers its ping, and adopted once a silent one finished tearing
 //! down.
@@ -21,8 +21,8 @@
 //!                         └── time is up  ──▶ offline, announced
 //! ```
 //!
-//! A Host handle is made here only for one of the ways to a Host
-//! (`crates/backend-host-access/src/lib.rs`):
+//! A device handle is made here only for one of the ways to a device
+//! (`crates/backend-device-access/src/lib.rs`):
 //!
 //! - A conversation's, against a lease of its file gate.
 //! - Device access, while the runner is connected.
@@ -40,11 +40,11 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::devices::{DeviceRecord, FirstHome};
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_runner_client::{
-    Admission, DeviceJobs, DeviceLink, DeviceSession, Link, LinkDriver, LinkEnd, RemoteHost, close_frame,
+    Admission, DeviceJobs, DeviceLink, DeviceSession, Link, LinkDriver, LinkEnd, RemoteDevice, close_frame,
     socket_frame,
 };
-use demi_host_interface::{HostIdentity, HostKey};
-use demi_runner_protocol::wire::{self, AutostartUnavailable, HostArtifact, Inbound, OperatingSystem};
+use demi_device_interface::{DeviceIdentity, DeviceKey};
+use demi_runner_protocol::wire::{self, AutostartUnavailable, DeviceArtifact, Inbound, OperatingSystem};
 use demi_runner_protocol::values::BackendUrl;
 use demi_web_api_protocol::devices::{DeviceDto, DeviceKind, DeviceLogo, DeviceMark, DeviceState};
 use demi_web_api_protocol::ids::{DeviceId, UserId};
@@ -55,7 +55,7 @@ use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
 
 use crate::file_gate::FileLease;
-use crate::host_key::{HostOwner, host_key};
+use crate::device_key::{DeviceOwner, device_key};
 use crate::install::start_command;
 
 /// Why a revoked device's connection ended.
@@ -172,7 +172,7 @@ impl Return {
     }
 }
 
-/// One device's connection, which its Hosts watch, and its jobs, which
+/// One device's connection, which its devices watch, and its jobs, which
 /// outlive each connection.
 struct DeviceSlot {
     link: watch::Sender<DeviceLink>,
@@ -250,7 +250,7 @@ impl Updating {
         let downloaded = self.downloaded.get();
         tracing::info!(
             event = "runner_update.ended",
-            host_id = %device,
+            device_id = %device,
             outcome,
             update_ms = millis(self.began.elapsed()),
             bytes = downloaded.map(|downloaded| downloaded.bytes),
@@ -309,7 +309,7 @@ impl DeviceSlot {
 
     /// The account the device's runner reports now, or reported when it was
     /// last connected.
-    fn identity(&self) -> Option<HostIdentity> {
+    fn identity(&self) -> Option<DeviceIdentity> {
         match &*self.link.borrow() {
             DeviceLink::Online(link) => Some(link.identity().clone()),
             DeviceLink::Offline { last } => last.clone(),
@@ -366,7 +366,7 @@ impl DeviceSlot {
     /// serves it already; unless the backend ended it, the device is
     /// returning for `wait`, whose end `marks` announces. Answers the state
     /// the device is in then: none when a newer connection serves it.
-    fn went_offline(&self, link: &Link, identity: HostIdentity, wait: Duration, marks: &UserMarks) -> Option<&'static str> {
+    fn went_offline(&self, link: &Link, identity: DeviceIdentity, wait: Duration, marks: &UserMarks) -> Option<&'static str> {
         let ended = self.link.send_if_modified(|current| {
             let ended = matches!(current, DeviceLink::Online(current) if current == link);
             if ended {
@@ -496,7 +496,7 @@ impl Devices {
         if to != from {
             tracing::info!(
                 event = "link.state_changed",
-                host_id = %device,
+                device_id = %device,
                 from,
                 to,
                 cause = "update_sent",
@@ -647,8 +647,8 @@ impl Devices {
     pub async fn settled(&self, device: &DeviceId) {
         if let Some(waited) = self.slot(device).settled().await {
             tracing::info!(
-                event = "host_wait.ended",
-                host_id = %device,
+                event = "device_wait.ended",
+                device_id = %device,
                 what = "settle",
                 waited_ms = millis(waited),
                 outcome = "ready",
@@ -668,75 +668,75 @@ impl Devices {
         identity.map(|identity| identity.home_dir)
     }
 
-    /// A Host on the device, which serves whenever the device's runner is
+    /// A device on the device, which serves whenever the device's runner is
     /// connected.
-    fn host(
+    fn device(
         &self,
         device: &DeviceId,
-        key: HostKey,
+        key: DeviceKey,
         cwd: String,
         admission: Admission,
-    ) -> RemoteHost {
+    ) -> RemoteDevice {
         let slot = self.slot(device);
-        RemoteHost::new(key, cwd, slot.link.subscribe(), slot.jobs.clone(), admission)
+        RemoteDevice::new(key, cwd, slot.link.subscribe(), slot.jobs.clone(), admission)
     }
 
-    /// The conversation's Host on the device, starting work in `cwd`, for
+    /// The conversation's device on the device, starting work in `cwd`, for
     /// the operation that holds `files`, a lease of the conversation's file
-    /// gate (`crates/backend-host-access/src/access.rs`): the handle is the
+    /// gate (`crates/backend-device-access/src/access.rs`): the handle is the
     /// conversation's the lease names.
-    pub fn conversation_host(
+    pub fn conversation_device(
         &self,
         device: &DeviceId,
         files: &FileLease,
         cwd: String,
         admission: Admission,
-    ) -> RemoteHost {
-        let key = host_key(device, HostOwner::Conversation(files.conversation()), &cwd);
-        self.host(device, key, cwd, admission)
+    ) -> RemoteDevice {
+        let key = device_key(device, DeviceOwner::Conversation(files.conversation()), &cwd);
+        self.device(device, key, cwd, admission)
     }
 
-    /// The conversation's Host on the device for taking up the commands its
+    /// The conversation's device on the device for taking up the commands its
     /// agents ran there, which holds no lease of the conversation's file gate
-    /// and waits for nothing: its key is the one [`Self::conversation_host`]
+    /// and waits for nothing: its key is the one [`Self::conversation_device`]
     /// makes, so the commands taken up belong to the node's environment for
-    /// the conversation's Host.
-    pub fn adopting_host(
+    /// the conversation's device.
+    pub fn adopting_device(
         &self,
         device: &DeviceId,
         conversation: &demi_web_api_protocol::ids::ConversationId,
         cwd: String,
         admission: Admission,
-    ) -> RemoteHost {
-        let key = host_key(device, HostOwner::Conversation(conversation), &cwd);
-        self.host(device, key, cwd, admission)
+    ) -> RemoteDevice {
+        let key = device_key(device, DeviceOwner::Conversation(conversation), &cwd);
+        self.device(device, key, cwd, admission)
     }
 
-    /// Machine access (`crates/backend-host-access/src/lib.rs`): the
-    /// Cloud's Host starting in `home`, whose operations take `admission`,
+    /// Machine access (`crates/backend-device-access/src/lib.rs`): the
+    /// Cloud's device starting in `home`, whose operations take `admission`,
     /// the Cloud's; it touches no conversation's files.
-    pub fn machine_host(
+    pub fn machine_device(
         &self,
         device: &DeviceId,
         home: String,
         admission: Admission,
-    ) -> RemoteHost {
-        let key = host_key(device, HostOwner::MachineAccess, &home);
-        self.host(device, key, home, admission)
+    ) -> RemoteDevice {
+        let key = device_key(device, DeviceOwner::MachineAccess, &home);
+        self.device(device, key, home, admission)
     }
 
-    /// Device access (`crates/backend-host-access/src/lib.rs`): the
-    /// device's Host for work that touches no conversation's files, while
+    /// Device access (`crates/backend-device-access/src/lib.rs`): the
+    /// device's device for work that touches no conversation's files, while
     /// its runner is connected, once a returning device's runner is back.
     /// It takes nothing and wakes nothing.
-    pub async fn device_access(&self, device: &DeviceId) -> Option<RemoteHost> {
+    pub async fn device_access(&self, device: &DeviceId) -> Option<RemoteDevice> {
         if !self.reached(device).await {
             return None;
         }
         Some(device_access(device, &self.slot(device)))
     }
 
-    /// Publishes a new connection of the device, which its Hosts may use at
+    /// Publishes a new connection of the device, which its devices may use at
     /// once: what they send waits in the connection's queue until it serves.
     /// `seen` records when the device was last seen, once the connection
     /// ends; its start is its caller's to record.
@@ -756,7 +756,7 @@ impl Devices {
         slot.publish(&link);
         tracing::info!(
             event = "link.state_changed",
-            host_id = %device,
+            device_id = %device,
             from,
             to = "online",
             cause = "hello",
@@ -919,11 +919,11 @@ pub struct Reported {
     pub target: Option<String>,
 }
 
-/// Device access (`crates/backend-host-access/src/lib.rs`) to `device`,
+/// Device access (`crates/backend-device-access/src/lib.rs`) to `device`,
 /// whose slot is `slot`.
-fn device_access(device: &DeviceId, slot: &DeviceSlot) -> RemoteHost {
-    let key = host_key(device, HostOwner::DeviceAccess, "/");
-    RemoteHost::new(key, "/".into(), slot.link.subscribe(), slot.jobs.clone(), Admission::Free)
+fn device_access(device: &DeviceId, slot: &DeviceSlot) -> RemoteDevice {
+    let key = device_key(device, DeviceOwner::DeviceAccess, "/");
+    RemoteDevice::new(key, "/".into(), slot.link.subscribe(), slot.jobs.clone(), Admission::Free)
 }
 
 /// A runner's socket as the edge accepted it, with whether its writes move,
@@ -958,7 +958,7 @@ impl std::ops::DerefMut for RunnerSocket {
 pub struct Serving {
     slot: Rc<DeviceSlot>,
     device: DeviceId,
-    identity: HostIdentity,
+    identity: DeviceIdentity,
     link: Link,
     driver: LinkDriver,
     seen: DeviceRecorder,
@@ -970,9 +970,9 @@ pub struct Serving {
 }
 
 impl Serving {
-    /// Device access (`crates/backend-host-access/src/lib.rs`) over the
+    /// Device access (`crates/backend-device-access/src/lib.rs`) over the
     /// device's connections, this one first.
-    pub fn device_access(&self) -> RemoteHost {
+    pub fn device_access(&self) -> RemoteDevice {
         device_access(&self.device, &self.slot)
     }
 
@@ -1037,14 +1037,14 @@ impl Serving {
             // log names its type, never its content.
             LinkEnd::Refused(reason) => tracing::warn!(
                 event = "message.refused",
-                host_id = %device,
+                device_id = %device,
                 direction = "from_runner",
                 kind = wire::refused_kind(reason),
                 "a message of the runner could not be decoded"
             ),
             LinkEnd::RunnerRefused(reason) => tracing::warn!(
                 event = "message.refused",
-                host_id = %device,
+                device_id = %device,
                 direction = "to_runner",
                 kind = wire::refused_kind(reason),
                 "the runner could not decode a message of the backend"
@@ -1073,7 +1073,7 @@ impl Serving {
         let to = to.unwrap_or("online");
         let wait_ms = (to == "tolerating").then(|| millis(wait));
         // A refusal is logged as `message.refused` above, with the message's type.
-        tracing::info!(event = "link.state_changed", host_id = %device, from = "online", to, cause, reason = reason.as_str(), session_ms, wait_ms, "a runner's connection ended");
+        tracing::info!(event = "link.state_changed", device_id = %device, from = "online", to, cause, reason = reason.as_str(), session_ms, wait_ms, "a runner's connection ended");
         seen.touch(device).await;
     }
 }
@@ -1129,12 +1129,12 @@ impl DeviceRecorder {
         {
             Ok(first) => first,
             Err(error) => {
-            // The agent's context block names the Host without its system,
+            // The agent's context block names the device without its system,
             // or with the one recorded before, and Settings shows the device
             // without them, until the next hello records them; a node that
             // read the context before reads no new block until another
             // change advances it.
-            tracing::warn!(event = "device_hello.record_failed", host_id = %device, what = "os_release", error = &error as &dyn std::error::Error, "operating system and runner release not recorded");
+            tracing::warn!(event = "device_hello.record_failed", device_id = %device, what = "os_release", error = &error as &dyn std::error::Error, "operating system and runner release not recorded");
                 None
             }
         };
@@ -1162,7 +1162,7 @@ impl DeviceRecorder {
             // The home stays unrecorded, so the runner's next hello settles
             // it again.
             Err(error) => {
-                tracing::warn!(event = "device_hello.record_failed", host_id = %device, what = "first_home", error = &error as &dyn std::error::Error, "first home not recorded");
+                tracing::warn!(event = "device_hello.record_failed", device_id = %device, what = "first_home", error = &error as &dyn std::error::Error, "first home not recorded");
             }
         }
     }
@@ -1171,17 +1171,17 @@ impl DeviceRecorder {
     pub async fn touch(&self, device: DeviceId) {
         if let Err(error) = self.control.touch_device_seen(device.clone()).await {
             // The time is shown to the user and decides nothing.
-            tracing::warn!(event = "device_hello.record_failed", host_id = %device, what = "last_seen", error = &error as &dyn std::error::Error, "last-seen time not recorded");
+            tracing::warn!(event = "device_hello.record_failed", device_id = %device, what = "last_seen", error = &error as &dyn std::error::Error, "last-seen time not recorded");
         }
         self.marks.mark(Part::Devices);
     }
 
     /// Records that `device`'s artifact cache holds `artifacts`.
-    pub async fn installed(&self, device: DeviceId, artifacts: Vec<HostArtifact>) {
+    pub async fn installed(&self, device: DeviceId, artifacts: Vec<DeviceArtifact>) {
         if let Err(error) = self.control.set_device_installed(device.clone(), artifacts).await {
             // The list is shown to the user and offered to plugins; the next
             // report records it again.
-            tracing::warn!(event = "device_hello.record_failed", host_id = %device, what = "artifacts", error = &error as &dyn std::error::Error, "installed artifacts not recorded");
+            tracing::warn!(event = "device_hello.record_failed", device_id = %device, what = "artifacts", error = &error as &dyn std::error::Error, "installed artifacts not recorded");
         }
         self.marks.mark(Part::Devices);
     }

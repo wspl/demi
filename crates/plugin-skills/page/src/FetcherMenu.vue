@@ -13,7 +13,7 @@ import type { SettingsSkillDevice } from './types'
  * What fetches a source: the server, or one of the user's paired devices,
  * which fetches with its own git, keys and network.
  *
- * Its devices are drawn as every device menu draws them (`hosts/HostChoices.vue`):
+ * Its devices are drawn as every device menu draws them (`targets/DeviceChoices.vue`):
  * the device's mark with its state, its name, and at the row's end its state
  * when it is not online or a download moves. An offline device is listed but
  * cannot be chosen until it is back. The trigger shows the choice's icon too:

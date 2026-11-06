@@ -1,4 +1,4 @@
-//! Files on a Host: directory listings, file text, and a conversation's
+//! Files on a device: directory listings, file text, and a conversation's
 //! working tree.
 
 pub use demi_runner_protocol::files::{
@@ -19,8 +19,8 @@ use crate::ids::DeviceId;
 use crate::query::StrictBool;
 
 /// One subscription a page asks of a conversation's file watch, under a
-/// key of its own: a [`PageSubscription`], on the attached host `host`
-/// names, or on the conversation's primary Host without one.
+/// key of its own: a [`PageSubscription`], on the attached device `device`
+/// names, or on the conversation's primary device without one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationSubscription {
@@ -38,25 +38,25 @@ pub struct ConversationSubscription {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "DeviceId")]
     #[garde(skip)]
-    pub host: Option<DeviceId>,
+    pub device: Option<DeviceId>,
 }
 
 impl ConversationSubscription {
-    /// The host it names, and the subscription as that Host's watch takes it.
+    /// The device it names, and the subscription as that device's watch takes it.
     pub fn into_parts(self) -> (Option<DeviceId>, PageSubscription) {
         let Self {
             key,
             kind,
             path,
             suffix,
-            host,
+            device,
         } = self;
-        (host, PageSubscription { key, kind, path, suffix })
+        (device, PageSubscription { key, kind, path, suffix })
     }
 }
 
 impl From<FileWatchRequest> for ConversationWatchRequest {
-    /// A watch of one Host's message, whose subscriptions name no host.
+    /// A watch of one device's message, whose subscriptions name no device.
     fn from(request: FileWatchRequest) -> Self {
         match request {
             FileWatchRequest::Subscribe { subscriptions } => Self::Subscribe {
@@ -67,7 +67,7 @@ impl From<FileWatchRequest> for ConversationWatchRequest {
                         kind,
                         path,
                         suffix,
-                        host: None,
+                        device: None,
                     })
                     .collect(),
             },
@@ -79,7 +79,7 @@ impl From<FileWatchRequest> for ConversationWatchRequest {
 
 /// A message the page sends on a conversation's file watch, a `file_watch`
 /// lane: a [`FileWatchRequest`] whose
-/// subscriptions may name an attached host.
+/// subscriptions may name an attached device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ConversationWatchRequest {
@@ -88,7 +88,7 @@ pub enum ConversationWatchRequest {
         #[garde(length(max = MAX_PAGE_SUBSCRIPTIONS), dive)]
         subscriptions: Vec<ConversationSubscription>,
     },
-    /// Subscriptions the page no longer holds, on whichever host.
+    /// Subscriptions the page no longer holds, on whichever device.
     Unsubscribe {
         #[garde(length(max = MAX_PAGE_SUBSCRIPTIONS))]
         keys: Vec<String>,
@@ -100,8 +100,8 @@ pub enum ConversationWatchRequest {
     },
 }
 
-/// `{ path, home, entries }`: a directory as a Host lists it. `home` is the
-/// Host's home directory, null while it is unknown.
+/// `{ path, home, entries }`: a directory as a device lists it. `home` is the
+/// device's home directory, null while it is unknown.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Directory {
     pub path: String,
@@ -112,7 +112,7 @@ pub struct Directory {
 }
 
 /// `POST .../fs/lists { paths }`: directories to list together, as one request
-/// to the backend, which reads them from the Host side by side.
+/// to the backend, which reads them from the device side by side.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct DirectoryLists {
@@ -120,7 +120,7 @@ pub struct DirectoryLists {
     pub paths: Vec<String>,
 }
 
-/// What the Host answered for one of the directories of a [`DirectoryLists`]:
+/// What the device answered for one of the directories of a [`DirectoryLists`]:
 /// the listing, as `GET .../fs` answers it with its header `X-Demi-Read-At`, or
 /// the refusal that route would have answered with.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -132,7 +132,7 @@ pub enum ListedDirectory {
         #[schemars(with = "Nullable<String>")]
         home: Option<String>,
         entries: Vec<DirectoryEntry>,
-        /// The Host's number before it listed, as `<epoch>.<number>`.
+        /// The device's number before it listed, as `<epoch>.<number>`.
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
         read_at: Option<String>,
@@ -152,7 +152,7 @@ pub struct ListedDirectories {
 
 /// `POST .../fs/search`: a search of the text of the files under `root`, the
 /// conversation's working directory without one. The answer is the search's
-/// lines, one [`SearchLine`] of JSON per line, as the Host finds them.
+/// lines, one [`SearchLine`] of JSON per line, as the device finds them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct SearchRequest {
@@ -172,7 +172,7 @@ pub struct HtmlRequest {
 }
 
 /// Where the HTML file loads, under `/api/html/`: the session's token for the
-/// conversation, then the names of the file's path from its Host's root.
+/// conversation, then the names of the file's path from its device's root.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HtmlUrl {
@@ -227,8 +227,8 @@ pub struct ChangeSides {
     pub modified: String,
 }
 
-/// A path on a Host that names its root: `/…` on Unix, `C:\…` on Windows.
-/// The Host decides what it names, so the meaning never depends on where a
+/// A path on a device that names its root: `/…` on Unix, `C:\…` on Windows.
+/// The device decides what it names, so the meaning never depends on where a
 /// runner stands.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(try_from = "String")]
@@ -248,15 +248,15 @@ impl TryFrom<String> for AbsolutePath {
         if Utf8TypedPath::derive(&path).is_absolute() {
             Ok(Self(path))
         } else {
-            Err("path must be an absolute path on the Host")
+            Err("path must be an absolute path on the device")
         }
     }
 }
 
-/// A path on a Host from its root, as an [`AbsolutePath`] is, or from its
-/// home: `~` or `~/…`, which the Host's home reads. Neither depends on where
-/// a runner stands. `/` separates on every Host, so `~/` is the one form
-/// from the home a path of any Host takes.
+/// A path on a device from its root, as an [`AbsolutePath`] is, or from its
+/// home: `~` or `~/…`, which the device's home reads. Neither depends on where
+/// a runner stands. `/` separates on every device, so `~/` is the one form
+/// from the home a path of any device takes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(try_from = "String")]
 #[schemars(with = "String")]
@@ -276,7 +276,7 @@ impl TryFrom<String> for RootedPath {
         if from_home || Utf8TypedPath::derive(&path).is_absolute() {
             Ok(Self(path))
         } else {
-            Err("path must be an absolute path on the Host or one from ~")
+            Err("path must be an absolute path on the device or one from ~")
         }
     }
 }
@@ -308,7 +308,7 @@ impl TryFrom<String> for TreePath {
     }
 }
 
-/// `?path=` naming a directory to list: the Host's starting directory when
+/// `?path=` naming a directory to list: the device's starting directory when
 /// omitted. Queries are the backend's alone and are not emitted.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 pub struct DirectoryQuery {
@@ -367,7 +367,7 @@ pub struct RepositoriesRequest {
 }
 
 /// `?directory=` of the working tree's changes list: the working tree's
-/// root on the primary Host, the conversation's execution directory when
+/// root on the primary device, the conversation's execution directory when
 /// omitted.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 pub struct ChangesQuery {

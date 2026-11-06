@@ -6,7 +6,7 @@
 //! - the declared operation;
 //! - two pipes: `input`, delivered to the invocation as input chunks when it
 //!   asks for them, and `output`, its standard output, which a one-shot call
-//!   has none of. Its standard error goes to the Host log.
+//!   has none of. Its standard error goes to the device log.
 //!
 //! The runner starts the invocation in the resident that holds the
 //! conversation's state, starting the resident when needed, and answers
@@ -83,7 +83,7 @@ pub struct ResidentStreams {
     bindings: Bindings,
     draining: CancellationToken,
     streams: TaskTracker,
-    /// Ends every open stream: cancelled by `close` and by the host
+    /// Ends every open stream: cancelled by `close` and by the device
     /// connection's shutdown.
     cancel: CancellationToken,
     /// Each stream's own token while it lasts, by its id, which
@@ -151,7 +151,7 @@ impl ResidentStreams {
             return Err(io::Error::other("not a resident_open request"));
         };
         if self.cancel.is_cancelled() {
-            return Err(io::Error::other("host connection closed"));
+            return Err(io::Error::other("device connection closed"));
         }
         let pipes = self.pipes.clone();
         let reply = self.control.clone();
@@ -482,7 +482,7 @@ impl OpenedStream {
     /// Carries the stream's bytes: `source`'s to the invocation as it asks
     /// for them, and its standard output to `uploads`, whose receiver ends
     /// cleanly only when the invocation completed; its standard error goes
-    /// to the Host's log. `cancelled` ends it, which resets the invocation.
+    /// to the device's log. `cancelled` ends it, which resets the invocation.
     pub async fn run(
         self,
         mut source: impl InputSource<Error = io::Error>,
@@ -550,7 +550,7 @@ impl OpenedStream {
 #[derive(Clone, Default)]
 struct Bindings(Arc<Mutex<HashMap<String, Bound>>>);
 
-/// The release a package is bound to, by its artifact for this host.
+/// The release a package is bound to, by its artifact for this device.
 struct Bound {
     digest: String,
     /// Empty until the stream that bound the release has taken its lease.
@@ -604,7 +604,7 @@ impl Bindings {
     }
 }
 
-/// Where one stream's lines go in the Host's log (`crates/runner/src/host_log.rs`):
+/// Where one stream's lines go in the device's log (`crates/runner/src/device_log.rs`):
 /// its invocation's standard error under the stream's own source, the
 /// runner's words about it under `runner`, both with its conversation.
 #[derive(Clone)]

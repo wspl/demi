@@ -428,7 +428,7 @@ pub(crate) fn interrupted_text(end: &CallEnd<'_>, command: Option<&CommandId>) -
         CallEnd::Shutdown => format!(
             "{reason} while this call watched command {command}, which keeps running and wakes you when it ends."
         ),
-        CallEnd::Crashed => format!("{reason}; command {command} keeps running if its Host kept it."),
+        CallEnd::Crashed => format!("{reason}; command {command} keeps running if its device kept it."),
         CallEnd::Failed(_) => unreachable!("answered above"),
     }
 }
@@ -1145,7 +1145,7 @@ impl SessionCore {
             _ => None,
         };
         // A turn waits for the model's answer from its start, through the
-        // hooks and the Host reads that build its request; a compaction
+        // hooks and the device reads that build its request; a compaction
         // alone asks for none.
         let waits = !matches!(kind, ActionKind::Compact { .. });
         let kind_name = kind.name();

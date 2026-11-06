@@ -32,7 +32,7 @@ import { operations } from '@demicodes/web-ui/ui/operations'
 import { providerOperation } from '@demicodes/web-ui/settings/provider-operations'
 import { DAY, HOUR, MINUTE, ahead } from '../fixtures/time'
 import { galleryDevices } from '../fixtures/devices'
-import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { MenuDevice } from '@demicodes/web-ui/targets/types'
 import type { SettingsDevice } from '@demicodes/web-ui/settings/types'
 import { HOUR_SECONDS, WEEK_SECONDS, windowNamed } from '../fixtures/usage-limits'
 
@@ -55,8 +55,8 @@ const s = computed(() => props.state)
 
 const ownDevices = galleryDevices().map((entry) => entry.device)
 
-/** The Hosts Connect Through offers: the Cloud, then the paired devices, one of them offline. */
-const hosts = computed<HostMenuHost[]>(() => [
+/** The devices Connect Through offers: the Cloud, then the paired devices, one of them offline. */
+const offered = computed<MenuDevice[]>(() => [
   { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null },
   ...(props.devices ?? ownDevices).map((device) => ({
     id: device.id,
@@ -245,7 +245,7 @@ function test(p: SettingsProviderEntry, accountId?: string) {
   void operations.start(
     providerOperation(p.id, accountId ? { kind: 'account', accountId, action: 'test' } : { kind: 'testing' }),
     () => slow(1200).then(() => {
-      const through = p.throughDevice ? hosts.value.find((host) => host.id === p.throughDevice) : null
+      const through = p.throughDevice ? offered.value.find((device) => device.id === p.throughDevice) : null
       if (through === undefined) {
         p.state = 'error'
         p.detail = 'The device this provider connects through was removed. Choose another in Connect Through.'
@@ -643,7 +643,7 @@ function closeLogin() {
     @remove="removeProvider"
     @sign-in="beginLogin"
     @test="test"
-    :hosts="hosts"
+    :devices="offered"
     @refresh="refresh"
     @refresh-usage="refreshUsage"
     @check-cli="checkCli"

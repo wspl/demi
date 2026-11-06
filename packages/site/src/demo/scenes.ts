@@ -9,7 +9,7 @@ import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { WorkflowChoice, WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
 import type { ConversationSchedule, ScheduleTask } from '@demicodes/web-ui/schedules/types'
 import type { ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
-import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { DeviceOption, MenuDevice } from '@demicodes/web-ui/targets/types'
 import { DEMOS, type DemoId, type Form } from '@/features'
 import type { Conversation, ShellStep } from './conversation'
 import clip1 from './assets/clip-1.mp4'
@@ -35,8 +35,8 @@ export interface Stage {
   conversation: Conversation
   work: GalleryWork
   form: Form
-  /** Where the conversation runs, which the header's host menu shows. */
-  hosts: DemoHosts
+  /** Where the conversation runs, which the header's device menu shows. */
+  devices: DemoDevices
   /** The schedules that wake the conversation, which its Scheduled chip counts. */
   schedules: Ref<readonly ConversationSchedule[]>
   /**
@@ -81,23 +81,23 @@ export interface Scene {
   schedules?: readonly ConversationSchedule[]
   /** The conversation's workflow, which its composer's Workflow menu names. */
   workflow?: { choice: WorkflowChoice; list: WorkflowList }
-  /** The user's paired devices, which the host menu lists after the Cloud; none by default. */
-  devices?: readonly HostDeviceOption[]
-  /** The Host the conversation runs on when the scene opens; the Cloud by default. */
-  primary?: HostMenuHost
+  /** The user's paired devices, which the device menu lists after the Cloud; none by default. */
+  devices?: readonly DeviceOption[]
+  /** The Device the conversation runs on when the scene opens; the Cloud by default. */
+  primary?: MenuDevice
   /** Whether the desktop shows the sidebar; collapsed, as the user may keep it, when the scene needs only the conversation. */
   sidebar?: boolean
   play(stage: Stage): Promise<void>
 }
 
-/** Where the conversation runs: its primary Host, and the devices its agents attached, as the header's host menu shows them. */
-export interface DemoHosts {
-  primary: HostMenuHost
-  attached: HostMenuHost[]
+/** Where the conversation runs: its primary device, and the devices its agents attached, as the header's device menu shows them. */
+export interface DemoDevices {
+  primary: MenuDevice
+  attached: MenuDevice[]
 }
 
 /** The Cloud, the user's own sandbox on their server. */
-export const CLOUD: HostMenuHost = { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null }
+export const CLOUD: MenuDevice = { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null }
 
 const MAC: DeviceMark = { logo: 'apple', number: null }
 
@@ -106,13 +106,13 @@ const MAC: DeviceMark = { logo: 'apple', number: null }
  * on, a Windows PC and a home lab server on the same network, and a VPS. Each
  * names the path this page reaches it by.
  */
-const MACBOOK: HostDeviceOption = { id: 'd-mbp', name: 'MacBook', state: 'online', mark: MAC, path: 'thisComputer' }
-const WINDOWS_PC: HostDeviceOption = { id: 'd-win', name: 'Windows PC', state: 'online', mark: { logo: 'windows', number: null }, path: 'localNetwork' }
-const VPS: HostDeviceOption = { id: 'd-vps', name: 'VPS', state: 'online', mark: { logo: 'ubuntu', number: null }, path: 'internet' }
-const HOME_LAB: HostDeviceOption = { id: 'd-home-lab', name: 'Home Lab', state: 'online', mark: { logo: 'debian', number: null }, path: 'localNetwork' }
+const MACBOOK: DeviceOption = { id: 'd-mbp', name: 'MacBook', state: 'online', mark: MAC, path: 'thisComputer' }
+const WINDOWS_PC: DeviceOption = { id: 'd-win', name: 'Windows PC', state: 'online', mark: { logo: 'windows', number: null }, path: 'localNetwork' }
+const VPS: DeviceOption = { id: 'd-vps', name: 'VPS', state: 'online', mark: { logo: 'ubuntu', number: null }, path: 'internet' }
+const HOME_LAB: DeviceOption = { id: 'd-home-lab', name: 'Home Lab', state: 'online', mark: { logo: 'debian', number: null }, path: 'localNetwork' }
 
-/** `device` as the host menu names a Host. */
-export function hostOf(device: HostDeviceOption): HostMenuHost {
+/** `device` as the device menu names a device. */
+export function deviceOf(device: DeviceOption): MenuDevice {
   return { id: device.id, name: device.name, kind: 'device', state: device.state, mark: device.mark }
 }
 
@@ -130,7 +130,7 @@ const AGENT_STEPS: readonly ({ part: RuntimePart; step: ShellStep } | 'compact')
   { part: 'programs', step: { description: 'Find the price math', script: 'rg -n "toFixed" src/pricing', output: 'src/pricing/total.ts:14:  return total.toFixed(1)\n', ms: 350 } },
   { part: 'browser', step: { description: 'Look at the pricing page', script: 'T=$(demi browser tab new) && demi browser open $T http://localhost:5173/pricing && demi browser screenshot $T | demi file view', ms: 450 } },
   { part: 'programs', step: { description: 'Round to cents', script: 'sed -i \'s/toFixed(1)/toFixed(2)/\' src/pricing/total.ts', files: [{ path: 'src/pricing/total.ts', added: 1, removed: 1 }], ms: 300 } },
-  { part: 'host', step: { description: 'Test on the Windows PC', script: 'demi host shell --host "Windows PC" "bun test pricing"', output: '24 pass\n', ms: 500 } },
+  { part: 'device', step: { description: 'Test on the Windows PC', script: 'demi device shell --device "Windows PC" "bun test pricing"', output: '24 pass\n', ms: 500 } },
   'compact',
   { part: 'agent', step: { description: 'Ask a reviewer', script: 'demi agent spawn --profile review --description "Review the rounding fix" < brief.md', output: 'No issues found.\n', ms: 500 } },
   { part: 'programs', step: { description: 'Ship it', script: 'git commit -am "Round prices to cents" && git push', output: 'main -> main\n', ms: 350 } },
@@ -201,7 +201,7 @@ export const PROJECTS: SidebarProject[] = [
   {
     id: 'p-tidepool',
     name: 'tidepool',
-    hostKind: 'device',
+    targetKind: 'device',
     device: { kind: 'paired', name: 'MacBook', state: 'online', mark: MAC },
     path: TIDEPOOL_PROJECT,
     savedScope: 'conversation',
@@ -210,7 +210,7 @@ export const PROJECTS: SidebarProject[] = [
   {
     id: 'p-shop',
     name: 'shop',
-    hostKind: 'device',
+    targetKind: 'device',
     device: { kind: 'paired', name: 'MacBook', state: 'online', mark: MAC },
     path: SHOP_PROJECT,
     savedScope: 'conversation',
@@ -219,7 +219,7 @@ export const PROJECTS: SidebarProject[] = [
   {
     id: 'p-notes',
     name: 'notes',
-    hostKind: 'cloud',
+    targetKind: 'cloud',
     path: '/home/demi/notes',
     savedScope: 'conversation',
     savedCount: 0,
@@ -284,9 +284,9 @@ function area(part: 'conversation' | 'steps' | 'later' | 'panel'): CameraRect {
   return { x: 0, y: 0, width, height: 614 }
 }
 
-export const MACBOOK_HOST = hostOf(MACBOOK)
-export const WINDOWS_PC_HOST = hostOf(WINDOWS_PC)
-export const ALL_DEVICES: readonly HostDeviceOption[] = [MACBOOK, WINDOWS_PC, HOME_LAB, VPS]
+export const MACBOOK_DEVICE = deviceOf(MACBOOK)
+export const WINDOWS_PC_DEVICE = deviceOf(WINDOWS_PC)
+export const ALL_DEVICES: readonly DeviceOption[] = [MACBOOK, WINDOWS_PC, HOME_LAB, VPS]
 
 export const SCENES: Record<DemoId, Scene> = {
   agent: {
@@ -331,7 +331,7 @@ export const SCENES: Record<DemoId, Scene> = {
     sidebar: false,
     cwd: '/home/demi',
     devices: [MACBOOK, WINDOWS_PC, HOME_LAB, VPS],
-    async play({ conversation: c, hosts, open, compose, card, schedules }) {
+    async play({ conversation: c, devices, open, compose, card, schedules }) {
       // One conversation on every device at once (`AnywhereStage.vue`): the
       // browser sends the task, the phone takes it over, the tablet joins
       // it as the browser goes, and the browser comes back to the result.
@@ -362,8 +362,8 @@ export const SCENES: Record<DemoId, Scene> = {
       await c.wait(900)
       await c.send('Summarize this week’s sales for the team update.')
       // Whichever device asks, the work runs on the machine it needs.
-      hosts.attached = [hostOf(VPS)]
-      await on('vps', c.shell({ description: 'Pull this week’s orders from the VPS', script: 'demi host shell --host VPS "psql shop -f weekly.sql"', output: '1,284 orders · $48,920\n', ms: 1100 }))
+      devices.attached = [deviceOf(VPS)]
+      await on('vps', c.shell({ description: 'Pull this week’s orders from the VPS', script: 'demi device shell --device VPS "psql shop -f weekly.sql"', output: '1,284 orders · $48,920\n', ms: 1100 }))
       // The phone comes in and takes over.
       at('phone')
       await c.say('This week: **1,284 orders** and **$48,920** in sales, up 12% on last week. Linens sold best.', 1200)
@@ -372,15 +372,15 @@ export const SCENES: Record<DemoId, Scene> = {
       await compose('Add a chart.', 350, 'phone')
       // The tablet comes in as the browser goes: the two work on together.
       at('both')
-      hosts.attached = [hostOf(VPS), hostOf(HOME_LAB)]
-      await on('home-lab', c.shell({ description: 'Draw the chart on the Home Lab', script: 'demi host shell --host "Home Lab" "python chart.py" > sales.png', ms: 1100 }))
+      devices.attached = [deviceOf(VPS), deviceOf(HOME_LAB)]
+      await on('home-lab', c.shell({ description: 'Draw the chart on the Home Lab', script: 'demi device shell --device "Home Lab" "python chart.py" > sales.png', ms: 1100 }))
       const chart = c.attach({ name: 'sales.png', mediaType: 'image/webp', url: salesChart, size: 21_000, width: 960, height: 600 })
       await c.say(`<attachment id="${chart}" />`, 300)
       c.done()
       await c.wait(500)
       await compose('Looks good. Post it to #team.', 500, 'tablet')
-      hosts.attached = [hostOf(VPS), hostOf(HOME_LAB), hostOf(MACBOOK)]
-      await on('macbook', c.shell({ description: 'Post it to #team from the MacBook', script: 'demi host shell --host MacBook "slack-post #team update.md"', ms: 900 }))
+      devices.attached = [deviceOf(VPS), deviceOf(HOME_LAB), deviceOf(MACBOOK)]
+      await on('macbook', c.shell({ description: 'Post it to #team from the MacBook', script: 'demi device shell --device MacBook "slack-post #team update.md"', ms: 900 }))
       await c.say('Posted to #team.', 400)
       c.done()
       await c.wait(900)
@@ -403,12 +403,12 @@ export const SCENES: Record<DemoId, Scene> = {
     title: 'Fix and ship the Windows-only failures',
     sidebar: false,
     cwd: SHOP_PROJECT,
-    primary: hostOf(MACBOOK),
+    primary: deviceOf(MACBOOK),
     devices: [MACBOOK, WINDOWS_PC, HOME_LAB, VPS],
-    async play({ conversation: c, hosts, open, look, shoot, compose }) {
+    async play({ conversation: c, devices, open, look, shoot, compose }) {
       c.asked('Run the end-to-end tests on every machine, and fix what fails.', 4000)
-      c.ran({ description: 'Attach the machines', script: 'demi host attach "Windows PC" "Home Lab" VPS', ms: 400 })
-      hosts.attached = [hostOf(WINDOWS_PC), hostOf(HOME_LAB), hostOf(VPS)]
+      c.ran({ description: 'Attach the machines', script: 'demi device attach "Windows PC" "Home Lab" VPS', ms: 400 })
+      devices.attached = [deviceOf(WINDOWS_PC), deviceOf(HOME_LAB), deviceOf(VPS)]
       await shown(c, '[data-block-id]')
       await open(area('steps'))
       // Every machine stands in the square beside the browser: the
@@ -437,9 +437,9 @@ export const SCENES: Record<DemoId, Scene> = {
       square()
       const tests = c.together([
         { description: 'Test on the MacBook', script: 'bun test e2e', output: '212 pass\n', ms: 1200 },
-        { description: 'Test on the Windows PC', script: 'demi host shell --host "Windows PC" "bun test e2e"', output: '209 pass\n3 fail\n', exitCode: 1, ms: 1700 },
-        { description: 'Test on the home lab', script: 'demi host shell --host "Home Lab" "bun test e2e"', output: '212 pass\n', ms: 1400 },
-        { description: 'Test on the VPS', script: 'demi host shell --host VPS "bun test e2e"', output: '212 pass\n', ms: 1550 },
+        { description: 'Test on the Windows PC', script: 'demi device shell --device "Windows PC" "bun test e2e"', output: '209 pass\n3 fail\n', exitCode: 1, ms: 1700 },
+        { description: 'Test on the home lab', script: 'demi device shell --device "Home Lab" "bun test e2e"', output: '212 pass\n', ms: 1400 },
+        { description: 'Test on the VPS', script: 'demi device shell --device VPS "bun test e2e"', output: '212 pass\n', ms: 1550 },
       ])
       c.after(1200, () => (lines['macbook'].push('212 pass'), square()))
       c.after(1400, () => (lines['home-lab'].push('212 pass'), square()))
@@ -458,7 +458,7 @@ export const SCENES: Record<DemoId, Scene> = {
       square([traces])
       await c.shell({
         description: 'Copy the failures’ traces here',
-        script: 'demi host shell --host "Windows PC" "tar c traces" | tar x',
+        script: 'demi device shell --device "Windows PC" "tar c traces" | tar x',
         ms: 2200,
       })
       active = ['macbook']
@@ -472,7 +472,7 @@ export const SCENES: Record<DemoId, Scene> = {
       c.done()
 
       // 3. The user heads out: the conversation moves to the VPS, and the MacBook can sleep.
-      const menu = await shown(c, '[data-host-menu]')
+      const menu = await shown(c, '[data-device-menu]')
       press(menu)
       const target = await shownText(c, '[role="menuitem"], [role="menuitemradio"]', VPS.name)
       await look(SCREEN.whole)
@@ -480,7 +480,7 @@ export const SCENES: Record<DemoId, Scene> = {
       const confirm = await shownText(c, '[role="button"], button', 'Move')
       await c.wait(400)
       press(confirm)
-      await until(c, () => hosts.primary.id === VPS.id)
+      await until(c, () => devices.primary.id === VPS.id)
       here = 'vps'
       square()
       await c.wait(600)
@@ -492,7 +492,7 @@ export const SCENES: Record<DemoId, Scene> = {
       lines['vps'].push('~/shop $ git pull')
       lines['windows-pc'].push('PS C:\\shop> bun test e2e')
       square()
-      await c.shell({ description: 'Retest on the Windows PC', script: 'demi host shell --host "Windows PC" "git pull && bun test e2e"', output: '212 pass\n', ms: 1500 })
+      await c.shell({ description: 'Retest on the Windows PC', script: 'demi device shell --device "Windows PC" "git pull && bun test e2e"', output: '212 pass\n', ms: 1500 })
       lines['windows-pc'].push('212 pass')
       active = ['vps', 'home-lab']
       lines['vps'].push('~/shop $ tar c dist')
@@ -501,7 +501,7 @@ export const SCENES: Record<DemoId, Scene> = {
       square([ship])
       await c.shell({
         description: 'Ship the build to the home lab',
-        script: 'tar c dist | demi host shell --host "Home Lab" "tar x -C /srv/shop"',
+        script: 'tar c dist | demi device shell --device "Home Lab" "tar x -C /srv/shop"',
         ms: 2200,
       })
       lines['home-lab'].push('live')
@@ -647,7 +647,7 @@ export const SCENES: Record<DemoId, Scene> = {
   hero: {
     title: HERO_TITLE,
     cwd: TIDEPOOL_PROJECT,
-    primary: hostOf(MACBOOK),
+    primary: deviceOf(MACBOOK),
     devices: [MACBOOK, WINDOWS_PC, VPS, HOME_LAB],
     schedules: [{
       id: 'sc-nightly',
@@ -686,7 +686,7 @@ export const SCENES: Record<DemoId, Scene> = {
  * notification; the tab opens again on the finished conversation, and the
  * stage ends on every machine at once.
  */
-async function release({ conversation: c, hosts, open, look, shoot, compose }: Stage): Promise<void> {
+async function release({ conversation: c, devices, open, look, shoot, compose }: Stage): Promise<void> {
   // Each shot holds about as long as the next, so none flashes by and none
   // lingers. At the desk the work goes back and forth between the Mac and the
   // Windows PC, twice; then the VPS, the VPS with the home lab, and the
@@ -708,15 +708,15 @@ async function release({ conversation: c, hosts, open, look, shoot, compose }: S
   mac.lines = ['% rg -n "join" src/paths.rs', 'src/paths.rs:42:  a + "/" + b']
   desk(mac)
   await c.shell({ description: 'Find where sync paths are joined', script: 'rg -n "join" src/paths.rs', output: 'src/paths.rs:42:  a + "/" + b\n', ms: 1100 })
-  await c.shell({ description: 'Attach the Windows PC and the VPS', script: 'demi host attach "Windows PC" && demi host attach VPS', ms: 300 })
-  hosts.attached = [hostOf(WINDOWS_PC), hostOf(VPS)]
+  await c.shell({ description: 'Attach the Windows PC and the VPS', script: 'demi device attach "Windows PC" && demi device attach VPS', ms: 300 })
+  devices.attached = [deviceOf(WINDOWS_PC), deviceOf(VPS)]
 
   // The Windows PC shows the bug.
   win.lines = ['PS C:\\tidepool> cargo test paths', 'test paths::join ... FAILED']
   desk(win)
   await c.shell({
     description: 'Reproduce the bug on the Windows PC',
-    script: 'demi host shell --host "Windows PC" "cargo test paths"',
+    script: 'demi device shell --device "Windows PC" "cargo test paths"',
     output: 'test paths::join ... FAILED\n',
     ms: 2900,
   })
@@ -744,7 +744,7 @@ async function release({ conversation: c, hosts, open, look, shoot, compose }: S
   desk(win)
   await c.shell({
     description: 'Run the tests on the Windows PC',
-    script: 'demi host shell --host "Windows PC" "git pull && cargo test"',
+    script: 'demi device shell --device "Windows PC" "git pull && cargo test"',
     output: 'test result: ok. 212 passed; 0 failed\n',
     ms: 2200,
   })
@@ -767,7 +767,7 @@ async function release({ conversation: c, hosts, open, look, shoot, compose }: S
   void look(null)
   const deploy = c.shell({
     description: 'Deploy v1.4.0 on the VPS',
-    script: 'demi host shell --host VPS "docker compose pull && docker compose up -d"',
+    script: 'demi device shell --device VPS "docker compose pull && docker compose up -d"',
     output: 'Container tidepool-server-1  Started\n',
     ms: 2200,
   })
@@ -779,8 +779,8 @@ async function release({ conversation: c, hosts, open, look, shoot, compose }: S
   vps.lines.push('✓ healthy · 1.4.0')
   vps.done = true
   away(vps)
-  await c.shell({ description: 'Attach the Home Lab', script: 'demi host attach "Home Lab"', ms: 1100 })
-  hosts.attached = [hostOf(WINDOWS_PC), hostOf(VPS), hostOf(HOME_LAB)]
+  await c.shell({ description: 'Attach the Home Lab', script: 'demi device attach "Home Lab"', ms: 1100 })
+  devices.attached = [deviceOf(WINDOWS_PC), deviceOf(VPS), deviceOf(HOME_LAB)]
 
   // The home lab comes up beside the VPS, takes its data, and updates.
   vps.lines.push('$ pg_dump tidepool')
@@ -788,7 +788,7 @@ async function release({ conversation: c, hosts, open, look, shoot, compose }: S
   away(vps, homeLab)
   await c.shell({
     description: 'Copy the database from the VPS to the Home Lab',
-    script: 'demi host shell --host VPS "pg_dump tidepool" | demi host shell --host "Home Lab" "psql tidepool"',
+    script: 'demi device shell --device VPS "pg_dump tidepool" | demi device shell --device "Home Lab" "psql tidepool"',
     ms: 1300,
   })
   vps.lines.push('✓ sent 48 MB')
@@ -797,7 +797,7 @@ async function release({ conversation: c, hosts, open, look, shoot, compose }: S
   away(vps, homeLab)
   await c.shell({
     description: 'Update the Home Lab',
-    script: 'demi host shell --host "Home Lab" "docker compose up -d && docker compose exec server tidepool migrate"',
+    script: 'demi device shell --device "Home Lab" "docker compose up -d && docker compose exec server tidepool migrate"',
     output: 'Applied 2 migrations\n',
     ms: 1000,
   })

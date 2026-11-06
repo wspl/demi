@@ -1,5 +1,5 @@
 //! The log: every line `DEMI_LOG` selects of the backend's, every line of each
-//! Host's runner and of each page, as a row of `log.sqlite` in the data directory, which whoever
+//! device's runner and of each page, as a row of `log.sqlite` in the data directory, which whoever
 //! diagnoses reads with `sqlite3` (`docs/delivery/diagnosis.md`).
 //!
 //! ```text
@@ -35,7 +35,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use demi_shared_types::log_layer::LineLayer;
-use demi_shared_types::{HostLogLine, LogLevel, LogLine, LogOrigin};
+use demi_shared_types::{DeviceLogLine, LogLevel, LogLine, LogOrigin};
 use tracing::Level;
 use tracing_subscriber::filter::Targets;
 
@@ -71,7 +71,7 @@ impl Default for Limits {
     }
 }
 
-/// One line as a row: the line, and its number in its Host's files for a
+/// One line as a row: the line, and its number in its device's files for a
 /// runner's.
 #[derive(Debug, Clone)]
 struct Row {
@@ -202,25 +202,25 @@ impl ServerLog {
         }
     }
 
-    /// Stores a runner's frame of lines as the Host `host_id`'s, which `owner`
+    /// Stores a runner's frame of lines as the device `device_id`'s, which `owner`
     /// owns; `missed` is the count of lines the runner no longer held.
     ///
-    /// A runner is a Host's program and may be wrong or hostile, so its lines
-    /// are the runner's, its Host's and its owner's, whatever they claim:
+    /// A runner is a device's program and may be wrong or hostile, so its lines
+    /// are the runner's, its device's and its owner's, whatever they claim:
     /// - the user is the owner, and a request, a turn or a page the line names
     ///   is not taken, since nothing here can check it;
-    ///   The follow resumes from the highest `seq` stored for the Host, so a
+    ///   The follow resumes from the highest `seq` stored for the device, so a
     ///   runner sends no line below it.
-    pub fn store_host(&self, host_id: &str, owner: &str, lines: Vec<HostLogLine>, missed: u64) {
+    pub fn store_device(&self, device_id: &str, owner: &str, lines: Vec<DeviceLogLine>, missed: u64) {
         if missed > 0 {
-            tracing::warn!(event = "log.missed", host_id, missed, "a runner no longer held lines of its log");
+            tracing::warn!(event = "log.missed", device_id, missed, "a runner no longer held lines of its log");
         }
         let Some(sink) = &self.sink else {
             return;
         };
-        for HostLogLine { seq, mut line } in lines {
+        for DeviceLogLine { seq, mut line } in lines {
             line.origin = LogOrigin::Runner;
-            line.host_id = Some(host_id.to_owned());
+            line.device_id = Some(device_id.to_owned());
             line.user_id = Some(owner.to_owned());
             line.request_id = None;
             line.page_id = None;
@@ -267,16 +267,16 @@ impl ServerLog {
         }
     }
 
-    /// The highest `seq` stored for the Host's runner lines; none for a Host
+    /// The highest `seq` stored for the device's runner lines; none for a device
     /// with no line, or a log not yet written.
-    pub async fn host_since(&self, host_id: &str) -> Option<u64> {
+    pub async fn device_since(&self, device_id: &str) -> Option<u64> {
         let path = self.path.clone();
-        let host = host_id.to_owned();
-        let read = tokio::task::spawn_blocking(move || store::last_seq(&path, &host)).await;
+        let device = device_id.to_owned();
+        let read = tokio::task::spawn_blocking(move || store::last_seq(&path, &device)).await;
         match read {
             Ok(Ok(seq)) => seq,
             Ok(Err(error)) => {
-                tracing::warn!(event = "log.since_failed", host_id, error = &error as &dyn std::error::Error, "a Host's last stored line could not be read");
+                tracing::warn!(event = "log.since_failed", device_id, error = &error as &dyn std::error::Error, "a device's last stored line could not be read");
                 None
             }
             Err(_) => None,

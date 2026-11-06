@@ -16,7 +16,7 @@
 //!
 //! An agent that needs a secret asks the user for it with `request` rather than
 //! reading it from the message, where it would sit in the transcript and reach
-//! the model's vendor. One it can reach on the Host, such as a key in a file,
+//! the model's vendor. One it can reach on the device, such as a key in a file,
 //! it pipes into `save`: never into an argument, since the shell expands it
 //! there and the permission card shows and stores the expanded command line.
 //! A save, a replacement of a saved one's values included, asks nothing
@@ -49,7 +49,7 @@ use std::rc::{Rc, Weak};
 use demi_backend_database::credentials::StoredCredential;
 use demi_backend_database::permissions::CredentialAsk;
 use demi_backend_permissions::{Answer, ask_credential, read_credential, save_credential};
-use demi_host_interface::{
+use demi_device_interface::{
     Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc,
 };
 use demi_shared_types::{
@@ -78,7 +78,7 @@ const CREDENTIALS_DESCRIPTION: &str = "Use Your Credentials lets the agents of t
 const SUMMARY: &str = "The user's credentials: named secrets such as API keys, tokens and passwords, each with fields. Ask the user for one, pass a field's value on without reading it, list and show them, or remove one. Every command needs the user's permission once for the conversation.";
 
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "The user's named secrets: request one on a card, or save one piped from the Host; read a field into a pipe or a file. A secret is asked for this way, never in the conversation. A reply shows one to the user with `<credential name=\"…\" />` on its own line, `field=\"…\"` naming one of several.";
+const ENTRY: &str = "The user's named secrets: request one on a card, or save one piped from the device; read a field into a pipe or a file. A secret is asked for this way, never in the conversation. A reply shows one to the user with `<credential name=\"…\" />` on its own line, `field=\"…\"` naming one of several.";
 
 const LIST_SUMMARY: &str = "List the user's credentials: name, field names and when each is removed (- for kept always). No value.";
 
@@ -86,7 +86,7 @@ const SHOW_SUMMARY: &str = "Show one credential: its fields, the values of its v
 
 const REQUEST_SUMMARY: &str = "Ask the user for a credential on a card in the conversation, or for new values of the saved one of that name, which then must have the same fields. Waits for the user's answer, however long, and prints what was saved, or fails when the user declines.";
 
-const SAVE_SUMMARY: &str = "Save a credential from values piped on standard input, which the model never reads, such as a key from a file on the Host, or new values of the saved one of that name, which then must have the same fields.";
+const SAVE_SUMMARY: &str = "Save a credential from values piped on standard input, which the model never reads, such as a key from a file on the device, or new values of the saved one of that name, which then must have the same fields.";
 
 const VALUES: &str = "Piped from a file or a command, never written in the command, which the transcript keeps: for one field, its value as it is, without one trailing newline; for several, one <field>=<value> line each.";
 
@@ -208,7 +208,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 )
                 .describe(
                     "field",
-                    "One field as <name>:<secret|visible>:<label>, such as token:secret:\"Personal access token\" or user:visible:\"User name\". A name is lowercase letters, digits, _ and -. A secret field is typed hidden and never listed; a visible one, such as a user name or a host, is shown as it is.",
+                    "One field as <name>:<secret|visible>:<label>, such as token:secret:\"Personal access token\" or user:visible:\"User name\". A name is lowercase letters, digits, _ and -. A secret field is typed hidden and never listed; a visible one, such as a user name or a device, is shown as it is.",
                 )
                 .describe("reason", "Why you ask, which the card shows the user and the credential keeps as its note.")
                 .describe("keep", "How long the credential is kept, which you decide by what it is for and the card tells the user: 1h (the default) for a secret used once, such as a key to add a provider; 1d or 30d for work that goes on that long; always for one the user wants you to keep using, which stays in Settings › Credentials.")

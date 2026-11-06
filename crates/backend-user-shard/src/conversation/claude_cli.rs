@@ -57,7 +57,7 @@ use demi_provider_registry::entry::ProviderEntry;
 use demi_provider_registry::registry::ProviderRegistry;
 use demi_web_api_protocol::ids::CredentialId;
 use demi_runner_client::{
-    AttachedArtifact, Link, RemoteHost, ResidentCallError, ResidentRequest, WeakLink,
+    AttachedArtifact, Link, RemoteDevice, ResidentCallError, ResidentRequest, WeakLink,
 };
 use demi_backend_runners::command_context::{command_context, provider_context};
 use demi_command_package_claude_code_protocol::{
@@ -66,8 +66,8 @@ use demi_command_package_claude_code_protocol::{
 use demi_command_protocol::{
     ArtifactLocation, ArtifactUrl, CommandCaller, CommandContext, PackageArtifact,
 };
-use demi_host_interface::{
-    FileContents, Host as _, HostError, HostErrorKind, MkdirOptions, Process, ProcessControl,
+use demi_device_interface::{
+    FileContents, Device as _, DeviceError, DeviceErrorKind, MkdirOptions, Process, ProcessControl,
     ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnError, SpawnErrorKind, WhenExists,
     WriteOptions,
 };
@@ -77,7 +77,7 @@ use demi_provider_claude_code::{
     close_process,
 };
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProviderId, UserId};
-use demi_runner_protocol::wire::HostDownload;
+use demi_runner_protocol::wire::DeviceDownload;
 use demi_shared_types::DownloadProgress;
 use demi_web_api_protocol::providers::CliInstall;
 use futures_util::future::{BoxFuture, LocalBoxFuture, Shared};
@@ -138,12 +138,12 @@ pub(crate) enum ProcessWork {
     Account(ProviderId),
 }
 
-/// The machine the CLI is wanted on: its device, a Host there, its home,
+/// The machine the CLI is wanted on: its device, a handle to it, its home,
 /// and the context the package's operations run under.
 #[derive(Clone)]
 struct CliTarget {
     device: DeviceId,
-    host: RemoteHost,
+    remote: RemoteDevice,
     home: String,
     context: CommandContext,
 }
@@ -445,9 +445,9 @@ struct Pipes {
 
 /// What the user's side asks of a relayed process.
 enum Order {
-    Write(Bytes, oneshot::Sender<Result<(), HostError>>),
-    CloseStdin(oneshot::Sender<Result<(), HostError>>),
-    Kill(Signal, oneshot::Sender<Result<(), HostError>>),
+    Write(Bytes, oneshot::Sender<Result<(), DeviceError>>),
+    CloseStdin(oneshot::Sender<Result<(), DeviceError>>),
+    Kill(Signal, oneshot::Sender<Result<(), DeviceError>>),
 }
 
 impl Pipes {
@@ -479,24 +479,24 @@ impl Pipes {
 struct RelayedControl(mpsc::UnboundedSender<Order>);
 
 impl RelayedControl {
-    async fn ask(&self, order: impl FnOnce(oneshot::Sender<Result<(), HostError>>) -> Order) -> Result<(), HostError> {
+    async fn ask(&self, order: impl FnOnce(oneshot::Sender<Result<(), DeviceError>>) -> Order) -> Result<(), DeviceError> {
         let (answer, answered) = oneshot::channel();
-        let gone = || HostError::new(HostErrorKind::Unavailable, "the process's relay ended");
+        let gone = || DeviceError::new(DeviceErrorKind::Unavailable, "the process's relay ended");
         self.0.send(order(answer)).map_err(|_| gone())?;
         answered.await.unwrap_or_else(|_| Err(gone()))
     }
 }
 
 impl ProcessControl for RelayedControl {
-    fn write_stdin(&self, bytes: Bytes) -> LocalBoxFuture<'_, Result<(), HostError>> {
+    fn write_stdin(&self, bytes: Bytes) -> LocalBoxFuture<'_, Result<(), DeviceError>> {
         Box::pin(self.ask(|answer| Order::Write(bytes, answer)))
     }
 
-    fn close_stdin(&self) -> LocalBoxFuture<'_, Result<(), HostError>> {
+    fn close_stdin(&self) -> LocalBoxFuture<'_, Result<(), DeviceError>> {
         Box::pin(self.ask(Order::CloseStdin))
     }
 
-    fn kill(&self, signal: Signal) -> LocalBoxFuture<'_, Result<(), HostError>> {
+    fn kill(&self, signal: Signal) -> LocalBoxFuture<'_, Result<(), DeviceError>> {
         Box::pin(self.ask(move |answer| Order::Kill(signal, answer)))
     }
 }
@@ -506,10 +506,10 @@ impl ProcessControl for RelayedControl {
 struct RelayedDir;
 
 impl ConfigDir for RelayedDir {
-    fn read<'a>(&'a self, name: &'a str) -> LocalBoxFuture<'a, Result<Bytes, HostError>> {
+    fn read<'a>(&'a self, name: &'a str) -> LocalBoxFuture<'a, Result<Bytes, DeviceError>> {
         Box::pin(async move {
-            Err(HostError::new(
-                HostErrorKind::Protocol,
+            Err(DeviceError::new(
+                DeviceErrorKind::Protocol,
                 format!("{name} of a relayed process is not read"),
             ))
         })
@@ -519,10 +519,10 @@ impl ConfigDir for RelayedDir {
         Box::pin(async {})
     }
 
-    fn adopt<'a>(self: Box<Self>, _: &'a str) -> LocalBoxFuture<'a, Result<(), HostError>> {
+    fn adopt<'a>(self: Box<Self>, _: &'a str) -> LocalBoxFuture<'a, Result<(), DeviceError>> {
         Box::pin(async {
-            Err(HostError::new(
-                HostErrorKind::Protocol,
+            Err(DeviceError::new(
+                DeviceErrorKind::Protocol,
                 "a relayed process has no sign-in to adopt",
             ))
         })
@@ -710,7 +710,7 @@ impl AccountGates {
             recursive: true,
             force: true,
         };
-        access.host.fs().rm(&directory, options).await.map_err(|error| {
+        access.remote.fs().rm(&directory, options).await.map_err(|error| {
             StartError(format!("The account's directory could not be deleted on Claude Code's machine: {error}"))
         })?;
         gate.removed.set(true);
@@ -811,8 +811,8 @@ impl MachinePlacement {
                 .map_err(StartError)?;
             lap(&mut steps.executable);
             stages(StartStage::Process);
-            let fs = access.host.fs();
-            let made = |what: &str, error: HostError| {
+            let fs = access.remote.fs();
+            let made = |what: &str, error: DeviceError| {
                 StartError(format!("Claude Code's {what} could not be made on its machine: {error}"))
             };
             let run_dir = format!("{}/run", access.home);
@@ -840,7 +840,7 @@ impl MachinePlacement {
                         .await
                         .map_err(|error| made("account's directory", error))?;
                     if let Some(handover) = handover {
-                        hand_over(&access.host, &account_dir, handover.files, &hold.gate)
+                        hand_over(&access.remote, &account_dir, handover.files, &hold.gate)
                             .await
                             .map_err(|error| made("handed-over sign-in", error))?;
                     }
@@ -849,7 +849,7 @@ impl MachinePlacement {
                     fs.mkdir(&path, MkdirOptions { recursive: true })
                         .await
                         .map_err(|error| made("process's directory", error))?;
-                    let dir = MachineDir::new(&self.shard, &access.host, path, None);
+                    let dir = MachineDir::new(&self.shard, &access.remote, path, None);
                     (account_dir, name, dir, Some(hold))
                 }
                 CliWork::Login => {
@@ -860,7 +860,7 @@ impl MachinePlacement {
                     fs.chmod(&path, 0o700)
                         .await
                         .map_err(|error| made("sign-in's directory", error))?;
-                    let dir = MachineDir::new(&self.shard, &access.host, path.clone(), Some(accounts));
+                    let dir = MachineDir::new(&self.shard, &access.remote, path.clone(), Some(accounts));
                     (path, "demi".to_owned(), dir, None)
                 }
             };
@@ -893,7 +893,7 @@ impl MachinePlacement {
             })?;
             lap(&mut steps.files);
             let process = access
-                .host
+                .remote
                 .process()
                 .spawn(spawn)
                 .await
@@ -922,7 +922,7 @@ impl MachinePlacement {
                     // A shard that is gone keeps nothing to drop.
                     if let (true, Some(shard)) = (gone, kept_by.upgrade()) {
                         shard.claude_cli().forget_versions(&device);
-                        tracing::info!(event = "claude_code_versions.dropped", host_id = %device, reason = "executable_gone", "the Claude Code versions kept for the device were dropped");
+                        tracing::info!(event = "claude_code_versions.dropped", device_id = %device, reason = "executable_gone", "the Claude Code versions kept for the device were dropped");
                     }
                     end
                 })
@@ -1011,13 +1011,13 @@ fn account_dir(accounts: &str, account: &str) -> Result<String, StartError> {
 /// in order, so the directory holds a sign-in only once every file is there. A
 /// handover that fails leaves no sign-in, and the record keeps it.
 async fn hand_over(
-    host: &RemoteHost,
+    device: &RemoteDevice,
     dir: &str,
     files: Vec<(String, Bytes)>,
     gate: &AccountGate,
-) -> Result<(), HostError> {
+) -> Result<(), DeviceError> {
     let _one = gate.handover.lock().await;
-    let fs = host.fs();
+    let fs = device.fs();
     let Some((sign_in, _)) = files.last() else {
         return Ok(());
     };
@@ -1063,7 +1063,7 @@ async fn hand_over(
 /// becomes an account's.
 struct MachineDir {
     shard: Weak<Shard>,
-    host: RemoteHost,
+    device: RemoteDevice,
     path: String,
     /// For a sign-in, the directory of accounts its directory joins when
     /// it succeeds.
@@ -1074,10 +1074,10 @@ struct MachineDir {
 }
 
 impl MachineDir {
-    fn new(shard: &Weak<Shard>, host: &RemoteHost, path: String, accounts: Option<String>) -> Self {
+    fn new(shard: &Weak<Shard>, device: &RemoteDevice, path: String, accounts: Option<String>) -> Self {
         Self {
             shard: shard.clone(),
-            host: host.clone(),
+            device: device.clone(),
             path,
             accounts,
             exit: None,
@@ -1086,9 +1086,9 @@ impl MachineDir {
     }
 
     /// Writes `files` into the directory, each at its path there.
-    async fn write(&self, files: Vec<(String, Bytes)>) -> Result<(), HostError> {
-        let fs = self.host.fs();
-        let paths = self.host.identity().paths;
+    async fn write(&self, files: Vec<(String, Bytes)>) -> Result<(), DeviceError> {
+        let fs = self.device.fs();
+        let paths = self.device.identity().paths;
         for (name, bytes) in files {
             // `name` is a path in the directory, written with `/`.
             let path = paths.join(&self.path, &name);
@@ -1105,7 +1105,7 @@ impl MachineDir {
     /// Removes the directory once its process ended.
     fn removal(&mut self) -> LocalBoxFuture<'static, ()> {
         self.removed = true;
-        let host = self.host.clone();
+        let device = self.device.clone();
         let path = self.path.clone();
         let exit = self.exit.take();
         Box::pin(async move {
@@ -1118,7 +1118,7 @@ impl MachineDir {
             };
             // A directory left behind is said here; the next sign-in or
             // process makes its own all the same.
-            if let Err(error) = host.fs().rm(&path, options).await {
+            if let Err(error) = device.fs().rm(&path, options).await {
                 tracing::warn!(event = "claude_code_dir.remove_failed", path, %error, "a Claude Code directory was not removed");
             }
         })
@@ -1126,28 +1126,28 @@ impl MachineDir {
 }
 
 impl ConfigDir for MachineDir {
-    fn read<'a>(&'a self, name: &'a str) -> LocalBoxFuture<'a, Result<Bytes, HostError>> {
-        Box::pin(async move { self.host.fs().read_file(&format!("{}/{name}", self.path)).await })
+    fn read<'a>(&'a self, name: &'a str) -> LocalBoxFuture<'a, Result<Bytes, DeviceError>> {
+        Box::pin(async move { self.device.fs().read_file(&format!("{}/{name}", self.path)).await })
     }
 
     fn remove(mut self: Box<Self>) -> LocalBoxFuture<'static, ()> {
         self.removal()
     }
 
-    fn adopt<'a>(mut self: Box<Self>, account: &'a str) -> LocalBoxFuture<'a, Result<(), HostError>> {
+    fn adopt<'a>(mut self: Box<Self>, account: &'a str) -> LocalBoxFuture<'a, Result<(), DeviceError>> {
         Box::pin(async move {
             let Some(accounts) = self.accounts.clone() else {
-                return Err(HostError::new(
-                    HostErrorKind::Protocol,
+                return Err(DeviceError::new(
+                    DeviceErrorKind::Protocol,
                     "only a sign-in's directory becomes an account's",
                 ));
             };
             let target = account_dir(&accounts, account)
-                .map_err(|error| HostError::new(HostErrorKind::Protocol, error.0))?;
+                .map_err(|error| DeviceError::new(DeviceErrorKind::Protocol, error.0))?;
             if let Some(exit) = self.exit.take() {
                 exit.await;
             }
-            let shutting_down = || HostError::new(HostErrorKind::Unavailable, "the backend is shutting down");
+            let shutting_down = || DeviceError::new(DeviceErrorKind::Unavailable, "the backend is shutting down");
             let gates = match self.shard.upgrade() {
                 Some(shard) => shard.claude_cli().gates.clone(),
                 None => return Err(shutting_down()),
@@ -1162,11 +1162,11 @@ impl ConfigDir for MachineDir {
             // even when the adoption is dropped: one cut between its steps
             // would leave the account without its directory.
             self.removed = true;
-            let host = self.host.clone();
+            let device = self.device.clone();
             let path = self.path.clone();
             let (done, changed) = oneshot::channel();
             shard.tasks().spawn_local(async move {
-                let fs = host.fs();
+                let fs = device.fs();
                 let options = RmOptions {
                     recursive: true,
                     force: true,
@@ -1291,7 +1291,7 @@ impl Drop for WaitingForVersions<'_> {
         {
             // Dropping the ask cancels its call to the machine.
             kept.remove(self.device);
-            tracing::info!(event = "claude_code_versions.ask_abandoned", host_id = %self.device, "the ask of the device's Claude Code versions was given up by every start that waited for it");
+            tracing::info!(event = "claude_code_versions.ask_abandoned", device_id = %self.device, "the ask of the device's Claude Code versions was given up by every start that waited for it");
         }
     }
 }
@@ -1332,7 +1332,7 @@ impl Shard {
             Some(path) => path,
             None => {
                 let path = access
-                    .host
+                    .remote
                     .fs()
                     .realpath(run_dir)
                     .await
@@ -1359,7 +1359,7 @@ impl Shard {
     ) -> Result<String, String> {
         let target = CliTarget {
             device: access.device.id.clone(),
-            host: access.host.clone(),
+            remote: access.remote.clone(),
             home: access.home.clone(),
             context: context.clone(),
         };
@@ -1452,7 +1452,7 @@ impl Shard {
         let mut kept = self.claude_cli().versions.borrow_mut();
         if let Some(kept) = kept.get(&target.device).filter(|kept| kept.link.is(link)) {
             if kept.versions.peek().is_none() {
-                tracing::info!(event = "claude_code_versions.ask_shared", host_id = %target.device, "a start shares the ask of the device's Claude Code versions under way");
+                tracing::info!(event = "claude_code_versions.ask_shared", device_id = %target.device, "a start shares the ask of the device's Claude Code versions under way");
             }
             return (kept.versions.clone(), kept.waiting.clone());
         }
@@ -1512,7 +1512,7 @@ impl Shard {
     pub(crate) fn cli_package_lost(&self, device: &DeviceId, lost: &Lost<'_>) {
         if matches!(lost, Lost::Every | Lost::Package(PACKAGE)) {
             self.claude_cli().forget_versions(device);
-            tracing::info!(event = "claude_code_versions.dropped", host_id = %device, reason = "package_lost", "the Claude Code versions kept for the device were dropped");
+            tracing::info!(event = "claude_code_versions.dropped", device_id = %device, reason = "package_lost", "the Claude Code versions kept for the device were dropped");
         }
     }
 
@@ -1520,7 +1520,7 @@ impl Shard {
     /// whoever noticed it first.
     ///
     /// Nothing waits for it: a failed update leaves the version in use, and the
-    /// next start notices the newer one again. Its Host admits each operation
+    /// next start notices the newer one again. Its device admits each operation
     /// without waking the machine, and shutdown cancels it.
     fn upgrade_cli(&self, target: CliTarget, release: Release) {
         if !self
@@ -1652,7 +1652,7 @@ impl Shard {
 /// the machine came, as its runner says in `downloads`.
 async fn reporting_download<T>(
     installing: impl Future<Output = T>,
-    mut downloads: tokio::sync::watch::Receiver<Vec<HostDownload>>,
+    mut downloads: tokio::sync::watch::Receiver<Vec<DeviceDownload>>,
     stages: &dyn Fn(StartStage),
 ) -> T {
     // A download under way, as one another start began, is reported first.
@@ -1775,7 +1775,7 @@ async fn call<T: DeserializeOwned>(
         attached,
     };
     let (output, exit) = match target
-        .host
+        .remote
         .call_resident(request, input, MAX_ANSWER_BYTES)
         .await
     {

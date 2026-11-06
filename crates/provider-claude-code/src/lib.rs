@@ -39,8 +39,8 @@
 //! process resumes a session written from it, so nothing depends on an earlier
 //! process or on files the machine kept.
 //!
-//! The crate depends on no agent crate, plugin or Host implementation: it runs
-//! the CLI through the `host-interface` process the placement answers, and
+//! The crate depends on no agent crate, plugin or device implementation: it runs
+//! the CLI through the `device-interface` process the placement answers, and
 //! which machine that is, is the backend's placement.
 
 mod account;

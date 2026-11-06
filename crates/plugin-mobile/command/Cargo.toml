@@ -28,7 +28,7 @@ demi-shared-h264 = { path = "../../shared-h264" }
 demi-shared-openh264 = { path = "../../shared-openh264" }
 demi-shared-recording = { path = "../../shared-recording" }
 demi-shared-recording-protocol = { path = "../../shared-recording-protocol" }
-demi-shared-cli = { path = "../../shared-cli", features = ["host-allocator"] }
+demi-shared-cli = { path = "../../shared-cli", features = ["device-allocator"] }
 demi-shared-types = { path = "../../shared-types" }
 base64.workspace = true
 futures-util.workspace = true

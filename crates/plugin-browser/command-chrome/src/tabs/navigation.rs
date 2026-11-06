@@ -655,7 +655,7 @@ pub async fn stop(tab: &BrowserTab, operation: &Operation<'_>) -> Result<TabMove
         .await?;
     // The page's loading ends only on a list numbered after the request. A
     // tab that had stopped loading already changes nothing that would number
-    // one, so the Host reads the list again.
+    // one, so the device reads the list again.
     tab.state.changes.send_modify(|revision| *revision += 1);
     Ok(TabMoved { list })
 }

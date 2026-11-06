@@ -14,7 +14,7 @@
 //! - The bytes of the wire are pinned at both ends by a golden corpus with one
 //!   message of every kind.
 //!
-//! The crate holds no network IO, Host implementation, shell environment, job
+//! The crate holds no network IO, device implementation, shell environment, job
 //! table, credentials, claim policy, device registry or conversation state.
 
 pub mod boot;

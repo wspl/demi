@@ -23,7 +23,7 @@ use std::{
 use demi_agent_session::{SessionEvent, Settle, Subscription};
 use demi_agent_store::media::HeldMedia;
 use demi_agent_store::{ClosePhase, NodeClose, NodeRecord, SideOf};
-use demi_agent_tools::HostResolver;
+use demi_agent_tools::DeviceResolver;
 use demi_agent_transcript::ForkEnd;
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
@@ -52,7 +52,7 @@ pub fn side_instruction(about_picture: bool) -> String {
     let subject = if about_picture { "the picture above" } else { "the words quoted above" };
     format!(
         "The user asks this aside from the conversation, about {subject}. Answer briefly, in a few sentences. \
-         Read and check what you need, but change nothing: write no file and run no command that changes the Host."
+         Read and check what you need, but change nothing: write no file and run no command that changes the device."
     )
 }
 
@@ -97,7 +97,7 @@ impl ClosedSide {
 }
 
 /// A live side question: its node, and what its supervision keeps.
-pub(crate) struct Side<H: HostResolver> {
+pub(crate) struct Side<H: DeviceResolver> {
     node: Rc<Node<H>>,
     /// Set in the one step that decides it closes; a follow-up after that
     /// step waits for the close and opens it again.
@@ -113,7 +113,7 @@ pub(crate) struct Side<H: HostResolver> {
     supervision: RefCell<Option<AbortOnDropHandle<()>>>,
 }
 
-impl<H: HostResolver> Side<H> {
+impl<H: DeviceResolver> Side<H> {
     pub(crate) fn node(&self) -> &Rc<Node<H>> {
         &self.node
     }
@@ -175,7 +175,7 @@ fn unnumbered(question: &[UserContentBlock]) -> Vec<UserContentBlock> {
         .collect()
 }
 
-impl<H: HostResolver> Tree<H> {
+impl<H: DeviceResolver> Tree<H> {
     /// The live side question `id`.
     pub(crate) fn side(&self, id: &NodeId) -> Option<Rc<Side<H>>> {
         self.sides.borrow().get(id).cloned()
@@ -457,7 +457,7 @@ impl<H: HostResolver> Tree<H> {
             server: Rc::downgrade(server),
             runtime,
             providers: deps.providers.clone(),
-            hosts: deps.hosts.clone(),
+            devices: deps.devices.clone(),
             instructions: self.root.instructions().clone(),
             guide: deps.guide.clone(),
             preamble: None,
@@ -590,7 +590,7 @@ impl<H: HostResolver> Tree<H> {
     /// still on its way reaches it first and is stopped too, never dropped.
     ///
     /// Its commands are asked to stop and the call returns without waiting
-    /// for their ends or their Host, as a child's close does. Their ends open
+    /// for their ends or their device, as a child's close does. Their ends open
     /// no turn: the side question closes at once, as an aborted child does,
     /// and the reports wait for its next message. A side question that does
     /// nothing is left as it is.
@@ -727,7 +727,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Stops what every live side question runs and ends their shells, as
-    /// a transition of the Host the conversation cannot work without does
+    /// a transition of the device the conversation cannot work without does
     /// (`Tree::interrupt`); each closes once quiescent.
     pub(super) async fn interrupt_sides(&self, hold: &str) {
         let sides: Vec<Rc<Side<H>>> = self.sides.borrow().values().cloned().collect();
@@ -762,7 +762,7 @@ impl<H: HostResolver> Tree<H> {
 /// The supervision of one side question: waits for any change of its
 /// session's status or of its failure, and closes it once
 /// [`Tree::decide_side`] says so.
-async fn side_supervision<H: HostResolver>(tree: Weak<Tree<H>>, side: Weak<Side<H>>) {
+async fn side_supervision<H: DeviceResolver>(tree: Weak<Tree<H>>, side: Weak<Side<H>>) {
     let (mut status, wake) = {
         let Some(live) = side.upgrade() else {
             return;

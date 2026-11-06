@@ -53,7 +53,7 @@ pub fn module(header: &str) -> String {
     source.push('\n');
     push_doc(
         &mut source,
-        Some("The sandbox an HTML file shown from a Host's files loads in."),
+        Some("The sandbox an HTML file shown from a device's files loads in."),
         0,
     );
     let sandbox = serde_json::to_string(HTML_SANDBOX).expect("the sandbox serializes");
@@ -283,7 +283,7 @@ pub fn module(header: &str) -> String {
             ),
             (
                 "LIVE_HEARTBEAT_MS",
-                "How often the Host's side of a live view speaks at least.",
+                "How often the device's side of a live view speaks at least.",
                 live::HEARTBEAT_MS,
             ),
             (

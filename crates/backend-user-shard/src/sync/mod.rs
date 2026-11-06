@@ -31,7 +31,7 @@ use crate::shard::Shard;
 
 impl Shard {
     /// Marks `part` changed on the user's open channels. A change of the
-    /// projects also tells each runner the directories of its Host's
+    /// projects also tells each runner the directories of its device's
     /// projects, whose worktrees it reports.
     pub fn mark(&self, part: Part) {
         let projects = part == Part::Projects;

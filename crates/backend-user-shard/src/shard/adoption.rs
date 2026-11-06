@@ -15,8 +15,8 @@ use demi_backend_database::StorageError;
 use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval, FirstHome};
 use demi_backend_page_sync::Part;
 use demi_plugin_host::Lost;
-use demi_runner_client::{Beginning, Hello, Link, LinkOptions, RemoteHost, host_identity};
-use demi_host_interface::{HostErrorKind, HostFs as _};
+use demi_runner_client::{Beginning, Hello, Link, LinkOptions, RemoteDevice, device_identity};
+use demi_device_interface::{DeviceErrorKind, DeviceFs as _};
 use demi_backend_runners::devices::{DeviceRecorder, Download, Reported, RunnerSocket, Serving, Updating, send};
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::{HelloErrorCode, Inbound, KeptJob, Resume, RunnerInfo};
@@ -73,7 +73,7 @@ impl Shard {
                 // Without them a restarted backend stops the device's jobs
                 // as ones it has no command for, and their commands stay
                 // running in their conversations' records.
-                tracing::warn!(event = "runner_adoption.read_failed", host_id = %device.id, what = "running_jobs", error = &error as &dyn std::error::Error, "the device's running jobs could not be read");
+                tracing::warn!(event = "runner_adoption.read_failed", device_id = %device.id, what = "running_jobs", error = &error as &dyn std::error::Error, "the device's running jobs could not be read");
                 Vec::new()
             }
         };
@@ -90,14 +90,14 @@ impl Shard {
         {
             Ok(conversations) => conversations.iter().map(ToString::to_string).collect(),
             Err(error) => {
-                tracing::warn!(event = "runner_adoption.read_failed", host_id = %device.id, what = "conversations", outcome = "runner_reconnects", error = &error as &dyn std::error::Error, "the user's conversations could not be read");
+                tracing::warn!(event = "runner_adoption.read_failed", device_id = %device.id, what = "conversations", outcome = "runner_reconnects", error = &error as &dyn std::error::Error, "the user's conversations could not be read");
                 return;
             }
         };
         let archived = match self.services().control.conversations(self.user().clone(), true).await {
             Ok(archived) => archived.iter().map(|record| record.id.to_string()).collect(),
             Err(error) => {
-                tracing::warn!(event = "runner_adoption.read_failed", host_id = %device.id, what = "archived_conversations", outcome = "runner_reconnects", error = &error as &dyn std::error::Error, "the user's archived conversations could not be read");
+                tracing::warn!(event = "runner_adoption.read_failed", device_id = %device.id, what = "archived_conversations", outcome = "runner_reconnects", error = &error as &dyn std::error::Error, "the user's archived conversations could not be read");
                 return;
             }
         };
@@ -119,14 +119,14 @@ impl Shard {
                 .into_iter()
                 .collect(),
             Err(error) => {
-                tracing::warn!(event = "runner_adoption.read_failed", host_id = %device.id, what = "held_conversations", outcome = "runner_reconnects", error = &error as &dyn std::error::Error, "the conversations the device holds could not be read");
+                tracing::warn!(event = "runner_adoption.read_failed", device_id = %device.id, what = "held_conversations", outcome = "runner_reconnects", error = &error as &dyn std::error::Error, "the conversations the device holds could not be read");
                 return;
             }
         };
         let stopped = match self.plugins().stopped_packages().await {
             Ok(stopped) => stopped,
             Err(error) => {
-                tracing::warn!(event = "runner_adoption.read_failed", host_id = %device.id, what = "stopped_packages", outcome = "runner_reconnects", error = &error as &dyn std::error::Error, "the packages of the plugins turned off could not be read");
+                tracing::warn!(event = "runner_adoption.read_failed", device_id = %device.id, what = "stopped_packages", outcome = "runner_reconnects", error = &error as &dyn std::error::Error, "the packages of the plugins turned off could not be read");
                 return;
             }
         };
@@ -146,7 +146,7 @@ impl Shard {
             if session.resumes(kept.instance, kept.resume) {
                 tracing::info!(
                     event = "link.replaced",
-                    host_id = %device.id,
+                    device_id = %device.id,
                     cause = "resumed",
                     runner_name = %runner.name,
                     platform = %runner.platform,
@@ -158,7 +158,7 @@ impl Shard {
             if held.answers(self.services().runners.probe).await {
                 tracing::warn!(
                     event = "link.refused",
-                    host_id = %device.id,
+                    device_id = %device.id,
                     cause = "already_connected",
                     runner_name = %runner.name,
                     platform = %runner.platform,
@@ -176,7 +176,7 @@ impl Shard {
             }
             tracing::info!(
                 event = "link.replaced",
-                host_id = %device.id,
+                device_id = %device.id,
                 cause = "no_answer",
                 runner_name = %runner.name,
                 platform = %runner.platform,
@@ -190,7 +190,7 @@ impl Shard {
         let beginning = session.begin(kept.instance, kept.resume);
         tracing::info!(
             event = if matches!(beginning, Beginning::Resumed { .. }) { "link.resumed" } else { "link.session_started" },
-            host_id = %device.id,
+            device_id = %device.id,
             received = beginning.received(),
             "a runner's connection took the link's session"
         );
@@ -335,7 +335,7 @@ impl Shard {
         let home = runner.identity.home_dir.clone();
         let (link, driver) = Link::new(LinkOptions {
             device: device.to_string(),
-            identity: host_identity(&runner),
+            identity: device_identity(&runner),
             kernel: runner.kernel.clone(),
             shell: runner.shell.clone(),
             memory: runner.memory,
@@ -395,7 +395,7 @@ impl Shard {
         match self.services().control.running_jobs(device.clone()).await {
             Ok(recorded) => self.take_up(recorded.into_iter().map(|recorded| recorded.conversation)),
             Err(error) => {
-                tracing::warn!(event = "runner_adoption.read_failed", host_id = %device, what = "stopped_cloud_jobs", error = &error as &dyn std::error::Error, "the stopped Cloud's running jobs could not be read");
+                tracing::warn!(event = "runner_adoption.read_failed", device_id = %device, what = "stopped_cloud_jobs", error = &error as &dyn std::error::Error, "the stopped Cloud's running jobs could not be read");
             }
         }
     }
@@ -491,7 +491,7 @@ impl Shard {
                     let download = *served.borrow();
                     tracing::info!(
                         event = "runner_download.ended",
-                        host_id = %device,
+                        device_id = %device,
                         bytes = download.served,
                         total = download.size,
                         ms,
@@ -504,7 +504,7 @@ impl Shard {
                 let download = *served.borrow_and_update();
                 tracing::debug!(
                     event = "runner_update.progress",
-                    host_id = %device,
+                    device_id = %device,
                     bytes = download.served,
                     total = download.size,
                     ms,
@@ -659,7 +659,7 @@ impl Shard {
 /// records the device's first home (`crates/server/src/main.rs`). A
 /// directory gone is kept as it is; a runner that went away leaves the home
 /// unrecorded, which its next hello settles again.
-async fn settle_first_home(access: Option<RemoteHost>, seen: DeviceRecorder, device: DeviceId, first: FirstHome) {
+async fn settle_first_home(access: Option<RemoteDevice>, seen: DeviceRecorder, device: DeviceId, first: FirstHome) {
     let Some(access) = access else {
         return;
     };
@@ -669,7 +669,7 @@ async fn settle_first_home(access: Option<RemoteHost>, seen: DeviceRecorder, dev
             Ok(real) => {
                 resolved.insert(directory.clone(), real);
             }
-            Err(error) if matches!(error.kind, HostErrorKind::Failed { .. }) => {}
+            Err(error) if matches!(error.kind, DeviceErrorKind::Failed { .. }) => {}
             Err(_) => return,
         }
     }

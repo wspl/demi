@@ -1226,7 +1226,7 @@ export function createSettingsState() {
       {
         id: 'browser',
         name: 'Browser',
-        description: 'Gives the agent a browser on the conversation’s host, which it drives with demi browser and you watch and use in the work panel.',
+        description: 'Gives the agent a browser on the conversation’s device, which it drives with demi browser and you watch and use in the work panel.',
         enabled: true,
       },
       {
@@ -1238,7 +1238,7 @@ export function createSettingsState() {
       {
         id: 'web',
         name: 'Web',
-        description: 'Searches the web with Exa and reads pages from the conversation’s Host with demi web.',
+        description: 'Searches the web with Exa and reads pages from the conversation’s Device with demi web.',
         enabled: true,
       },
       {

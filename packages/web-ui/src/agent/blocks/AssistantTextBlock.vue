@@ -35,9 +35,9 @@ const props = withDefaults(defineProps<{
   versions?: VersionChoice
   isStreaming?: boolean
   showFooter?: boolean
-  /** The Host files the reply's inline code names, kept with it once it ended. */
+  /** The Device files the reply's inline code names, kept with it once it ended. */
   codeFiles?: readonly CodeFile[]
-  /** The pictures of the Host the reply shows, with their copies, kept with it once it ended. */
+  /** The pictures of the device the reply shows, with their copies, kept with it once it ended. */
   pictures?: readonly ReplyPicture[]
 }>(), {
   isStreaming: false,

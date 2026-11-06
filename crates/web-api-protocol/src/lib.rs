@@ -13,7 +13,7 @@
 //!   owner or its message counts, never reaches the web app.
 //! - The crate reuses the runner's working-tree change types and platform, and
 //!   the command locale, rather than declaring them again.
-//! - A Host log line is its own type: the runner wire carries its time as
+//! - A device log line is its own type: the runner wire carries its time as
 //!   integer milliseconds and the web app receives an RFC 3339 time.
 //!
 //! The crate holds no route handling and no domain logic.
@@ -30,7 +30,7 @@ pub mod diagnostics;
 pub mod drafts;
 pub mod error;
 pub mod files;
-pub mod hosts;
+pub mod attached_devices;
 pub mod ids;
 pub mod instructions;
 pub mod panel;

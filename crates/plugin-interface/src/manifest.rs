@@ -21,7 +21,7 @@ use serde_json::Value;
 use url::Url;
 
 /// The root the plugins of this repository place their groups under.
-pub use demi_host_interface::DEMI_ROOT;
+pub use demi_device_interface::DEMI_ROOT;
 
 /// The `demi` root's summary in the model's command help.
 pub const DEMI_SUMMARY: &str =
@@ -29,7 +29,7 @@ pub const DEMI_SUMMARY: &str =
 
 /// A plugin's id, such as `browser`: 1 to 32 lowercase letters, digits and
 /// hyphens. It names the plugin's context blocks, values, part of the
-/// product state, directories on a Host and page route.
+/// product state, directories on a device and page route.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct PluginId(String);
@@ -172,7 +172,7 @@ pub struct OAuth {
 }
 
 /// A user stream: a page connects to `operation` on the conversation's primary
-/// Host for as long as it keeps the stream open. Its messages and constants
+/// device for as long as it keeps the stream open. Its messages and constants
 /// are declared for the page's generated types (`crates/xtask/src/contracts/pages.rs`);
 /// the backend relays the stream's bytes without reading them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -353,7 +353,7 @@ pub struct State {
     /// as a method is.
     #[serde(default)]
     pub operations: Vec<NativeOperation>,
-    /// The plugin holds this state between reads and keeps it as its Host says
+    /// The plugin holds this state between reads and keeps it as its device says
     /// it changes, so the backend sends what it holds with the conversation's
     /// work panel (`crates/backend-http/src/panel.rs`) and the page shows both
     /// at once, with no read of its own by the page. A plugin that holds none
@@ -493,7 +493,7 @@ pub struct Feature {
 pub struct Commands {
     pub placement: Placement,
     /// The tree, as data: an `rpc` leaf reaches the plugin as a command
-    /// request, a native leaf runs its operation on the Host.
+    /// request, a native leaf runs its operation on the device.
     pub tree: Node<NativeOperation>,
     /// The package operations its `rpc` leaves call through the port
     /// ([`PluginPort::package_call`](crate::PluginPort::package_call)),

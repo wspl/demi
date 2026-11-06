@@ -62,7 +62,7 @@
   "permissions": {
     "skills_manage": {
       "action": "gerenciar habilidades",
-      "description": "Permite que os agentes desta conversa adicionem, atualizem e removam fontes de habilidades e ativem ou desativem habilidades. As habilidades globais chegam a todas as conversas e as de um espaço de trabalho às conversas desse espaço, e as habilidades ativadas são instaladas nos hosts que essas conversas usam."
+      "description": "Permite que os agentes desta conversa adicionem, atualizem e removam fontes de habilidades e ativem ou desativem habilidades. As habilidades globais chegam a todas as conversas e as de um espaço de trabalho às conversas desse espaço, e as habilidades ativadas são instaladas nos dispositivos que essas conversas usam."
     }
   },
   "problems": {

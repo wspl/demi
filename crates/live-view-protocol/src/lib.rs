@@ -3,12 +3,12 @@
 //! picture's coordinates, and the messages that pace the pictures.
 //!
 //! A source's own protocol, such as the browser's, carries these beside its own
-//! messages. The crate holds types and their checks only; the Host's side of
+//! messages. The crate holds types and their checks only; the device's side of
 //! them is `live-view`, the page's `@demicodes/web-ui`'s live module.
 //!
 //! - The codec is fixed, H.264 High level 5.1, and the stream does not name it:
 //!   the page asks the user's browser for a decoder before it opens a view.
-//!   Page and Host ship in the same release, so the protocol carries no
+//!   Page and device ship in the same release, so the protocol carries no
 //!   version.
 //! - Video chunks are at most 16 KiB so every 16 KiB the sender puts on the
 //!   wire is acknowledged on its own.
@@ -26,7 +26,7 @@ use serde_with::rust::unwrap_or_skip;
 
 /// A frame's kind, the byte after its length: a JSON control message.
 pub const CONTROL_FRAME: u8 = 1;
-/// A chunk of a video frame, from the Host: [`VideoHeader`], then its part
+/// A chunk of a video frame, from the device: [`VideoHeader`], then its part
 /// of the frame's H.264 Annex B data.
 pub const VIDEO_FRAME: u8 = 2;
 /// The page's acknowledgements of video chunks: one or more [`ChunkAck`]s.
@@ -50,7 +50,7 @@ pub const VIDEO_MAX_BITRATE: u32 = 240_000_000;
 /// The largest frame after its length: a reader allocates a frame's length
 /// before it reads it, so the protocol bounds it.
 pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
-/// How often the Host speaks at least, so a still picture is told from a stall.
+/// How often the device speaks at least, so a still picture is told from a stall.
 pub const HEARTBEAT_MS: u64 = 250;
 /// Silence after which the page shows the stream as stalled and stops sending input.
 pub const STALL_MS: u64 = 1000;
@@ -290,7 +290,7 @@ impl ChunkAck {
     }
 }
 
-/// The viewer's platform, which decides how its keys map on the Host.
+/// The viewer's platform, which decides how its keys map on the device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Platform {
@@ -360,7 +360,7 @@ pub const MAX_CONTACTS: usize = 10;
 
 /// The viewer's input, in the picture's coordinates: the CSS pixels of a
 /// browser tab, the points of a simulator's screen. A source turns it into
-/// its own input; the Host delivers each viewer's input in the order it
+/// its own input; the device delivers each viewer's input in the order it
 /// arrives.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
@@ -466,7 +466,7 @@ pub struct LiveKeyframe {
 #[serde(deny_unknown_fields)]
 pub struct LiveRelease {}
 
-/// Sent whenever the Host has had nothing else to say for [`HEARTBEAT_MS`].
+/// Sent whenever the device has had nothing else to say for [`HEARTBEAT_MS`].
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct LiveHeartbeat {}
@@ -483,7 +483,7 @@ pub struct LiveNotice {
 }
 
 /// A source's protocol of messages to the page, which carries the live
-/// view's own: the Host's side of the live view sends these through it.
+/// view's own: the device's side of the live view sends these through it.
 pub trait ModuleMessage {
     fn heartbeat(heartbeat: LiveHeartbeat) -> Self;
     fn notice(notice: LiveNotice) -> Self;

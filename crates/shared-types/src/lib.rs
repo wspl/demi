@@ -15,7 +15,7 @@
 //!
 //! It holds no concrete provider name, catalog source name (the catalog carries
 //! portable facts only, never a label such as `codex-backend`, `models.dev` or
-//! `cache`), shell runtime or Host detail, user-interface concept, transport
+//! `cache`), shell runtime or device detail, user-interface concept, transport
 //! URL or backend identifier.
 //!
 //! # One definition of each shape
@@ -142,7 +142,7 @@ pub use ids::{
     ScheduleId, ScheduleRunId, BlockId, CommandId, DeviceId, EmptyId, NodeId, OperationId, RequestId,
     Sequence, TurnId,
 };
-pub use log::{HostLogLine, LogLevel, LogLine, LogOrigin, is_event_name};
+pub use log::{DeviceLogLine, LogLevel, LogLine, LogOrigin, is_event_name};
 pub use media::{
     MODEL_MEDIA_TYPES, ModelMediaKind, ModelMediaType, model_accepts_media_type,
     model_media_type_for, model_reads_images,

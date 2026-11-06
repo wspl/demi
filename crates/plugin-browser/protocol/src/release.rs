@@ -1,5 +1,5 @@
 //! The pinned Chrome for Testing release, and the Chrome runtime release Linux
-//! Hosts start it with.
+//! devices start it with.
 //!
 //! Nothing resolves a moving channel. A release names each platform's archive,
 //! and the runtime's archives, by URL, size and digest, which `demi browser
@@ -12,12 +12,12 @@ use serde::{Deserialize, Serialize};
 
 use demi_shared_types::DecodeError;
 
-/// The artifact line the pinned release is installed as on a Host, which
+/// The artifact line the pinned release is installed as on a device, which
 /// its installed artifacts name (`crates/runner-command-packages/src/cache.rs`).
 pub const ARTIFACT: &str = "Chrome for Testing";
 
 /// The artifact lines the Chrome runtime's archives are installed as: its
-/// libraries for the Host's architecture, and its fonts.
+/// libraries for the device's architecture, and its fonts.
 pub const RUNTIME_LIBRARIES: &str = "Chrome runtime libraries";
 pub const RUNTIME_FONTS: &str = "Chrome runtime fonts";
 

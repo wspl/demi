@@ -18,8 +18,8 @@ use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 
 use crate::shard::Shard;
-use demi_backend_host_access::root_of;
-use demi_backend_host_access::transition::ChangeRefusal;
+use demi_backend_device_access::root_of;
+use demi_backend_device_access::transition::ChangeRefusal;
 
 impl Shard {
     /// Applies `change` to the model settings of the user's conversation
@@ -49,7 +49,7 @@ impl Shard {
             .await
             .map_err(runtime_refused)?;
         let committed = self
-            .host_shard()
+            .device_shard()
             .commit(id, RecordChange::Model(selection))
             .await;
         if let Some(switch) = switch {

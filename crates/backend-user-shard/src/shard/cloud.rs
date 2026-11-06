@@ -28,8 +28,8 @@ use tokio_util::task::TaskTracker;
 
 use super::{Shard, Shards};
 use crate::services::Services;
-use demi_backend_host_access::root_of;
-use demi_backend_host_access::transfer::TransfersClosed;
+use demi_backend_device_access::root_of;
+use demi_backend_device_access::transfer::TransfersClosed;
 
 impl CloudShard for Shard {
     fn user(&self) -> &UserId {
@@ -214,7 +214,7 @@ pub async fn route_deaths(
             // A device the backend no longer has is no one's to stop.
             Ok(None) => continue,
             Err(error) => {
-                tracing::error!(event = "cloud.death_unrouted", host_id = %id, %error, "the death of a Cloud could not be routed");
+                tracing::error!(event = "cloud.death_unrouted", device_id = %id, %error, "the death of a Cloud could not be routed");
                 continue;
             }
         };
@@ -242,7 +242,7 @@ pub async fn route_statuses(
             // A device the backend no longer has shows on no page.
             Ok(None) => continue,
             Err(error) => {
-                tracing::error!(event = "cloud.status_unrouted", host_id = %id, %error, "a Cloud's new status could not be routed");
+                tracing::error!(event = "cloud.status_unrouted", device_id = %id, %error, "a Cloud's new status could not be routed");
                 continue;
             }
         };

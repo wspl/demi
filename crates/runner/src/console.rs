@@ -6,7 +6,7 @@
 //! itself (`runner.log`, rotated at 10 MiB to `runner.log.1`) rather than the
 //! installer redirecting it. What a runner printed before a crash survives, and
 //! a person who closed the terminal early finds the lines there. The log holds
-//! pairing codes, so it is private to its owner, and the Host log never holds
+//! pairing codes, so it is private to its owner, and the device log never holds
 //! one.
 //!
 //! # Leaving the terminal
@@ -160,7 +160,7 @@ fn start_apart() -> io::Result<()> {
 }
 
 /// The console line of a message of the runner's own, such as one its
-/// host log's console layer writes.
+/// device log's console layer writes.
 pub fn runner_line(message: impl Display) -> String {
     format!("demi-runner: {message}")
 }

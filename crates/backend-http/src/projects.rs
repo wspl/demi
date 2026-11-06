@@ -48,17 +48,17 @@ pub(super) async fn create(
 ) -> Result<(StatusCode, Json<ProjectAnswer>), ApiError> {
     let project = match request {
         CreateProject::Device { workspace_id, device_id, path } => {
-            // The directory as its Host names it, so two spellings of one
+            // The directory as its device names it, so two spellings of one
             // directory are one project (`crates/backend-database/src/selection.rs`).
             let resolving = device_id.clone();
             let path = state
                 .shards
                 .of(&user.id)
                 .call(move |shard, _| async move {
-                    shard.host_shard().device_directory(&resolving, path.as_str()).await
+                    shard.device_shard().device_directory(&resolving, path.as_str()).await
                 })
                 .await?
-                .map_err(super::hosts::refused)?;
+                .map_err(super::attached_devices::refused)?;
             match state
             .services
             .control
@@ -120,7 +120,7 @@ pub(super) async fn create(
             }
         }
     };
-    // Through the shard, which also tells the Host's runner the new
+    // Through the shard, which also tells the device's runner the new
     // project's directory, whose worktrees it reports.
     state
         .shards
@@ -213,7 +213,7 @@ pub(super) async fn delete(
         .of(&user.id)
         .call(move |shard, _| async move { shard.delete_project(&id).await })
         .await?
-        .map_err(super::hosts::refused)?;
+        .map_err(super::attached_devices::refused)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

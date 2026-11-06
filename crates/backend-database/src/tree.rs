@@ -714,7 +714,7 @@ impl AgentTreeStore for SqliteTreeStore {
         &'a self,
         command: &'a CommandId,
         node: &'a NodeId,
-        seen: demi_host_interface::Seen,
+        seen: demi_device_interface::Seen,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
             let (command, node) = (command.clone(), node.clone());
@@ -729,7 +729,7 @@ impl AgentTreeStore for SqliteTreeStore {
         &'a self,
         command: &'a CommandId,
         node: &'a NodeId,
-    ) -> LocalBoxFuture<'a, Result<Option<demi_host_interface::Seen>, StoreError>> {
+    ) -> LocalBoxFuture<'a, Result<Option<demi_device_interface::Seen>, StoreError>> {
         Box::pin(async move {
             let (command, node) = (command.clone(), node.clone());
             Ok(self

@@ -1,0 +1,655 @@
+//! The product's `demi attachment` group: `upload` and `download` move files
+//! between the device and the conversation's attachments.
+//!
+//! `upload` copies files of the device into the conversation as attachments `a1`,
+//! `a2`, …, which the agent's messages then deliver as `<attachment id="a3" />`
+//! blocks.
+//!
+//! 1. The runner of the invocation's device, the conversation's primary device or
+//!    an attached one a `demi device shell` job runs on, hashes each file beside
+//!    the invocation, through the conversation's device access. It refuses one
+//!    over 25 MiB before reading a byte.
+//! 2. A blob the conversation owner's namespace holds already is not read
+//!    again. Only its first 64 KiB come from the object store, for its media
+//!    type.
+//! 3. Otherwise the runner streams the file's bytes to the backend through a
+//!    pipe (`crates/runner-device/src/files.rs`), and the backend stores the blob
+//!    in that namespace.
+//! 4. The backend reads the media type from the bytes as it does for the user's
+//!    uploads. An attachment of the conversation with the same bytes answers
+//!    with its number, as a medium a tool showed does, so one file is one
+//!    attachment. Otherwise it stores the record under the next number of the
+//!    conversation's `attachment` sequence, with the file it came from: the
+//!    invocation's device and the file's full path as that device writes it,
+//!    which a card of a file that is no image or video opens in the Files
+//!    panel in the copy's place while the page can read it.
+//!
+//! The command returns no medium: the attachment is for the user.
+//!
+//! The same copy is made for a picture of the device that a reply shows, when
+//! the reply ends ([`copy_picture`]): the device is
+//! then looked at, never woken, only while it is the device the agent ran on,
+//! and the file must be an image.
+//!
+//! `download` writes attachments of the conversation, the user's or the
+//! agent's, into the invocation's directory. The runner downloads each from
+//! this backend as every file Demi downloads, resumed after a break
+//! (`crates/shared-artifacts/src/download.rs`), and takes the first free name,
+//! the same bytes under the name being that file.
+//!
+//! An attachment is a copy of the file's bytes as they were when the command
+//! ran, and nothing changes or removes it afterwards, so a message shows it
+//! whatever becomes of the file, the device or the conversation. Its number and
+//! its record are stored in one transaction, and a Fork's destination keeps its
+//! source's attachments, since its history names them.
+//!
+//! A send writes nothing to a device: the model reads an image, a video or a PDF
+//! from the message itself, and fetches a file with `download` only for a
+//! command that works on it, which never replaces a file.
+
+use std::rc::{Rc, Weak};
+
+use bytes::Bytes;
+use demi_agent_store::{attachments::upload_media_type, pixels::pixel_size};
+use demi_backend_blobs::blobs::{FetchError, OPENING_BYTES};
+use demi_backend_database::conversation_attachments::{
+    self, AttachmentNumber, AttachmentRow, AttachmentSource, StoredAttachment,
+};
+use demi_backend_database::conversations::ConversationDb;
+use demi_backend_database::{StorageError, sequences};
+use demi_runner_client::collect_pipe;
+use demi_runner_protocol::wire::FileHash;
+use demi_device_interface::{
+    ByteRange, Call, GroupBuilder, Device as _, DeviceError, DeviceErrorKind, LeafBuilder, RpcError, RpcPort, TypedRpc, WhenExists, WriteOptions,
+};
+use demi_shared_types::{
+    BlobRef, NodeId, PictureFailure, PixelSize, Sequence, preview_media_type,
+    output::{Cell, Table},
+};
+use demi_web_api_protocol::attachments::ATTACHMENT_MAX_BYTES;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
+
+use crate::DeviceShard;
+use crate::access::{ConversationDevice, DeviceAccessError};
+use crate::device_commands::{conversation_of, verb};
+
+const SUMMARY: &str = "Give the user files of this device as attachments of the conversation, which your messages show, and fetch the conversation's attachments as files.";
+
+/// The group's entry in the model's capability index.
+const ENTRY: &str = "Makes a device file an attachment of the conversation, or downloads one.";
+
+const UPLOAD_SUMMARY: &str = "Copy files into the conversation as attachments a1, a2, ..., each kept as it is now, whatever later becomes of the file, and print each one's number. Deliver one in your reply as <attachment id=\"a3\" /> on a line of its own, not also a link to its path: an image shows, a video and audio play, and any other file is a card the user opens. A file is at most 25 MiB. Returns no medium; demi file view shows you a file.";
+
+const DOWNLOAD_SUMMARY: &str = "Write attachments of the conversation, such as a file the user sent as <attachment id=\"a7\" ... />, into the current directory, or the one --dir names, under their names, and print each one's path. A file never replaces another: it takes the first free name, and the same file already there is that file.";
+
+/// What the media type falls back to when neither the bytes nor the file's
+/// name tell it.
+const UNKNOWN_MEDIA_TYPE: &str = "application/octet-stream";
+
+/// The input of `demi attachment upload`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct UploadArgs {
+    /// Files to upload, relative to the current directory or absolute
+    #[schemars(length(min = 1))]
+    path: Vec<String>,
+}
+
+/// An attachment of `demi attachment upload --json`, which lists them in
+/// the order of their paths.
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct UploadedAttachment {
+    /// Its number, such as `a3`.
+    id: String,
+    /// The path as it was given.
+    path: String,
+    media_type: String,
+    /// In bytes.
+    size: u64,
+}
+
+/// The input of `demi attachment download`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct DownloadArgs {
+    /// Attachments to download, such as a7
+    #[schemars(length(min = 1))]
+    id: Vec<String>,
+    /// Directory to write them into, relative to the current directory or
+    /// absolute; the current directory when omitted
+    dir: Option<String>,
+}
+
+/// An attachment of `demi attachment download --json`, which lists them in
+/// the order of their numbers as given.
+#[derive(Serialize, JsonSchema)]
+struct DownloadedAttachment {
+    /// Its number, such as `a7`.
+    id: String,
+    /// Where it was written, as the directory was given joined with its
+    /// name.
+    path: String,
+}
+
+/// The `attachment` group, whose handlers act in `shard`.
+pub fn attachment_group(shard: Weak<dyn DeviceShard>) -> GroupBuilder {
+    GroupBuilder::new("attachment", SUMMARY)
+        .index_entry(ENTRY)
+        .leaf(
+            LeafBuilder::rpc("upload", UPLOAD_SUMMARY)
+                .input::<UploadArgs>()
+                .positionals(["path"])
+                .json_output::<Vec<UploadedAttachment>>()
+                .success_output("a table of the files uploaded: each one's attachment id, such as a3, its media type, size and path")
+                .failure_output("a file that cannot be uploaded writes its path and why to stderr; the others are still uploaded, and the command exits 1")
+                .bind(TypedRpc::new(verb(shard.clone(), upload))),
+        )
+        .leaf(
+            LeafBuilder::rpc("download", DOWNLOAD_SUMMARY)
+                .input::<DownloadArgs>()
+                .positionals(["id"])
+                .json_output::<Vec<DownloadedAttachment>>()
+                .success_output("a table of the attachments written: each one's id and path")
+                .failure_output("an attachment that cannot be written writes its id and why to stderr; the others are still written, and the command exits 1")
+                .bind(TypedRpc::new(verb(shard, download))),
+        )
+}
+
+async fn download(
+    shard: Rc<dyn DeviceShard>,
+    call: Call<DownloadArgs>,
+    port: RpcPort,
+) -> Result<u8, RpcError> {
+    let Call { args, invocation } = call;
+    let conversation = conversation_of(&invocation)?;
+    let device = DeviceId::try_from(invocation.device.as_str())
+        .map_err(|_| RpcError::Failed(format!("{}: names no device", invocation.device)))?;
+    let directory = args.dir.as_deref().unwrap_or(".");
+    let mut written = Vec::new();
+    let mut failed = false;
+    for id in args.id {
+        let fetched = tokio::select! {
+            fetched = fetch(&*shard, &conversation, &device, &invocation.cwd, directory, &id) => fetched,
+            () = port.cancelled() => return Ok(130),
+        };
+        match fetched {
+            Ok(name) => written.push(DownloadedAttachment {
+                path: if directory == "." { name } else { format!("{}/{name}", directory.trim_end_matches(['/', '\\'])) },
+                id,
+            }),
+            Err(reason) => {
+                failed = true;
+                port.stderr(format!("{}: {id}: {reason}\n", invocation.path.join(" ")))
+                    .await?;
+            }
+        }
+    }
+    let printed = if invocation.json {
+        let json = serde_json::to_string(&written)
+            .map_err(|error| RpcError::Failed(error.to_string()))?;
+        format!("{json}\n")
+    } else {
+        let mut table = Table::new(["id", "path"]);
+        for attachment in &written {
+            table.row::<Cell>([attachment.id.as_str().into(), attachment.path.as_str().into()]);
+        }
+        table.render()
+    };
+    port.stdout(printed).await?;
+    Ok(u8::from(failed))
+}
+
+/// Writes the conversation's attachment `id` into `directory`, beside `cwd`,
+/// on the conversation's device on `device`, and answers the name it took.
+/// Answers why when it cannot.
+async fn fetch(
+    shard: &dyn DeviceShard,
+    conversation: &ConversationId,
+    device: &DeviceId,
+    cwd: &str,
+    directory: &str,
+    id: &str,
+) -> Result<String, String> {
+    let resolved = |outcome: &'static str| {
+        tracing::info!(
+            event = "attachment.resolved",
+            %conversation,
+            attachment = id,
+            outcome,
+            by = "model",
+            "an attachment was looked up"
+        );
+    };
+    let unknown = || {
+        resolved("unknown");
+        format!("the conversation has no attachment {id}")
+    };
+    let number: AttachmentNumber = id.parse().map_err(|_| unknown())?;
+    let row = shard
+        .conversation_db(conversation)
+        .read(move |connection| conversation_attachments::read(connection, number))
+        .await
+        .map_err(|error| error.to_string())?
+        .flatten()
+        .ok_or_else(unknown)?;
+    resolved("found");
+    let bytes = shard
+        .blobs()
+        .get(&row.blob)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("the bytes of {id} are no longer stored"))?;
+    let options = WriteOptions {
+        exists: WhenExists::Rename,
+    };
+    // The admission waits only as long as the call: a stopped call drops it.
+    shard
+        .with_device(conversation, Some(device), &CancellationToken::new(), async |admitted| {
+            let paths = admitted.device.identity().paths;
+            let path = paths.join(&paths.resolve(cwd, directory), &row.name);
+            admitted.device
+                .download_file(&path, bytes, row.blob.as_str().to_owned(), options)
+                .await
+        })
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.message)
+}
+
+async fn upload(
+    shard: Rc<dyn DeviceShard>,
+    call: Call<UploadArgs>,
+    port: RpcPort,
+) -> Result<u8, RpcError> {
+    let Call { args, invocation } = call;
+    let conversation = conversation_of(&invocation)?;
+    let device = DeviceId::try_from(invocation.device.as_str())
+        .map_err(|_| RpcError::Failed(format!("{}: names no device", invocation.device)))?;
+    // The node of the agent that runs the command, a side question's
+    // included, is recorded as the files' uploader; none when the user runs it.
+    let node = invocation.caller.as_ref().map(|caller| caller.node.clone());
+    let mut uploaded = Vec::new();
+    let mut failed = false;
+    for path in args.path {
+        let stored = tokio::select! {
+            stored = store(&*shard, &conversation, &device, &invocation.cwd, node.clone(), &path, Purpose::Upload) => stored,
+            () = port.cancelled() => return Ok(130),
+        };
+        match stored {
+            Ok(row) => uploaded.push(UploadedAttachment {
+                id: row.number.to_string(),
+                path,
+                media_type: row.media_type,
+                size: row.size,
+            }),
+            Err(reason) => {
+                failed = true;
+                port.stderr(format!("{}: {path}: {reason}\n", invocation.path.join(" ")))
+                    .await?;
+            }
+        }
+    }
+    let printed = if invocation.json {
+        let json = serde_json::to_string(&uploaded)
+            .map_err(|error| RpcError::Failed(error.to_string()))?;
+        format!("{json}\n")
+    } else {
+        let mut table = Table::new(["id", "media type", "size (bytes)", "path"]);
+        for attachment in &uploaded {
+            table.row::<Cell>([
+                attachment.id.as_str().into(),
+                attachment.media_type.as_str().into(),
+                attachment.size.into(),
+                attachment.path.as_str().into(),
+            ]);
+        }
+        table.render()
+    };
+    port.stdout(printed).await?;
+    Ok(u8::from(failed))
+}
+
+/// Why a file of the device is copied into the conversation, which decides how
+/// the device is reached and what the copy may be.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Purpose {
+    /// An agent's `demi attachment upload`: the command wakes a stopped Cloud
+    /// as any command does, and any file is a copy.
+    Upload,
+    /// A picture a reply shows: the device is looked at, never woken, and only
+    /// while it is the device the agent ran on; the file must be an image.
+    Picture,
+}
+
+/// Why a file of the device was not copied into the conversation. The words
+/// are the upload command's; a picture of a reply keeps the cause alone
+/// ([`CopyError::failure`]).
+#[derive(Debug, thiserror::Error)]
+enum CopyError {
+    /// The device has no such file.
+    #[error("{0}")]
+    Missing(String),
+    /// The file is over the limit of an attachment.
+    #[error("the file is {size} bytes; an attachment is at most 25 MiB ({} bytes)", ATTACHMENT_MAX_BYTES)]
+    TooLarge { size: u64 },
+    /// The file is no image, and a picture must be.
+    #[error("the file is not an image ({0})")]
+    NotAnImage(String),
+    /// The device could not be reached for the copy.
+    #[error("{0}")]
+    DeviceUnavailable(String),
+    /// The device could not read the file, or the copy could not be kept.
+    #[error("{0}")]
+    Unreadable(String),
+}
+
+impl CopyError {
+    /// The cause a reply keeps with the picture.
+    fn failure(&self) -> PictureFailure {
+        match self {
+            Self::Missing(_) => PictureFailure::Missing,
+            Self::TooLarge { size } => PictureFailure::TooLarge { size: *size },
+            Self::NotAnImage(media_type) => PictureFailure::NotAnImage {
+                media_type: media_type.clone(),
+            },
+            Self::DeviceUnavailable(_) => PictureFailure::DeviceUnavailable,
+            Self::Unreadable(_) => PictureFailure::Unreadable,
+        }
+    }
+}
+
+/// A failure the device answered: no such file, or no way to reach it, or
+/// neither.
+impl From<DeviceError> for CopyError {
+    fn from(error: DeviceError) -> Self {
+        match &error.kind {
+            DeviceErrorKind::Failed { code } if matches!(code.as_deref(), Some("ENOENT" | "ENOTDIR")) => {
+                Self::Missing(error.message)
+            }
+            DeviceErrorKind::Offline | DeviceErrorKind::Unavailable | DeviceErrorKind::Interrupted => {
+                Self::DeviceUnavailable(error.message)
+            }
+            DeviceErrorKind::Failed { .. } | DeviceErrorKind::TooLarge | DeviceErrorKind::Protocol => {
+                Self::Unreadable(error.message)
+            }
+        }
+    }
+}
+
+/// Why the conversation admitted no operation on its device.
+impl From<DeviceAccessError> for CopyError {
+    fn from(error: DeviceAccessError) -> Self {
+        match error {
+            DeviceAccessError::Device(error) => error.into(),
+            DeviceAccessError::Refused(_)
+            | DeviceAccessError::Cloud(_)
+            | DeviceAccessError::Cancelled
+            | DeviceAccessError::Missing => Self::DeviceUnavailable(error.to_string()),
+            DeviceAccessError::Storage(_) | DeviceAccessError::Objects(_) | DeviceAccessError::Store(_) => {
+                Self::Unreadable(error.to_string())
+            }
+        }
+    }
+}
+
+/// Runs `operation` on the conversation's device `device` as `purpose` reaches
+/// it, or answers why it cannot. Each admission waits only as long as the
+/// call: a stopped call drops it.
+async fn on_device<T>(
+    shard: &dyn DeviceShard,
+    conversation: &ConversationId,
+    device: &DeviceId,
+    purpose: Purpose,
+    operation: impl AsyncFnOnce(&ConversationDevice) -> T,
+) -> Result<T, CopyError> {
+    let cancel = CancellationToken::new();
+    match purpose {
+        Purpose::Upload => Ok(shard.with_device(conversation, Some(device), &cancel, operation).await?),
+        Purpose::Picture => shard
+            .look_at_reachable_device(conversation, device, &cancel, operation)
+            .await?
+            .ok_or_else(|| {
+                CopyError::DeviceUnavailable("the conversation no longer works on the device the reply was written on".to_owned())
+            }),
+    }
+}
+
+/// Copies the picture at `path`, beside `cwd`, from the conversation's device
+/// on `device` into its attachments, as the reply of the agent of `node`
+/// shows it, and answers its number. The device is looked at, never woken, and only while
+/// it is `device`; a file that is no image, or is over the limit of an
+/// attachment, is refused. Answers why when it cannot.
+pub async fn copy_picture(
+    shard: &dyn DeviceShard,
+    conversation: &ConversationId,
+    device: &DeviceId,
+    cwd: &str,
+    node: NodeId,
+    path: &str,
+) -> Result<String, PictureFailure> {
+    let row = store(shard, conversation, device, cwd, Some(node), path, Purpose::Picture)
+        .await
+        .map_err(|error| {
+            tracing::warn!(event = "reply_picture.copy_failed", %conversation, %path, %error, "a picture of a reply was not copied");
+            error.failure()
+        })?;
+    Ok(row.number.to_string())
+}
+
+/// Copies the file at `path`, beside `cwd`, from the conversation's device on
+/// `device`, and stores it as the upload of the agent of `node`: its blob
+/// first, then its record, unless an attachment of the conversation has its
+/// bytes, which it answers then.
+///
+/// The device hashes the file first, and sends its bytes only when the namespace
+/// does not hold them already. Answers why when it cannot.
+async fn store(
+    shard: &dyn DeviceShard,
+    conversation: &ConversationId,
+    device: &DeviceId,
+    cwd: &str,
+    node: Option<NodeId>,
+    path: &str,
+    purpose: Purpose,
+) -> Result<AttachmentRow, CopyError> {
+    let hash = on_device(shard, conversation, device, purpose, async |admitted| {
+        admitted.device
+            .hash_file_in(cwd, path, ATTACHMENT_MAX_BYTES as u64)
+            .await
+    })
+    .await??;
+    // The full path of the file the device read, as it writes it, which a file
+    // card opens in the Files panel in the copy's place.
+    let (sha256, full_path) = match hash {
+        // A file that grew past the limit since the device looked at its size
+        // is refused all the same.
+        FileHash::Hashed { size, sha256, path } => {
+            within_limit(size)?;
+            (sha256, path)
+        }
+        FileHash::TooLarge { size } => return Err(CopyError::TooLarge { size }),
+    };
+    let blobs = shard.blobs();
+    let held = blobs
+        .opening(&sha256)
+        .await
+        .map_err(|error| CopyError::Unreadable(error.to_string()))?;
+    let deduplicated = held.is_some();
+    // The media type and an image's or a video's size come from the file's
+    // opening, so a held blob is read only that far, and a file read whole
+    // is read only that far too: the same file gets the same record.
+    let (blob, opening, size) = match held {
+        Some(opening) => (sha256, opening.bytes, opening.size),
+        None => {
+            // A copy of the same bytes under way is waited for, not made twice.
+            let read = || async move {
+                on_device(shard, conversation, device, purpose, async |admitted| {
+                    read(&admitted.device, cwd, path).await
+                })
+                .await?
+            };
+            let bytes = blobs.fetch_once(&sha256, read).await.map_err(|error| match error {
+                FetchError::Read(error) => error,
+                error => CopyError::Unreadable(error.to_string()),
+            })?;
+            let size = u64::try_from(bytes.len()).expect("an attachment's size fits u64");
+            let opened = bytes.len().min(OPENING_BYTES as usize);
+            (sha256, bytes.slice(..opened), size)
+        }
+    };
+    let sent = preview_media_type(path).unwrap_or(UNKNOWN_MEDIA_TYPE);
+    let media_type = upload_media_type(sent, &opening);
+    if purpose == Purpose::Picture && !media_type.starts_with("image/") {
+        return Err(CopyError::NotAnImage(media_type));
+    }
+    let pixels = pixel_size(opening, &media_type);
+    let name = path
+        .rsplit(['/', '\\'])
+        .next()
+        .filter(|name| !name.is_empty())
+        .unwrap_or(path)
+        .to_owned();
+    let attachment = Unnumbered {
+        name,
+        media_type,
+        size,
+        pixels,
+        blob,
+        node,
+        source: Some(AttachmentSource {
+            device: device.clone(),
+            path: full_path,
+        }),
+    };
+    let announce = {
+        let shard = shard.this();
+        let conversation = conversation.clone();
+        move || shard.summary_changed(&conversation)
+    };
+    let node_id = attachment.node.clone();
+    let stored = commit(shard.tasks(), shard.conversation_db(conversation), attachment, Numbering::SameBytes, announce)
+        .await
+        .map_err(CopyError::Unreadable)?;
+    tracing::info!(
+        event = "attachment.stored",
+        %conversation,
+        node = node_id.as_ref().map(tracing::field::display),
+        attachment = %stored.number,
+        bytes = stored.size,
+        deduplicated,
+        by = if purpose == Purpose::Picture { "reply_picture" } else { "command" },
+        "an attachment was stored"
+    );
+    Ok(stored)
+}
+
+/// An attachment's record before the conversation gives it its number.
+pub(crate) struct Unnumbered {
+    pub(crate) name: String,
+    pub(crate) media_type: String,
+    pub(crate) size: u64,
+    pub(crate) pixels: Option<PixelSize>,
+    pub(crate) blob: BlobRef,
+    /// The node of the agent that uploads it; none for a file the user
+    /// sends (`conversation_attachments::StoredAttachment`).
+    pub(crate) node: Option<NodeId>,
+    /// The file it is copied from; none for a file the user sends.
+    pub(crate) source: Option<AttachmentSource>,
+}
+
+/// How [`commit`] numbers an attachment.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Numbering {
+    /// The conversation's next number, as a file the user sends takes.
+    Next,
+    /// The number of the attachment that has its blob already, or the next
+    /// one when none has: the agent's file keeps one number however often
+    /// a tool shows it or the agent uploads it.
+    SameBytes,
+}
+
+/// Stores `attachment` as the conversation's next one in `db`, its number and
+/// its record in one transaction, so a summary that names the number names a
+/// record the page can read (`conversation_attachments::last`). Then calls
+/// `announce`, which sends the summary to the user's pages. With
+/// [`Numbering::SameBytes`] an attachment that has its blob already is
+/// answered instead, and nothing is written or announced.
+///
+/// The write and the announcement run in a task of `tasks`, which the shard's
+/// close waits for. A call stopped once the write is on its way, whose future
+/// is dropped, cuts neither, since the database's thread commits a write it was
+/// handed whoever still waits for it. So a stored attachment is always
+/// announced.
+pub(crate) fn commit(
+    tasks: &TaskTracker,
+    db: ConversationDb,
+    attachment: Unnumbered,
+    numbering: Numbering,
+    announce: impl FnOnce() + 'static,
+) -> impl Future<Output = Result<AttachmentRow, String>> {
+    let committed = tasks.spawn_local(async move {
+        let (row, written) = db
+            .call(move |connection| {
+                let transaction = connection.transaction()?;
+                if numbering == Numbering::SameBytes
+                    && let Some(row) = conversation_attachments::with_blob(&transaction, &attachment.blob)?
+                {
+                    return Ok((row, false));
+                }
+                let row = AttachmentRow {
+                    number: AttachmentNumber(sequences::next(&transaction, Sequence::Attachment)?),
+                    name: attachment.name,
+                    media_type: attachment.media_type,
+                    size: attachment.size,
+                    pixels: attachment.pixels,
+                    blob: attachment.blob,
+                    source: attachment.source,
+                };
+                let stored = StoredAttachment {
+                    row,
+                    node: attachment.node,
+                };
+                conversation_attachments::insert(&transaction, std::slice::from_ref(&stored))?;
+                transaction.commit()?;
+                Ok((stored.row, true))
+            })
+            .await?;
+        if written {
+            announce();
+        }
+        Ok::<_, StorageError>(row)
+    });
+    async move {
+        committed
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error.to_string())
+    }
+}
+
+/// Refuses a file over the limit of the user's own uploads: the backend holds
+/// an attachment whole in memory while it stores it.
+fn within_limit(size: u64) -> Result<(), CopyError> {
+    if size > ATTACHMENT_MAX_BYTES as u64 {
+        return Err(CopyError::TooLarge { size });
+    }
+    Ok(())
+}
+
+/// The bytes of the file at `path` beside `cwd`. A file that grew past the
+/// limit since it was hashed is refused before a byte is read.
+async fn read(
+    device: &demi_runner_client::RemoteDevice,
+    cwd: &str,
+    path: &str,
+) -> Result<Bytes, CopyError> {
+    let opened = device.read_pipe_in(cwd, path, ByteRange::default()).await?;
+    // Dropping the reader stops the read.
+    within_limit(opened.stat.size)?;
+    Ok(collect_pipe(opened.body, ATTACHMENT_MAX_BYTES).await?)
+}

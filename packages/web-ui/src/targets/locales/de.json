@@ -1,0 +1,48 @@
+{
+  "menu": {
+    "where": "Wo dieser Chat läuft",
+    "runOn": "Ausführen auf",
+    "addDevice": "Gerät hinzufügen …",
+    "attached": "Angehängt",
+    "detach": "Trennen"
+  },
+  "lock": {
+    "archived": "Dieser Chat ist archiviert.",
+    "moving": "Dieser Chat wird verschoben."
+  },
+  "choices": {
+    "offline": "Dieses Gerät ist offline."
+  },
+  "move": {
+    "title": "Diesen Chat nach {device} verschieben?",
+    "runsHome": "Er läuft dort im Benutzerordner.",
+    "runsIn": "Er läuft in {directory}.",
+    "runsOwn": "Er läuft dort in einem eigenen Verzeichnis.",
+    "filesStay": "Dateien auf {device} bleiben dort.",
+    "move": "Verschieben"
+  },
+  "project": {
+    "title": "Neues Projekt",
+    "selectFolder": "Ordner auswählen",
+    "loading": "Geräte werden geladen …",
+    "cloudDescription": "Eine verwaltete Umgebung, sofort bereit.",
+    "device": "Gerät",
+    "deviceDescription": "Ein Verzeichnis auf einem deiner Geräte.",
+    "chooseDevice": "Gerät auswählen",
+    "name": "Projektname",
+    "addDevice": "Gerät hinzufügen …",
+    "noDevices": "Keine Geräte",
+    "directory": "Verzeichnis",
+    "browse": "Durchsuchen …",
+    "called": "Das Projekt heißt {name}.",
+    "takesName": "Das Projekt erhält den Namen des Ordners.",
+    "add": "Projekt hinzufügen",
+    "create": "Projekt erstellen"
+  },
+  "directory": {
+    "switch": "Verzeichnis wechseln",
+    "chooseAnother": "Anderes Verzeichnis wählen …",
+    "useThis": "Diesen Ordner verwenden",
+    "worktree": "Worktree {name}"
+  }
+}

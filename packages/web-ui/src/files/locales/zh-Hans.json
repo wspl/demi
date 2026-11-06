@@ -119,9 +119,9 @@
     "files": "{count} 个文件",
     "failedOf": "{failed} / {files} 个失败",
     "more": "另外 {count} 项",
-    "cannotRemove": "此主机无法移除文件。",
-    "cannotCreateFolder": "此主机无法创建文件夹。",
-    "cannotTake": "此主机无法接收上传。",
+    "cannotRemove": "此设备无法移除文件。",
+    "cannotCreateFolder": "此设备无法创建文件夹。",
+    "cannotTake": "此设备无法接收上传。",
     "nameTaken": "现在已有同名文件。"
   },
   "conflict": {

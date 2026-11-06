@@ -222,13 +222,13 @@ async function settle(desk: Page, phone: Page): Promise<void> {
  * marked one of its moments, moved from `x0` to `x1` while held. As the agent
  * checks it: the hinge's slider dragged from flat to about 109°, then the view
  * turned from an empty part of the panel. Once the scene is done: a click on
- * Face the Device, a press that does not move, turns the view back, and the
+ * Face the device, a press that does not move, turns the view back, and the
  * slider closes the hinge, as the picture's first frame shows it.
  */
 async function hinge(desk: Page): Promise<(since: (mark: string) => number | null) => Promise<void>> {
   const slider = (await desk.locator('[data-work-panel] [role=slider]').first().boundingBox())!
   const view = (await desk.locator('[data-work-panel] canvas').first().boundingBox())!
-  const face = (await desk.getByRole('button', { name: 'Face the Device' }).boundingBox())!
+  const face = (await desk.getByRole('button', { name: 'Face the device' }).boundingBox())!
   const y = slider.y + slider.height / 2
   const flat = slider.x + slider.width - 6
   const half = slider.x + slider.width * 0.6

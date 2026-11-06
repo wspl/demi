@@ -18,8 +18,8 @@ import {
   FolderPlus,
   MapPin,
 } from '@lucide/vue'
-import { CLOUD_HOST_ID } from '../hosts/icons'
-import { deviceGlyph, hostGlyph } from '../devices/device-glyphs'
+import { CLOUD_DEVICE_ID } from '../targets/icons'
+import { deviceGlyph, targetGlyph } from '../devices/device-glyphs'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Button from '../ui/Button.vue'
@@ -59,7 +59,7 @@ import {
   FileBrowserError,
   type FileBrowserEntry,
   type FileBrowserFailure,
-  type FileBrowserHost,
+  type FileBrowserDevice,
   type FileBrowserMode,
   type FileBrowserPlace,
   type FileBrowserPlaceGroup,
@@ -83,7 +83,7 @@ import {
  *
  * The file browser reads through `source` and owns everything else: where it
  * is, what is selected, the history. The caller decides what a chosen path
- * means. Switching a device is the caller's too: it hears `update:hostId` and
+ * means. Switching a device is the caller's too: it hears `update:deviceId` and
  * hands over another source.
  */
 const props = withDefaults(
@@ -94,8 +94,8 @@ const props = withDefaults(
     initialPath?: string
     places?: FileBrowserPlaceGroup[]
     /** The devices the address bar's picker offers; none means no picker. */
-    hosts?: FileBrowserHost[]
-    hostId?: string
+    devices?: FileBrowserDevice[]
+    deviceId?: string
     /** The confirm button's label: `Open` for a file, `Select Folder` for a folder. */
     confirmLabel?: string
     /** Browsing stays open while choosing is not allowed (a running turn, an archived conversation). */
@@ -110,14 +110,14 @@ const props = withDefaults(
   }>(),
   {
     places: () => [],
-    hosts: () => [],
+    devices: () => [],
   },
 )
 
 const emit = defineEmits<{
   select: [path: string]
   cancel: []
-  'update:hostId': [id: string]
+  'update:deviceId': [id: string]
 }>()
 
 const showHidden = defineModel<boolean>('showHidden', { default: false })
@@ -156,17 +156,17 @@ const visible = computed(() =>
 const selectedEntry = computed(
   () => visible.value.find((entry) => entry.name === selected.value) ?? null,
 )
-const currentHost = computed(() =>
-  props.hosts.find((host) => host.id === props.hostId),
+const currentDevice = computed(() =>
+  props.devices.find((device) => device.id === props.deviceId),
 )
-/** A host's glyph in the device menu and on its face: the Cloud's, or a device's mark with its state's dot. */
-function glyphOf(host: FileBrowserHost) {
-  const kind = host.kind ?? (host.id === CLOUD_HOST_ID ? 'cloud' : 'device')
-  return hostGlyph({ kind, state: host.state, mark: host.mark ?? null })
+/** A device's glyph in the device menu and on its face: the Cloud's, or a paired device's mark with its state's dot. */
+function glyphOf(device: FileBrowserDevice) {
+  const kind = device.kind ?? (device.id === CLOUD_DEVICE_ID ? 'cloud' : 'device')
+  return targetGlyph({ kind, state: device.state, mark: device.mark ?? null })
 }
 /** A device without a mark has no dot of its own: its state's dot rides its glyph, unless it wakes on access. */
-function hostIndicator(host: FileBrowserHost) {
-  return host.mark || host.id === CLOUD_HOST_ID || host.canWake ? undefined : DEVICE_STATE_TONE[host.state]
+function deviceIndicator(device: FileBrowserDevice) {
+  return device.mark || device.id === CLOUD_DEVICE_ID || device.canWake ? undefined : DEVICE_STATE_TONE[device.state]
 }
 const hasRail = computed(() => props.places.length > 0)
 /** A place's name: the label its caller gave it, or its directory's own. */
@@ -435,40 +435,40 @@ onBeforeUnmount(() => pending?.abort())
     <div class="flex shrink-0 flex-wrap items-center gap-2 py-2 pl-2 pr-3">
       <!-- The device sits in the rail's column with the rail's own inset; the path beside it
            starts at that device's root. The column sets the width; the dropdown fills it. -->
-      <div v-if="hosts.length" class="w-40 shrink-0">
+      <div v-if="devices.length" class="w-40 shrink-0">
         <Dropdown
           :overlay-store="appOverlayStore"
           variant="field"
           width="fill"
           :trigger-label="t('browser.device')"
-          :icon="currentHost ? glyphOf(currentHost) : deviceGlyph(null, null)"
-          :indicator="currentHost ? hostIndicator(currentHost) : undefined"
-          :indicator-label="currentHost ? DEVICE_STATE_LABEL[currentHost.state] : undefined"
+          :icon="currentDevice ? glyphOf(currentDevice) : deviceGlyph(null, null)"
+          :indicator="currentDevice ? deviceIndicator(currentDevice) : undefined"
+          :indicator-label="currentDevice ? DEVICE_STATE_LABEL[currentDevice.state] : undefined"
         >
           <template #trigger>
             <span class="min-w-0 flex-1 truncate">{{
-              currentHost?.label ?? t('browser.device')
+              currentDevice?.label ?? t('browser.device')
             }}</span>
           </template>
           <template #content="{ triggerWidth }">
             <Menu :style="{ minWidth: `${triggerWidth}px` }">
               <MenuItem
-                v-for="host in hosts"
-                :key="host.id"
-                :icon="glyphOf(host)"
-                :indicator="hostIndicator(host)"
-                :indicator-label="DEVICE_STATE_LABEL[host.state]"
+                v-for="device in devices"
+                :key="device.id"
+                :icon="glyphOf(device)"
+                :indicator="deviceIndicator(device)"
+                :indicator-label="DEVICE_STATE_LABEL[device.state]"
                 :value="
-                  host.id !== CLOUD_HOST_ID && !host.canWake && host.state !== 'online'
-                    ? DEVICE_STATE_LABEL[host.state]
+                  device.id !== CLOUD_DEVICE_ID && !device.canWake && device.state !== 'online'
+                    ? DEVICE_STATE_LABEL[device.state]
                     : undefined
                 "
-                :disabled="host.id !== CLOUD_HOST_ID && host.state !== 'online' && !host.canWake"
+                :disabled="device.id !== CLOUD_DEVICE_ID && device.state !== 'online' && !device.canWake"
                 :disabled-reason="t('browser.deviceOffline')"
-                :label="host.label"
+                :label="device.label"
                 choice
-                :is-selected="host.id === hostId"
-                @select="emit('update:hostId', host.id)"
+                :is-selected="device.id === deviceId"
+                @select="emit('update:deviceId', device.id)"
               />
             </Menu>
           </template>

@@ -17,7 +17,7 @@
 //!   `/tmp`, not in the resident's `TMPDIR`, which can be any length.
 //! - The profile is the conversation's, in its scratch directory
 //!   (`demi_command_protocol::browser_profile_directory`): every Chrome the
-//!   conversation starts on this Host runs on it, so its sign-ins outlast a
+//!   conversation starts on this device runs on it, so its sign-ins outlast a
 //!   crash, the last tab closing and a release. The runner removes it when the
 //!   conversation is archived or deleted (`crates/runner-jobs/src/scratch.rs`).
 //!   Retirement keeps it.
@@ -222,7 +222,7 @@ pub struct DirectoryBases {
 }
 
 impl DirectoryBases {
-    /// This Host's directory bases.
+    /// This device's directory bases.
     ///
     /// - On Unix the runtime directories go in `/tmp`, whatever the resident's
     ///   own temporary directory is. The profiles go in the resident's `TMPDIR`
@@ -230,7 +230,7 @@ impl DirectoryBases {
     ///   on Linux, macOS and the Cloud.
     /// - On Windows both are the system's temporary directory, where one
     ///   directory holds a whole environment.
-    pub fn host() -> Self {
+    pub fn device() -> Self {
         if cfg!(unix) {
             let profiles = std::env::var_os("TMPDIR")
                 .map(PathBuf::from)
@@ -481,7 +481,7 @@ const UPLOADS: &str = "uploads";
 pub struct LaunchOptions {
     /// The executable, and on Linux the Chrome runtime it starts with.
     pub installation: Installation,
-    /// The conversation's profile, which every Chrome it starts on this Host
+    /// The conversation's profile, which every Chrome it starts on this device
     /// runs on.
     pub profile: PathBuf,
     /// The release's version, for the user agent pages see.
@@ -566,7 +566,7 @@ where
             "Chrome executable must be absolute".into(),
         ));
     }
-    let mut directories = EnvironmentDirectories::with_profile(&DirectoryBases::host(), &options.profile, &stop).await?;
+    let mut directories = EnvironmentDirectories::with_profile(&DirectoryBases::device(), &options.profile, &stop).await?;
     let mut process = ChromeProcess::new(directories.runtime(), &executable);
     // Emptied as the browser starts too: a resident that ended without
     // retiring it left them.
@@ -810,7 +810,7 @@ where
 /// once its resident's lock is gone.
 pub async fn sweep_orphans(chrome: &crate::driver::installation::Chrome) {
     let installations = chrome.roots().await;
-    sweep_orphans_in(&DirectoryBases::host(), installations, Owner::current()).await;
+    sweep_orphans_in(&DirectoryBases::device(), installations, Owner::current()).await;
     chrome.swept().send_replace(true);
 }
 
@@ -1103,7 +1103,7 @@ impl BrowserEnvironment {
     }
 
     /// The tabs as [`Self::listed`] lists them, with the list's number in
-    /// the Host's sequence: the count of changes read before the listing, so
+    /// the device's sequence: the count of changes read before the listing, so
     /// a list never claims to be newer than it is.
     pub async fn numbered(
         &self,

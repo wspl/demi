@@ -3,7 +3,7 @@ import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/att
 import type { ShellToolView as ShellView, ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { ToolPicture } from '@demicodes/web-ui/agent/tool-media'
 import { editCopies, galleryBlobSize, galleryBlobs, missingBlob } from './blobs'
-import { hostPictureCopies } from './attachments'
+import { devicePictureCopies } from './attachments'
 import { agentReceiptMessages } from './subagents'
 
 export type { ShellView }
@@ -158,22 +158,22 @@ export const movedReceiptMessage: AgentMessage = {
   recipientId: 'gallery-parent',
   timestamp: '2026-09-12T12:08:00.000Z',
   content: 'The user moved this conversation from Cloud (/home/demi/sessions/0f4e2a1c) to MacBook Pro (/Users/alex/code/photo-album). Files did not move. Check what this means for the work so far, and tell the user.',
-  event: { type: 'moved', host: 'MacBook Pro', path: '/Users/alex/code/photo-album', home: '/Users/alex' },
+  event: { type: 'moved', device: 'MacBook Pro', path: '/Users/alex/code/photo-album', home: '/Users/alex' },
 }
-/** A decision on a request to reach a host, and Demi's notice that a move the agent asked for failed. */
+/** A decision on a request to reach a device, and Demi's notice that a move the agent asked for failed. */
 export const organizeReceiptMessages: AgentMessage[] = [
   {
     id: 'permission:pr-move',
     recipientId: 'gallery-parent',
     timestamp: '2026-09-12T12:06:00.000Z',
     content:
-      'The user allowed this conversation to reach build-box; the command `demi host move build-box /srv/photo-album` can now run.',
+      'The user allowed this conversation to reach build-box; the command `demi device move build-box /srv/photo-album` can now run.',
     event: {
       type: 'permission' as const,
       outcome: 'allowed' as const,
       action: 'reach build-box',
       categories: [],
-      host: 'build-box',
+      device: 'build-box',
     },
   },
   {
@@ -454,7 +454,7 @@ export const longLineShellTool = toolCall({
           'libatk-bridge2.0-0t64 is already the newest version (2.52.0-1build1).',
           'exit=0',
           'demi-runner 0.42.0',
-          'Warning: the download location redirected to another host, so the runner archive was fetched from the new address; run the command again with the redirect option set to follow it to the end, and compare the checksum below.',
+          'Warning: the download location redirected to another device, so the runner archive was fetched from the new address; run the command again with the redirect option set to follow it to the end, and compare the checksum below.',
           'name\tstate\tsize',
           'demi-runner\tready\t14.2 MB',
           'sha256:3f2c9a1e7b5d4c8806fa12e9d3b7a45c0e8f1d26b9a374c5e0d18f6a2b7c93d4e1f05a68b2c7d93e4f1a0b8c5d62e7f93a1b4c8d05e6f2a7b19c3d8e4f60a5b7c2d1e9f38a40b6c5d7e2f1a9b83c40d6e5f7a2b1c98d3e04f6a5b7c',
@@ -717,7 +717,7 @@ export function viewerTranscriptBlocks(): Block[] {
     {
       type: 'text', id: 'viewer-answer', createdAt: iso(580_000), endedAt: iso(580_000), model: demoModel,
       text: 'The tabs differ only in the button. The test pattern and the whole page, from the project:\n\n![The test pattern](assets/photo.png)\n![The whole page](assets/page-full.png)\n\nAnd the timeline of the steps:\n\n<attachment id=\"a5\" />',
-      pictures: hostPictureCopies,
+      pictures: devicePictureCopies,
     },
   ])
 }
@@ -1210,7 +1210,7 @@ export function commandEndBlocks(): ToolCallBlock[] {
     run('end-long', '32', 'Run the whole test suite and collect coverage for every package in the project', { status: 'running' }),
     run('end-failed', '33', 'Run the login test', { status: 'exited', exitCode: 1 }),
     run('end-stopped', '34', 'Start the dev server', { status: 'aborted' }),
-    run('end-lost', '37', 'Run the deploy', { status: 'lost', lostReason: 'Demi was upgraded and the Host\'s runner replaced itself' }),
+    run('end-lost', '37', 'Run the deploy', { status: 'lost', lostReason: 'Demi was upgraded and the device\'s runner replaced itself' }),
     lookCall('end-look', 'Check the first short sleep', '31', '35', statusText('31', 'exited', 'slept 2 s\n')),
     lookCall('end-look-several', 'Check the test suite and the dev server', '32 34', '36', statusText('32', 'running', '[412/980] packages/web\n')),
     toolCall({
@@ -1248,7 +1248,7 @@ export function commandReportCases(): { variant: string, reports: CommandReport[
     { variant: 'ended with a failure', reports: [report('17', suite, { kind: 'ended', exitCode: 1 }, 'FAIL auth.test.ts')] },
     { variant: 'stopped by you', reports: [report('18', 'Start the dev server', { kind: 'stopped', by: { kind: 'user' } })] },
     { variant: 'stopped by another agent', reports: [report('19', 'Watch the type check', { kind: 'stopped', by: { kind: 'agent', number: 2 } })] },
-    { variant: 'lost', reports: [report('20', 'Serve the docs', { kind: 'lost', reason: 'its Host’s connection ended' })] },
+    { variant: 'lost', reports: [report('20', 'Serve the docs', { kind: 'lost', reason: 'its device’s connection ended' })] },
     { variant: 'a call whose title is not known', reports: [report('21', '', { kind: 'ended', exitCode: 2 })] },
     {
       variant: 'ended, with the media its job viewed',
@@ -1511,7 +1511,7 @@ export const WAITING_SHELL_SCRIPT = 'cargo test'
 
 /**
  * A `shell` call whose command waits for the conversation's offline device
- * (`crates/backend-host-access/src/access.rs`): the call runs, and its
+ * (`crates/backend-device-access/src/access.rs`): the call runs, and its
  * command starts once the device's runner is back.
  */
 export function waitingShellCall(): ToolCallBlock {
@@ -1600,7 +1600,7 @@ export function transcriptDemoBlocks(): Block[] {
       createdAt: thinkingEndedAt, endedAt: thinkingEndedAt,
       model: demoModel,
       text: assistantMarkdown,
-      pictures: hostPictureCopies,
+      pictures: devicePictureCopies,
     },
     {
       type: 'abort',

@@ -39,14 +39,14 @@
     "conversation_not_found": "Esta conversa não existe mais.",
     "conversation_archived": "Esta conversa está arquivada.",
     "conversation_busy": "A conversa está ocupada. Tente novamente em instantes.",
-    "host_stopped": "A nuvem está parada.",
+    "device_stopped": "A nuvem está parada.",
     "device_offline": "O dispositivo está offline.",
     "device_not_found": "O dispositivo foi removido da sua conta.",
     "cloud_unavailable": "A nuvem não está disponível agora.",
     "cloud_resetting": "A nuvem está sendo redefinida.",
     "cloud_capacity": "O servidor não tem espaço para iniciar a nuvem.",
     "cloud_crash_loop": "A nuvem parou de iniciar após falhas repetidas.",
-    "host_operation_failed": "A conexão com o dispositivo caiu.",
+    "device_operation_failed": "A conexão com o dispositivo caiu.",
     "unknown_plugin_method": "Este servidor não consegue executar um navegador.",
     "plugin_disabled": "O plugin Navegador está desativado."
   },
@@ -73,13 +73,13 @@
     "stopLoading": "Não foi possível parar o carregamento",
     "openPage": "Não foi possível abrir a página",
     "saveDownload": "Não foi possível salvar o download",
-    "hostFilesUnreachable": "Os arquivos do host não estão acessíveis."
+    "deviceFilesUnreachable": "Os arquivos do dispositivo não estão acessíveis."
   },
   "region": {
     "couldntOpen": "Não foi possível abrir esta página.",
     "couldntShow": "Não foi possível mostrar esta página.",
     "noH264": "Este navegador não consegue decodificar vídeo H.264.",
-    "waiting": "Aguardando o host…"
+    "waiting": "Aguardando o dispositivo…"
   },
   "menu": {
     "copyLink": "Copiar endereço do link",
@@ -108,7 +108,7 @@
   },
   "dialog": {
     "leavePage": "Sair da página?",
-    "says": "{host} diz",
+    "says": "{device} diz",
     "thisPageSays": "Esta página diz",
     "answer": "Responder",
     "stay": "Ficar",

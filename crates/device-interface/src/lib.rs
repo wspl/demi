@@ -1,0 +1,65 @@
+//! The contracts between the agent and what executes its work, and nothing that
+//! implements them:
+//!
+//! - the device contract: an execution target's filesystem and processes
+//!   ([`Device`], [`DeviceFs`], [`DeviceProcess`]) and its value identity
+//!   ([`DeviceKey`]);
+//! - batched reads of a device's files ([`DeviceRead`], [`DeviceFile`]), and the
+//!   directories a project's files are searched in ([`project`]), which a
+//!   plugin's port, the product and the agent runtime read with;
+//! - the command system: a [`CommandSet`] pairs declaration trees with the
+//!   handler of each `rpc` leaf, built with [`GroupBuilder`] and
+//!   [`LeafBuilder`]. A handler receives its call as data ([`RpcInvocation`])
+//!   and acts through an [`RpcPort`] of messages;
+//! - the shell-environment contract behind the `shell` tool
+//!   ([`ShellEnvironment`], [`ExecRequest`], [`CommandStatus`]), and the record
+//!   every environment keeps its commands in ([`CommandRecord`]), which keeps
+//!   the model's place in each command's output apart from the pages' view of
+//!   it ([`PageView`]);
+//! - the feed through which an environment reports that view's changes and
+//!   learns whether a page watches ([`PageFeed`]);
+//! - the text a handler prints: aligned columns ([`text`]).
+//!
+//! Everything here runs inside a user's shard, so nothing requires `Send`.
+//!
+//! The crate depends on no agent crate, no `provider-common`, no concrete
+//! provider, no plugin and no device implementation.
+
+mod builders;
+mod commands;
+mod environment;
+mod files;
+mod device;
+mod media;
+mod output;
+pub mod project;
+mod record;
+mod reserved;
+mod rpc;
+
+pub use files::{EntryKind, DeviceEntry, DeviceFile, DeviceRead};
+pub use builders::{Call, GroupBuilder, LeafBuilder, TypedRpc};
+pub use commands::{Checked, CommandSet, DEMI_ROOT, Declared, RegisterError};
+pub use demi_command_declarations::{CapabilityIndex, IndexGroup};
+pub use environment::{
+    BinaryOutput, CommandState, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
+    DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, ExecRequest, JobCaller, Newest, Numbers, PageFeed,
+    ShellEnvironment, ShellError, TakenUp, Unreachable, UnsentStart, WholeView,
+};
+pub use device::{
+    ByteRange, ByteStream, CpOptions, Descriptor, DirEntry, FileContents, FileKind, FileStat, Device, DeviceError,
+    DeviceErrorKind, DeviceFs, DeviceIdentity, DeviceKey, DeviceProcess, LinkTarget, MkdirOptions, Process,
+    ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnError,
+    SpawnErrorKind, SpawnRequest, SymbolicLink, WhenExists, WriteOptions,
+};
+pub use media::CommandMedium;
+pub use output::{
+    Backward, Forward, Missing, OutputRecord, OutputText, Piece, Seen, Streams, WholeOutput,
+    binary_line,
+};
+pub use record::{CommandRecord, Ending, PageState, PageView, TAIL_CHARS};
+pub use reserved::{RESERVED_NAMES, is_reserved};
+pub use rpc::{
+    BroughtDevice, PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, RpcError, RpcHandler,
+    RpcInvocation, RpcPort,
+};

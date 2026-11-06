@@ -1,4 +1,4 @@
-//! The hardware encoder of a Windows Host: the video encoder transform its GPU
+//! The hardware encoder of a Windows device: the video encoder transform its GPU
 //! driver registers with Media Foundation (NVENC, Quick Sync, AMF), which takes
 //! NV12 and gives H.264.
 //!
@@ -349,7 +349,7 @@ fn hardware_transforms() -> Result<Vec<(String, IMFTransform)>> {
         CoTaskMemFree(Some(found.cast()));
     }
     if transforms.is_empty() {
-        return Err(Error("this Host has no hardware H.264 encoder".into()));
+        return Err(Error("this device has no hardware H.264 encoder".into()));
     }
     Ok(transforms)
 }

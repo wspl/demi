@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { ref } from 'vue'
-import ProjectDialog from '@demicodes/web-ui/hosts/ProjectDialog.vue'
-import type { ProjectDraft } from '@demicodes/web-ui/hosts/project'
+import ProjectDialog from '@demicodes/web-ui/targets/ProjectDialog.vue'
+import type { ProjectDraft } from '@demicodes/web-ui/targets/project'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useResources } from '../state/resources'
 import { useConversationNavigation } from '../conversation/navigation'
@@ -60,13 +60,13 @@ async function create(draft: ProjectDraft): Promise<void> {
     :load="product.partLoad('devices')"
     @retry="product.reconnect"
     :devices="resources.devices"
-    :last-host="preferences.lastProjectHost"
+    :last-device="preferences.lastProjectDevice"
     :message="message"
     :source-for="(id) => fileSourceFor(deviceById(id))"
     :places-for="(id) => placesFor(deviceById(id), resources.projects)"
     @close="close"
     @create="create"
-    @choose="(choice) => preferences.update({ lastProjectHost: choice })"
+    @choose="(choice) => preferences.update({ lastProjectDevice: choice })"
     @connect-device="resources.openPairing"
   />
 </template>

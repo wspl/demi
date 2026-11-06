@@ -51,7 +51,7 @@
     "cloudResetting": "클라우드를 초기화하는 중입니다."
   },
   "workflows": {
-    "hostSilent": "호스트가 응답하지 않았습니다."
+    "deviceSilent": "기기가 응답하지 않았습니다."
   },
   "uploads": {
     "notUploaded": "{name} 업로드에 실패했습니다. {reason}",

@@ -1,4 +1,4 @@
-//! H.264 encoding of a screen's pictures, on the Host's hardware where it has
+//! H.264 encoding of a screen's pictures, on the device's hardware where it has
 //! an encoder.
 //!
 //! A source of raw pictures, an Android emulator's screen, hands them to an
@@ -25,7 +25,7 @@
 //!
 //! - The crate codes pictures and knows no source, no recording and no live
 //!   view. What to do with the coded pictures is the caller's.
-//! - Hardware encoders are optional on every system. A Host where
+//! - Hardware encoders are optional on every system. A device where
 //!   [`hardware`] says no codes in software, which keeps up with a phone's
 //!   logical size and not with its pixels, so the caller that has the choice
 //!   of size asks first.
@@ -135,7 +135,7 @@ pub trait Encoder: Send {
     fn take_dropped(&mut self) -> Vec<u64>;
 }
 
-/// Starts the encoder of `settings`: the Host's hardware one where it starts,
+/// Starts the encoder of `settings`: the device's hardware one where it starts,
 /// else OpenH264, which `load` loads.
 pub fn open(settings: Settings, load: &Load) -> Result<Box<dyn Encoder>> {
     if settings.width < 2 || settings.height < 2 || settings.width % 2 != 0 || settings.height % 2 != 0 {
@@ -155,7 +155,7 @@ pub fn open(settings: Settings, load: &Load) -> Result<Box<dyn Encoder>> {
     Ok(Box::new(software::software(settings, load)?))
 }
 
-/// Whether this Host has a hardware encoder that works, found once.
+/// Whether this device has a hardware encoder that works, found once.
 pub fn hardware() -> bool {
     static FOUND: OnceLock<bool> = OnceLock::new();
     *FOUND.get_or_init(|| {
@@ -165,7 +165,7 @@ pub fn hardware() -> bool {
             rate: Rate::Quality,
         };
         let found = hardware_encoder(probe).is_ok();
-        tracing::debug!(event = "h264_encoder.probed", hardware = found, "whether this Host has a hardware H.264 encoder was found");
+        tracing::debug!(event = "h264_encoder.probed", hardware = found, "whether this device has a hardware H.264 encoder was found");
         found
     })
 }

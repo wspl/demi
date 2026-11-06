@@ -22,7 +22,7 @@ demi-shared-gates = { path = "../shared-gates" }
 demi-runner-client = { path = "../runner-client" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
-demi-host-interface = { path = "../host-interface" }
+demi-device-interface = { path = "../device-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 futures-util.workspace = true
 serde_json.workspace = true

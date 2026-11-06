@@ -33,7 +33,7 @@ pub struct ManagedBoot {
 
 /// The name of the abstract Unix socket a backend whose runner socket is the
 /// file `file` listens on beside it: the file's path, so two backends on one
-/// host have two names.
+/// device have two names.
 pub fn abstract_socket(file: &std::path::Path) -> String {
     format!("demi-runners:{}", file.display())
 }

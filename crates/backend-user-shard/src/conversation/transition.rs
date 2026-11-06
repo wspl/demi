@@ -1,4 +1,4 @@
-//! Changes of a conversation (`crates/backend-host-access/src/transition.rs`, §
+//! Changes of a conversation (`crates/backend-device-access/src/transition.rs`, §
 //! Lifecycle access).
 //!
 //! Every change goes through one entry, `Shard::transition`.
@@ -11,28 +11,28 @@
 //!   streams and the one-shot calls admitted like them ended, and its file gate
 //!   reserved. Each commits, then tells the connected devices it leaves to
 //!   release the conversation, and waits for none (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
-//! - A detach applies at once and waits for no Host, whatever the conversation
-//!   does, as a move does: the Host leaves, its jobs are asked to stop, and it
-//!   answers; the Host hears the release once they ended.
+//! - A detach applies at once and waits for no device, whatever the conversation
+//!   does, as a move does: the device leaves, its jobs are asked to stop, and it
+//!   answers; the device hears the release once they ended.
 //! - A move stops and waits for nothing: it reads its destination as typed, ends the
 //!   transfers and streams, and commits, advancing the execution-context
 //!   revision, so each agent's next request names the new place. The commands
 //!   running then finish where they started; the device it left hears the
-//!   release once they ended. Each move logs one line with its id, its Hosts,
+//!   release once they ended. Each move logs one line with its id, its devices,
 //!   how long each step took and its outcome.
 //!
 //! A transition waits for no other work: a conversation that is busy refuses
-//! it. The shard reserves the idle tree; host access holds the rest and runs the
-//! transition's steps (`demi_backend_host_access::transition`).
+//! it. The shard reserves the idle tree; device access holds the rest and runs the
+//! transition's steps (`demi_backend_device_access::transition`).
 
 use demi_backend_database::projects::ProjectDeletion;
 use demi_backend_database::{Selection, StorageError};
 use demi_backend_database::conversation_index::{
     ConversationChange, ConversationRecord, RecordChange, SettingsChange,
 };
-use demi_backend_host_access::access::Leaving;
-use demi_backend_host_access::root_of;
-use demi_backend_host_access::transition::{ChangeRefusal, Switched};
+use demi_backend_device_access::access::Leaving;
+use demi_backend_device_access::root_of;
+use demi_backend_device_access::transition::{ChangeRefusal, Switched};
 use demi_backend_page_sync::Part;
 use demi_shared_gates::{Purpose, Reservation};
 use demi_web_api_protocol::conversations::{
@@ -118,7 +118,7 @@ impl Shard {
         change: ConversationChange,
         cancel: &CancellationToken,
     ) -> Result<Option<Switched>, ChangeRefusal> {
-        let host = self.host_shard();
+        let access = self.device_shard();
         let record = self.owned_record(id).await?;
         // An archived conversation takes nothing but its restore; the index
         // transaction checks again when it applies the change. A move
@@ -144,9 +144,9 @@ impl Shard {
             }
             ConversationChange::Record(RecordChange::Detach(device)) => {
                 // A detach holds nothing and waits for no work: it ends the
-                // conversation's jobs on the Host
-                // (`crates/backend-host-access/src/transition.rs`).
-                let removed = host.detach(&record, device.clone()).await?;
+                // conversation's jobs on the device
+                // (`crates/backend-device-access/src/transition.rs`).
+                let removed = access.detach(&record, device.clone()).await?;
                 if removed {
                     self.release_detached(&record.id, device);
                 }
@@ -162,20 +162,20 @@ impl Shard {
                     .enter(Purpose::Demand)
                     .await;
                 if let RecordChange::Attach(attached) = &change {
-                    let target = host.resolve_target(&record).await?;
+                    let target = access.resolve_target(&record).await?;
                     if target.device() == Some(&attached.device) {
-                        return Err(ChangeRefusal::HostIsPrimary);
+                        return Err(ChangeRefusal::DeviceIsPrimary);
                     }
                 }
-                return host.commit(&record.id, change).await.map(|()| None);
+                return access.commit(&record.id, change).await.map(|()| None);
             }
             change => change,
         };
         let tree = self.reserve_idle_tree(&record.id)?;
-        let hold = host.hold_for_transition(&record.id, tree).await?;
+        let hold = access.hold_for_transition(&record.id, tree).await?;
         let committed = match change {
             ConversationChange::Record(RecordChange::Archived(true)) => {
-                let archived = host.archive(&record).await;
+                let archived = access.archive(&record).await;
                 if archived.is_ok() {
                     self.archived(&record.id);
                 }
@@ -193,7 +193,7 @@ impl Shard {
                         .is_none_or(|project| project.deleted),
                     _ => false,
                 };
-                let restored = host.commit(&record.id, RecordChange::Archived(false)).await;
+                let restored = access.commit(&record.id, RecordChange::Archived(false)).await;
                 if restored.is_ok() && remakes {
                     self.mark(Part::Projects);
                 }
@@ -203,7 +203,7 @@ impl Shard {
                 }
                 restored.map(|()| None)
             }
-            ConversationChange::Record(change) => host.commit(&record.id, change).await.map(|()| None),
+            ConversationChange::Record(change) => access.commit(&record.id, change).await.map(|()| None),
             ConversationChange::Settings(_) | ConversationChange::Target(_) => {
                 unreachable!("a settings change and a move are applied before the hold")
             }
@@ -223,7 +223,7 @@ impl Shard {
     }
 
     /// Moves the conversation `record` to `to` at once, the one operation the
-    /// page's move and `demi host move` take; none when `to` selects where it
+    /// page's move and `demi device move` take; none when `to` selects where it
     /// runs already (§ A move). Every move, whatever its outcome, logs one
     /// line.
     async fn move_conversation(
@@ -234,9 +234,9 @@ impl Shard {
     ) -> Result<Option<Switched>, ChangeRefusal> {
         let started = Instant::now();
         let id = uuid::Uuid::new_v4();
-        // A Host by its device's id; the Cloud before its first use has none.
+        // A device by its device's id; the Cloud before its first use has none.
         let named = |device: Option<&DeviceId>| device.map_or_else(|| "cloud".to_owned(), ToString::to_string);
-        let from_host = named(self.host_shard().resolve_target(record).await.ok().as_ref().and_then(|from| from.device()));
+        let from_device = named(self.device_shard().resolve_target(record).await.ok().as_ref().and_then(|from| from.device()));
         let asked = match &to {
             ConversationTarget::Device { device_id, .. } => device_id.to_string(),
             ConversationTarget::Project { project_id } => format!("project {project_id}"),
@@ -244,7 +244,7 @@ impl Shard {
         };
         let mut steps = MoveSteps::default();
         let moved = self.move_steps(record, to, cancel, &mut steps).await;
-        let to_host = match &moved {
+        let to_device = match &moved {
             Ok(Some(switched)) => named(switched.switch.to.device()),
             _ => asked,
         };
@@ -258,8 +258,8 @@ impl Shard {
             event = "conversation_move.ended",
             move_id = %id,
             conversation = %record.id,
-            from_host_id = %from_host,
-            host_id = %to_host,
+            from_device_id = %from_device,
+            device_id = %to_device,
             check_ms = steps.check,
             transfers_ms = steps.transfers,
             commit_ms = steps.commit,
@@ -284,17 +284,17 @@ impl Shard {
         if record.archived() {
             return Err(ChangeRefusal::Archived);
         }
-        let host = self.host_shard();
+        let access = self.device_shard();
         let slot = self.conversations().slot(&record.id);
-        // The worktrees the Host reported before the move are its
+        // The worktrees the device reported before the move are its
         // destination's, as a command that adds one and then moves there
         // expects (`crate::shard::worktrees`).
         self.worktrees_stored().await;
-        // A destination's directory is stored as typed; its Host names it at
+        // A destination's directory is stored as typed; its device names it at
         // the first use.
         let step = Instant::now();
         let to = tokio::select! {
-            to = host.move_destination(to) => to,
+            to = access.move_destination(to) => to,
             () = cancel.cancelled() => Err(ChangeRefusal::Cancelled),
         };
         steps.check = step.elapsed().as_millis() as u64;
@@ -304,11 +304,11 @@ impl Shard {
         }
         // A destination that selects the conversation's own target is no
         // change.
-        if host.selection_for(record, &to).await? == record.target {
+        if access.selection_for(record, &to).await? == record.target {
             return Ok(None);
         }
         // Commands still running on an offline device it leaves let go of
-        // the conversation (`crates/backend-host-access/src/transition.rs`).
+        // the conversation (`crates/backend-device-access/src/transition.rs`).
         let leaving = self.leaving_offline(record).await?;
         if let Some(device) = &leaving {
             slot.leave_jobs_on(device, Leaving::Following);
@@ -317,7 +317,7 @@ impl Shard {
         let transfers = slot.transfers.close().await;
         steps.transfers = step.elapsed().as_millis() as u64;
         let step = Instant::now();
-        let switched = host.switch_target(record, to).await;
+        let switched = access.switch_target(record, to).await;
         steps.commit = step.elapsed().as_millis() as u64;
         drop(transfers);
         let Some(switched) = switched? else {
@@ -352,7 +352,7 @@ impl Shard {
         let id = id.clone();
         self.tasks().spawn_local(async move {
             tokio::select! {
-                () = shard.host_shard().release_departed(&id, &device) => {}
+                () = shard.device_shard().release_departed(&id, &device) => {}
                 () = shard.closed() => {}
             }
         });
@@ -366,7 +366,7 @@ impl Shard {
         let id = id.clone();
         self.tasks().spawn_local(async move {
             tokio::select! {
-                () = shard.host_shard().release_detached(&id, &device) => {}
+                () = shard.device_shard().release_detached(&id, &device) => {}
                 () = shard.closed() => {}
             }
         });
@@ -391,7 +391,7 @@ impl Shard {
     }
 
     /// Deletes the user's project `id` as one transition: every conversation in it
-    /// is held as its archive holds it, released on its Hosts, and archived in the
+    /// is held as its archive holds it, released on its devices, and archived in the
     /// transaction that deletes the project.
     ///
     /// A conversation of it whose work runs refuses the deletion, as it refuses
@@ -399,7 +399,7 @@ impl Shard {
     /// meanwhile.
     pub async fn delete_project(&self, id: &ProjectId) -> Result<(), ChangeRefusal> {
         let control = &self.services().control;
-        let host = self.host_shard();
+        let device = self.device_shard();
         let owned = control
             .project(id.clone())
             .await?
@@ -419,11 +419,11 @@ impl Shard {
                 .await?
                 .ok_or(ChangeRefusal::NotFound)?;
             let tree = self.reserve_idle_tree(conversation)?;
-            holds.push(host.hold_for_transition(conversation, tree).await?);
+            holds.push(device.hold_for_transition(conversation, tree).await?);
             records.push(record);
         }
         for record in &records {
-            released.push((record.id.clone(), host.release_devices(record).await?));
+            released.push((record.id.clone(), device.release_devices(record).await?));
         }
         let deleted = control
             .delete_project(self.user().clone(), id.clone(), conversations.clone())
@@ -437,8 +437,8 @@ impl Shard {
         for (conversation, devices) in &released {
             self.archived(conversation);
             self.mark(Part::Conversation(conversation.clone()));
-            // The connected Hosts are told now, the others by their `hello`.
-            host.tell_release(conversation, devices, true);
+            // The connected devices are told now, the others by their `hello`.
+            device.tell_release(conversation, devices, true);
         }
         self.mark(Part::ConversationOrder);
         self.mark(Part::Projects);
@@ -461,7 +461,7 @@ impl Shard {
     /// The paired device a move of `record` leaves while its runner is not
     /// connected, if it does.
     async fn leaving_offline(&self, record: &ConversationRecord) -> Result<Option<DeviceId>, ChangeRefusal> {
-        let target = self.host_shard().resolve_target(record).await?;
+        let target = self.device_shard().resolve_target(record).await?;
         let Some(device) = target.device() else {
             return Ok(None);
         };
@@ -495,7 +495,7 @@ impl Shard {
     /// Fails the jobs that wait for `device`, the offline device the move
     /// of `record` left, with what the agent reads of them: where the
     /// conversation runs now, and that the command did not run
-    /// (`crates/backend-host-access/src/access.rs`).
+    /// (`crates/backend-device-access/src/access.rs`).
     async fn fail_waiting_for(&self, record: &ConversationRecord, device: &DeviceId) -> Result<(), ChangeRefusal> {
         let control = &self.services().control;
         let left = control
@@ -506,8 +506,8 @@ impl Shard {
             .conversation(record.id.clone())
             .await?
             .ok_or(ChangeRefusal::NotFound)?;
-        let target = self.host_shard().resolve_target(&record).await?;
-        let (_, now) = self.primary_host(&target).await?;
+        let target = self.device_shard().resolve_target(&record).await?;
+        let (_, now) = self.primary_device(&target).await?;
         let reason = format!("This conversation now runs on {now}; this command did not run, since {left} was offline.");
         self.conversations().slot(&record.id).fail_waiting_for(device, &reason);
         Ok(())

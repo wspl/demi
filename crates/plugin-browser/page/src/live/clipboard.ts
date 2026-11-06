@@ -1,7 +1,7 @@
 /**
  * The viewer's own clipboard. A copy in the watched tab is the viewer's
  * copy: the page starts the write while the keystroke still carries the
- * viewer's activation, and finishes it with the text the Host sends back.
+ * viewer's activation, and finishes it with the text the device sends back.
  */
 const WAIT_MS = 3000
 

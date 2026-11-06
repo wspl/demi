@@ -3,7 +3,7 @@
 //! A conversation uses it in one of three roles:
 //!
 //! - `target`: its files and commands are on the Cloud.
-//! - `attached`: the Cloud is an extra Host.
+//! - `attached`: the Cloud is an extra device.
 //! - `provider`: the conversation names the Claude Code machine, never the
 //!   user's Cloud, and the work on that machine holds it instead.
 //!
@@ -13,7 +13,7 @@
 //!
 //! The `provider` role is derived, never stored. A node of the conversation's
 //! tree, the root or any subagent, infers with a provider that needs a process
-//! on a Host, and the provider's placement says which device that is. The same
+//! on a device, and the provider's placement says which device that is. The same
 //! placement starts the process, so the role and the process cannot name
 //! different machines. The lifecycle knows roles. It does not know providers.
 //!
@@ -26,14 +26,14 @@
 //! - Its streams stay open.
 //! - It can be opened, read and written throughout.
 //!
-//! A command it had running on the Cloud ends with the device, as on any Host
+//! A command it had running on the Cloud ends with the device, as on any device
 //! that went away. Its next Cloud command waits for the reset like any other
 //! wake and then runs, never refused because a reset is running.
 //!
 //! A held conversation is waiting, not failed. While a transition holds it (a
 //! reset, a target change, an archive), everything the user sends to it waits
 //! for the transition and then proceeds (opening it, a message, a steer, a
-//! rename, a pin, a model change, a Host operation). Nothing is answered with a
+//! rename, a pin, a model change, a device operation). Nothing is answered with a
 //! refusal because the transition is running, so nothing is left for the user
 //! to retry. A wait ends early only when its requester goes away.
 //!

@@ -1,15 +1,15 @@
 import type { Block } from '@demicodes/protocol'
 import { storedShellView } from '../agent/block-helpers'
-import { isAbsoluteHostPath, relativePath } from './paths'
+import { isAbsoluteDevicePath, relativePath } from './paths'
 import type { ConversationTranscripts } from './request-changes'
 
 /**
  * The repositories the Change view's Commits offers for a conversation's
- * working directory (`crates/runner-host/src/repositories.rs` finds them),
+ * working directory (`crates/runner-device/src/repositories.rs` finds them),
  * and the one it shows until the user picks one.
  *
  * The page names where the agents changed files, from the transcripts it
- * holds; the Host answers with the repositories found there and around the
+ * holds; the device answers with the repositories found there and around the
  * working directory. The one holding the working directory stands for the
  * working directory itself, as Commits read it before there was a choice.
  */
@@ -86,12 +86,12 @@ function placesOf(blocks: readonly Block[], root: string): WindowPlaces {
 }
 
 /**
- * Whether `path` lies below `folder`, as the Host compares them: on Windows
+ * Whether `path` lies below `folder`, as the device compares them: on Windows
  * either separator and any case, and below a root such as `/` or `C:\` too.
  */
 function below(path: string, folder: string): boolean {
   const relative = relativePath(folder, path)
-  return relative !== '' && !isAbsoluteHostPath(relative)
+  return relative !== '' && !isAbsoluteDevicePath(relative)
 }
 
 /** The folder a file is in, on either path syntax. */
@@ -99,7 +99,7 @@ function folderOf(path: string): string {
   return path.slice(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')))
 }
 
-/** What the Host found around the working directory (`git_repositories`). */
+/** What the device found around the working directory (`git_repositories`). */
 export interface FoundRepositories {
   /** Whether the working directory lies in a repository. */
   inRepository: boolean
@@ -108,7 +108,7 @@ export interface FoundRepositories {
 }
 
 /**
- * The repositories the Host found, named for the working directory `root`,
+ * The repositories the device found, named for the working directory `root`,
  * whose own name is `rootName`, with the one Commits shows until the user
  * picks: the innermost holding `latest`.
  */

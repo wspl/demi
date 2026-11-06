@@ -2,11 +2,11 @@ import { t } from './locales/text'
 import { computed } from 'vue'
 import { defineStore } from 'pinia'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import type { ForwardHost, PortForwardChange, SettingsPortForward } from '@demicodes/web-ui/settings/port-forwards'
+import type { ForwardDevice, PortForwardChange, SettingsPortForward } from '@demicodes/web-ui/settings/port-forwards'
 import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
 import { portForwardAnswerSchema, type PortForwardDto, type PortForwardPatch } from '../api/generated/web-api'
 import { useHeldList, useProduct, type Answer } from '../state/product'
-import { deviceMarkOf, hostKindOf, hostLabel } from '../state/hosts'
+import { deviceMarkOf, targetKindOf, deviceLabel } from '../state/devices'
 
 /** The forwards oldest first, as the backend lists them: `forward` in its place by id. */
 function withForward(forwards: PortForwardDto[], forward: PortForwardDto): PortForwardDto[] {
@@ -34,13 +34,13 @@ const usePortForwardStore = defineStore('port-forward-settings', () => {
   const product = useProduct()
 
   const forwards = computed<SettingsPortForward[]>(() => product.snapshot?.portForwards ?? [])
-  /** The user's Hosts, the Cloud first, as a forward's ends are chosen among them. */
-  const hosts = computed<ForwardHost[]>(() => {
-    const devices = product.snapshot?.devices ?? []
-    return devices
-      .map((device): ForwardHost => {
-        const kind = hostKindOf(device)
-        return { id: device.id, name: hostLabel(kind, device), kind, state: device.state, mark: deviceMarkOf(device, devices) }
+  /** The user's devices, the Cloud first, as a forward's ends are chosen among them. */
+  const devices = computed<ForwardDevice[]>(() => {
+    const known = product.snapshot?.devices ?? []
+    return known
+      .map((device): ForwardDevice => {
+        const kind = targetKindOf(device)
+        return { id: device.id, name: deviceLabel(kind, device), kind, state: device.state, mark: deviceMarkOf(device, known) }
       })
       .sort((a, b) => Number(b.kind === 'cloud') - Number(a.kind === 'cloud'))
   })
@@ -96,7 +96,7 @@ const usePortForwardStore = defineStore('port-forward-settings', () => {
     }
   }
 
-  return { forwards, hosts, add, change, tryAgain, remove }
+  return { forwards, devices, add, change, tryAgain, remove }
 })
 
 /** The port forward settings, which hold the user's forwards while a view shows them. */

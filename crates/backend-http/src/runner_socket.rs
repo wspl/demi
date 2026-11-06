@@ -53,10 +53,10 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
         return;
     }
     let Some(token) = token else {
-        // A managed host is born with its token; one without it is
+        // A managed device is born with its token; one without it is
         // misbooted, never a device waiting to be paired.
         if runner.managed == Some(true) {
-            let reason = "a managed host presents its device token; it is never paired";
+            let reason = "a managed device presents its device token; it is never paired";
             refuse(socket, &runner, HelloErrorCode::UnknownDevice, reason).await;
         } else {
             await_claim(&services, &shards, socket, runner, kept.instance).await;
@@ -110,13 +110,13 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
     match services.control.account(owner.clone()).await {
         Ok(Some(account)) if !account.user.disabled => {}
         Ok(_) => {
-            tracing::info!(event = "runner_connection.closed", host_id = %device.id, reason = "account_disabled", "closing a runner connection of a disabled account");
+            tracing::info!(event = "runner_connection.closed", device_id = %device.id, reason = "account_disabled", "closing a runner connection of a disabled account");
             return;
         }
         Err(error) => {
             tracing::error!(
                 event = "runner_owner.read_failed",
-                host_id = %device.id,
+                device_id = %device.id,
                 error = &error as &dyn std::error::Error,
                 "a runner's owner could not be read"
             );

@@ -91,13 +91,13 @@ export interface LiveSessionOptions {
   /**
    * The code of a notice the picture still shows through, once per notice:
    * something the module could not do for the viewer. Its message is the
-   * Host's, which the Host's log keeps.
+   * device's, which the device's log keeps.
    */
   onNotice?: (reason: PanelReason) => void
-  /** The conversation browser's tabs, each time the view reports them, with the list's number in the Host's sequence. */
+  /** The conversation browser's tabs, each time the view reports them, with the list's number in the device's sequence. */
   onTabs?: (tabs: LiveTab[], list: number) => void
   /**
-   * The view ended; it opens again by itself, since a Host that becomes
+   * The view ended; it opens again by itself, since a device that becomes
    * reachable again, or a conversation browser started later, reaches the
    * page through a new view.
    */
@@ -363,7 +363,7 @@ export class LiveSession {
   }
 
   /**
-   * Asks the Host to capture again after it stopped trying: it recreates its
+   * Asks the device to capture again after it stopped trying: it recreates its
    * capture extension, and the view says it tries again until a picture or
    * another notice.
    */

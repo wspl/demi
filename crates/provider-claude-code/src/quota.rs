@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use demi_host_interface::{Process, ProcessOutput};
+use demi_device_interface::{Process, ProcessOutput};
 use demi_provider_common::quota::{
     Observation, ObservedWindows, ProbeCost, ProbeReading, QuotaError, QuotaSource,
     clamp_used_percent, plan_label, rfc3339, severity,

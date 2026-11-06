@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 use demi_command_declarations::NativeOperation;
-use demi_host_interface::{HostFile, HostRead, PortError, PortRequest, PortResponse, PortTransport, RpcPort};
+use demi_device_interface::{DeviceFile, DeviceRead, PortError, PortRequest, PortResponse, PortTransport, RpcPort};
 use demi_shared_types::{B64Bytes, BlobRef, MediaKind};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{DeviceId, WorkspaceId};
@@ -66,14 +66,14 @@ pub enum PortMessage {
     GetBlob {
         blob: BlobRef,
     },
-    /// Replaces the plugin's set of Host directories for the user.
+    /// Replaces the plugin's set of device directories for the user.
     SetDirectories {
-        directories: Vec<HostDirectory>,
+        directories: Vec<DeviceDirectory>,
     },
-    /// Reads paths on the request's conversation's primary Host, if it is
+    /// Reads paths on the request's conversation's primary device, if it is
     /// running, without waking it.
-    ReadHostFiles {
-        reads: Vec<HostRead>,
+    ReadDeviceFiles {
+        reads: Vec<DeviceRead>,
     },
     /// The plugin's page state of `scope` changed: the user's, or the
     /// request's conversation's.
@@ -81,7 +81,7 @@ pub enum PortMessage {
         scope: Scope,
     },
     /// Runs one operation of a package the plugin's commands bind, on the
-    /// request's conversation's primary Host, with `input` as what it reads:
+    /// request's conversation's primary device, with `input` as what it reads:
     /// bulk content, such as a document, goes there rather than in `args`,
     /// which the command protocol bounds as metadata.
     PackageCall {
@@ -92,9 +92,9 @@ pub enum PortMessage {
         kind: CallKind,
     },
     /// What the plugin's package last reported of the request's conversation
-    /// on the conversation's primary Host.
+    /// on the conversation's primary device.
     ReadReport,
-    /// Keeps `value` as what the plugin's package on the Host `device`
+    /// Keeps `value` as what the plugin's package on the device `device`
     /// reported of the request's conversation, at the package's `revision`.
     WriteReport {
         device: String,
@@ -110,7 +110,7 @@ pub enum PortMessage {
     Devices,
     /// The commit `url`'s default branch points to, as the user's paired
     /// device `device` reads it with its own `git`
-    /// (`crates/backend-host-access/src/device_git.rs`).
+    /// (`crates/backend-device-access/src/device_git.rs`).
     DeviceGitHead {
         device: DeviceId,
         url: String,
@@ -242,13 +242,13 @@ pub enum PortAnswer {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         bytes: Option<B64Bytes>,
     },
-    /// Each directory's path on every Host, in the order of the set.
+    /// Each directory's path on every device, in the order of the set.
     Directories {
         paths: Vec<DirectoryPath>,
     },
     /// What each read found, in the order of the reads.
-    HostFiles {
-        files: Vec<HostFile>,
+    DeviceFiles {
+        files: Vec<DeviceFile>,
     },
     /// The operation is done and answers nothing.
     Done,
@@ -256,8 +256,8 @@ pub enum PortAnswer {
     Called {
         result: Value,
     },
-    /// The report is kept; `primary` says whether the Host it came from is
-    /// the conversation's primary Host, the one its panel shows.
+    /// The report is kept; `primary` says whether the device it came from is
+    /// the conversation's primary device, the one its panel shows.
     Kept {
         primary: bool,
     },
@@ -333,7 +333,7 @@ impl PortAnswer {
             Self::Blob { .. } => "blob",
             Self::Bytes { .. } => "bytes",
             Self::Directories { .. } => "directories",
-            Self::HostFiles { .. } => "host_files",
+            Self::DeviceFiles { .. } => "device_files",
             Self::Done => "done",
             Self::Called { .. } => "called",
             Self::Kept { .. } => "kept",
@@ -359,7 +359,7 @@ impl PortAnswer {
     }
 }
 
-/// What a plugin's package on a Host last reported of a conversation.
+/// What a plugin's package on a device last reported of a conversation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StoredReport {
@@ -376,12 +376,12 @@ pub struct StoredValue {
     pub revision: u64,
 }
 
-/// A directory the plugin keeps on every Host its user's jobs run on, or
+/// A directory the plugin keeps on every device its user's jobs run on, or
 /// only on those the jobs of one workspace's conversations run on
-/// (`crates/backend-host-access/src/plugin_files.rs`).
+/// (`crates/backend-device-access/src/plugin_files.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HostDirectory {
+pub struct DeviceDirectory {
     /// 1 to 64 lowercase letters, digits and hyphens, unique in the set.
     pub name: String,
     pub files: Vec<DirectoryFile>,
@@ -470,7 +470,7 @@ pub struct WorkspaceName {
     pub name: String,
 }
 
-impl HostDirectory {
+impl DeviceDirectory {
     /// The SHA-256 of its listing, each file's mode, SHA-256 and path in
     /// path order, in hexadecimal: two directories of the same files have
     /// the same digest.
@@ -485,21 +485,21 @@ impl HostDirectory {
         format!("{:x}", listing.finalize())
     }
 
-    /// Its name on a Host: its name and the first 12 digits of its digest,
+    /// Its name on a device: its name and the first 12 digits of its digest,
     /// which tell two contents of one name apart.
-    pub fn host_name(&self) -> String {
+    pub fn device_name(&self) -> String {
         format!("{}-{}", self.name, &self.digest()[..12])
     }
 
-    /// Its path on every Host, below the Host's home, in the directory of
+    /// Its path on every device, below the device's home, in the directory of
     /// `plugin`.
     pub fn path(&self, plugin: &PluginId) -> String {
-        format!("~/.demi/plugins/{plugin}/{}", self.host_name())
+        format!("~/.demi/plugins/{plugin}/{}", self.device_name())
     }
 
     /// Refuses a set that names a directory twice, or a name or a file path
     /// that breaks its rule.
-    pub fn check_set(directories: &[HostDirectory]) -> Result<(), String> {
+    pub fn check_set(directories: &[DeviceDirectory]) -> Result<(), String> {
         let mut names = BTreeSet::new();
         for directory in directories {
             let name = &directory.name;
@@ -534,7 +534,7 @@ impl HostDirectory {
     }
 }
 
-/// A file of a [`HostDirectory`], whose bytes are a blob the plugin put.
+/// A file of a [`DeviceDirectory`], whose bytes are a blob the plugin put.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DirectoryFile {
@@ -544,16 +544,16 @@ pub struct DirectoryFile {
     pub blob: BlobRef,
 }
 
-/// Where a directory of the set is on every Host.
+/// Where a directory of the set is on every device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DirectoryPath {
     pub name: String,
-    /// Below the Host's home, as `~/.demi/plugins/skills/tdd-9f2c1a7b3e40`.
+    /// Below the device's home, as `~/.demi/plugins/skills/tdd-9f2c1a7b3e40`.
     pub path: String,
 }
 
-/// What a package call does on the Host, which decides whether it wakes a
+/// What a package call does on the device, which decides whether it wakes a
 /// stopped Cloud and whether it is activity (`backend-user-shard`'s
 /// `crates/backend-user-shard/src/lifecycle/mod.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -579,10 +579,10 @@ pub enum CallKind {
     deny_unknown_fields
 )]
 pub enum PortRefusal {
-    /// The conversation's host access refused, as its routes would: a page
+    /// The conversation's device access refused, as its routes would: a page
     /// call that passes it on answers with its code and status.
     #[error("{message}")]
-    Host {
+    Device {
         code: ErrorCode,
         status: u16,
         message: String,
@@ -591,7 +591,7 @@ pub enum PortRefusal {
     /// standard error.
     #[error("the operation failed: {stderr}")]
     Operation { stderr: String },
-    /// The Host could not start the operation: its package's resident did
+    /// The device could not start the operation: its package's resident did
     /// not start, or the runner refused to start it, in the runner's words
     /// (`crates/runner-jobs/src/commands/streams.rs`).
     #[error("{message}")]
@@ -602,9 +602,9 @@ pub enum PortRefusal {
     /// The operation needs a conversation, and the request has none.
     #[error("the request has no conversation")]
     NoConversation,
-    /// The conversation's primary Host is not running: a stopped Cloud, or a
+    /// The conversation's primary device is not running: a stopped Cloud, or a
     /// device whose runner is not connected. A read never wakes it.
-    #[error("the conversation's Host is not running")]
+    #[error("the conversation's device is not running")]
     NotRunning,
     /// A change of the work panel was refused, as its routes would refuse
     /// it, such as `panel_full`.
@@ -615,7 +615,7 @@ pub enum PortRefusal {
     #[error("{failure}")]
     Web { failure: WebFailure },
     /// The user is not signed in to the plugin's vendor: never, signed out,
-    /// or the vendor refused to renew the sign-in, which the host then
+    /// or the vendor refused to renew the sign-in, which the device then
     /// forgot.
     #[error("the user is not signed in")]
     SignedOut,
@@ -738,11 +738,11 @@ impl PluginPort {
         }
     }
 
-    /// Replaces the plugin's Host directories for the user, and answers
-    /// each one's path on every Host.
+    /// Replaces the plugin's device directories for the user, and answers
+    /// each one's path on every device.
     pub async fn set_directories(
         &self,
-        directories: Vec<HostDirectory>,
+        directories: Vec<DeviceDirectory>,
     ) -> Result<Vec<DirectoryPath>, PortFailure> {
         match self
             .ask(PortMessage::SetDirectories { directories })
@@ -753,15 +753,15 @@ impl PluginPort {
         }
     }
 
-    /// Reads `reads` on the conversation's primary Host, one answer per read;
-    /// [`PortRefusal::NotRunning`] when the Host is not running.
-    pub async fn read_host_files(
+    /// Reads `reads` on the conversation's primary device, one answer per read;
+    /// [`PortRefusal::NotRunning`] when the device is not running.
+    pub async fn read_device_files(
         &self,
-        reads: Vec<HostRead>,
-    ) -> Result<Vec<HostFile>, PortFailure> {
-        match self.ask(PortMessage::ReadHostFiles { reads }).await? {
-            PortAnswer::HostFiles { files } => Ok(files),
-            answer => Err(unexpected("read_host_files", &answer)),
+        reads: Vec<DeviceRead>,
+    ) -> Result<Vec<DeviceFile>, PortFailure> {
+        match self.ask(PortMessage::ReadDeviceFiles { reads }).await? {
+            PortAnswer::DeviceFiles { files } => Ok(files),
+            answer => Err(unexpected("read_device_files", &answer)),
         }
     }
 
@@ -817,8 +817,8 @@ impl PluginPort {
     }
 
     /// What the plugin's package last reported of the request's conversation
-    /// on its primary Host, which the backend keeps; none before it did. It
-    /// asks no Host.
+    /// on its primary device, which the backend keeps; none before it did. It
+    /// asks no device.
     pub async fn report(&self) -> Result<Option<StoredReport>, PortFailure> {
         match self.ask(PortMessage::ReadReport).await? {
             PortAnswer::Report { report } => Ok(report),
@@ -826,9 +826,9 @@ impl PluginPort {
         }
     }
 
-    /// Keeps what the plugin's package on the Host `device` reported of the
+    /// Keeps what the plugin's package on the device `device` reported of the
     /// request's conversation, whole, at its `revision`; answers whether the
-    /// Host is the conversation's primary one. A report of another Host is kept
+    /// device is the conversation's primary one. A report of another device is kept
     /// for when the conversation moves there, and changes nothing the panel
     /// shows.
     pub async fn keep_report(
@@ -996,7 +996,7 @@ impl PluginPort {
     }
 
     /// Signs the user out: the vendor revokes the tokens when it offers
-    /// revocation, and the host forgets them either way.
+    /// revocation, and the device forgets them either way.
     pub async fn oauth_sign_out(&self) -> Result<(), PortFailure> {
         self.done("oauth_sign_out", PortMessage::OauthSignOut).await
     }

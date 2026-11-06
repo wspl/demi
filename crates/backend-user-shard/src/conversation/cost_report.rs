@@ -19,11 +19,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use demi_backend_database::tree;
 use demi_backend_database::usage::{LedgerCall, add_call, turn_hit_rate, window_ms};
-use demi_backend_host_access::host_commands::conversation_of;
+use demi_backend_device_access::device_commands::conversation_of;
 use demi_backend_providers::vault::accounts as vault_accounts;
 use demi_backend_providers::vault::entries::Vault;
 use demi_conversation_lane_protocol::{AgentCost, CacheMiss};
-use demi_host_interface::{Call, RpcError, RpcPort};
+use demi_device_interface::{Call, RpcError, RpcPort};
 use demi_shared_types::output::{self, Cell, Fields, Table};
 use demi_shared_types::{Currency, Timestamp};
 use demi_web_api_protocol::conversations::CostWindow;

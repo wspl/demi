@@ -196,7 +196,7 @@ export function directFileReads(routeOf: RouteOf, relay: FileReads): FileReads {
  * A search on a `search` channel, or on the relay as `eitherPath` chooses:
  * the runner answers once the search started, then sends its lines as bytes
  * until it ends. An abort, or a caller that stops reading, closes the channel,
- * which stops the search on the Host.
+ * which stops the search on the device.
  */
 async function* searchEitherPath(
   routeOf: RouteOf,

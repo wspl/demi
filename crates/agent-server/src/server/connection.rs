@@ -35,7 +35,7 @@ use std::{
 use demi_agent_session::{
     AgentSession, EditCheck, EditSubmission, accepted, edit_digest, regenerate_digest,
 };
-use demi_agent_tools::HostResolver;
+use demi_agent_tools::DeviceResolver;
 use demi_conversation_lane_protocol::{
     AgentCode, ClientFrame, ClientFrameKind, EditOutcome, EditRequest, Follow, Followed, Held, RegenerateRequest,
     Refusal, RemoveOutcome, STORED_EPOCH, SendMessage, ServerFrame, SteerOutcome, Version,
@@ -209,7 +209,7 @@ impl FrameRx {
 /// One conversation lane's handling. It belongs to one conversation: the
 /// backend names the conversation, and the client never sends it. Dropping
 /// it detaches it; the tree's turns keep running.
-pub struct Connection<H: HostResolver> {
+pub struct Connection<H: DeviceResolver> {
     id: u64,
     root: NodeId,
     server: Rc<AgentServer<H>>,
@@ -220,7 +220,7 @@ pub struct Connection<H: HostResolver> {
     follows: Rc<Follows>,
 }
 
-impl<H: HostResolver> Connection<H> {
+impl<H: DeviceResolver> Connection<H> {
     pub(super) fn new(
         server: Rc<AgentServer<H>>,
         id: u64,
@@ -663,8 +663,8 @@ impl<H: HostResolver> Connection<H> {
             ClientFrame::Abort {} => {
                 let result = session.abort().await;
                 // Every command of the conversation whose start waits for
-                // its Host ends and never runs, whichever turn left it,
-                // though started commands run on (`crates/backend-host-access/src/access.rs`).
+                // its device ends and never runs, whichever turn left it,
+                // though started commands run on (`crates/backend-device-access/src/access.rs`).
                 tree.stop_waiting().await;
                 self.send(ServerFrame::AbortResult { result });
                 return true;
@@ -745,7 +745,7 @@ impl<H: HostResolver> Connection<H> {
     }
 }
 
-impl<H: HostResolver> Connection<H> {
+impl<H: DeviceResolver> Connection<H> {
     /// Retries or resumes the root's session, or compacts a node's,
     /// refusing while it is busy; a resume carries `reason` to the model.
     async fn recover(&self, session: &AgentSession, kind: ClientFrameKind) -> bool {
@@ -818,7 +818,7 @@ impl<H: HostResolver> Connection<H> {
     }
 }
 
-impl<H: HostResolver> Drop for Connection<H> {
+impl<H: DeviceResolver> Drop for Connection<H> {
     fn drop(&mut self) {
         self.detach();
     }

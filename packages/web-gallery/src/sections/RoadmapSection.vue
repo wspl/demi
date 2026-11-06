@@ -36,7 +36,7 @@ const shipped = [
 const next = [
   [
     'Sidebar',
-    'Entries at the top, plain conversations, then every project folded under its name and host, the account at the bottom. Designed on the Sidebar page; not in the product yet.'
+    'Entries at the top, plain conversations, then every project folded under its name and device, the account at the bottom. Designed on the Sidebar page; not in the product yet.'
   ],
   ['Radio / RadioGroup', 'Settings and filters.'],
   ['Badge / Tag / Chip', 'Model capability and session state.'],

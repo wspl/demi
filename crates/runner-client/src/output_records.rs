@@ -4,7 +4,7 @@
 //! (`crates/backend-database/src/command_outputs.rs`).
 
 use bytes::Bytes;
-use demi_host_interface::{Missing, OutputRecord, WholeOutput};
+use demi_device_interface::{Missing, OutputRecord, WholeOutput};
 use demi_runner_protocol::wire::{self, KeptRecord, OutputStream, WireBytes, WireError};
 use demi_shared_types::StreamKind;
 

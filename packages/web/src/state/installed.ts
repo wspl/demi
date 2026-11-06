@@ -1,20 +1,20 @@
-import { hostDownloading, hostInstalled, type HostArtifact, type HostDownload } from '@demicodes/web-ui/devices/installed'
+import { deviceDownloading, deviceInstalled, type DeviceArtifact, type DeviceDownload } from '@demicodes/web-ui/devices/installed'
 import type { PageState } from './lists'
 
-/** What `hostId` holds of `packages`, a plugin's (`crates/runner-command-packages/src/cache.rs`). */
+/** What `deviceId` holds of `packages`, a plugin's (`crates/runner-command-packages/src/cache.rs`). */
 export function packageInstalled(
   state: PageState | null,
-  hostId: string | null,
+  deviceId: string | null,
   packages: readonly string[],
-): HostArtifact[] {
-  return hostId === null ? [] : hostInstalled(state?.devices ?? [], hostId, packages)
+): DeviceArtifact[] {
+  return deviceId === null ? [] : deviceInstalled(state?.devices ?? [], deviceId, packages)
 }
 
-/** What `hostId` downloads of `packages`, a plugin's, now. */
+/** What `deviceId` downloads of `packages`, a plugin's, now. */
 export function packageDownloading(
   state: PageState | null,
-  hostId: string | null,
+  deviceId: string | null,
   packages: readonly string[],
-): HostDownload[] {
-  return hostId === null ? [] : hostDownloading(state?.devices ?? [], hostId, packages)
+): DeviceDownload[] {
+  return deviceId === null ? [] : deviceDownloading(state?.devices ?? [], deviceId, packages)
 }

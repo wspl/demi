@@ -32,8 +32,8 @@
 //! - A Cloud's disks belong to the machine manager, which keeps its own state
 //!   directory. The backend stores the Cloud's device record and its reset
 //!   intent only.
-//! - A project's files belong to its Host, reached through the conversation's
-//!   host access, never kept in a conversation database.
+//! - A project's files belong to its device, reached through the conversation's
+//!   device access, never kept in a conversation database.
 //! - Credentials are control records, never files.
 //!
 //! # Boundaries
@@ -113,7 +113,7 @@ pub mod conversations;
 pub mod deletions;
 pub mod devices;
 pub mod drafts;
-pub mod host_workflows;
+pub mod device_workflows;
 pub mod forks;
 pub mod instructions;
 pub mod idle_compactions;

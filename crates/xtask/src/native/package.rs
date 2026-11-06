@@ -46,7 +46,7 @@
 //! the top-level pointer as it was.
 //!
 //! A release carries the targets it was packaged with, all six from the release
-//! workflow and the Hosts' in development, and the backend loads either kind
+//! workflow and the devices' in development, and the backend loads either kind
 //! the same way.
 
 use std::collections::BTreeMap;

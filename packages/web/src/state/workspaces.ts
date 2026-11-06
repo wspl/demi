@@ -203,7 +203,7 @@ export const useWorkspaces = defineStore('workspaces', () => {
     if (!project) {
       return null
     }
-    return project.hostKind === 'cloud'
+    return project.targetKind === 'cloud'
       ? { kind: 'cloud', path: project.path }
       : { kind: 'device', deviceId: project.deviceId, path: project.path }
   }

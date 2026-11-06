@@ -1,5 +1,5 @@
 //! User skills: one value per source, keyed by its id, whose files are
-//! blobs the value names; the Host directories of the skills that are on;
+//! blobs the value names; the device directories of the skills that are on;
 //! and what the page reads of them.
 //!
 //! A source is in one place: Global, whose skills every conversation is
@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use demi_plugin_interface::{
-    DirectoryFile, HostDirectory, PluginError, PluginId, PluginPort, PortFailure, PortRefusal,
+    DirectoryFile, DeviceDirectory, PluginError, PluginId, PluginPort, PortFailure, PortRefusal,
     StoredValue, Workspaces,
 };
 use demi_web_api_protocol::ids::{DeviceId, WorkspaceId};
@@ -196,7 +196,7 @@ pub(crate) fn conflict(failure: &PortFailure) -> bool {
 
 /// Turns the skills `skills` of source `id` on or off. Turning one on is
 /// refused when another skill that is on, in any place, or another of those
-/// turned on, already has its name, or the name of its directory: a Host may
+/// turned on, already has its name, or the name of its directory: a device may
 /// run conversations of several workspaces. The refusal names the other's
 /// source and its place.
 pub(crate) fn switch(
@@ -341,13 +341,13 @@ pub(crate) async fn put_files(
     Ok(blobs)
 }
 
-/// The Host directories of the user skills that are on: one per skill,
+/// The device directories of the user skills that are on: one per skill,
 /// named after it.
-pub(crate) fn directories(sources: &Sources) -> Vec<HostDirectory> {
-    let mut directories: Vec<HostDirectory> = Vec::new();
+pub(crate) fn directories(sources: &Sources) -> Vec<DeviceDirectory> {
+    let mut directories: Vec<DeviceDirectory> = Vec::new();
     for (source, _) in sources.values() {
         for skill in source.skills.iter().filter(|skill| skill.enabled) {
-            directories.push(HostDirectory {
+            directories.push(DeviceDirectory {
                 name: directory_name(&skill.name),
                 files: skill.files.clone(),
                 workspace: source.workspace.clone(),
@@ -381,9 +381,9 @@ pub(crate) fn directory_name(name: &str) -> String {
     }
 }
 
-/// Where the `SKILL.md` of a user skill that is on is on every Host.
+/// Where the `SKILL.md` of a user skill that is on is on every device.
 pub(crate) fn location(plugin: &PluginId, skill: &UserSkill) -> String {
-    let directory = HostDirectory {
+    let directory = DeviceDirectory {
         name: directory_name(&skill.name),
         files: skill.files.clone(),
         workspace: None,

@@ -19,7 +19,7 @@ use std::{
     rc::Rc,
 };
 
-use demi_host_interface::ProcessEnd;
+use demi_device_interface::ProcessEnd;
 use demi_runner_protocol::wire::{self, Inbound, JOB_VIEW_BYTES, KeptJob};
 use demi_shared_types::StreamKind;
 use tokio::{sync::watch, time::Instant};
@@ -35,15 +35,15 @@ use crate::{
 
 /// Why a job is lost when Demi was upgraded and the runner that kept it
 /// replaced itself with the new release's (`upgrades.md`).
-pub const UPGRADED: &str = "Demi was upgraded and the Host's runner replaced itself";
+pub const UPGRADED: &str = "Demi was upgraded and the device's runner replaced itself";
 /// Why a Cloud's job is lost when its runner started anew.
 pub const CLOUD_RESTARTED: &str = "the Cloud restarted";
 /// Why a paired device's job is lost when its runner started anew.
-pub const RUNNER_RESTARTED: &str = "the Host's runner started anew after it ended";
+pub const RUNNER_RESTARTED: &str = "the device's runner started anew after it ended";
 /// Why a job is lost that the runner which kept its connection's jobs never
 /// received, when the backend cannot send it again: it sent it again once
 /// already, or a restarted backend knows it only from its records.
-pub const NEVER_RECEIVED: &str = "its Host's runner never received it";
+pub const NEVER_RECEIVED: &str = "its device's runner never received it";
 
 /// A device's jobs. Cloning it is cheap; the clones share the table.
 #[derive(Clone, Default)]
@@ -79,7 +79,7 @@ pub(crate) struct JobEntry {
     /// Cancelled when the job's command is stopped, which stops each of its
     /// rpc calls at once, the token each handler watches being its child.
     pub(crate) stop: CancellationToken,
-    /// Holds the Host's admission while the job runs.
+    /// Holds the device's admission while the job runs.
     pub(crate) _lease: Option<GateLease>,
     /// The connection it runs on now; none while it waits for the next.
     attached: Option<WeakLink>,
@@ -115,7 +115,7 @@ pub(crate) struct JobEntry {
     began: Instant,
     /// The device whose runner has it, for the same line; none until a
     /// runner serves a job a restarted backend took up.
-    host_id: Option<String>,
+    device_id: Option<String>,
 }
 
 /// What arrives of a job while its kept output is read again after a new
@@ -299,7 +299,7 @@ impl DeviceJobs {
                 start: None,
                 resending: false,
                 began: Instant::now(),
-                host_id: Some(link.device().to_owned()),
+                device_id: Some(link.device().to_owned()),
             },
         );
         claimed
@@ -360,7 +360,7 @@ impl DeviceJobs {
             start: None,
             resending: false,
             began: Instant::now(),
-            host_id: None,
+            device_id: None,
         });
         job.parked = false;
         job.origin = entry.origin;
@@ -493,7 +493,7 @@ impl DeviceJobs {
                     tracing::info!(
                         event = "command.state_changed",
                         job_id = id.as_str(),
-                        host_id = link.device(),
+                        device_id = link.device(),
                         from = "running",
                         to = "away",
                         cause = "link_ended",
@@ -586,7 +586,7 @@ impl DeviceJobs {
                 tracing::info!(
                     event = "command.state_changed",
                     job_id = kept.job_id.as_str(),
-                    host_id = link.device(),
+                    device_id = link.device(),
                     from = if job.parked { "parked" } else { "away" },
                     to = if kept.ended.is_none() { "running" } else { "ended" },
                     cause = "runner_listed",
@@ -595,7 +595,7 @@ impl DeviceJobs {
                 );
             }
             job.attached = Some(link.downgrade());
-            job.host_id = Some(link.device().to_owned());
+            job.device_id = Some(link.device().to_owned());
             job.away_since = None;
             job.attachments.send_modify(|count| *count += 1);
             // The runner has it: its start never goes again.
@@ -672,7 +672,7 @@ impl DeviceJobs {
         &self,
         link: &Link,
         id: &str,
-        output: Option<&demi_host_interface::WholeOutput>,
+        output: Option<&demi_device_interface::WholeOutput>,
         lengths: wire::OutputLengths,
     ) {
         let mut table = self.0.borrow_mut();
@@ -696,7 +696,7 @@ impl DeviceJobs {
     }
 }
 
-/// The line a job's end writes, for the Host and the conversation it ran
+/// The line a job's end writes, for the device and the conversation it ran
 /// for when the backend knows them.
 fn command_ended(id: &str, job: &JobEntry, end: &JobEnd) {
     let (outcome, exit, signal, reason) = match &end.status {
@@ -710,7 +710,7 @@ fn command_ended(id: &str, job: &JobEntry, end: &JobEnd) {
     tracing::info!(
         event = "command.ended",
         job_id = id,
-        host_id = job.host_id.as_deref(),
+        device_id = job.device_id.as_deref(),
         conversation = origin.map(|origin| origin.context.conversation.as_str()),
         node = caller.map(|caller| caller.node.to_string()),
         turn = caller.and_then(|caller| caller.turn.as_ref()).map(ToString::to_string),
@@ -785,7 +785,7 @@ impl JobEntry {
             start: None,
             resending: false,
             began: Instant::now(),
-            host_id: None,
+            device_id: None,
         }
     }
 
@@ -836,10 +836,10 @@ impl JobEntry {
 /// beyond them, at their offsets. The kept output leaves bytes out in one
 /// place at most; the bytes after it end where each stream's length says.
 fn kept_chunks(
-    output: &demi_host_interface::WholeOutput,
+    output: &demi_device_interface::WholeOutput,
     lengths: wire::OutputLengths,
 ) -> Vec<JobOutput> {
-    use demi_host_interface::OutputRecord;
+    use demi_device_interface::OutputRecord;
     let lengths = [lengths.stdout_bytes, lengths.stderr_bytes];
     let index = stream_index;
     let records = output.records();

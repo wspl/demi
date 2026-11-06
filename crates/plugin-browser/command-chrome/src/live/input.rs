@@ -21,7 +21,7 @@
 //! - Wheel deltas are CSS pixels as they are: with the screen at the viewer's
 //!   ratio, Chrome scrolls by that many CSS pixels at every ratio (measured on
 //!   macOS and Linux at 1, 1.5, 2 and 3).
-//! - Paste goes through the Host browser's isolated clipboard and the Host's
+//! - Paste goes through the device browser's isolated clipboard and the device's
 //!   paste shortcut, so the page gets a real `paste` event. Copied text reaches
 //!   the viewer only within 5 seconds of its input, and never from password
 //!   fields.
@@ -327,7 +327,7 @@ async fn deliver(
 }
 
 /// The viewer's clipboard goes to the browser's own clipboard, then the
-/// Host's paste shortcut, so the page receives a real paste event. Without an
+/// device's paste shortcut, so the page receives a real paste event. Without an
 /// isolated browser clipboard the page receives inserted text.
 async fn paste(tab: &BrowserTab, text: &str, html: &str) -> Result<()> {
     let written = observers::write_clipboard(tab, text, html).await?;

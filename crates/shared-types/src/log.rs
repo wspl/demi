@@ -1,4 +1,4 @@
-//! The one line of the log, whatever wrote it: the backend, a Host's runner,
+//! The one line of the log, whatever wrote it: the backend, a device's runner,
 //! the Cloud's machine manager or a page.
 
 use serde::{Deserialize, Serialize};
@@ -51,9 +51,9 @@ pub struct LogLine {
     pub conversation_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn_id: Option<String>,
-    /// The Host whose runner wrote it, or that a backend line is about.
+    /// The device whose runner wrote it, or that a backend line is about.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub host_id: Option<String>,
+    pub device_id: Option<String>,
     /// The page load that wrote it, or whose request a backend line serves.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_id: Option<String>,
@@ -90,19 +90,19 @@ impl LogLine {
             user_id: None,
             conversation_id: None,
             turn_id: None,
-            host_id: None,
+            device_id: None,
             page_id: None,
             fields: Map::new(),
         }
     }
 }
 
-/// A line of a Host's log with the number it has in the Host's files, which
+/// A line of a device's log with the number it has in the device's files, which
 /// grows by one per line and across restarts: the cursor the backend asks the
 /// runner to continue after.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HostLogLine {
+pub struct DeviceLogLine {
     pub seq: u64,
     pub line: LogLine,
 }

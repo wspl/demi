@@ -26,7 +26,7 @@ const label = computed(() => `${props.name} · ${formatBytes(props.size)}`)
 </script>
 
 <template>
-  <!-- A link in a document names a file of no Host, so it opens nothing. -->
+  <!-- A link in a document names a file of no device, so it opens nothing. -->
   <FileContent
     v-model:mode="mode"
     :source="source"

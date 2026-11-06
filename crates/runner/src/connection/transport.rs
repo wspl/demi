@@ -53,9 +53,9 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
 /// close frame and to hear the backend's; a backend that takes longer sees
 /// the connection end without them.
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
-/// The Host's log frames waiting to be written. The one queue on the link
-/// with a length: its lines wait in the Host's log file, which holds them, and
-/// a frame waits only for room here (`crates/runner/src/host_log.rs`).
+/// The device's log frames waiting to be written. The one queue on the link
+/// with a length: its lines wait in the device's log file, which holds them, and
+/// a frame waits only for room here (`crates/runner/src/device_log.rs`).
 const LOG_QUEUE: usize = 8;
 
 /// What the reader hands the owner for one frame of the connection.
@@ -81,8 +81,8 @@ pub struct Transport {
     pub output: mpsc::UnboundedSender<Frame>,
     /// Replies and requests, written first.
     pub control: mpsc::UnboundedSender<Frame>,
-    /// The Host's log lines, written last: a command's exit or an answer
-    /// leaves before a log frame (`crates/runner/src/host_log.rs`).
+    /// The device's log lines, written last: a command's exit or an answer
+    /// leaves before a log frame (`crates/runner/src/device_log.rs`).
     pub log: mpsc::Sender<Frame>,
     pub input: mpsc::UnboundedReceiver<Arrival>,
     cancel: CancellationToken,

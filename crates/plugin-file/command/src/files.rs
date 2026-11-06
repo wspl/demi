@@ -12,7 +12,7 @@
 //!   written. A line a command prints stands for a picture the model will see,
 //!   and one cut short fails the command.
 //! - The media types the model reads come with the job when the backend starts
-//!   it. A job that `demi host shell` starts on another Host carries none,
+//!   it. A job that `demi device shell` starts on another device carries none,
 //!   since its output is relayed and no result reports its end.
 
 use std::{
@@ -73,7 +73,7 @@ pub enum FileError {
         "it is not known which files this conversation's model, {0}, reads; its provider entry can name them"
     )]
     UnknownTypes(String),
-    #[error("a job on another Host shows the model nothing; pipe its bytes into demi file view in your own script")]
+    #[error("a job on another device shows the model nothing; pipe its bytes into demi file view in your own script")]
     NoModel,
     #[error("File has no parent directory")]
     NoParent,

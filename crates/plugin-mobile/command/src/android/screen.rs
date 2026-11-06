@@ -19,9 +19,9 @@
 //! # Rules
 //!
 //! - The pixels of a picture reach this program through a file the emulator
-//!   writes, where the Host's files can be mapped, and in the message
+//!   writes, where the device's files can be mapped, and in the message
 //!   otherwise, or where the emulator does not support the file.
-//! - Without a hardware encoder on the Host the stream is asked for at the
+//! - Without a hardware encoder on the device the stream is asked for at the
 //!   screen's logical size, which a software encoder keeps up with, and the
 //!   recording is that size.
 //! - A reader that needs a picture the stream drew before it came is given the
@@ -85,7 +85,7 @@ pub struct Screen {
 
 impl Screen {
     /// The screen of the emulator `client` reaches, `native` pixels large and
-    /// `logical` points; a recording is at the first where the Host has a
+    /// `logical` points; a recording is at the first where the device has a
     /// hardware encoder, at the second where it has none.
     pub fn new(client: Client, native: (u32, u32), logical: (u32, u32), hardware: bool) -> Arc<Self> {
         let long = |size: (u32, u32)| size.0.max(size.1).max(2);
@@ -249,7 +249,7 @@ impl Drop for Subscription {
     }
 }
 
-/// The file the emulator writes a picture's pixels into, on a Host where the
+/// The file the emulator writes a picture's pixels into, on a device where the
 /// emulator and this program map the same files; removed as the stream ends.
 #[cfg(unix)]
 struct Mapped {

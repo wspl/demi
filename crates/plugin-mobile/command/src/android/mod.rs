@@ -1,4 +1,4 @@
-//! The Android driver: the Host's AVDs, booted with the SDK's emulator without
+//! The Android driver: the device's AVDs, booted with the SDK's emulator without
 //! a window.
 //!
 //! - Each open emulator's pictures, touches and keys go over its own gRPC
@@ -141,9 +141,9 @@ impl Running {
     }
 }
 
-/// What the driver needs of the Host's SDK; a test gives its own.
+/// What the driver needs of the device's SDK; a test gives its own.
 pub trait Sdk: Send + Sync + 'static {
-    /// Why this Host cannot run emulators, or none.
+    /// Why this device cannot run emulators, or none.
     fn unavailable(&self) -> Option<String>;
     fn avds(&self) -> BoxFuture<'_, Result<Vec<Avd>>>;
     fn running(&self) -> BoxFuture<'_, Result<Vec<Running>>>;
@@ -164,19 +164,19 @@ pub trait Sdk: Send + Sync + 'static {
     /// What Demi does inside the emulator adb names `serial`.
     fn guest<'a>(&'a self, serial: &'a str) -> BoxFuture<'a, Result<Arc<dyn Guest>>>;
     /// The folders of the art of the AVD's `device`, such as `pixel_10`,
-    /// downloaded first when this Host has none; none for a device without
+    /// downloaded first when this device has none; none for an emulator without
     /// art, or art that did not download.
     fn device_art<'a>(&'a self, device: &'a str) -> BoxFuture<'a, Option<art::Folders>>;
 }
 
-/// The Host's Android emulators.
+/// The device's Android emulators.
 pub struct Android {
     sdk: Arc<dyn Sdk>,
     codec: Arc<dyn Codec>,
 }
 
 impl Android {
-    /// The SDK of this Host; an emulator Demi starts writes its log into
+    /// The SDK of this device; an emulator Demi starts writes its log into
     /// `directory`, which encodes its emulators' pictures with `codec`.
     pub fn new(directory: Option<std::path::PathBuf>, codec: Arc<dyn Codec>) -> Self {
         Self::with_sdk(Arc::new(sdk::Installed::new(directory)), codec)
@@ -1514,7 +1514,7 @@ impl Device for AndroidDevice {
     fn record(&self, sink: Sink) -> BoxFuture<'_, Result<Box<dyn Send>>> {
         Box::pin(async move {
             // The first recording of an emulator fetches the encoder, which a
-            // Host without a hardware one needs.
+            // device without a hardware one needs.
             let load = self.codec.library().await.map_err(|error| DriverError::Failed(error.to_string()))?;
             Ok(Box::new(record::start(&self.pictures, load, sink)) as Box<dyn Send>)
         })

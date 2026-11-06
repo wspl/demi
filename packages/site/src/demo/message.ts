@@ -126,7 +126,7 @@ export function shotOf(data: unknown): DeviceShot | null | undefined {
  * browser, other machines and other agents; and the compaction of the
  * context the model reads.
  */
-export type RuntimePart = 'programs' | 'browser' | 'host' | 'agent' | 'compact'
+export type RuntimePart = 'programs' | 'browser' | 'device' | 'agent' | 'compact'
 
 /**
  * Which devices the stage of several shows (`AnywhereStage.vue`): the

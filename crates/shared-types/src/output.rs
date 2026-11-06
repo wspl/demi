@@ -31,7 +31,7 @@
 //!   agent reads is what the user sees.
 //!
 //! Tables and labelled lines are for Demi's own objects (agents, providers,
-//! credentials, Hosts). A command that prints content, such as a page or a
+//! credentials, devices). A command that prints content, such as a page or a
 //! file's text, keeps the content's own form.
 
 use std::fmt::Write as _;

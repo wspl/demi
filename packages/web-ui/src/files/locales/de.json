@@ -119,9 +119,9 @@
     "files": "{count} Datei | {count} Dateien",
     "failedOf": "{failed} / {files} fehlgeschlagen",
     "more": "und {count} weitere",
-    "cannotRemove": "Dieser Host kann keine Dateien löschen.",
-    "cannotCreateFolder": "Dieser Host kann keine Ordner erstellen.",
-    "cannotTake": "Dieser Host kann keine Uploads annehmen.",
+    "cannotRemove": "Dieses Gerät kann keine Dateien löschen.",
+    "cannotCreateFolder": "Dieses Gerät kann keine Ordner erstellen.",
+    "cannotTake": "Dieses Gerät kann keine Uploads annehmen.",
     "nameTaken": "Eine Datei mit diesem Namen existiert jetzt."
   },
   "conflict": {

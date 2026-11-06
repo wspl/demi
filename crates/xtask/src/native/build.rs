@@ -192,14 +192,14 @@ pub fn run(options: Options) -> Result<(), Error> {
     for target in targets {
         println!("Native build: {target}");
         // Cargo unifies the features of the packages one build selects, so
-        // the Host programs, which turn on shared-cli's `host-allocator`,
+        // the device programs, which turn on shared-cli's `device-allocator`,
         // build apart from the server's, which must not get it.
-        for on_host in [true, false] {
+        for on_device in [true, false] {
             let built: Vec<Executable> = executables
                 .iter()
                 .copied()
                 .filter(|executable| {
-                    executable.runs_on_host() == on_host && executable.targets().contains(&target)
+                    executable.runs_on_device() == on_device && executable.targets().contains(&target)
                 })
                 .collect();
             if built.is_empty() {

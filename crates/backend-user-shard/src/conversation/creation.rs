@@ -12,10 +12,10 @@
 //!
 //! Its directory is selected as a move's is, in the transaction that creates
 //! it, which makes the directory's project when there is none, by the
-//! directory's name on its Host (`crates/backend-database/src/selection.rs`).
+//! directory's name on its device (`crates/backend-database/src/selection.rs`).
 
 use demi_backend_database::conversation_index::{ConversationStart, Creation};
-use demi_backend_host_access::transition::ChangeRefusal;
+use demi_backend_device_access::transition::ChangeRefusal;
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::conversations::{
     ConversationTarget, CreateConversation, FirstMessageAnswer, ModelSettings,
@@ -75,8 +75,8 @@ impl Shard {
         mut start: ConversationStart,
     ) -> Result<Creation, ChangeRefusal> {
         let control = &self.services().control;
-        // Its directory is the one its Host names (§ Resolve a target).
-        start.target = self.host_shard().resolved_destination(start.target).await?;
+        // Its directory is the one its device names (§ Resolve a target).
+        start.target = self.device_shard().resolved_destination(start.target).await?;
         let (created, made) = control
             .create_conversation_selecting(self.user().clone(), id, start)
             .await?;

@@ -4,7 +4,7 @@
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_file_protocol::{EditArgs, PACKAGE, PatchArgs, ViewArgs};
-use demi_host_interface::{GroupBuilder, LeafBuilder};
+use demi_device_interface::{GroupBuilder, LeafBuilder};
 
 /// The group's entry in the model's capability index. A model that has no
 /// edit tool of its own otherwise changes files with a script, whose writes

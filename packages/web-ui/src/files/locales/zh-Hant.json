@@ -119,9 +119,9 @@
     "files": "{count} 個檔案",
     "failedOf": "{failed} / {files} 失敗",
     "more": "另外 {count} 項",
-    "cannotRemove": "此主機無法刪除檔案。",
-    "cannotCreateFolder": "此主機無法建立資料夾。",
-    "cannotTake": "此主機無法接收上傳。",
+    "cannotRemove": "此裝置無法刪除檔案。",
+    "cannotCreateFolder": "此裝置無法建立資料夾。",
+    "cannotTake": "此裝置無法接收上傳。",
     "nameTaken": "現在已有同名檔案。"
   },
   "conflict": {

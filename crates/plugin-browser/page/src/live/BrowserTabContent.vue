@@ -20,7 +20,7 @@ import { BLANK_PAGE, deviceSnap, panelSize, viewportChoices, type PanelSize, typ
 
 /**
  * A `browser` tab's content. It shows at once what the tab's data says, and
- * what the Host sends replaces it when it arrives:
+ * what the device sends replaces it when it arrives:
  *
  * - Before the browser has the tab: the panel's own background, which says at
  *   once what Demi is doing.
@@ -71,7 +71,7 @@ const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mo
 // it is in, the area under the address stays empty. A Cloud still starting, or
 // a list that could not be read, says so in the area.
 const pane = usePaneWaiting()
-usePaneReady(() => props.session.list.value !== null || props.session.listError.value !== null || props.session.api.hostStarting())
+usePaneReady(() => props.session.list.value !== null || props.session.listError.value !== null || props.session.api.deviceStarting())
 /** What Demi does before the browser has the tab, if it does not have it yet. */
 const phase = computed(() => props.session.startingPhase(props.tabId, props.data))
 /** The tab loads: Stop, the strip's spinner and the progress line show it. */
@@ -81,7 +81,7 @@ const backReason = computed(() => (live.value?.canGoBack ? null : t('address.noB
 const forwardReason = computed(() => (live.value?.canGoForward ? null : t('address.noForward')))
 
 // A shown tab is watched on the page's view, once its area measured the panel;
-// before the browser has its tab, the view watches nothing and tells the Host
+// before the browser has its tab, the view watches nothing and tells the device
 // the panel's size for the tab it opens.
 watch(
   [() => props.shown, bound],
@@ -268,17 +268,17 @@ function downloadDetail(download: LiveDownload): string {
     : formatBytes(download.received)
 }
 
-/** Save: the file goes from the Host to the user's computer through the file route, as Download does in Files. */
+/** Save: the file goes from the device to the user's computer through the file route, as Download does in Files. */
 function save(download: LiveDownload): void {
   const contents = files(props.conversation).tree?.source.contents
   if (!contents) {
-    errors.report(t('failures.saveDownload'), new Error(t('failures.hostFilesUnreachable')))
+    errors.report(t('failures.saveDownload'), new Error(t('failures.deviceFilesUnreachable')))
     return
   }
   downloadUrl(contents.url(download.path, { download: true }))
 }
 
-/** Show in Files: the file the browser saved, on the Host. */
+/** Show in Files: the file the browser saved, on the device. */
 function showInFiles(download: LiveDownload): void {
   bubble.value = false
   intents.open(props.conversation, { intent: 'file', payload: { path: download.path } })

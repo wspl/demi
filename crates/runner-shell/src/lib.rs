@@ -46,7 +46,7 @@
 //!
 //! A utility that writes files or starts programs runs in the job's shell, so that
 //! its changes are the job's edits, and so do `sh` and `bash`, which are the
-//! job's own shell on every Host (`nested.rs`) so that what they run is
+//! job's own shell on every device (`nested.rs`) so that what they run is
 //! recorded too. Every other utility is the system's own: GNU's on Linux,
 //! macOS's on a Mac, Git for Windows' on Windows (`utilities.rs`).
 //!
@@ -92,7 +92,7 @@ use std::{collections::BTreeSet, io};
 /// A job's shell does not inherit the runner's environment but is given one
 /// built from this. Without it a job on Windows would find `PATH` holding only
 /// the alias directory and run no program of the device.
-pub fn host_environment() -> impl Iterator<Item = (String, String)> {
+pub fn device_environment() -> impl Iterator<Item = (String, String)> {
     brush_core::sys::env::get_host_env_vars()
 }
 

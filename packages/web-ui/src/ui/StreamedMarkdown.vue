@@ -41,13 +41,13 @@ const props = withDefaults(defineProps<{
   /** When each piece of `content` reached the page, so a view that mounts mid-stream fades each from then. */
   arrivals?: readonly TextArrival[]
   /**
-   * The files of the Host the reply's inline code names, as the backend read
+   * The files of the device the reply's inline code names, as the backend read
    * them once the reply ended and kept them with it; absent, inline code
    * stays code.
    */
   codeFiles?: readonly CodeFile[]
   /**
-   * The pictures of the Host the reply shows, with the copy the backend made
+   * The pictures of the device the reply shows, with the copy the backend made
    * of each once the reply ended; absent, such a picture shows as a link to
    * its file.
    */

@@ -6,12 +6,12 @@
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::PACKAGE;
 use demi_command_package_browser_protocol::browser::*;
-use demi_host_interface::{GroupBuilder, LeafBuilder};
+use demi_device_interface::{GroupBuilder, LeafBuilder};
 
 /// The group's summary.
-const SUMMARY: &str = "Operate the conversation’s persistent browser tabs on the Host running this shell. A new Host needs demi browser install once before its first browser command. Node references come from inspect. Run a sequence of steps as one script: chain the commands in one shell call and read each result with --json to decide the next.";
+const SUMMARY: &str = "Operate the conversation’s persistent browser tabs on the device running this shell. A new device needs demi browser install once before its first browser command. Node references come from inspect. Run a sequence of steps as one script: chain the commands in one shell call and read each result with --json to decide the next.";
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "A real browser on the Host: pages, tabs, sign-ins, clicks, forms, uploads, downloads, screenshots, read-only scripts, CDP.";
+const ENTRY: &str = "A real browser on the device: pages, tabs, sign-ins, clicks, forms, uploads, downloads, screenshots, read-only scripts, CDP.";
 
 /// What every leaf but `screenshot` writes on success.
 const SUCCESS: &str = "readable page results; one validated JSON value with --json";
@@ -20,7 +20,7 @@ const FAILURE: &str =
     "a browser error on stderr with nonzero exit status; an action is never replayed automatically";
 
 /// When the agent shows a tab.
-const SHOW: &str = "Show a tab to the user: their work panel opens and selects it once this command’s job ends. Show a tab when the user is meant to look at it or act in it: the user asked to see a page, a sign-in or a choice needs the user’s hand, or the page is a result for the user. Showing does not bring the tab to the front of the Host’s browser, and the user may have looked away again by the time you continue; showing a tab again shows it again.";
+const SHOW: &str = "Show a tab to the user: their work panel opens and selects it once this command’s job ends. Show a tab when the user is meant to look at it or act in it: the user asked to see a page, a sign-in or a choice needs the user’s hand, or the page is a result for the user. Showing does not bring the tab to the front of the device’s browser, and the user may have looked away again by the time you continue; showing a tab again shows it again.";
 
 /// Declares each operation's leaf from its name, its input and result types
 /// and its summary; a dotted name is a leaf of a subgroup.
@@ -34,7 +34,7 @@ macro_rules! operations {
 }
 
 operations! {
-    "tab.new" => TabNewInput, TabNewResult, "Make an empty tab on this Host and print its ID; starts the conversation’s browser when needed. The tab joins the user’s work panel without taking the user’s view.";
+    "tab.new" => TabNewInput, TabNewResult, "Make an empty tab on this device and print its ID; starts the conversation’s browser when needed. The tab joins the user’s work panel without taking the user’s view.";
     "tab.list" => TabListInput, TabListResult, "List the conversation’s live browser tabs without starting a browser.";
     "tab.close" => TabCloseInput, TabCloseResult, "Close a tab. Closing the last tab ends this browser; the next tab new starts it again.";
     "open" => OpenInput, NavigationResult, "Open a URL in a tab, in place of its page; --show also shows the tab, as show does.";
@@ -61,10 +61,10 @@ operations! {
     "select" => SelectInput, ActionResult, "Select native select options by value, label or index.";
     "select-text" => SelectTextInput, ActionResult, "Select rendered text or position its cursor; prefix and suffix disambiguate.";
     "wait" => WaitInput, WaitResult, "Wait for a URL glob, element state or current-document load state, within a bounded deadline.";
-    "upload" => UploadInput, UploadResult, "Attach Host files through a file input or chooser.";
-    "download" => DownloadInput, DownloadResult, "Trigger and save a completed download on this Host.";
+    "upload" => UploadInput, UploadResult, "Attach device files through a file input or chooser.";
+    "download" => DownloadInput, DownloadResult, "Trigger and save a completed download on this device.";
     "clipboard.write" => ClipboardWriteInput, ClipboardWriteResult, "Write finite raw stdin to the managed clipboard with the declared MIME type.";
-    "clipboard.read" => ClipboardReadInput, ClipboardReadResult, "Read clipboard text or export supported MIME entries to Host files.";
+    "clipboard.read" => ClipboardReadInput, ClipboardReadResult, "Read clipboard text or export supported MIME entries to device files.";
     "eval" => EvalInput, EvalResult, "Run a read-only script and print the value of its last statement, as JSON: a short expression as the last argument, eval t1 'document.title', or statements from stdin. Chrome refuses side effects, and nothing waits for a Promise.";
     "logs" => LogsInput, LogsResult, "Read console entries without clearing them; use the returned cursor to continue.";
     "viewport.set" => ViewportSetInput, ViewportResult, "Set this tab’s viewport in CSS pixels and its pixel ratio (--scale), until the user picks another mode.";
@@ -79,11 +79,11 @@ operations! {
     "content.read" => ContentReadInput, ContentReadResult, "Read or save the page’s text or HTML content.";
     "content.fetch" => ContentFetchInput, ContentFetchResult, "Read URLs in temporary tabs sharing this browser’s login state.";
     "assets.list" => AssetsListInput, AssetsListResult, "Inventory observed page resources and inline SVGs.";
-    "assets.export" => AssetsExportInput, AssetsExportResult, "Export selected assets from a current inventory to Host files.";
+    "assets.export" => AssetsExportInput, AssetsExportResult, "Export selected assets from a current inventory to device files.";
     "capabilities" => CapabilitiesInput, CapabilitiesResult, "Report the browser’s available observation and evaluation capabilities.";
     "webmcp.list" => WebmcpListInput, WebmcpListResult, "List tools registered by this page and their input schemas.";
     "webmcp.call" => WebmcpCallInput, WebmcpCallResult, "Call a registered page tool with JSON arguments from stdin.";
-    "install" => InstallInput, InstallResult, "Install the pinned Chrome for Testing on this Host, on Linux with the libraries and fonts it needs.";
+    "install" => InstallInput, InstallResult, "Install the pinned Chrome for Testing on this device, on Linux with the libraries and fonts it needs.";
 }
 
 /// The `browser` group. A dotted operation name's first part is a subgroup,

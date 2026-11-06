@@ -17,8 +17,8 @@ import { t } from './locales/text'
  *
  * - Each run of the agent's work between the messages is one line that counts its
  *   steps.
- * - A link to a Host's file, a commit or an agent is its text, since the page reaches
- *   neither a Host nor the work.
+ * - A link to a device's file, a commit or an agent is its text, since the page reaches
+ *   neither a device nor the work.
  */
 const props = withDefaults(defineProps<{
   /** The conversation's title when shared; null while it was the placeholder. */
@@ -46,7 +46,7 @@ const emit = defineEmits<{
   retryLoad: []
 }>()
 
-// No Host stands behind a share: its paths and commits stay text, its attachments show.
+// No device stands behind a share: its paths and commits stay text, its attachments show.
 provideMessageFiles(() => ({ cwd: '', attachment: props.attachment, replyBlock: props.replyBlock }))
 
 const shownTitle = computed(() => props.title?.trim() || t('share.untitled'))

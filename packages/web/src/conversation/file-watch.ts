@@ -2,15 +2,15 @@
  * The file watches of the page:
  *
  * - A conversation's, its `file_watch` lane or its direct channel's `watch`,
- *   which also carries an attached host's subscriptions under their `host`.
+ *   which also carries an attached device's subscriptions under their `device`.
  * - A device's folder dialog's, its `device_watch` lane.
  *
- * Each carries the subscriptions of what the page keeps of one Host's files
+ * Each carries the subscriptions of what the page keeps of one device's files
  * (`WatchChannel`). This module opens their connections and reads what they
  * bring against its schema.
  */
 import { schemaRefusal } from '@demicodes/protocol'
-import type { HostFiles } from '@demicodes/web-ui/files/file-cache'
+import type { DeviceFiles } from '@demicodes/web-ui/files/file-cache'
 import { WatchChannel, type WatchLink, type WatchLinkHandlers, type WatchRequest } from '@demicodes/web-ui/files/watch-channel'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { t } from './locales/text'
@@ -24,7 +24,7 @@ import {
 /** Opens a connection of a conversation's watch. */
 export type OpenConversationWatchLink = (conversationId: string, handlers: WatchLinkHandlers) => WatchLink
 
-/** Opens a connection of a conversation's watch of its attached host `deviceId`. */
+/** Opens a connection of a conversation's watch of its attached device `deviceId`. */
 export type OpenAttachedWatchLink = (conversationId: string, deviceId: string, handlers: WatchLinkHandlers) => WatchLink
 
 /**
@@ -32,7 +32,7 @@ export type OpenAttachedWatchLink = (conversationId: string, deviceId: string, h
  * `cameOnline` each time the device comes online, and answers what tells
  * whether it is online now.
  */
-export type FollowHost = (deviceId: string, cameOnline: () => void) => () => boolean
+export type FollowDevice = (deviceId: string, cameOnline: () => void) => () => boolean
 
 /**
  * Reads each message of a watch against its schema and hands it on; one
@@ -67,25 +67,25 @@ export function watchText(request: FileWatchRequest | ConversationWatchRequest):
   return JSON.stringify(request)
 }
 
-/** A watch's message with each subscription on the attached host `host`. */
-function onHost(request: WatchRequest, host: string): ConversationWatchRequest {
+/** A watch's message with each subscription on the attached device `device`. */
+function onDevice(request: WatchRequest, device: string): ConversationWatchRequest {
   return request.type === 'subscribe'
-    ? { type: 'subscribe', subscriptions: request.subscriptions.map((subscription) => ({ ...subscription, host })) }
+    ? { type: 'subscribe', subscriptions: request.subscriptions.map((subscription) => ({ ...subscription, device })) }
     : request
 }
 
 /**
  * A watch on the relay, a lane of the page connection that carries what
- * `target` names; with `host`, each subscription is on that attached host.
+ * `target` names; with `device`, each subscription is on that attached device.
  */
-function laneWatchLink(target: LaneTarget, handlers: WatchLinkHandlers, host?: string): WatchLink {
+function laneWatchLink(target: LaneTarget, handlers: WatchLinkHandlers, device?: string): WatchLink {
   const lane = openLane(target, 'file watch')
   const receive = watchReceiver(handlers, () => lane.close(1000))
   lane.addEventListener('open', () => handlers.opened(false))
   lane.addEventListener('message', (event) => receive(event.data))
   lane.addEventListener('close', () => handlers.closed())
   return {
-    send: (request) => lane.send(watchText(host === undefined ? request : onHost(request, host))),
+    send: (request) => lane.send(watchText(device === undefined ? request : onDevice(request, device))),
     close: () => lane.close(1000),
   }
 }
@@ -95,76 +95,76 @@ export const relayWatchLink: OpenConversationWatchLink = (conversationId, handle
   laneWatchLink({ kind: 'file_watch', conversation: conversationId }, handlers)
 
 /**
- * The relay's watch of a conversation's attached host: the conversation's
- * watch, whose subscriptions name the host. A direct channel reaches only
- * the primary Host, so an attached host's watch is always on the relay.
+ * The relay's watch of a conversation's attached device: the conversation's
+ * watch, whose subscriptions name the device. A direct channel reaches only
+ * the primary device, so an attached device's watch is always on the relay.
  */
 export const relayAttachedWatchLink: OpenAttachedWatchLink = (conversationId, deviceId, handlers) =>
   laneWatchLink({ kind: 'file_watch', conversation: conversationId }, handlers, deviceId)
 
 /**
- * A conversation's file watch: one watch of the Host the conversation runs
+ * A conversation's file watch: one watch of the device the conversation runs
  * on, which carries the subscriptions of what the conversation's views keep
  * of it, on the relay or the direct channel as the path to the device is
- * chosen, and one of each attached host its attachment picker lists. When
- * the conversation moves to another Host, the watch of the one it left lets
+ * chosen, and one of each attached device its attachment picker lists. When
+ * the conversation moves to another device, the watch of the one it left lets
  * go of what it carried.
  *
- * Each Host's watch has a connection of its own: the backend's `offline`
- * names no Host, and ends the connection with every subscription on it.
+ * Each Device's watch has a connection of its own: the backend's `offline`
+ * names no device, and ends the connection with every subscription on it.
  *
- * Each watch opens only while its Host is online, as the device's state from
+ * Each watch opens only while its device is online, as the device's state from
  * the synchronization channel holds it, and at once when the device comes
- * online (`FollowHost`).
+ * online (`FollowDevice`).
  */
 export class ConversationWatch {
   private current: { deviceId: string; channel: WatchChannel } | null = null
   private readonly channels = new Map<string, WatchChannel>()
   private readonly attachedChannels = new Map<string, WatchChannel>()
   /** Whether each device a watch serves is online, from its follow. */
-  private readonly hosts = new Map<string, () => boolean>()
+  private readonly devices = new Map<string, () => boolean>()
 
   constructor(
     private readonly conversationId: string,
     private readonly openLink: OpenConversationWatchLink = relayWatchLink,
     private readonly openAttachedLink: OpenAttachedWatchLink = relayAttachedWatchLink,
-    private readonly followHost: FollowHost = () => () => true,
+    private readonly followDevice: FollowDevice = () => () => true,
   ) {}
 
   /** Whether the device `deviceId` is online, following it from the first time it is asked. */
-  private hostOnline(deviceId: string): boolean {
-    let online = this.hosts.get(deviceId)
+  private deviceOnline(deviceId: string): boolean {
+    let online = this.devices.get(deviceId)
     if (!online) {
-      online = this.followHost(deviceId, () => this.online(deviceId))
-      this.hosts.set(deviceId, online)
+      online = this.followDevice(deviceId, () => this.online(deviceId))
+      this.devices.set(deviceId, online)
     }
     return online()
   }
 
-  /** The watch of the attached host `deviceId`, whose kept files are `files`. */
-  attached(deviceId: string, files: HostFiles): WatchChannel {
+  /** The watch of the attached device `deviceId`, whose kept files are `files`. */
+  attached(deviceId: string, files: DeviceFiles): WatchChannel {
     let channel = this.attachedChannels.get(deviceId)
     if (!channel) {
       channel = new WatchChannel(
         files,
         (handlers) => this.openAttachedLink(this.conversationId, deviceId, handlers),
         undefined,
-        () => this.hostOnline(deviceId),
+        () => this.deviceOnline(deviceId),
       )
       this.attachedChannels.set(deviceId, channel)
     }
     return channel
   }
 
-  /** The watch of the conversation's Host, the device `deviceId` whose kept files are `files`. */
-  channel(deviceId: string, files: HostFiles): WatchChannel {
+  /** The watch of the conversation's device, the device `deviceId` whose kept files are `files`. */
+  channel(deviceId: string, files: DeviceFiles): WatchChannel {
     let channel = this.channels.get(deviceId)
     if (!channel) {
       channel = new WatchChannel(
         files,
         (handlers) => this.openLink(this.conversationId, handlers),
         undefined,
-        () => this.hostOnline(deviceId),
+        () => this.deviceOnline(deviceId),
       )
       this.channels.set(deviceId, channel)
     }
@@ -177,7 +177,7 @@ export class ConversationWatch {
 
   /**
    * The device `deviceId` came online, as a stopped Cloud that started: the
-   * watch of it as the conversation's Host or as an attached host, waiting to
+   * watch of it as the conversation's device or as an attached device, waiting to
    * connect again or dormant, connects now.
    */
   online(deviceId: string): void {
@@ -186,7 +186,7 @@ export class ConversationWatch {
   }
 
   /**
-   * The path to the Host changed (`packages/web/src/direct/index.ts`): the watch reopens on the other path at once and subscribes again
+   * The path to the device changed (`packages/web/src/direct/index.ts`): the watch reopens on the other path at once and subscribes again
    * to what it carries.
    */
   move(): void {
@@ -202,11 +202,11 @@ const deviceWatches = new Map<string, WatchChannel>()
  * access, which carries the subscriptions of what the
  * dialog keeps of the device's files.
  *
- * It opens only while the device is online, as `followHost` holds it, and at
- * once when the device comes online; the first call's `followHost` follows
+ * It opens only while the device is online, as `followDevice` holds it, and at
+ * once when the device comes online; the first call's `followDevice` follows
  * the device for the page's lifetime.
  */
-export function deviceWatch(deviceId: string, files: HostFiles, followHost: FollowHost): WatchChannel {
+export function deviceWatch(deviceId: string, files: DeviceFiles, followDevice: FollowDevice): WatchChannel {
   let channel = deviceWatches.get(deviceId)
   if (!channel) {
     let online: (() => boolean) | null = null
@@ -214,7 +214,7 @@ export function deviceWatch(deviceId: string, files: HostFiles, followHost: Foll
       files,
       (handlers) => laneWatchLink({ kind: 'device_watch', device: deviceId }, handlers),
       undefined,
-      () => (online ??= followHost(deviceId, () => opened.online()))(),
+      () => (online ??= followDevice(deviceId, () => opened.online()))(),
     )
     channel = opened
     deviceWatches.set(deviceId, channel)

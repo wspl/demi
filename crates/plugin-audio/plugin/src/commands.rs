@@ -1,7 +1,7 @@
 //! The `demi audio` group, whose leaves the plugin answers itself with the
 //! request's whole port.
 
-use demi_host_interface::{GroupBuilder, LeafBuilder};
+use demi_device_interface::{GroupBuilder, LeafBuilder};
 use demi_plugin_interface::{AudioFileFormat, CommandPlugin, Placement, PortHandled, VoiceInfo};
 use demi_plugin_media::ModelsOutput;
 use schemars::JsonSchema;

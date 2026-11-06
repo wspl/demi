@@ -20,7 +20,7 @@
 
 use std::rc::Rc;
 
-use demi_host_interface::{
+use demi_device_interface::{
     CommandSet, Declared, GroupBuilder, RpcError, RpcHandler, RpcInvocation, RpcPort,
 };
 use demi_plugin_interface::{DEMI_ROOT, DEMI_SUMMARY, Feature, Placement, Reply, Request};
@@ -32,7 +32,7 @@ use crate::user::Shared;
 use crate::{Registry, RegistryError};
 
 /// The `demi` groups the agent runtime and the product own.
-pub(crate) const TAKEN_GROUPS: &[&str] = &["agent", "shell", "host", "attachment", "conversation"];
+pub(crate) const TAKEN_GROUPS: &[&str] = &["agent", "shell", "device", "attachment", "conversation"];
 
 /// The command set of the plugins of `registry` that `include` takes, by
 /// their index, narrowed to the features of each that `on` takes

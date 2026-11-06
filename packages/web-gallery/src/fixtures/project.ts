@@ -1,7 +1,7 @@
 import { baseName, delay } from '@demicodes/utils'
 import type { ChangeFile, ChangeSetSource, ChangeSides, WorkingTreeChange } from '@demicodes/web-ui/files/changes'
 import { diffLineCounts } from './diff-counts'
-import { HostFiles } from '@demicodes/web-ui/files/file-cache'
+import { DeviceFiles } from '@demicodes/web-ui/files/file-cache'
 import { keptChangeSet, type ContentReads } from '@demicodes/web-ui/files/kept-source'
 import {
   assetFile,
@@ -742,14 +742,14 @@ export async function gallerySides(path: string): Promise<ChangeSides> {
  * would.
  */
 export function createGalleryChangeSet(latencyMs: number, listing: GalleryChangeListing = {}, tree: { root: string; changed: WorkingTreeChange[] } = { root: PROJECT_ROOT, changed: changedFiles }) {
-  const files = new HostFiles()
-  // A simulated Host's watch answers the change set's subscriptions, and
+  const files = new DeviceFiles()
+  // A simulated device's watch answers the change set's subscriptions, and
   // each read carries its number, so what was read stays current.
-  const host = new SimulatedWatch()
+  const device = new SimulatedWatch()
   let lists = 0
   const set = keptChangeSet({
     async list() {
-      const readAt = host.readAt()
+      const readAt = device.readAt()
       await delay(latencyMs)
       lists += 1
       if (listing.failure && lists > 1)
@@ -764,12 +764,12 @@ export function createGalleryChangeSet(latencyMs: number, listing: GalleryChange
       return { value: list, readAt }
     },
     async sides(path) {
-      const readAt = host.readAt()
+      const readAt = device.readAt()
       await delay(latencyMs)
       return { value: await gallerySides(path), readAt }
     },
     committed: committedContents,
-  }, tree.root, { files, watch: new WatchChannel(files, host.open, 'simulated file watch') })
+  }, tree.root, { files, watch: new WatchChannel(files, device.open, 'simulated file watch') })
   // The gallery's working tree shows for the page's lifetime.
   set.show()
   return set
@@ -789,7 +789,7 @@ export function createSlotChangeSet(latencyMs: number) {
 /**
  * The demo project, read with `latencyMs` each, under a simulated watch:
  * `live` confirms what is read and reports each simulated change;
- * `unavailable` is a Host that cannot watch.
+ * `unavailable` is a device that cannot watch.
  */
 export function createGalleryProject(latencyMs = 200, watch: 'live' | 'unavailable' = 'live'): {
   source: MemoryFileSource

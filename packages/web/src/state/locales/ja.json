@@ -3,7 +3,7 @@
     "turnStopped": "ターンがエラーで停止しました。",
     "saveCredential": "認証情報「{name}」を保存しますか？"
   },
-  "hosts": {
+  "devices": {
     "unavailableDevice": "利用できないデバイス"
   },
   "failures": {

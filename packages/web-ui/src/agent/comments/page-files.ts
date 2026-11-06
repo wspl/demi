@@ -41,15 +41,15 @@ export interface PageMessageFiles {
  * the claim of a stored file a pasted message names, and where a stored
  * file's picture loads from.
  */
-export interface PageFileHost {
+export interface PageFileDevice {
   upload: UploadFile
   claim: ClaimFile
   picture: (sha256: string, mediaType: string) => string | undefined
 }
 
 /** Files taken and pasted through the page's `host`. */
-export function pageMessageFiles(host: PageFileHost): PageMessageFiles {
-  const { upload, claim } = host
+export function pageMessageFiles(device: PageFileDevice): PageMessageFiles {
+  const { upload, claim } = device
   const held = reactive<ComposerAttachment[]>([])
   const uploads = new AttachmentUploadQueue()
   const bytes = new Map<string, File>()
@@ -107,7 +107,7 @@ export function pageMessageFiles(host: PageFileHost): PageMessageFiles {
     },
     paste: {
       claim: (file, picture) => {
-        const item = composerAttachment({ name: file.name, src: host.picture(file.sha256, file.mediaType), phase: 'attaching' })
+        const item = composerAttachment({ name: file.name, src: device.picture(file.sha256, file.mediaType), phase: 'attaching' })
         held.push(item)
         const kept = start(item.id, async (signal, progress) => {
           const answer = await claim(file, signal)
@@ -124,7 +124,7 @@ export function pageMessageFiles(host: PageFileHost): PageMessageFiles {
         return { capsule: composerCapsule(find(item.id)!), kept }
       },
       remote: (file) => {
-        const item = composerRemoteAttachment({ host: file.deviceId, path: file.path })
+        const item = composerRemoteAttachment({ device: file.deviceId, path: file.path })
         held.push(item)
         return composerCapsule(item)
       },
@@ -138,7 +138,7 @@ export function pageMessageFiles(host: PageFileHost): PageMessageFiles {
     if (!item)
       throw new Error('A file of this message is no longer available. Attach it again.')
     if (item.kind === 'reference')
-      return [{ type: 'reference', reference: encodeRemoteReference(item.host, item.path, item.host) }]
+      return [{ type: 'reference', reference: encodeRemoteReference(item.device, item.path, item.device) }]
     await running.get(id)
     const answer = answers.get(id)
     if (!answer)

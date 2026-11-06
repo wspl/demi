@@ -98,7 +98,7 @@ pub const MAX_METADATA_BYTES: usize = 256 * 1024;
 /// protocol's framing, which every reader allocates a record's length for.
 pub const MAX_RECORD_BYTES: usize = 64 * 1024;
 /// The longest line of a resident's standard error that stays whole: the
-/// runner reads the stream line by line for the Host's log, and continues a
+/// runner reads the stream line by line for the device's log, and continues a
 /// longer line on the next, which breaks a line of the log in two.
 pub const STDERR_LINE_BYTES: usize = 4096;
 pub const INFO_PATH: &str = "/v1/info";

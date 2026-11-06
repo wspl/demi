@@ -26,7 +26,7 @@ const widgetFacts = widget.state === 'found' ? widget.facts : null
 <template>
   <GallerySection
     title="Shared Page"
-    note="What anyone with a share's link reads, without an account: the messages and the agent's texts under the conversation's title, with a small Shared from Demi at the foot and nothing that acts. The work between them, thinking, commands and subagents, is one muted line that counts its steps and does not open. A file, a commit or an agent is its text, since the page reaches neither the Host nor the work; an attachment shows. A widget's share is the widget alone, as wide as the page and centered in its height when lower, over the same foot, with Copy as Image in its corner and no Share. The page follows the reader's system for light or dark and for its language."
+    note="What anyone with a share's link reads, without an account: the messages and the agent's texts under the conversation's title, with a small Shared from Demi at the foot and nothing that acts. The work between them, thinking, commands and subagents, is one muted line that counts its steps and does not open. A file, a commit or an agent is its text, since the page reaches neither the device nor the work; an attachment shows. A widget's share is the widget alone, as wide as the page and centered in its height when lower, over the same foot, with Copy as Image in its corner and no Share. The page follows the reader's system for light or dark and for its language."
   >
     <GallerySpecimen variant="a conversation" wide>
       <div class="gallery-frame h-[46rem]">

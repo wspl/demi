@@ -51,7 +51,7 @@
     "cloudResetting": "A nuvem está sendo redefinida."
   },
   "workflows": {
-    "hostSilent": "O host não respondeu."
+    "deviceSilent": "O dispositivo não respondeu."
   },
   "uploads": {
     "notUploaded": "{name} não foi enviado. {reason}",

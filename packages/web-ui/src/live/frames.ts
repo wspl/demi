@@ -19,13 +19,13 @@ import {
 } from '@demicodes/protocol'
 import type { StreamBytes } from '../plugins/streams'
 
-/** A picture of one source, such as a browser tab, in the generation its Host announced. */
+/** A picture of one source, such as a browser tab, in the generation its device announced. */
 export interface LiveVideoFrame {
   source: string
   generation: number
   sequence: number
   key: boolean
-  /** Microseconds on the Host's clock, as the decoder wants them. */
+  /** Microseconds on the device's clock, as the decoder wants them. */
   timestamp: number
   width: number
   height: number
@@ -33,8 +33,8 @@ export interface LiveVideoFrame {
 }
 
 /**
- * A chunk of a picture, as the Host sends it: its part of the frame's data, `chunk` of `chunks`.
- * A padding chunk is the Host's probe of the path, numbered by its probe, with no picture.
+ * A chunk of a picture, as the device sends it: its part of the frame's data, `chunk` of `chunks`.
+ * A padding chunk is the device's probe of the path, numbered by its probe, with no picture.
  */
 export interface LiveVideoChunk extends LiveVideoFrame {
   chunk: number
@@ -74,7 +74,7 @@ export function encodeControl(message: unknown): StreamBytes {
 }
 
 /**
- * A picture in chunks as the Host frames it, for a view without a Host, such as the gallery's.
+ * A picture in chunks as the device frames it, for a view without a device, such as the gallery's.
  */
 export function encodeVideo(frame: LiveVideoFrame): StreamBytes {
   const chunks = Math.max(1, Math.ceil(frame.data.length / LIVE_CHUNK_DATA_BYTES))
@@ -120,7 +120,7 @@ export function encodeAcks(acks: readonly LiveChunkAck[]): StreamBytes {
   return framed(LIVE_ACK_FRAME, payload)
 }
 
-/** The acknowledgements of an acknowledgement frame's payload, for a view without a Host. */
+/** The acknowledgements of an acknowledgement frame's payload, for a view without a device. */
 export function decodeAcks(payload: Uint8Array): LiveChunkAck[] {
   const view = new DataView(payload.buffer, payload.byteOffset, payload.length)
   const acks: LiveChunkAck[] = []
@@ -283,7 +283,7 @@ export function frameKind(frame: Uint8Array): number | undefined {
 }
 
 /**
- * What the Host sent, split from the bytes as they arrive. One reader reads
+ * What the device sent, split from the bytes as they arrive. One reader reads
  * one stream: a frame an ended stream left unfinished is no part of the next.
  */
 export class LiveFrameReader {
@@ -291,7 +291,7 @@ export class LiveFrameReader {
 
   /**
    * The frames `chunk` completes. A frame the protocol refuses throws:
-   * it is the Host's defect, and
+   * it is the device's defect, and
    * the view it came on ends.
    */
   read(chunk: Uint8Array): LiveRawFrame[] {
@@ -304,9 +304,9 @@ function decodeFrame(frame: Uint8Array): LiveRawFrame {
   if (frame[0] === LIVE_CONTROL_FRAME) {
     return { kind: 'control', payload }
   }
-  // The Host's side and the page ship together, so no other kind can come from a newer Host.
+  // The Device's side and the page ship together, so no other kind can come from a newer Device.
   if (frame[0] !== LIVE_VIDEO_FRAME) {
-    throw new Error(`the live stream sent a frame of kind ${frame[0]}, which the Host does not send`)
+    throw new Error(`the live stream sent a frame of kind ${frame[0]}, which the device does not send`)
   }
   if (payload.length < LIVE_VIDEO_HEADER_BYTES) {
     throw new Error('the live stream sent a video chunk shorter than its header')

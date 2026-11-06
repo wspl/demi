@@ -1,4 +1,4 @@
-//! The Host's side of the live view where it is not about its source.
+//! The device's side of the live view where it is not about its source.
 //!
 //! A source of pictures and input, such as a browser tab or a simulator,
 //! implements [`stream::Source`] and [`input::Deliver`]. Its viewer serves its

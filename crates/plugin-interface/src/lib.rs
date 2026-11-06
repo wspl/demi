@@ -19,15 +19,15 @@
 //! # Messages only
 //!
 //! Everything a plugin receives is a message, so no plugin ever receives a live
-//! object: no Host handle, no callback into the backend, no reference to a
+//! object: no device handle, no callback into the backend, no reference to a
 //! session or a shard. That is:
 //!
 //! - what keeps a plugin written with a TypeScript SDK possible without
 //!   embedding the Rust runtime (no such SDK is built);
 //! - why a plugin's values change by versioned compare-and-set rather than by a
 //!   callback inside a transaction;
-//! - why a plugin names the directories a Host must hold instead of writing to
-//!   a Host.
+//! - why a plugin names the directories a device must hold instead of writing to
+//!   a device.
 //!
 //! # Rules
 //!
@@ -38,7 +38,7 @@
 //!   contract.
 //! - A plugin crate depends on this crate and on contract crates, never on a
 //!   backend crate, so it cannot reach past the port.
-//! - A service joins the port when a plugin needs it, as Hosts did, and never
+//! - A service joins the port when a plugin needs it, as devices did, and never
 //!   as an operation shaped for one plugin among the others.
 //!
 //! A blob a value or a directory names is never removed while it names it.
@@ -63,7 +63,7 @@ pub use web::{
 };
 pub use plugin::{CommandPlugin, NoRequests, Plugin, PluginFactory, PluginFile, PortHandled};
 pub use port::{
-    CallKind, DirectoryFile, DirectoryPath, HostDirectory, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal,
+    CallKind, DirectoryFile, DirectoryPath, DeviceDirectory, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal,
     WorkspaceName, Workspaces, DeviceName, GitEntry, GitFile, GitRefusal, GitTree,
     StoredReport, StoredValue,
 };

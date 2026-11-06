@@ -289,7 +289,7 @@ pub const ANSWER_START_CHARS: usize = 400;
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum PushAsk {
     /// The grant of a category. A push of an earlier release that asked for
-    /// a host and named no category does not parse, and shows as an
+    /// a device and named no category does not parse, and shows as an
     /// unreadable push does.
     Permission {
         #[schemars(length(min = 1))]

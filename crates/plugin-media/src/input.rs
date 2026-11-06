@@ -1,9 +1,9 @@
 //! A media call's input: its arguments, its model, its prompt, its images
 //! and its shape.
 
-use demi_host_interface::RpcInvocation;
+use demi_device_interface::RpcInvocation;
 use demi_plugin_interface::{ImageAspect, ImageInput, ImageKind, PluginError, PluginPort, PortFailure, PortRefusal};
-use demi_host_interface::{HostFile, HostRead};
+use demi_device_interface::{DeviceFile, DeviceRead};
 use demi_shared_types::{B64Bytes, MediaKind, mp4};
 use image::ImageFormat;
 use serde::de::DeserializeOwned;
@@ -68,19 +68,19 @@ pub fn parse_aspect(text: &str) -> Result<ImageAspect, PluginError> {
     parsed.ok_or_else(|| PluginError::failed(format!("--aspect {text}: a shape is W:H, such as 16:9")))
 }
 
-/// The images at `paths`, read together from the Host the command runs
-/// on, each relative to the shell's directory or absolute, as that Host
+/// The images at `paths`, read together from the device the command runs
+/// on, each relative to the shell's directory or absolute, as that device
 /// resolves it: a PNG, JPEG or WebP file of at most 16 MiB each, else the
 /// call fails naming it.
 pub async fn read_images(port: &PluginPort, paths: &[String]) -> Result<Vec<ImageInput>, PluginError> {
     if paths.is_empty() {
         return Ok(Vec::new());
     }
-    let reads = paths.iter().map(|path| HostRead::content(path.clone(), MAX_IMAGE_BYTES)).collect();
-    let files = match port.read_host_files(reads).await {
+    let reads = paths.iter().map(|path| DeviceRead::content(path.clone(), MAX_IMAGE_BYTES)).collect();
+    let files = match port.read_device_files(reads).await {
         Ok(files) => files,
         Err(PortFailure::Refused(PortRefusal::NotRunning)) => {
-            return Err(PluginError::failed("the Host is not running"));
+            return Err(PluginError::failed("the device is not running"));
         }
         Err(failure) => return Err(failure.into()),
     };
@@ -90,14 +90,14 @@ pub async fn read_images(port: &PluginPort, paths: &[String]) -> Result<Vec<Imag
         .map(|(path, file)| {
             let named = |reason: &str| PluginError::failed(format!("{path}: {reason}"));
             let bytes = match file {
-                HostFile::File { size, .. } if size > MAX_IMAGE_BYTES => {
+                DeviceFile::File { size, .. } if size > MAX_IMAGE_BYTES => {
                     return Err(named(&format!("the file is {size} bytes; an image is at most 16 MiB")));
                 }
-                HostFile::File { bytes, .. } => bytes,
-                HostFile::Missing => return Err(named("no such file")),
-                HostFile::Directory { .. } => return Err(named("is a directory")),
-                HostFile::Unreadable { message } => return Err(named(&message)),
-                HostFile::Other => return Err(named("not a file")),
+                DeviceFile::File { bytes, .. } => bytes,
+                DeviceFile::Missing => return Err(named("no such file")),
+                DeviceFile::Directory { .. } => return Err(named("is a directory")),
+                DeviceFile::Unreadable { message } => return Err(named(&message)),
+                DeviceFile::Other => return Err(named("not a file")),
             };
             let kind = match image::guess_format(&bytes) {
                 Ok(ImageFormat::Png) => ImageKind::Png,
@@ -110,28 +110,28 @@ pub async fn read_images(port: &PluginPort, paths: &[String]) -> Result<Vec<Imag
         .collect()
 }
 
-/// The video at `path`, read from the Host the command runs on as
+/// The video at `path`, read from the device the command runs on as
 /// [`read_images`] reads an image: an MP4 file of at most 64 MiB, else the
 /// call fails naming it.
 pub async fn read_video(port: &PluginPort, path: &str) -> Result<B64Bytes, PluginError> {
     let named = |reason: &str| PluginError::failed(format!("{path}: {reason}"));
-    let read = HostRead::content(path.to_owned(), MAX_VIDEO_BYTES);
-    let file = match port.read_host_files(vec![read]).await {
+    let read = DeviceRead::content(path.to_owned(), MAX_VIDEO_BYTES);
+    let file = match port.read_device_files(vec![read]).await {
         Ok(files) => files.into_iter().next(),
         Err(PortFailure::Refused(PortRefusal::NotRunning)) => {
-            return Err(PluginError::failed("the Host is not running"));
+            return Err(PluginError::failed("the device is not running"));
         }
         Err(failure) => return Err(failure.into()),
     };
     let bytes = match file {
-        Some(HostFile::File { size, .. }) if size > MAX_VIDEO_BYTES => {
+        Some(DeviceFile::File { size, .. }) if size > MAX_VIDEO_BYTES => {
             return Err(named(&format!("the file is {size} bytes; a video is at most 64 MiB")));
         }
-        Some(HostFile::File { bytes, .. }) => bytes,
-        Some(HostFile::Missing) | None => return Err(named("no such file")),
-        Some(HostFile::Directory { .. }) => return Err(named("is a directory")),
-        Some(HostFile::Unreadable { message }) => return Err(named(&message)),
-        Some(HostFile::Other) => return Err(named("not a file")),
+        Some(DeviceFile::File { bytes, .. }) => bytes,
+        Some(DeviceFile::Missing) | None => return Err(named("no such file")),
+        Some(DeviceFile::Directory { .. }) => return Err(named("is a directory")),
+        Some(DeviceFile::Unreadable { message }) => return Err(named(&message)),
+        Some(DeviceFile::Other) => return Err(named("not a file")),
     };
     if mp4::read(bytes.as_bytes()).is_err() {
         return Err(named("not an MP4 video"));

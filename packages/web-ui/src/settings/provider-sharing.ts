@@ -82,17 +82,17 @@ export function useProviderShare(service: () => ProviderShareService | undefined
   }
 
   function start(shown: SharedProvider): void {
-    const host = service()
-    if (!host) {
+    const device = service()
+    if (!device) {
       return
     }
     provider.value = shown
     isOpen.value = true
     keys.value = { status: 'loading' }
     made.value = null
-    const listed = host.list(shown.id)
+    const listed = device.list(shown.id)
     // A provider without keys gets its first one now, inside this click.
-    const first = listed.then((list) => (list.length ? null : host.create(shown.id)))
+    const first = listed.then((list) => (list.length ? null : device.create(shown.id)))
     const making = first.then((answer) => answer ?? Promise.reject(new Error('The provider has keys: none is made')))
     making.catch(() => undefined)
     listed.then(
@@ -118,13 +118,13 @@ export function useProviderShare(service: () => ProviderShareService | undefined
 
   /** Reads the keys again, after the list failed. */
   function reload(): void {
-    const host = service()
+    const device = service()
     const shown = provider.value
-    if (!host || !shown) {
+    if (!device || !shown) {
       return
     }
     keys.value = { status: 'loading' }
-    host.list(shown.id).then(
+    device.list(shown.id).then(
       (list) => {
         if (provider.value === shown) {
           keys.value = { status: 'ready', keys: list }
@@ -140,21 +140,21 @@ export function useProviderShare(service: () => ProviderShareService | undefined
 
   /** New Key. */
   function make(): void {
-    const host = service()
+    const device = service()
     const shown = provider.value
-    if (host && shown) {
-      show(shown, host.create(shown.id), true)
+    if (device && shown) {
+      show(shown, device.create(shown.id), true)
     }
   }
 
   async function revoke(keyId: string): Promise<void> {
-    const host = service()
+    const device = service()
     const shown = provider.value
-    if (!host || !shown) {
+    if (!device || !shown) {
       return
     }
     try {
-      await host.revoke(shown.id, keyId)
+      await device.revoke(shown.id, keyId)
     } catch (error) {
       reportError(t('providers.share.revokeFailed'), error, { site: 'providers.share.revokeFailed', userVisible: true })
       return

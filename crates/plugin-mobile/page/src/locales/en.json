@@ -42,7 +42,7 @@
   "failures": {
     "control": "The simulator couldn’t do that",
     "save": "Couldn’t Save the File",
-    "hostFilesUnreachable": "The device’s files can’t be reached right now."
+    "deviceFilesUnreachable": "The device’s files can’t be reached right now."
   },
   "reasons": {
     "invalid_input": "The simulator can’t take that.",
@@ -68,13 +68,13 @@
     "conversation_not_found": "This conversation no longer exists.",
     "conversation_archived": "This conversation is archived.",
     "conversation_busy": "The conversation is busy. Try again in a moment.",
-    "host_stopped": "The device is stopped.",
+    "device_stopped": "The device is stopped.",
     "device_offline": "The device is offline.",
     "cloud_unavailable": "The Cloud isn’t available right now.",
     "cloud_resetting": "The Cloud is being reset.",
     "cloud_capacity": "The Cloud has no room right now.",
     "cloud_crash_loop": "The Cloud keeps stopping.",
-    "host_operation_failed": "The device couldn’t do that.",
+    "device_operation_failed": "The device couldn’t do that.",
     "unknown_plugin_method": "This page is out of date. Reload it.",
     "plugin_disabled": "Simulators are turned off."
   },

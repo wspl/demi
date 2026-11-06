@@ -39,7 +39,7 @@ import SidebarGroupLabel from './SidebarGroupLabel.vue'
 import SidebarToggle from './SidebarToggle.vue'
 import SidebarNavItem from './SidebarNavItem.vue'
 import SidebarProjectHeader from './SidebarProjectHeader.vue'
-import { projectHostName, projectQualifiers } from './project-hosts'
+import { projectDeviceName, projectQualifiers } from './project-devices'
 import { projectEntries, selectionEntries } from './selection-menu'
 import SidebarRow from './SidebarRow.vue'
 import ConversationDeleteDialog from './ConversationDeleteDialog.vue'
@@ -188,7 +188,7 @@ const foldedProjectNews = computed(() => new Map(groups.value.flatMap((group) =>
   const news = mostUrgentNews(group.items, props.activeId)
   return news ? [[group.project.id, news] as const] : []
 })))
-/** The projects whose row names its host, since a project of the same name runs on another. */
+/** The projects whose row names its device, since a project of the same name runs on another. */
 const qualifiers = keptComputed(() => projectQualifiers(shownProjects.value))
 /** Each group's label, in list order, with the dot it carries while folded. */
 const groupLabels = computed(() => {
@@ -912,7 +912,7 @@ function selectProjectConversations(project: SidebarProject): void {
       :id="deletingProject.id"
       :name="deletingProject.name"
       :count="projectCount(deletingProject)"
-      :host="projectHostName(deletingProject)"
+      :device="projectDeviceName(deletingProject)"
       @close="projectDeleteOpen = false"
       @delete="confirmProjectDelete"
     />

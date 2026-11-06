@@ -5,7 +5,7 @@ import { reportError } from '@demicodes/web-ui/infra/errors'
 import { t as sidebarText } from '@demicodes/web-ui/sidebar/locales/text'
 import { computed, onBeforeUnmount, ref, watchEffect, type Ref } from 'vue'
 import { moveBefore } from '@demicodes/utils'
-import type { SidebarConversation, SidebarProject, SidebarProjectHost, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
+import type { SidebarConversation, SidebarProject, SidebarProjectDevice, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import type { SidebarGroup } from '@demicodes/web-ui/sidebar/list-model'
 import { RestoreSweep } from '../fixtures/restore-sweep'
@@ -218,7 +218,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Conversations',
-    'Conversations outside projects: those that run in their Host’s home, or on the Cloud in a directory of their own. Manual order, pinned on top. The group folds under its label, as Projects does (Folded Groups). One on a paired device ends in that device’s mark (Device Marks): its system’s logo with a dot for its state, or the plain computer without a dot once the device is removed, right of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive appears to the left of the mark, over the pin’s place on a pinned row, and a pinned row shows Unpin before it; a row that is not pinned offers Pin in its menu. New opens an empty draft, listed first as New conversation while it is open; one left empty leaves the list, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
+    'Conversations outside projects: those that run in their device’s home, or on the Cloud in a directory of their own. Manual order, pinned on top. The group folds under its label, as Projects does (Folded Groups). One on a paired device ends in that device’s mark (Device Marks): its system’s logo with a dot for its state, or the plain computer without a dot once the device is removed, right of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive appears to the left of the mark, over the pin’s place on a pinned row, and a pinned row shows Unpin before it; a row that is not pinned offers Pin in its menu. New opens an empty draft, listed first as New conversation while it is open; one left empty leaves the list, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
   ],
   [
     'Projects',
@@ -313,7 +313,7 @@ function addProject(): void {
     {
       id,
       name: `project-${nextId}`,
-      hostKind: 'device',
+      targetKind: 'device',
       device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
       path: `/Users/alex/Projects/project-${nextId}`,
       savedScope: 'conversation',
@@ -467,17 +467,17 @@ const hoverActive = ref<string | null>(null)
  */
 function markProjects(): SidebarProject[] {
   const mac = { kind: 'paired', name: 'MacBook Pro', state: 'online', mark: GALLERY_MARKS.mac } as const
-  const project = (id: string, name: string, host: SidebarProjectHost): SidebarProject => ({
-    id, name, path: `/Users/alex/${name}`, savedScope: 'conversation', savedCount: 0, ...host,
+  const project = (id: string, name: string, device: SidebarProjectDevice): SidebarProject => ({
+    id, name, path: `/Users/alex/${name}`, savedScope: 'conversation', savedCount: 0, ...device,
   })
   return [
-    project('m-chromium', 'chromium', { hostKind: 'device', device: mac }),
-    project('m-demi-mac', 'demi', { hostKind: 'device', device: mac }),
-    project('m-demi-mini', 'demi', { hostKind: 'device', device: { kind: 'paired', name: 'Mac mini', state: 'online', mark: GALLERY_MARKS.macMini } }),
-    project('m-dotfiles-mac', 'dotfiles-and-machine-setup-scripts', { hostKind: 'device', device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'updating', mark: GALLERY_MARKS.macPro } }),
-    project('m-dotfiles-build', 'dotfiles-and-machine-setup-scripts', { hostKind: 'device', device: { kind: 'paired', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu } }),
-    project('m-old', 'old-experiments', { hostKind: 'device', device: { kind: 'removed' } }),
-    project('m-notebooks', 'notebooks', { hostKind: 'cloud' }),
+    project('m-chromium', 'chromium', { targetKind: 'device', device: mac }),
+    project('m-demi-mac', 'demi', { targetKind: 'device', device: mac }),
+    project('m-demi-mini', 'demi', { targetKind: 'device', device: { kind: 'paired', name: 'Mac mini', state: 'online', mark: GALLERY_MARKS.macMini } }),
+    project('m-dotfiles-mac', 'dotfiles-and-machine-setup-scripts', { targetKind: 'device', device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'updating', mark: GALLERY_MARKS.macPro } }),
+    project('m-dotfiles-build', 'dotfiles-and-machine-setup-scripts', { targetKind: 'device', device: { kind: 'paired', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu } }),
+    project('m-old', 'old-experiments', { targetKind: 'device', device: { kind: 'removed' } }),
+    project('m-notebooks', 'notebooks', { targetKind: 'cloud' }),
   ]
 }
 function markRows(): SidebarConversation[] {

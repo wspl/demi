@@ -68,7 +68,7 @@ pub struct Call<'a> {
     /// the user's computer: the conversation's scratch directory, for a call
     /// the user started; none for the agent's (`crates/plugin-mobile/command/src/live.rs`).
     pub scratch: Option<std::path::PathBuf>,
-    /// The conversation's recordings on this Host, which go with the
+    /// The conversation's recordings on this device, which go with the
     /// conversation whatever becomes of the program.
     pub library: Arc<Library>,
     /// The caller's own scratch directory, where an export of images goes

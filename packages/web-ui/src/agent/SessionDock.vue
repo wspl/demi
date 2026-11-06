@@ -180,7 +180,7 @@ const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + 
       <slot name="above" />
     </div>
     <!--
-      The composer's cards, such as the offline primary Host's. Each brings its
+      The composer's cards, such as the offline primary device's. Each brings its
       own step under it.
     -->
     <div ref="cardsRef" class="flex flex-col" />

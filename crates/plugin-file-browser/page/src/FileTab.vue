@@ -4,7 +4,7 @@ import { FileView, PaneReading, treeLayout, usePage, usePaneReady, type TabUpdat
 import { fileView, locateFolder, searchShown, shownPath, showDirectory, showFile, showMode, treeShown, type FileData } from './data'
 
 /**
- * The File view of one conversation: one file of its Host beside the Host's
+ * The File view of one conversation: one file of its device beside the device's
  * tree, over the conversation's files service. A file picked in the tree or a
  * link in a Markdown preview replaces the file, and a folder the crumb row
  * goes to is found in the tree, each a step of the web browser's history,

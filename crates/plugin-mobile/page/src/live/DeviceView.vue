@@ -12,7 +12,7 @@ import {
   type ScreenCorners,
   touchInput,
   wheelInput,
-  type HostDownload,
+  type DeviceDownload,
   prefersReducedMotion,
 } from '@demicodes/plugin-sdk'
 import { quartersBetween, type DeviceSession } from './session'
@@ -44,13 +44,13 @@ import { t } from '../locales/text'
  *   shows as part of the turn.
  * - Until the first picture, it says what it waits for; a frame that could
  *   not be shown is a failure the viewer can retry. A stream that waits for
- *   the Host to download the plugin's program says how far the download came.
+ *   the runner to download the plugin's program says how far the download came.
  */
 const props = defineProps<{
   session: DeviceSession
   shown: boolean
-  /** What the Host downloads of the plugin's packages now. */
-  downloads: readonly HostDownload[]
+  /** What the runner downloads of the plugin's packages now. */
+  downloads: readonly DeviceDownload[]
 }>()
 
 const area = ref<HTMLDivElement | null>(null)
@@ -265,7 +265,7 @@ const painted = computed(() => !!look.value?.picture)
 const screenOff = computed(() => painted.value && props.session.state.screenOff)
 const { progress, progressText, waitingLabel } = deviceStatus(props)
 
-// The Host captures the screen no larger than the view shows it, in device
+// The runner captures the screen no larger than the view shows it, in device
 // pixels, once the area's size settled: a larger size restarts its capture,
 // which a drag of the panel's edge would otherwise do at every step.
 const settledScreen = computed(() => {

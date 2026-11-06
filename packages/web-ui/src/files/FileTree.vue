@@ -94,7 +94,7 @@ const props = defineProps<{
   rootName?: string
   /** The directories the host can show here, with the one shown: the caption is a menu when that makes several. */
   directories?: readonly FileDirectory[]
-  /** The Host's home, which a directory's location is written from. */
+  /** The Device's home, which a directory's location is written from. */
   home?: string | null
   /** The selected row, by absolute path: the open file, or a directory the host located. */
   selected: string | null
@@ -159,7 +159,7 @@ const listings = shallowReactive(new Map<string, Listing>())
 // ends those reads when the tree lets its listings go.
 const followed = shallowReactive(new Set<string>())
 let following = new AbortController()
-// Each unfolded directory's listing follows the Host only while the tree is on screen.
+// Each unfolded directory's listing follows the device only while the tree is on screen.
 followOnScreen(() => [...listings.values()].map((entry) => entry.showing))
 
 function listing(path: string): Listing {
@@ -257,7 +257,7 @@ function followProgress(chain: readonly string[]): 'waiting' | 'in' | 'out' {
  * Follows `path` as an editor's explorer follows the file it shows.
  *
  * 1. The root and each folder above the path unfold together, so the source
- *    may read their listings as one request, which a Host far away takes one
+ *    may read their listings as one request, which a device far away takes one
  *    round trip for, not one for each level.
  * 2. Once the path's row is in, a directory's own listing opens when
  *    `isDirectory`, and the row is brought into view if it is not.
@@ -376,7 +376,7 @@ usePaneReady(() => listed(normalizePath(props.root)) && !awaitingRow.value)
 const rootFailure = computed(() => {
   const entry = rootListing.value?.showing?.entry
   const shown = failureShown(entry)
-  // The root's own directory missing is the Host's refusal, in its words.
+  // The root's own directory missing is the device's refusal, in its words.
   return shown && entry?.answer === 'gone' && entry.goneReason ? { ...shown, message: entry.goneReason } : shown
 })
 const rootName = computed(() => props.rootName ?? (baseName(props.root) || '/'))

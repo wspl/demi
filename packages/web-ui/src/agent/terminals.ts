@@ -56,8 +56,8 @@ export interface TerminalRecord {
    */
   stopping?: boolean
   /**
-   * While it runs: its start waits for its Host, the paired device this
-   * names, to come back (`crates/backend-host-access/src/access.rs`), as
+   * While it runs: its start waits for its device, the paired device this
+   * names, to come back (`crates/backend-device-access/src/access.rs`), as
    * a live frame said.
    */
   waitingFor?: string
@@ -373,7 +373,7 @@ export function shellRowRunning(
  * How a `shell` row's command ended:
  *
  * - that a stop waits for its end, while its runner has not said so, or that
- *   its start waits for its Host
+ *   its start waits for its device
  * - none while its call runs otherwise
  * - after the call, the end the command's record has, from its live frames or a
  *   stored view, and otherwise the view the call stored, unless that view saw

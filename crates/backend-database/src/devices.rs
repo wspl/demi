@@ -10,7 +10,7 @@
 //! Whether a device is online is its runner connection's, not a record's.
 
 use demi_runner_protocol::pairs::PairRoute;
-use demi_runner_protocol::wire::{AutostartUnavailable, HostArtifact, OperatingSystem, RunnerPlatform};
+use demi_runner_protocol::wire::{AutostartUnavailable, DeviceArtifact, OperatingSystem, RunnerPlatform};
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::devices::{DeviceKind, DeviceLogo, DeviceRoute};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, ProjectId};
@@ -22,7 +22,7 @@ use super::StorageError;
 use super::accounts::TokenHash;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
-use super::conversation_index::{TargetColumns, raise_hosts_revision};
+use super::conversation_index::{TargetColumns, raise_devices_revision};
 use super::selection::{CLOUD_HOME, Selection, directory, select_directory};
 
 /// What a device's deletion removed with it.
@@ -67,7 +67,7 @@ pub struct DeviceRecord {
     pub last_seen_at: Option<Timestamp>,
     /// What its runner last reported its artifact cache holds
     /// (`crates/runner-command-packages/src/cache.rs`).
-    pub installed: Vec<HostArtifact>,
+    pub installed: Vec<DeviceArtifact>,
     /// The operating system its runner last reported; none before its
     /// runner first connected.
     pub os: Option<OperatingSystem>,
@@ -100,10 +100,10 @@ pub struct DeviceRecord {
 }
 
 impl DeviceRecord {
-    /// Whether the device is one of `user`'s Hosts: theirs, and not the
-    /// Claude Code machine, which is in no user's Hosts though its record
+    /// Whether the device is one of `user`'s devices: theirs, and not the
+    /// Claude Code machine, which is in no user's devices though its record
     /// is the master's (`crates/backend-cloud/src/lib.rs`).
-    pub fn is_host_of(&self, user: &UserId) -> bool {
+    pub fn is_device_of(&self, user: &UserId) -> bool {
         self.user == *user && self.machine != Some(ManagedMachine::ClaudeCode)
     }
 
@@ -128,7 +128,7 @@ impl DeviceRecord {
 
 /// A managed device's machine (`crates/backend-cloud/src/lib.rs`): each
 /// user's Cloud, or the Claude Code machine, whose record belongs to the
-/// instance's master and which is in no user's Hosts.
+/// instance's master and which is in no user's devices.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ManagedMachine {
     Cloud,
@@ -408,13 +408,13 @@ impl ControlService {
             };
             let detached = {
                 let mut statement = transaction.prepare_cached(
-                    "DELETE FROM conversation_hosts WHERE device_id = ?1 RETURNING conversation_id",
+                    "DELETE FROM conversation_devices WHERE device_id = ?1 RETURNING conversation_id",
                 )?;
                 let mut rows = statement.query([device.as_str()])?;
                 let mut detached = Vec::new();
                 while let Some(row) = rows.next()? {
                     detached.push(decode(
-                        "conversation_hosts",
+                        "conversation_devices",
                         "conversation_id",
                         ConversationId::try_from(row.get::<_, String>("conversation_id")?),
                     )?);
@@ -422,7 +422,7 @@ impl ControlService {
                 detached
             };
             for conversation in detached {
-                raise_hosts_revision(&transaction, &conversation)?;
+                raise_devices_revision(&transaction, &conversation)?;
                 if !conversations.contains(&conversation) {
                     conversations.push(conversation);
                 }
@@ -448,7 +448,7 @@ impl ControlService {
                 "DELETE FROM port_forwards WHERE listen_device_id = ?1 OR connect_device_id = ?1",
                 [device.as_str()],
             )?;
-            transaction.execute("DELETE FROM host_workflows WHERE device_id = ?1", [device.as_str()])?;
+            transaction.execute("DELETE FROM device_workflows WHERE device_id = ?1", [device.as_str()])?;
             transaction.execute("DELETE FROM devices WHERE id = ?1", [device.as_str()])?;
             transaction.commit()?;
             Ok(DeviceRemoval {
@@ -464,7 +464,7 @@ impl ControlService {
     pub async fn set_device_installed(
         &self,
         device: DeviceId,
-        installed: Vec<HostArtifact>,
+        installed: Vec<DeviceArtifact>,
     ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             connection.execute(
@@ -483,7 +483,7 @@ impl ControlService {
     ///
     /// The execution context advances:
     ///
-    /// - When the system changed, for the conversations whose primary Host the
+    /// - When the system changed, for the conversations whose primary device the
     ///   device is.
     /// - When the home differs from the one its contexts named before, the Cloud's
     ///   `/home/demi` before its first report, for the conversations whose
@@ -573,9 +573,9 @@ impl ControlService {
                              AND device.kind = 'managed' AND device.machine = 'cloud'
                              AND conversation.user_id = device.user_id)
                            OR (conversation.target_kind = 'home' AND conversation.target_device_id = device.id)
-                           OR EXISTS (SELECT 1 FROM conversation_hosts host
-                             WHERE host.conversation_id = conversation.id
-                               AND host.device_id = device.id AND host.cwd IS NULL))))",
+                           OR EXISTS (SELECT 1 FROM conversation_devices attached
+                             WHERE attached.conversation_id = conversation.id
+                               AND attached.device_id = device.id AND attached.cwd IS NULL))))",
                     params![device.as_str(), system_changed, home_changed],
                 )?;
             }
@@ -751,9 +751,9 @@ impl ControlService {
 
     /// Sets what `change` names of `device`; none when there is no such device.
     ///
-    /// A conversation that reaches the device, as an attached host or as its
-    /// primary one, calls it by its name, which its attached hosts' names count, so
-    /// a new name advances the execution context and the attached hosts' revision
+    /// A conversation that reaches the device, as an attached device or as its
+    /// primary one, calls it by its name, which its attached devices' names count, so
+    /// a new name advances the execution context and the attached devices' revision
     /// of each. The answer names those conversations.
     pub async fn change_device(
         &self,
@@ -780,8 +780,8 @@ impl ControlService {
                 transaction
                     .prepare_cached(
                         "UPDATE conversations SET context_version = context_version + 1,
-                           hosts_revision = hosts_revision + 1
-                         WHERE id IN (SELECT conversation_id FROM conversation_hosts WHERE device_id = ?1)
+                           devices_revision = devices_revision + 1
+                         WHERE id IN (SELECT conversation_id FROM conversation_devices WHERE device_id = ?1)
                            OR target_device_id = ?1
                            OR target_project_id IN (SELECT id FROM projects WHERE device_id = ?1)
                          RETURNING id",

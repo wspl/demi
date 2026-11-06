@@ -28,8 +28,8 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use demi_agent_tools::{HostResolver, Toolset};
-use demi_host_interface::{
+use demi_agent_tools::{DeviceResolver, Toolset};
+use demi_device_interface::{
     Call, CommandSet, DEMI_ROOT, GroupBuilder, LeafBuilder, RegisterError, RpcError, RpcPort,
     TypedRpc,
 };
@@ -61,7 +61,7 @@ const LIST_SUMMARY: &str = "List the agents of this conversation's tree from the
 /// The `--profile` option's description, which names no profile: the help
 /// is rendered once per tree, and the profiles change with the user's
 /// settings.
-const PROFILE_OPTION: &str = "The name of a profile `demi agent profiles list` lists, with when to use each. Required while the conversation runs a project's workflow; otherwise, without it the child inherits your model, prompt, Host and commands.";
+const PROFILE_OPTION: &str = "The name of a profile `demi agent profiles list` lists, with when to use each. Required while the conversation runs a project's workflow; otherwise, without it the child inherits your model, prompt, device and commands.";
 
 /// The `--profile` option's description of a resume, which names no profile
 /// for the reason [`PROFILE_OPTION`]'s does not.
@@ -89,7 +89,7 @@ struct CwdArgs {
     dir: Option<String>,
 }
 
-const CWD_SUMMARY: &str = "Print your working directory, where your shell calls start, or change it to another directory of your Host.";
+const CWD_SUMMARY: &str = "Print your working directory, where your shell calls start, or change it to another directory of your device.";
 
 /// The input of `demi agent send`.
 #[derive(Deserialize, JsonSchema)]
@@ -242,7 +242,7 @@ impl NodeCommandSets {
 /// A node's commands: the product's, with the `demi agent` and `demi shell`
 /// groups grafted under a `demi` group, replacing any `agent` or `shell`
 /// child the product declared, or under a new `demi` root.
-pub(crate) fn with_runtime_groups<H: HostResolver>(
+pub(crate) fn with_runtime_groups<H: DeviceResolver>(
     product_commands: &CommandSet,
     server: &Rc<AgentServer<H>>,
     can_spawn: bool,
@@ -269,7 +269,7 @@ pub(crate) fn with_runtime_groups<H: HostResolver>(
 
 /// The `agent` group of a node: every verb, or communication and reads only
 /// when the node may not spawn.
-fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -> GroupBuilder {
+fn agent_group<H: DeviceResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -> GroupBuilder {
     let summary = if can_spawn {
         "Agent tree: spawn, resume and manage your own children; send, list and show any live agent."
     } else {
@@ -344,7 +344,7 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
 
 /// A verb's call against the live tree of the invoking job's conversation,
 /// on behalf of the job's node.
-pub(super) struct Invoked<H: HostResolver, A> {
+pub(super) struct Invoked<H: DeviceResolver, A> {
     pub(super) tree: Rc<Tree<H>>,
     /// The node whose job runs the command.
     pub(super) caller: NodeId,
@@ -354,7 +354,7 @@ pub(super) struct Invoked<H: HostResolver, A> {
     /// names is read against.
     pub(super) cwd: String,
     /// The command's path, which a failure of one of several values
-    /// begins with (`crates/host-interface/src/rpc.rs`).
+    /// begins with (`crates/device-interface/src/rpc.rs`).
     pub(super) command: String,
     pub(super) json: bool,
     pub(super) args: A,
@@ -367,7 +367,7 @@ pub(super) fn verb<H, A, F, Fut>(
     run: F,
 ) -> impl Fn(Call<A>, RpcPort) -> futures_util::future::LocalBoxFuture<'static, Result<u8, RpcError>>
 where
-    H: HostResolver,
+    H: DeviceResolver,
     A: 'static,
     F: Fn(Invoked<H, A>, RpcPort) -> Fut + Copy + 'static,
     Fut: std::future::Future<Output = Result<u8, RpcError>> + 'static,
@@ -402,7 +402,7 @@ where
     }
 }
 
-async fn spawn<H: HostResolver>(
+async fn spawn<H: DeviceResolver>(
     call: Invoked<H, SpawnArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -424,7 +424,7 @@ async fn spawn<H: HostResolver>(
 
 /// Prints the caller's directory, or moves the caller to `dir`
 /// (`crates/agent-server/src/node/mod.rs`).
-async fn cwd<H: HostResolver>(call: Invoked<H, CwdArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn cwd<H: DeviceResolver>(call: Invoked<H, CwdArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let changed = match &call.args.dir {
         Some(dir) => call.tree.change_cwd(&call.caller, dir).await,
         None => call.tree.directory_of(&call.caller).await,
@@ -435,7 +435,7 @@ async fn cwd<H: HostResolver>(call: Invoked<H, CwdArgs>, port: RpcPort) -> Resul
     }
 }
 
-async fn resume<H: HostResolver>(
+async fn resume<H: DeviceResolver>(
     call: Invoked<H, ResumeArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -463,7 +463,7 @@ async fn resume<H: HostResolver>(
     }
 }
 
-async fn send<H: HostResolver>(call: Invoked<H, SendArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn send<H: DeviceResolver>(call: Invoked<H, SendArgs>, port: RpcPort) -> Result<u8, RpcError> {
     if is_blank(&call.args.message) {
         return refuse("message must not be empty");
     }
@@ -488,7 +488,7 @@ async fn send<H: HostResolver>(call: Invoked<H, SendArgs>, port: RpcPort) -> Res
     }
 }
 
-async fn abort<H: HostResolver>(
+async fn abort<H: DeviceResolver>(
     call: Invoked<H, AbortArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -516,7 +516,7 @@ async fn abort<H: HostResolver>(
     Ok(u8::from(failed))
 }
 
-async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn list<H: DeviceResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let listing = match call.tree.listing().await {
         Ok(listing) => listing,
         Err(error) => return fail(&error),
@@ -528,7 +528,7 @@ async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Res
     out(&port, list_text(&entries)).await
 }
 
-async fn show<H: HostResolver>(call: Invoked<H, ShowArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn show<H: DeviceResolver>(call: Invoked<H, ShowArgs>, port: RpcPort) -> Result<u8, RpcError> {
     one_for_json(&call, call.args.id.len())?;
     let mut failed = false;
     for &number in &call.args.id {
@@ -599,7 +599,7 @@ pub(super) async fn fail_one(
 
 /// Refuses `--json` with several ids, whose output is one JSON value, as a
 /// usage error.
-pub(super) fn one_for_json<H: HostResolver, A>(call: &Invoked<H, A>, ids: usize) -> Result<(), RpcError> {
+pub(super) fn one_for_json<H: DeviceResolver, A>(call: &Invoked<H, A>, ids: usize) -> Result<(), RpcError> {
     if call.json && ids > 1 {
         return Err(RpcError::Usage("--json takes one id; give the others a call each".into()));
     }

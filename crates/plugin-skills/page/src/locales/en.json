@@ -62,7 +62,7 @@
   "permissions": {
     "skills_manage": {
       "action": "manage skills",
-      "description": "Manage Skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Global skills reach every conversation and a workspace’s skills reach that workspace’s conversations, and the skills that are on are installed on the Hosts those conversations use."
+      "description": "Manage Skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Global skills reach every conversation and a workspace’s skills reach that workspace’s conversations, and the skills that are on are installed on the devices those conversations use."
     }
   },
   "problems": {

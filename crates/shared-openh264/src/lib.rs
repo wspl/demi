@@ -1,15 +1,15 @@
-//! The H.264 encoder and decoder of the Host's pictures: Cisco's own build of
+//! The H.264 encoder and decoder of the device's pictures: Cisco's own build of
 //! OpenH264, which Cisco pays the patent royalties for, as Firefox uses it.
 //!
 //! Cisco pays for its binary only, not for a build Demi would make and ship
-//! from the source, so Demi does not ship it. The first use on a Host
+//! from the source, so Demi does not ship it. The first use on a device
 //! downloads it from Cisco and checks it against its pinned hash before the
 //! program loads it, and keeps it for the next.
 //!
-//! It is the software H.264 coder: `demi-shared-h264` codes with the Host's
+//! It is the software H.264 coder: `demi-shared-h264` codes with the device's
 //! hardware encoder where there is one, and with this where there is none, and
 //! the decoder of every recording's export is this one, so that an exported
-//! frame is the same on every Host.
+//! frame is the same on every device.
 
 use std::{
     path::{Path, PathBuf},
@@ -31,7 +31,7 @@ pub type Load = Arc<dyn Fn() -> Result<OpenH264API> + Send + Sync>;
 
 /// Where the encoder's library comes from; a test gives its own.
 pub trait Codec: Send + Sync + 'static {
-    /// The library, fetched first when this Host has none.
+    /// The library, fetched first when this device has none.
     fn library(&self) -> BoxFuture<'_, Result<Load>>;
 }
 
@@ -95,7 +95,7 @@ impl Cisco {
     }
 
     /// Cisco's build as the installation `home`, `DEMI_HOME`, keeps it, one
-    /// copy for every program of the Host; the system's temporary directory
+    /// copy for every program of the device; the system's temporary directory
     /// stands in for a program without an installation.
     pub fn in_installation(home: Option<&Path>) -> Self {
         let directory = home.map_or_else(|| std::env::temp_dir().join("demi"), Path::to_owned).join("openh264");
@@ -111,7 +111,7 @@ impl Cisco {
         }
     }
 
-    /// The library's path, downloaded when this Host has none or one that
+    /// The library's path, downloaded when this device has none or one that
     /// is not Cisco's.
     async fn fetch(&self) -> Result<PathBuf> {
         let binary = BINARY.as_ref().ok_or_else(|| {

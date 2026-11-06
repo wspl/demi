@@ -35,7 +35,7 @@ pub const FILE_FRAME: u8 = 4;
 /// A file frame's largest data.
 pub const FILE_CHUNK_BYTES: usize = 64 * 1024;
 
-/// A notice's code when this Host cannot capture the watched tab.
+/// A notice's code when this device cannot capture the watched tab.
 pub const CAPTURE_UNAVAILABLE: &str = "capture_unavailable";
 /// A notice's code when the watched tab's capture failed; the next picture ends it.
 pub const CAPTURE_FAILED: &str = "capture_failed";
@@ -425,7 +425,7 @@ pub struct LiveDownload {
     /// The file's size; 0 while the server has not said it.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub total: u64,
-    /// The file on the Host once complete; empty before.
+    /// The file on the device once complete; empty before.
     #[garde(length(chars, max = 4096))]
     pub path: String,
 }
@@ -454,7 +454,7 @@ pub enum LiveModuleMessage {
     State {
         #[garde(skip)]
         running: bool,
-        /// The list's number in the Host's sequence: a list numbered higher
+        /// The list's number in the device's sequence: a list numbered higher
         /// than a request's answer names describes the browser after the
         /// request started.
         #[garde(range(max = MAX_SAFE_INTEGER))]

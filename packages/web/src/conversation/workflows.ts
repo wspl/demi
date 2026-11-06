@@ -42,18 +42,18 @@ function listOf(kept: KeptWorkflowList): WorkflowList {
 /** The menu's list of a read that failed with `error`, in the file browser's words. */
 function failed(error: unknown): WorkflowList {
   const failure = fileBrowserError(error)
-  return { state: 'failed', reason: failure instanceof Error ? failure.message : t('workflows.hostSilent') }
+  return { state: 'failed', reason: failure instanceof Error ? failure.message : t('workflows.deviceSilent') }
 }
 
 /**
  * The workflows of `place`, as the Workflow menu lists them: what the backend
  * keeps of the conversation's project, and of the linked worktree it works in
  * while they differ, which the opening reads and
- * the lane brings again when the Host reports a change;
+ * the lane brings again when the device reports a change;
  * or a new conversation's, `GET /devices/:id/workflows`, read once for its
  * directory.
  *
- * - The page never follows the Host for them: the backend holds what it
+ * - The page never follows the device for them: the backend holds what it
  *   read, or that it has read nothing yet.
  * - A conversation that moves to another directory shows that directory's.
  * - A new conversation's remembered workflow that the list lacks settles to No

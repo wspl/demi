@@ -7,7 +7,7 @@
     "search": "Websuche",
     "searchDescription": "Das Modell durchsucht das Web mit Exa, mit deinem Konto oder Schlüssel oder innerhalb eines Limits, das alle Benutzer teilen.",
     "fetch": "Webabruf",
-    "fetchDescription": "Das Modell liest eine Seite oder lädt eine Datei vom Host des Chats herunter."
+    "fetchDescription": "Das Modell liest eine Seite oder lädt eine Datei vom Gerät des Chats herunter."
   },
   "account": {
     "label": "Exa-Konto",

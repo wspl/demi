@@ -1,7 +1,7 @@
 // The page each of the site's demos shows in a frame: Demi's own app frame,
-// from `web-ui`, over a scripted conversation (`scenes.ts`). What a Host
+// from `web-ui`, over a scripted conversation (`scenes.ts`). What a device
 // would answer, the work panel's browser, files and changes, comes from the
-// gallery's simulated Host (`web-gallery/src/fixtures`), as the gallery's
+// gallery's simulated device (`web-gallery/src/fixtures`), as the gallery's
 // own specimens have it. The site's page sizes the frame like a desktop
 // browser's window or a phone's screen, and the app lays itself out for that
 // size as it does in the product.

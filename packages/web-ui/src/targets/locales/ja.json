@@ -1,0 +1,48 @@
+{
+  "menu": {
+    "where": "このチャットの実行先",
+    "runOn": "実行先",
+    "addDevice": "デバイスを追加…",
+    "attached": "接続済み",
+    "detach": "接続を解除"
+  },
+  "lock": {
+    "archived": "このチャットはアーカイブされています。",
+    "moving": "このチャットは移動中です。"
+  },
+  "choices": {
+    "offline": "このデバイスはオフラインです。"
+  },
+  "move": {
+    "title": "このチャットを {device} に移動しますか？",
+    "runsHome": "そこのホームディレクトリで実行されます。",
+    "runsIn": "{directory} で実行されます。",
+    "runsOwn": "そこの専用ディレクトリで実行されます。",
+    "filesStay": "{device} のファイルはそのまま残ります。",
+    "move": "移動"
+  },
+  "project": {
+    "title": "新しいプロジェクト",
+    "selectFolder": "フォルダーを選択",
+    "loading": "デバイスを読み込んでいます…",
+    "cloudDescription": "すぐに使える環境。",
+    "device": "デバイス",
+    "deviceDescription": "デバイス上のディレクトリ。",
+    "chooseDevice": "デバイスを選択",
+    "name": "プロジェクト名",
+    "addDevice": "デバイスを追加…",
+    "noDevices": "デバイスはありません",
+    "directory": "ディレクトリ",
+    "browse": "参照…",
+    "called": "プロジェクト名は {name} になります。",
+    "takesName": "プロジェクト名にはフォルダー名が使われます。",
+    "add": "プロジェクトを追加",
+    "create": "プロジェクトを作成"
+  },
+  "directory": {
+    "switch": "ディレクトリを切り替える",
+    "chooseAnother": "別のディレクトリを選択…",
+    "useThis": "このフォルダーを使用",
+    "worktree": "ワークツリー {name}"
+  }
+}

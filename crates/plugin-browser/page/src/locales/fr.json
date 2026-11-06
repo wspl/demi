@@ -39,14 +39,14 @@
     "conversation_not_found": "Cette conversation n’existe plus.",
     "conversation_archived": "Cette conversation est archivée.",
     "conversation_busy": "La conversation est occupée. Réessayez dans un instant.",
-    "host_stopped": "Le cloud est arrêté.",
+    "device_stopped": "Le cloud est arrêté.",
     "device_offline": "L’appareil est hors ligne.",
     "device_not_found": "L’appareil a été supprimé de votre compte.",
     "cloud_unavailable": "Le cloud n’est pas disponible pour le moment.",
     "cloud_resetting": "Le cloud est en cours de réinitialisation.",
     "cloud_capacity": "Le serveur n’a pas de place pour démarrer le cloud.",
     "cloud_crash_loop": "Le cloud ne démarre plus après des échecs répétés.",
-    "host_operation_failed": "La connexion à l’appareil a été coupée.",
+    "device_operation_failed": "La connexion à l’appareil a été coupée.",
     "unknown_plugin_method": "Ce serveur ne peut pas exécuter de navigateur.",
     "plugin_disabled": "Le plug-in Navigateur est désactivé."
   },
@@ -73,13 +73,13 @@
     "stopLoading": "Impossible d’arrêter le chargement",
     "openPage": "Impossible d’ouvrir la page",
     "saveDownload": "Impossible d’enregistrer le téléchargement",
-    "hostFilesUnreachable": "Les fichiers de l’hôte sont inaccessibles."
+    "deviceFilesUnreachable": "Les fichiers de l’appareil sont inaccessibles."
   },
   "region": {
     "couldntOpen": "Impossible d’ouvrir cette page.",
     "couldntShow": "Impossible d’afficher cette page.",
     "noH264": "Ce navigateur ne peut pas décoder la vidéo H.264.",
-    "waiting": "En attente de l’hôte…"
+    "waiting": "En attente de l’appareil…"
   },
   "menu": {
     "copyLink": "Copier l’adresse du lien",
@@ -108,7 +108,7 @@
   },
   "dialog": {
     "leavePage": "Quitter la page ?",
-    "says": "{host} indique",
+    "says": "{device} indique",
     "thisPageSays": "Cette page indique",
     "answer": "Répondre",
     "stay": "Rester",

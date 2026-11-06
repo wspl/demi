@@ -51,7 +51,7 @@
     "cloudResetting": "雲端正在重設。"
   },
   "workflows": {
-    "hostSilent": "主機沒有回應。"
+    "deviceSilent": "裝置沒有回應。"
   },
   "uploads": {
     "notUploaded": "{name} 未能上傳。{reason}",

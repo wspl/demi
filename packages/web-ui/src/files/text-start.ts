@@ -58,7 +58,7 @@ export function useTextStart(
       return null
     return { size: entry.value.size, version: entry.value.version }
   })
-  /** The file could not be described, as while its Host is away: the card shows until it can be. */
+  /** The file could not be described, as while its device is away: the card shows until it can be. */
   const undescribed = computed(() => {
     const entry = description.entry.value
     return entry !== null && entry.answer !== 'value' && (entry.answer !== null || entry.failure !== null)

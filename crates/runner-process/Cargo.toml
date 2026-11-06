@@ -22,7 +22,7 @@ futures-util.workspace = true
 # The line counts of a change, the diff gix's blob diff is.
 process-wrap.workspace = true
 # HTTP/2 where the backend's edge offers it over TLS, so concurrent pipes
-# share one connection (`crates/runner-host/src/lib.rs`); plain HTTP stays
+# share one connection (`crates/runner-device/src/lib.rs`); plain HTTP stays
 # HTTP/1.1.
 reqwest = { workspace = true, features = ["http2", "rustls", "stream"] }
 serde.workspace = true
@@ -37,7 +37,7 @@ tracing.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 # The pipes a spawned process inherits besides its standard streams
-# (`crates/runner-host/src/lib.rs`).
+# (`crates/runner-device/src/lib.rs`).
 command-fds = "0.3"
 # A child's SIGHUP ignored for `nohup`, set between fork and exec, and on
 # Apple an ended child's processor time, which only proc_pid_rusage reads

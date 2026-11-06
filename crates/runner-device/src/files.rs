@@ -1,0 +1,1082 @@
+//! File contents: a file's bytes travel through a pipe, never in a message, the
+//! way command IO does.
+//!
+//! A pipe that fails, because its reader went away or the connection closed,
+//! ends the transfer and closes the file.
+//!
+//! # Reads and writes
+//!
+//! - A read replies once the file is open and positioned, before its first
+//!   byte, so a file that cannot be opened is an error reply and never an empty
+//!   stream.
+//! - A write goes to a temporary file beside the destination (`.demi-partial-`,
+//!   from `demi_shared_artifacts`'s publication, as a file command's is) and is
+//!   renamed into place only when the pipe ends cleanly. A failed or cancelled
+//!   pipe leaves the destination as it was. A file left behind by a crash is
+//!   safe to delete, and a write still running when it goes fails instead of
+//!   replacing the file.
+//!
+//! # Reporting a pipe's end
+//!
+//! Every pipe end named to the runner is reported with `pipe_done`, including
+//! one a refused request never used.
+//!
+//! A runner that stops reading before the end because nothing reads it any more
+//! (a job ended or closed its input) reports success. The backend then ends the
+//! pipe for its writer as a whole one, and the writer stops without a message,
+//! as a local writer does whose reader left: `… | demi device shell --device x
+//! 'read l; echo $l'` prints the far command's line and status alone.
+//!
+//! # Deadline
+//!
+//! A write's reply comes within 60 seconds of its last byte leaving the backend
+//! (`reply_after_input` in `demi_runner_client`). A session file's last
+//! bytes once stayed queued where gVisor left them and the write waited all
+//! night; the deadline turns such a stall into one failed start and a retry.
+//! The pipe itself keeps no deadline.
+
+use std::{
+    io::{self, SeekFrom},
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+use bytes::Bytes;
+use demi_shared_artifacts::{Mode, Permissions, Publication, Staged};
+use futures_util::StreamExt;
+use tokio::{
+    fs,
+    io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
+    sync::{Semaphore, mpsc},
+};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
+
+use demi_command_sdk::paths::resolve;
+
+use demi_runner_process::{
+    pipes::{PipeClient, UploadBody, report_pipe, report_queued},
+    private_files::{chmod, io_error},
+};
+use demi_runner_protocol::wire::{self, Inbound, PipeRef, ReadAt};
+
+use crate::{fs::error_code, git::GitService, search::Search};
+
+/// What one read of the file hands to the upload.
+const CHUNK_BYTES: usize = 64 * 1024;
+
+pub struct FileTransfers {
+    output: mpsc::UnboundedSender<wire::Frame>,
+    pipes: PipeClient,
+    transfers: TaskTracker,
+    /// Ends every transfer: cancelled by `close` and by the device connection's
+    /// shutdown.
+    cancel: CancellationToken,
+}
+
+impl FileTransfers {
+    pub fn new(
+        output: mpsc::UnboundedSender<wire::Frame>,
+        pipes: PipeClient,
+        cancel: CancellationToken,
+    ) -> Self {
+        Self {
+            output,
+            pipes,
+            transfers: TaskTracker::new(),
+            cancel,
+        }
+    }
+
+    /// `fs_readFile`: the byte range into the output pipe, after the reply;
+    /// nothing when the file still has the version the request holds.
+    pub fn read(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
+        let Inbound::FsReadFile {
+            id,
+            path,
+            cwd,
+            offset,
+            length,
+            version: held,
+            output,
+        } = message
+        else {
+            return Err(io::Error::other("not a file read"));
+        };
+        self.admit()?;
+        // Before anything is read (`crates/runner-device/src/numbers.rs`).
+        let read_at = crate::numbers::read_at();
+        let target = resolve(cwd.as_deref().map(Path::new).unwrap_or(default_cwd), &path);
+        let reply = self.output.clone();
+        let pipes = self.pipes.clone();
+        let transfer = self.cancel.child_token();
+        self.transfers.spawn(async move {
+            let read = open_upload(target, offset.unwrap_or(0), length, held.as_deref(), &transfer).await;
+            let read = match read {
+                Ok(read) => read,
+                Err(error) => {
+                    // Nothing moves; the pipe end is still reported, as every
+                    // end named to the runner is.
+                    send(&reply, fs_error(id, read_at, &error));
+                    report_pipe(&reply, output.id, Err(error));
+                    return;
+                }
+            };
+            let opened = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                id,
+                read_at,
+                result: wire::FsResult::ReadFile(read.opened),
+            }));
+            if !send(&reply, opened) {
+                return;
+            }
+            let Some(body) = read.body else {
+                // Nothing moves; the pipe end is still reported.
+                let result = Err(io::Error::other("the file is unchanged"));
+                report_pipe(&reply, output.id, result);
+                return;
+            };
+            let result = pipes.upload(&output, body, || report_queued(&reply, &output.id), &transfer).await;
+            report_pipe(&reply, output.id, result);
+        });
+        Ok(())
+    }
+
+    /// `fs_readFiles`: every file opened, answered at once, then their
+    /// contents into the output pipe, each after its length.
+    pub fn read_files(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
+        let Inbound::FsReadFiles {
+            id,
+            paths,
+            cwd,
+            limit,
+            output,
+        } = message
+        else {
+            return Err(io::Error::other("not a read of several files"));
+        };
+        self.admit()?;
+        // Before anything is read (`crates/runner-device/src/numbers.rs`).
+        let read_at = crate::numbers::read_at();
+        let base = cwd.map_or_else(|| default_cwd.to_owned(), PathBuf::from);
+        let targets = paths.iter().map(|path| resolve(&base, path)).collect();
+        let reply = self.output.clone();
+        let pipes = self.pipes.clone();
+        let transfer = self.cancel.child_token();
+        self.transfers.spawn(async move {
+            let opened = open_files(targets, Some(limit), &transfer).await;
+            let answer = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                id,
+                read_at,
+                result: wire::FsResult::ReadFiles(file_reads(&opened)),
+            }));
+            if !send(&reply, answer) {
+                return;
+            }
+            let result = match framed(opened).await {
+                Ok(body) => pipes.upload(&output, body, || report_queued(&reply, &output.id), &transfer).await,
+                Err(error) => Err(error),
+            };
+            report_pipe(&reply, output.id, result);
+        });
+        Ok(())
+    }
+
+    /// `fs_search`: answered once the root is a directory, then what the
+    /// search finds into the output pipe, until it ends or the pipe closes
+    /// (`crates/runner-device/src/search.rs`).
+    pub fn search(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
+        let Inbound::FsSearch { id, root, query, output } = message else {
+            return Err(io::Error::other("not a search"));
+        };
+        self.admit()?;
+        // Before anything is read (`crates/runner-device/src/numbers.rs`).
+        let read_at = crate::numbers::read_at();
+        let root = resolve(default_cwd, &root);
+        let reply = self.output.clone();
+        let pipes = self.pipes.clone();
+        let transfer = self.cancel.child_token();
+        self.transfers.spawn(async move {
+            let search = match root {
+                Ok(root) => tokio::task::spawn_blocking(move || Search::new(&root, &query))
+                    .await
+                    .unwrap_or_else(|error| Err(io::Error::other(error))),
+                Err(error) => Err(error),
+            };
+            let search = match search {
+                Ok(search) => search,
+                Err(error) => {
+                    send(&reply, fs_error(id, read_at, &error));
+                    report_pipe(&reply, output.id, Err(error));
+                    return;
+                }
+            };
+            let started = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                id,
+                read_at,
+                result: wire::FsResult::Search,
+            }));
+            if !send(&reply, started) {
+                return;
+            }
+            let result = pipes.put(&output.url, search.run(transfer.clone()), &transfer).await;
+            // The search stops with its lines, whose reader is gone.
+            transfer.cancel();
+            report_pipe(&reply, output.id, result);
+        });
+        Ok(())
+    }
+
+    /// `fs_writeDirectory`: the input pipe's files into a temporary
+    /// directory beside the destination, renamed into place once every one
+    /// is written.
+    pub fn write_directory(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
+        let Inbound::FsWriteDirectory {
+            id,
+            path,
+            files,
+            directory_mode,
+            input,
+        } = message
+        else {
+            return Err(io::Error::other("not a directory write"));
+        };
+        self.admit()?;
+        // Before anything is read (`crates/runner-device/src/numbers.rs`).
+        let read_at = crate::numbers::read_at();
+        let target = resolve(default_cwd, &path);
+        let reply = self.output.clone();
+        let pipes = self.pipes.clone();
+        let transfer = self.cancel.child_token();
+        self.transfers.spawn(async move {
+            let result = match target {
+                Ok(target) => {
+                    let written = DirectoryWrite {
+                        target: &target,
+                        files: &files,
+                        directory_mode,
+                    };
+                    written.from_pipe(&pipes, &input, &transfer).await
+                }
+                Err(error) => Err(error),
+            };
+            let reported = result
+                .as_ref()
+                .map(|_| ())
+                .map_err(|error| io::Error::new(error.kind(), error.to_string()));
+            report_pipe(&reply, input.id, reported);
+            let message = match result {
+                Ok(()) => wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                    id,
+                    read_at,
+                    result: wire::FsResult::WriteDirectory,
+                })),
+                Err(error) => fs_error(id, read_at, &error),
+            };
+            send(&reply, message);
+        });
+        Ok(())
+    }
+
+    /// `fs_look`: what each path is, answered at once, then the files' first
+    /// bytes into the output pipe, one file after another.
+    pub fn look(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
+        let Inbound::FsLook {
+            id,
+            paths,
+            cwd,
+            output,
+        } = message
+        else {
+            return Err(io::Error::other("not a look"));
+        };
+        self.admit()?;
+        // Before anything is read (`crates/runner-device/src/numbers.rs`).
+        let read_at = crate::numbers::read_at();
+        let base = cwd.map_or_else(|| default_cwd.to_owned(), PathBuf::from);
+        let reply = self.output.clone();
+        let pipes = self.pipes.clone();
+        let transfer = self.cancel.child_token();
+        self.transfers.spawn(async move {
+            let mut bytes = Vec::new();
+            let mut looked = Vec::with_capacity(paths.len());
+            for wanted in &paths {
+                // Without a pipe, no file's bytes are read.
+                let limit = if output.is_some() { wanted.limit } else { 0 };
+                looked.push(look_at(&base, &wanted.path, limit, &mut bytes, &transfer).await);
+            }
+            let answer = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                id: id.clone(),
+                read_at: read_at.clone(),
+                result: wire::FsResult::Look(looked),
+            }))
+            .and_then(|answer| {
+                wire::within_limit(answer, |reason| {
+                    wire::encode(&wire::Outbound::FsError {
+                        id,
+                        read_at,
+                        code: Some("too_large".into()),
+                        message: reason,
+                    })
+                })
+            });
+            if !send(&reply, answer) {
+                return;
+            }
+            if let Some(output) = output {
+                let body = futures_util::stream::iter([Ok::<_, io::Error>(Bytes::from(bytes))]);
+                let result = pipes.put(&output.url, body, &transfer).await;
+                report_pipe(&reply, output.id, result);
+            }
+        });
+        Ok(())
+    }
+
+    /// `fs_writeFile`: the input pipe into a temporary file beside the
+    /// destination, renamed into place only when the pipe ended cleanly.
+    pub fn write(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
+        let Inbound::FsWriteFile {
+            id,
+            path,
+            cwd,
+            exists,
+            input,
+        } = message
+        else {
+            return Err(io::Error::other("not a file write"));
+        };
+        self.admit()?;
+        // Before anything is read (`crates/runner-device/src/numbers.rs`).
+        let read_at = crate::numbers::read_at();
+        let target = resolve(cwd.as_deref().map(Path::new).unwrap_or(default_cwd), &path);
+        let reply = self.output.clone();
+        let pipes = self.pipes.clone();
+        let transfer = self.cancel.child_token();
+        self.transfers.spawn(async move {
+            let result = match target {
+                Ok(target) => {
+                    let body = pipes.get(&input, transfer.clone());
+                    write_file(body, &target, exists, &transfer).await
+                }
+                Err(error) => Err(error),
+            };
+            let reported = result
+                .as_ref()
+                .map(|_| ())
+                .map_err(|error| io::Error::new(error.kind(), error.to_string()));
+            report_pipe(&reply, input.id, reported);
+            let message = match result {
+                Ok(name) => wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                    id,
+                    read_at,
+                    result: wire::FsResult::WriteFile(name),
+                })),
+                Err(error) => fs_error(id, read_at, &error),
+            };
+            send(&reply, message);
+        });
+        Ok(())
+    }
+
+    /// `fs_downloadFile`: the file the backend offers, downloaded into a
+    /// staging file beside the destination and put in place as
+    /// `fs_writeFile` puts it once its bytes are checked
+    /// (`crates/shared-artifacts/src/download.rs`).
+    pub fn download(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
+        let Inbound::FsDownloadFile {
+            id,
+            path,
+            cwd,
+            exists,
+            source,
+        } = message
+        else {
+            return Err(io::Error::other("not a file download"));
+        };
+        self.admit()?;
+        // Before anything is read (`crates/runner-device/src/numbers.rs`).
+        let read_at = crate::numbers::read_at();
+        let target = resolve(cwd.as_deref().map(Path::new).unwrap_or(default_cwd), &path);
+        let reply = self.output.clone();
+        let pipes = self.pipes.clone();
+        let transfer = self.cancel.child_token();
+        self.transfers.spawn(async move {
+            let result = match target {
+                Ok(target) => download_file(&pipes, &source, &target, exists, &transfer).await,
+                Err(error) => Err(error),
+            };
+            let message = match result {
+                Ok(name) => wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                    id,
+                    read_at,
+                    result: wire::FsResult::WriteFile(name),
+                })),
+                Err(error) => fs_error(id, read_at, &error),
+            };
+            send(&reply, message);
+        });
+        Ok(())
+    }
+
+    /// `git_show`: the file as the last commit, or the commit it names, has
+    /// it, decoded whole under the working-tree admission `permit`, then
+    /// streamed into the output pipe after the reply.
+    pub fn show(
+        &self,
+        message: Inbound,
+        default_cwd: &Path,
+        git: GitService,
+        capacity: Arc<Semaphore>,
+    ) -> io::Result<()> {
+        let Inbound::GitShow {
+            id,
+            root,
+            path,
+            output,
+            commit,
+        } = message
+        else {
+            return Err(io::Error::other("not a git show"));
+        };
+        self.admit()?;
+        // Before anything is read (`crates/runner-device/src/numbers.rs`).
+        let read_at = crate::numbers::read_at();
+        let root = resolve(default_cwd, &root);
+        let reply = self.output.clone();
+        let pipes = self.pipes.clone();
+        let transfer = self.cancel.child_token();
+        self.transfers.spawn(async move {
+            // Past the working-tree capacity a request waits for a slot
+            // (`crates/runner-device/src/lib.rs`).
+            let permit = tokio::select! {
+                permit = capacity.acquire_owned() => permit.expect("working-tree capacity is never closed"),
+                _ = transfer.cancelled() => return,
+            };
+            let decoded = match root {
+                // Out of open files, the request waits for one (`crates/command-sdk/src/descriptors.rs`).
+                Ok(root) => {
+                    demi_command_sdk::descriptors::retry(&transfer, || git.show(&root, &path, commit.as_deref(), &transfer)).await
+                }
+                Err(error) => Err(crate::git::GitError::Io(error)),
+            };
+            // The decode is the admitted work; the upload is paced by the pipe.
+            drop(permit);
+            let bytes = match decoded {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    let message = wire::encode(&wire::Outbound::GitError {
+                        id,
+                        read_at,
+                        code: error.code().to_owned(),
+                        message: error.message(),
+                    });
+                    send(&reply, message);
+                    let unused = io::Error::other(error.message());
+                    report_pipe(&reply, output.id, Err(unused));
+                    return;
+                }
+            };
+            let found = wire::encode(&wire::Outbound::GitOk(wire::GitOk {
+                id,
+                read_at,
+                result: wire::GitResult::Show,
+            }));
+            if !send(&reply, found) {
+                return;
+            }
+            let body = UploadBody::new().bytes(Bytes::from(bytes));
+            let result = pipes.upload(&output, body, || report_queued(&reply, &output.id), &transfer).await;
+            report_pipe(&reply, output.id, result);
+        });
+        Ok(())
+    }
+
+    pub async fn close(&self) {
+        self.cancel.cancel();
+        self.transfers.close();
+        self.transfers.wait().await;
+    }
+
+    fn admit(&self) -> io::Result<()> {
+        if self.cancel.is_cancelled() {
+            return Err(io::Error::other("device connection closed"));
+        }
+        Ok(())
+    }
+}
+
+/// A file a read opened: what the read answers, and its bytes unless the
+/// file still has the version the read named.
+pub struct OpenedRead {
+    pub opened: wire::OpenedFile,
+    pub body: Option<FileBody>,
+}
+
+/// A file's bytes, one chunk at a time as the reader asks for them.
+pub type FileBody = std::pin::Pin<Box<dyn futures_util::Stream<Item = io::Result<Bytes>> + Send>>;
+
+/// Opens the range of a file a read names, the backend's `fs_readFile` or a
+/// direct channel's `read` and `text`.
+///
+/// It returns the regular file at `target` positioned at `offset`, `length`
+/// bytes of it or to its end, with its metadata and version. A read that names
+/// the version the file still has gets no bytes.
+pub async fn open_read(
+    target: io::Result<PathBuf>,
+    offset: u64,
+    length: Option<u64>,
+    held: Option<&str>,
+    cancel: &CancellationToken,
+) -> io::Result<OpenedRead> {
+    let (file, len, stat) = open_range(target, offset, length, cancel).await?;
+    let opened = opened_file(stat, held);
+    let body: Option<FileBody> = (!opened.unchanged).then(|| Box::pin(chunks(file.take(len))) as FileBody);
+    Ok(OpenedRead { opened, body })
+}
+
+/// What a read that holds the versions `held` names answers of a file of
+/// `stat`.
+fn opened_file(stat: wire::FileStat, held: Option<&str>) -> wire::OpenedFile {
+    let version = wire::file_version(stat.size, stat.mtime.0);
+    let unchanged = held.is_some_and(|held| wire::names_version(held, &version));
+    wire::OpenedFile {
+        stat,
+        version,
+        unchanged,
+    }
+}
+
+/// [`open_read`] for the backend's `fs_readFile`: the range as an upload's
+/// body, which goes again from any offset (`demi_runner_process::pipes`).
+async fn open_upload(
+    target: io::Result<PathBuf>,
+    offset: u64,
+    length: Option<u64>,
+    held: Option<&str>,
+    cancel: &CancellationToken,
+) -> io::Result<UploadRead> {
+    let (file, len, stat) = open_range(target, offset, length, cancel).await?;
+    let opened = opened_file(stat, held);
+    let body = if opened.unchanged {
+        None
+    } else {
+        Some(UploadBody::new().file(file.into_std().await, offset, len))
+    };
+    Ok(UploadRead { opened, body })
+}
+
+/// A file an upload's read opened: what the read answers, and its bytes
+/// unless the file still has the version the read named.
+struct UploadRead {
+    opened: wire::OpenedFile,
+    body: Option<UploadBody>,
+}
+
+/// `fs_hashFile`: the size and SHA-256 of the regular file at `target`,
+/// read through and sent nowhere, with the full path of the file read; a file
+/// over `limit` bytes answers its size before it is opened.
+///
+/// The opened file's size is judged again, and the read stops at it, so a
+/// file put in the path's place since, or one that grows, is never read past
+/// `limit`.
+///
+/// The path is the file's canonical name, as `fs_realpath` answers it: links
+/// and `..` resolved by the file system, which is what the read followed, and
+/// on Windows a drive path rather than the verbatim `\\?\` form. A path
+/// resolved by its text alone could name another file: `link/../a` is the `a`
+/// beside the link's target, not the one beside the link.
+pub async fn hash(
+    target: io::Result<PathBuf>,
+    limit: u64,
+    cancel: &CancellationToken,
+) -> io::Result<wire::FileHash> {
+    use sha2::{Digest, Sha256};
+    let target = target?;
+    let target = tokio::task::spawn_blocking(move || dunce::canonicalize(target))
+        .await
+        .map_err(io::Error::other)??;
+    let size = fs::metadata(&target).await?.len();
+    if size > limit {
+        return Ok(wire::FileHash::TooLarge { size });
+    }
+    let path = target.to_string_lossy().into_owned();
+    // The read is limited to the size the file had when it was opened.
+    let (file, len, stat) = open_range(Ok(target), 0, None, cancel).await?;
+    let mut file = file.take(len);
+    if stat.size > limit {
+        return Ok(wire::FileHash::TooLarge { size: stat.size });
+    }
+    let mut hasher = Sha256::new();
+    let mut size = 0_u64;
+    let mut chunk = vec![0; CHUNK_BYTES];
+    loop {
+        crate::fs::check_cancelled(cancel)?;
+        let read = file.read(&mut chunk).await?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&chunk[..read]);
+        size += read as u64;
+    }
+    wire::FileHash::hashed(size, format!("{:x}", hasher.finalize()), path)
+        .map_err(io::Error::other)
+}
+
+/// The regular file at `target`, positioned at `offset`, and the bytes of
+/// it to read: `length`, or to the end it had when it was opened. With its
+/// metadata then, which the read answers so that no `stat` precedes it
+/// (`crates/runner-device/src/lib.rs`).
+async fn open_range(
+    target: io::Result<PathBuf>,
+    offset: u64,
+    length: Option<u64>,
+    cancel: &CancellationToken,
+) -> io::Result<(fs::File, u64, wire::FileStat)> {
+    let target = target?;
+    // Out of open files, the transfer waits for one (`crates/command-sdk/src/descriptors.rs`).
+    let mut file = demi_command_sdk::descriptors::retry(cancel, || fs::File::open(&target)).await?;
+    let metadata = file.metadata().await?;
+    if !metadata.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::IsADirectory,
+            "not a regular file",
+        ));
+    }
+    let rest = metadata.len().saturating_sub(offset);
+    let stat = crate::fs::stat(metadata)?;
+    file.seek(SeekFrom::Start(offset)).await?;
+    Ok((file, length.map_or(rest, |length| length.min(rest)), stat))
+}
+
+/// A file of a read of several, open, and the size it had then.
+pub struct OpenFile {
+    file: fs::File,
+    size: u64,
+}
+
+/// Opens each of `targets` for a read of several files: a regular file of
+/// at most `limit` bytes, when there is a limit.
+pub async fn open_files(
+    targets: Vec<io::Result<PathBuf>>,
+    limit: Option<u64>,
+    cancel: &CancellationToken,
+) -> Vec<io::Result<OpenFile>> {
+    let mut opened = Vec::with_capacity(targets.len());
+    for target in targets {
+        opened.push(open_file(target, limit, cancel).await);
+    }
+    opened
+}
+
+async fn open_file(
+    target: io::Result<PathBuf>,
+    limit: Option<u64>,
+    cancel: &CancellationToken,
+) -> io::Result<OpenFile> {
+    let target = target?;
+    // Out of open files, the read waits for one (`crates/command-sdk/src/descriptors.rs`).
+    let file = demi_command_sdk::descriptors::retry(cancel, || fs::File::open(&target)).await?;
+    let metadata = file.metadata().await?;
+    if !metadata.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::IsADirectory,
+            "not a regular file",
+        ));
+    }
+    if limit.is_some_and(|limit| metadata.len() > limit) {
+        return Err(io::Error::new(
+            io::ErrorKind::FileTooLarge,
+            format!("the file is over {} bytes", limit.unwrap_or_default()),
+        ));
+    }
+    Ok(OpenFile {
+        file,
+        size: metadata.len(),
+    })
+}
+
+/// The answer of a read of several files: which were opened, and why each
+/// other was not.
+pub fn file_reads(opened: &[io::Result<OpenFile>]) -> Vec<wire::FileRead> {
+    opened
+        .iter()
+        .map(|file| match file {
+            Ok(_) => wire::FileRead::Read,
+            Err(error) => wire::FileRead::Failed {
+                code: match error.kind() {
+                    io::ErrorKind::FileTooLarge => Some("too_large".into()),
+                    _ => error_code(error).map(String::from),
+                },
+                message: error.to_string(),
+            },
+        })
+        .collect()
+}
+
+/// The upload of a read of several files: each opened file's length, eight
+/// bytes in big-endian order, then its bytes (`wire::FileRead`). A file that
+/// got shorter since it was opened fails the upload.
+pub async fn framed(opened: Vec<io::Result<OpenFile>>) -> io::Result<UploadBody> {
+    let mut body = UploadBody::new();
+    for OpenFile { file, size } in opened.into_iter().flatten() {
+        body = body
+            .bytes(Bytes::copy_from_slice(&size.to_be_bytes()))
+            .file(file.into_std().await, 0, size);
+    }
+    Ok(body)
+}
+
+/// What is at `path`, a symbolic link followed. A file's first `limit`
+/// bytes are added to `bytes`; a file it could not read adds none.
+async fn look_at(
+    base: &Path,
+    path: &str,
+    limit: u64,
+    bytes: &mut Vec<u8>,
+    cancel: &CancellationToken,
+) -> wire::Looked {
+    let unreadable = |error: io::Error| wire::Looked::Unreadable {
+        code: error_code(&error).map(String::from),
+        message: error.to_string(),
+    };
+    let target = match resolve(base, path) {
+        Ok(target) => target,
+        Err(error) => return unreadable(error),
+    };
+    let metadata = match fs::metadata(&target).await {
+        Ok(metadata) => metadata,
+        Err(error) if matches!(error_code(&error), Some("ENOENT" | "ENOTDIR")) => {
+            return wire::Looked::Missing;
+        }
+        Err(error) => return unreadable(error),
+    };
+    if metadata.is_dir() {
+        return match crate::fs::list(&target, cancel).await {
+            Ok(entries) => wire::Looked::Directory { entries },
+            Err(error) => unreadable(error),
+        };
+    }
+    if !metadata.is_file() {
+        return wire::Looked::Other;
+    }
+    let start = bytes.len();
+    let read = async {
+        // Out of open files, the look waits for one (`crates/command-sdk/src/descriptors.rs`).
+        let file = demi_command_sdk::descriptors::retry(cancel, || fs::File::open(&target)).await?;
+        file.take(limit).read_to_end(bytes).await
+    };
+    match read.await {
+        Ok(read) => wire::Looked::File {
+            size: metadata.len(),
+            read: read as u64,
+        },
+        Err(error) => {
+            bytes.truncate(start);
+            unreadable(error)
+        }
+    }
+}
+
+/// The upload body: one chunk per read, taken only when the upload asks for
+/// it, so a slow reader of the pipe paces the file reads. A read error fails
+/// the upload instead of ending it like EOF.
+fn chunks(
+    file: impl AsyncRead + Unpin + Send + 'static,
+) -> impl futures_util::Stream<Item = io::Result<Bytes>> + Send + 'static {
+    tokio_util::io::ReaderStream::with_capacity(file, CHUNK_BYTES)
+}
+
+/// Writes a file the way every write of a page's does, the backend's
+/// `fs_writeFile` or a direct channel's `write`.
+///
+/// - `body`, once it opens, streams into a file staged beside `target`, making
+///   the directories above it that are missing.
+/// - The file is published there when the body ends cleanly, as `exists` says
+///   when the path is taken.
+/// - Any failure removes the staged file and leaves `target` as it was.
+///
+/// It answers the name of the file written. For a write that takes another
+/// name, it answers the file of the same bytes found under one of the names it
+/// tries, which is then not written again.
+pub async fn write_file<B>(
+    body: impl std::future::Future<Output = io::Result<B>>,
+    target: &Path,
+    exists: wire::WriteExists,
+    cancel: &CancellationToken,
+) -> io::Result<String>
+where
+    B: futures_util::Stream<Item = io::Result<Bytes>> + Unpin,
+{
+    let mut staged = staged_write(target, exists, cancel).await?;
+    let mut body = body.await?;
+    while let Some(chunk) = body.next().await {
+        staged.file().write_all(&chunk?).await?;
+    }
+    publish_write(staged, target, exists).await
+}
+
+/// Downloads the file `offer` names to `target` as [`write_file`] writes
+/// one: its bytes are staged beside it, checked, and put in place as
+/// `exists` says.
+async fn download_file(
+    pipes: &PipeClient,
+    offer: &wire::FileOffer,
+    target: &Path,
+    exists: wire::WriteExists,
+    cancel: &CancellationToken,
+) -> io::Result<String> {
+    let mut staged = staged_write(target, exists, cancel).await?;
+    let name = target.file_name().unwrap_or_default().to_string_lossy();
+    let staging = target.with_file_name(format!(".{name}.{}.download", uuid::Uuid::new_v4().simple()));
+    pipes.download(offer, &staging, staged.file(), cancel, |_| {}).await?;
+    publish_write(staged, target, exists).await
+}
+
+/// The staged file of a write of `target`, refused before its bytes move
+/// when what is there now refuses it; the publication checks again.
+async fn staged_write(
+    target: &Path,
+    exists: wire::WriteExists,
+    cancel: &CancellationToken,
+) -> io::Result<Staged> {
+    let Some(parent) = target.parent().filter(|_| target.file_name().is_some()) else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "a file needs a parent directory and a name",
+        ));
+    };
+    fs::create_dir_all(parent).await?;
+    match fs::symlink_metadata(target).await {
+        Ok(taken) if taken.is_dir() && exists != wire::WriteExists::Rename => {
+            return Err(is_directory(target));
+        }
+        Ok(_) if exists == wire::WriteExists::Refuse => return Err(file_exists(target)),
+        _ => {}
+    }
+    let publication = Publication {
+        mode: match exists {
+            wire::WriteExists::Replace => Mode::Replace,
+            wire::WriteExists::Refuse | wire::WriteExists::Rename => Mode::CreateNew,
+        },
+        permissions: Permissions::Default,
+        durable: false,
+    };
+    // Out of open files, the write waits for one (`crates/command-sdk/src/descriptors.rs`).
+    demi_command_sdk::descriptors::retry(cancel, || Staged::new(target, publication))
+        .await
+        .map_err(io_error)
+}
+
+/// Puts the staged write of `target` in place as `exists` says, and answers
+/// the name it has.
+async fn publish_write(
+    staged: Staged,
+    target: &Path,
+    exists: wire::WriteExists,
+) -> io::Result<String> {
+    let (Some(parent), Some(name)) = (target.parent(), target.file_name()) else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "a file needs a parent directory and a name",
+        ));
+    };
+    let name = name.to_string_lossy().into_owned();
+    match exists {
+        wire::WriteExists::Replace => {
+            staged.publish().await.map_err(io_error)?;
+            Ok(name)
+        }
+        wire::WriteExists::Refuse => match staged.publish().await.map_err(io_error) {
+            Ok(()) => Ok(name),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                let directory = fs::symlink_metadata(target)
+                    .await
+                    .is_ok_and(|taken| taken.is_dir());
+                Err(if directory {
+                    is_directory(target)
+                } else {
+                    file_exists(target)
+                })
+            }
+            Err(error) => Err(error),
+        },
+        wire::WriteExists::Rename => {
+            let directory = parent.to_owned();
+            let candidates = std::iter::once(name.clone())
+                .chain((2..).map(move |number| numbered(&name, number)))
+                .map(move |name| directory.join(name));
+            let written = staged
+                .publish_first_free_or_same(candidates)
+                .await
+                .map_err(io_error)?;
+            Ok(written
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default())
+        }
+    }
+}
+
+/// A directory an `fs_writeDirectory` writes.
+struct DirectoryWrite<'a> {
+    target: &'a Path,
+    files: &'a [wire::DirectoryFile],
+    directory_mode: u32,
+}
+
+impl DirectoryWrite<'_> {
+    /// Writes the directory from the pipe into `.<name>.partial` beside it,
+    /// which a write cut short leaves for the next one to remove, and
+    /// renames it into place.
+    async fn from_pipe(
+        &self,
+        pipes: &PipeClient,
+        pipe: &PipeRef,
+        cancel: &CancellationToken,
+    ) -> io::Result<()> {
+        let (Some(parent), Some(name)) = (self.target.parent(), self.target.file_name()) else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "a directory needs a parent and a name",
+            ));
+        };
+        fs::create_dir_all(parent).await?;
+        let partial = parent.join(format!(".{}.partial", name.to_string_lossy()));
+        crate::fs::remove_all(&partial, cancel).await?;
+        fs::create_dir(&partial).await?;
+        let written = self.fill(&partial, pipes, pipe, cancel).await;
+        if let Err(error) = written {
+            // The next write removes what this one leaves.
+            if let Err(left) = crate::fs::remove_all(&partial, cancel).await {
+                tracing::debug!(event = "directory_write.left_partial", path = %partial.display(), error = %left, "a directory write left its partial directory");
+            }
+            return Err(error);
+        }
+        // Renamed while it is writable, which some systems ask of a
+        // directory that moves.
+        match fs::rename(&partial, self.target).await {
+            Ok(()) => {}
+            // A directory there is complete: another write put it in place.
+            Err(_) if fs::metadata(self.target).await.is_ok_and(|taken| taken.is_dir()) => {
+                crate::fs::remove_all(&partial, cancel).await?;
+                return Ok(());
+            }
+            Err(error) => return Err(error),
+        }
+        chmod(self.target, self.directory_mode).await
+    }
+
+    /// Writes each file of the listing from the pipe, each after its length,
+    /// and gives the directories inside `partial` their mode, deepest first.
+    async fn fill(
+        &self,
+        partial: &Path,
+        pipes: &PipeClient,
+        pipe: &PipeRef,
+        cancel: &CancellationToken,
+    ) -> io::Result<()> {
+        let body = pipes.get(pipe, cancel.clone()).await?;
+        let mut contents = tokio_util::io::StreamReader::new(body);
+        let mut directories = std::collections::BTreeSet::new();
+        for file in self.files {
+            let relative = inside(&file.path)?;
+            let destination = partial.join(&relative);
+            let mut above = relative.parent();
+            while let Some(directory) = above.filter(|directory| !directory.as_os_str().is_empty()) {
+                directories.insert(partial.join(directory));
+                above = directory.parent();
+            }
+            if let Some(directory) = destination.parent() {
+                fs::create_dir_all(directory).await?;
+            }
+            let mut length = [0; 8];
+            contents.read_exact(&mut length).await?;
+            let length = u64::from_be_bytes(length);
+            let mut written = fs::File::create(&destination).await?;
+            let copied = tokio::io::copy(&mut (&mut contents).take(length), &mut written).await?;
+            if copied < length {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "the directory's contents ended inside a file",
+                ));
+            }
+            written.flush().await?;
+            drop(written);
+            chmod(&destination, file.mode).await?;
+        }
+        if contents.read(&mut [0]).await? > 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "the directory's contents go on past its last file",
+            ));
+        }
+        // Deepest first, so each is still writable while its entries change.
+        for directory in directories.iter().rev() {
+            chmod(directory, self.directory_mode).await?;
+        }
+        Ok(())
+    }
+}
+
+/// A path inside a directory: relative, its parts plain names.
+fn inside(path: &str) -> io::Result<PathBuf> {
+    let relative = PathBuf::from(path);
+    let plain = relative
+        .components()
+        .all(|part| matches!(part, std::path::Component::Normal(_)));
+    if path.is_empty() || !plain {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{path} is not a path inside the directory"),
+        ));
+    }
+    Ok(relative)
+}
+
+/// `file_name` with `number` before its extension: `notes-2.txt`, and
+/// `.env-2` for a name that is all extension.
+fn numbered(file_name: &str, number: u32) -> String {
+    let name = Path::new(file_name);
+    match (name.file_stem(), name.extension()) {
+        (Some(stem), Some(extension)) => format!(
+            "{}-{number}.{}",
+            stem.to_string_lossy(),
+            extension.to_string_lossy()
+        ),
+        _ => format!("{file_name}-{number}"),
+    }
+}
+
+fn is_directory(target: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::IsADirectory,
+        format!("{} is a directory", target.display()),
+    )
+}
+
+fn file_exists(target: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        format!("{} exists", target.display()),
+    )
+}
+
+fn fs_error(id: String, read_at: ReadAt, error: &io::Error) -> Result<wire::Frame, wire::WireError> {
+    wire::encode(&wire::Outbound::FsError {
+        id,
+        read_at,
+        code: error_code(error).map(String::from),
+        message: error.to_string(),
+    })
+}
+
+/// Sends one reply; false when it could not be sent.
+fn send(output: &mpsc::UnboundedSender<wire::Frame>, message: Result<wire::Frame, wire::WireError>) -> bool {
+    let message = match message {
+        Ok(message) => message,
+        Err(error) => {
+            tracing::warn!(event = "reply.encode_failed", what = "file_transfer", %error, "a file transfer reply was not encoded");
+            return false;
+        }
+    };
+    output.send(message).is_ok()
+}

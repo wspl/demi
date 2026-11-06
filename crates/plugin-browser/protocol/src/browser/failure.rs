@@ -35,7 +35,7 @@ closed_set! {
         CdpMethodDenied = "cdp_method_denied",
         /// The tab already records.
         Recording = "recording",
-        /// The recording is not on this Host, or was removed.
+        /// The recording is not on this device, or was removed.
         RecordingNotFound = "recording_not_found",
         /// Five recordings run, so no other starts.
         TooManyRecordings = "too_many_recordings",

@@ -26,7 +26,7 @@ pub(crate) const NONE_AVAILABLE: &str = "No skills are available now.";
 pub(crate) struct Entry {
     pub(crate) name: String,
     pub(crate) description: String,
-    /// Where its `SKILL.md` is on the Host.
+    /// Where its `SKILL.md` is on the device.
     pub(crate) location: String,
 }
 

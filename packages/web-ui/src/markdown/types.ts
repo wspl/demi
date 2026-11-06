@@ -7,7 +7,7 @@ import type { SettingsCredential } from '../settings/types'
 
 /**
  * An attachment of the conversation, sent in a message or uploaded by the agent
- * (`crates/backend-host-access/src/attachment_commands.rs`), as a message shows
+ * (`crates/backend-device-access/src/attachment_commands.rs`), as a message shows
  * it. /
  */
 export interface MessageAttachment {
@@ -31,16 +31,16 @@ export interface MessageAttachment {
   height?: number
   /**
    * The file it was uploaded from, when its upload recorded it: the id of
-   * the Host the upload ran on and the file's full path there. Absent for a
+   * the device the upload ran on and the file's full path there. Absent for a
    * file the user sent and for an attachment uploaded before uploads
    * recorded it.
    */
   source?: AttachmentOrigin
 }
 
-/** The file of a Host an attachment was uploaded from. */
+/** The file of a device an attachment was uploaded from. */
 export interface AttachmentOrigin {
-  host: string
+  device: string
   path: string
 }
 
@@ -66,7 +66,7 @@ export type ReplyBlockLookup =
   | { state: 'missing' }
 
 /**
- * A Host file a message names, by its absolute path, and the line it opens
+ * A Device file a message names, by its absolute path, and the line it opens
  * at, if any; an empty path names no file, only a directory's tree. `root`
  * is the directory the view opens for, the working directory of the agent
  * that wrote the link; absent, the conversation's.
@@ -79,35 +79,35 @@ export interface MessageFileTarget {
 
 /**
  * What the host offers for the files a conversation's messages name on its
- * Host and the attachments they name.
+ * device and the attachments they name.
  */
 export interface ConversationFiles {
   /**
-   * The Host's home, which a path starting `~/` starts from; absent or null
+   * The Device's home, which a path starting `~/` starts from; absent or null
    * while it is not known, and such a path then names no file.
    */
   home?: string | null
   /**
-   * The Host's files, read through the page's kept versions of them, which
-   * the Host's watch keeps current: a file's download, and the files a
-   * message the user wrote names. Absent while the Host is not known.
+   * The Device's files, read through the page's kept versions of them, which
+   * the device's watch keeps current: a file's download, and the files a
+   * message the user wrote names. Absent while the device is not known.
    */
   contents?: FileContents
   /**
-   * The device the conversation's Host is, which tells a file the user
+   * The device the conversation runs on, which tells a file the user
    * attached from it, read through `contents`, from one on another device;
    * absent while it is not known.
    */
   device?: string
   /**
-   * Shows the file at a Host path, at its line when it names one, through
+   * Shows the file at a device path, at its line when it names one, through
    * the `file` intent; absent while no plugin the user has on opens it, so a
-   * link to a file shows as text and a Host image only shows. What the panel
+   * link to a file shows as text and a device image only shows. What the panel
    * already shows stays as it is (`openIntent`).
    */
   open?(target: MessageFileTarget): void
   /**
-   * Shows the file at a Host path in the File view's tree, selected and in
+   * Shows the file at a device path in the File view's tree, selected and in
    * view, through the `file` intent; absent while no plugin the user has on
    * opens it, and a file link's menu then has no Show in Files.
    */
@@ -144,12 +144,12 @@ export interface ConversationFiles {
    */
   credentials?: MessageCredentials
   /**
-   * The full path on the conversation's Host of the file `attachment` was
+   * The full path on the conversation's device of the file `attachment` was
    * uploaded from, which a card of a file that is no image or video opens in
-   * the Files panel, as a link to it does: its Host is the conversation's and
-   * online, and the file is there, which the page asks the Host once for each
+   * the Files panel, as a link to it does: its device is the conversation's and
+   * online, and the file is there, which the page asks the device once for each
    * opening. Null otherwise, and at once, with no request and no wake, while
-   * the Host is offline or its Cloud stopped; the card then opens the copy.
+   * the device is offline or its Cloud stopped; the card then opens the copy.
    * Absent, every card opens its copy.
    */
   attachmentOrigin?(id: string, attachment: MessageAttachment): Promise<string | null>
@@ -181,7 +181,7 @@ export interface ConversationFiles {
   commitHash?(target: MessageCommitTarget): Promise<string>
   /**
    * The history of the repository the folder `root` is in, whose checked-out
-   * branch a subagent's status bar shows; null while the Host is not known.
+   * branch a subagent's status bar shows; null while the device is not known.
    * Absent where no bar reads a branch.
    */
   history?(root: string): CommitHistorySource | null
@@ -257,7 +257,7 @@ export interface MessageFiles extends ConversationFiles {
 }
 
 /**
- * What a reply keeps of the pictures of the Host it shows:
+ * What a reply keeps of the pictures of the device it shows:
  * the copy the backend made of each, by the target as the reply wrote it.
  */
 export interface MessagePictures {
@@ -272,18 +272,18 @@ export interface MessagePictures {
 
 export interface MarkdownRenderOptions {
   /**
-   * Absent, a message's paths stay text and its Host images show their alt
+   * Absent, a message's paths stay text and its device images show their alt
    * text.
    */
   files?: MessageFiles
   /**
-   * The Host files the message's inline code names, by the code that names
+   * The Device files the message's inline code names, by the code that names
    * each, as the backend kept them with the reply, which show as links to
    * them.
    */
   codeFiles?: ReadonlyMap<string, MessageFileTarget> | null
   /**
-   * What the reply keeps of the pictures of the Host it shows; absent, such a
+   * What the reply keeps of the pictures of the device it shows; absent, such a
    * picture shows as a link to its path.
    */
   pictures?: MessagePictures

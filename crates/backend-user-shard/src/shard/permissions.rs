@@ -11,7 +11,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::credentials::CredentialSeal;
 use demi_backend_database::permissions::{AskingAgent, Undelivered};
-use demi_backend_host_access::root_of;
+use demi_backend_device_access::root_of;
 use demi_backend_page_sync::UserMarks;
 use demi_backend_page_sync::Revisions;
 use demi_backend_permissions::{PermissionShard, Waits, deliver};

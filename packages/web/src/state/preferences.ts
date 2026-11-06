@@ -98,7 +98,7 @@ export const usePreferences = defineStore('preferences', () => {
 
   const lastModel = computed(() => product.snapshot?.preferences?.lastModel)
   const lastWorkflow = computed(() => product.snapshot?.preferences?.lastWorkflow)
-  const lastProjectHost = computed(() => product.snapshot?.preferences?.lastProjectHost)
+  const lastProjectDevice = computed(() => product.snapshot?.preferences?.lastProjectDevice)
   /** The language the user chose; absent means System. */
   const language = computed(() => product.snapshot?.preferences?.language ?? 'system')
   /** What Enter does with a message while the agent works. */
@@ -381,7 +381,7 @@ export const usePreferences = defineStore('preferences', () => {
     language,
     lastModel,
     lastWorkflow,
-    lastProjectHost,
+    lastProjectDevice,
     sendWhileRunning,
     resumeAtRetry,
     resumeAfterRestart,

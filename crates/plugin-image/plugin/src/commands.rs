@@ -1,7 +1,7 @@
 //! The `demi image` group, whose leaves the plugin answers itself with
 //! the request's whole port.
 
-use demi_host_interface::{GroupBuilder, LeafBuilder};
+use demi_device_interface::{GroupBuilder, LeafBuilder};
 use demi_plugin_interface::{CommandPlugin, Placement, PortHandled};
 use demi_plugin_media::ModelsOutput;
 use schemars::JsonSchema;
@@ -14,7 +14,7 @@ const ENTRY: &str = "Generates and edits images through the user's subscriptions
 
 const GENERATE_SUMMARY: &str = "Make one image from the prompt and write its bytes to stdout; stderr says its size, format, model and entry. An option the result does not honour adds a warning and still succeeds.";
 
-const EDIT_SUMMARY: &str = "Make one image from the prompt and the images given, each changed, combined or used as a reference as the prompt says, and write its bytes to stdout. Each image is a PNG, JPEG or WebP file of this Host of at most 16 MiB.";
+const EDIT_SUMMARY: &str = "Make one image from the prompt and the images given, each changed, combined or used as a reference as the prompt says, and write its bytes to stdout. Each image is a PNG, JPEG or WebP file of this device of at most 16 MiB.";
 
 const MODELS_SUMMARY: &str = "List the image models the user's provider entries offer, newest first, with the entry a call takes now, or show one model with everything known of it: sizes, edits, input images, transparency, prices per unit and currency, aliases, and the entries in the order a call tries them with why each would or would not be used now. PRICE is included for a subscription, whose images come with its plan, and listed for an API key, which pays for each as Prices says. A read.";
 

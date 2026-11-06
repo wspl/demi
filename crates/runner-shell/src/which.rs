@@ -5,10 +5,10 @@
 //! A name is searched for in the directories of the job's `PATH`, as an
 //! executable file; on Windows with each extension of `PATHEXT` as well. That
 //! holds for a name the runner runs itself (`crates/runner-shell/src/utilities.rs`)
-//! too: it prints the path of the Host's program of that name, as the system's
-//! `which` would, and the bare name where the Host has none. Naming the path
+//! too: it prints the path of the device's program of that name, as the system's
+//! `which` would, and the bare name where the device has none. Naming the path
 //! runs the runner's own (`utilities::named`), so `"$(which sed)" -i …` runs
-//! the runner's `sed`, and `[ -x "$(which sed)" ]` holds where the Host has one.
+//! the runner's `sed`, and `[ -x "$(which sed)" ]` holds where the device has one.
 //!
 //! The status is 0 when every name was found, 1 when one was not, and 2 for
 //! an option it lacks.
@@ -245,7 +245,7 @@ fn matches(pattern: &OsStr) -> Vec<OsString> {
             }
         }
     }
-    // A name the runner runs itself is its own where the Host has no file.
+    // A name the runner runs itself is its own where the device has no file.
     if found.is_empty() && crate::utilities::named(pattern).is_some() {
         found.push(pattern.to_owned());
     }

@@ -11,8 +11,8 @@
 //! way, as their compressed copies.
 //!
 //! Each shard thread builds its own `CommandCatalog` from the catalog, since a
-//! catalog's artifact resolver lives on one thread. A job that `demi host
-//! shell` starts on another Host receives the calling session's catalog.
+//! catalog's artifact resolver lives on one thread. A job that `demi device
+//! shell` starts on another device receives the calling session's catalog.
 //!
 //! A local store's downloads need no credentials and expire never, like the
 //! runner installers'. They reveal nothing a user owns and cannot change what

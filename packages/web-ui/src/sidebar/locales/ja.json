@@ -79,7 +79,7 @@
   "deleteProject": {
     "title": "「{name}」を削除しますか？",
     "archived": "{count} 件のチャットはアーカイブされます。",
-    "files": "{host} 上のファイルは削除されません。"
+    "files": "{device} 上のファイルは削除されません。"
   },
   "savedScope": {
     "title": "保存したメッセージをチャットごとにしますか？",

@@ -212,7 +212,7 @@ impl Caption {
         let mut said = Vec::new();
         if !self.missing.is_empty() {
             let characters = self.missing.iter().map(|character| format!("{character:?}")).collect::<Vec<_>>().join(", ");
-            said.push(format!("No font on this Host has {characters}, drawn as boxes in the notes"));
+            said.push(format!("No font on this device has {characters}, drawn as boxes in the notes"));
         }
         said.extend(self.said.iter().cloned());
         said

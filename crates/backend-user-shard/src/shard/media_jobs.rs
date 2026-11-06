@@ -36,8 +36,8 @@ use std::time::Duration;
 
 use demi_backend_database::media_jobs::{JobEnd, JobOfCall, Made, MediaJob, MediaJobStatus};
 use demi_backend_database::usage::{UsageRow, merge_windows};
-use demi_backend_host_access::HostShard;
-use demi_host_interface::PortError;
+use demi_backend_device_access::DeviceShard;
+use demi_device_interface::PortError;
 use demi_plugin_host::{MediaCall, VideoJob};
 use demi_plugin_interface::{MadeAudio, MadeImage, MadeVideo, MediaRefusal, PcmShape, PortFailure, PortRefusal, VideoStep};
 use demi_provider_common::ProviderHttp;
@@ -341,7 +341,7 @@ impl Shard {
             }
             _ => return Err(unreadable("its finished job made another kind of media".to_owned())),
         };
-        let blob = HostShard::blobs(self).put(bytes).await.map_err(|error| MediaFailure::Unanswered {
+        let blob = DeviceShard::blobs(self).put(bytes).await.map_err(|error| MediaFailure::Unanswered {
             cause: format!("the file could not be kept: {error}"),
             code: None,
             trace: Default::default(),
@@ -423,7 +423,7 @@ impl Shard {
                     std::future::pending::<()>().await;
                     return;
                 }
-                MediaJobStatus::Made { blob, made } => match HostShard::blobs(&*shard).get(&blob).await {
+                MediaJobStatus::Made { blob, made } => match DeviceShard::blobs(&*shard).get(&blob).await {
                     Ok(Some(bytes)) => Ok(Collected::Made(with_bytes(made, bytes.into()))),
                     Ok(None) => Err(refused(MediaRefusal::Failed { message: "the file the job made is gone".to_owned() })),
                     // The row stays for a call that comes back.

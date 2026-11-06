@@ -22,9 +22,9 @@
 //! - A tab closed on purpose (the browser's list of closed tabs says so) is
 //!   removed. A tab lost with the browser stays, marked `closed`, and opens
 //!   again on its address when shown, as Chrome reloads a discarded tab. On
-//!   `package_lost` every panel tab is marked lost without reading the Host,
+//!   `package_lost` every panel tab is marked lost without reading the device,
 //!   whose browser is gone.
-//! - A Host that cannot be reached for a moment changes no tab: the browser may
+//! - A device that cannot be reached for a moment changes no tab: the browser may
 //!   still run there.
 //! - `shows` is the agent's decision that the user sees a tab. `show` only
 //!   raises the count in the browser's list, and the panel applies a count once
@@ -177,9 +177,9 @@ impl Work {
     }
 
     /// Marks every bound tab lost with the browser, whose package's state
-    /// on the Host `device` ended unsaid: each opens again when shown. The
-    /// report kept for the Host becomes no tabs, and nothing is read from the
-    /// Host, whose browser is gone.
+    /// on the device `device` ended unsaid: each opens again when shown. The
+    /// report kept for the device becomes no tabs, and nothing is read from the
+    /// device, whose browser is gone.
     pub async fn lost(
         &self,
         conversation: &ConversationId,
@@ -202,7 +202,7 @@ impl Work {
         Ok(())
     }
 
-    /// Keeps the browser's tabs `listed`, as the package on the Host `device`
+    /// Keeps the browser's tabs `listed`, as the package on the device `device`
     /// reported them, and updates the panel from them:
     ///
     /// - A tab is added for each tab the agent or a page opened, a page's
@@ -227,8 +227,8 @@ impl Work {
     ) -> Result<(), PluginError> {
         let lock = self.lock(conversation);
         let _turn = lock.lock().await;
-        // Another Host's report waits in the store: the panel shows the
-        // primary Host's browser, and a conversation moved back finds it.
+        // Another device's report waits in the store: the panel shows the
+        // primary device's browser, and a conversation moved back finds it.
         if !page::keep(port, device, revision, listed.clone()).await? {
             return Ok(());
         }
@@ -390,7 +390,7 @@ async fn open_for(
     // A new tab is bound before its page opens, so the list that names it
     // finds it bound and adds no panel tab of its own. It starts loading its
     // address in the same call: a second call would cost the user another
-    // round trip to the Host. An address the Host refuses makes no tab: if
+    // round trip to the device. An address the device refuses makes no tab: if
     // the user asked for another meanwhile, the tab opens on that one.
     let (tab, made) = match data.live() {
         Some(tab) => (tab.to_owned(), None),
@@ -435,7 +435,7 @@ async fn open_for(
 }
 
 /// Why a browser tab could not be opened, as the tab's content shows it:
-/// the reason the page has words for, the browser's or the Host's, or else
+/// the reason the page has words for, the browser's or the device's, or else
 /// the HTTP status a page call would answer the same failure with, and the
 /// message.
 fn failure(error: &PluginError) -> Value {
@@ -445,9 +445,9 @@ fn failure(error: &PluginError) -> Value {
             (reason.parse::<PanelReason>().ok(), StatusCode::CONFLICT)
         }
         PluginError::Port {
-            refusal: PortRefusal::Host { code, status, .. },
+            refusal: PortRefusal::Device { code, status, .. },
         } => (
-            PanelReason::of_host(*code),
+            PanelReason::of_device(*code),
             StatusCode::from_u16(*status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
         ),
         _ => (None, StatusCode::INTERNAL_SERVER_ERROR),

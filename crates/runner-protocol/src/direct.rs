@@ -410,7 +410,7 @@ pub struct WriteEnd {
 /// The page's message on a user stream, a direct `stream` channel or a
 /// relayed stream's socket, in the user stream's own layer beside the
 /// plugin's bytes: whether anyone watches it now. A stream starts watched; one
-/// that is not keeps no conversation, Host or Cloud active
+/// that is not keeps no conversation, device or Cloud active
 /// (`crates/backend-user-shard/src/lifecycle/mod.rs`), and the page keeps it
 /// open to show what it last showed at once when it is watched again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
@@ -437,7 +437,7 @@ pub struct ChannelRefusal {
 /// Why an operation failed: the code and HTTP status the relay's route
 /// answers for the same failure, and the runner's words. A `text` of a file
 /// that is binary or too large also carries the file's version and the
-/// Host's number before it read, as the relay's 415 and 413 carry its ETag
+/// device's number before it read, as the relay's 415 and 413 carry its ETag
 /// and `X-Demi-Read-At`, since such a file is an answer like any other.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -483,7 +483,7 @@ pub enum ChannelErrorCode {
     FileTooLarge,
     NotText,
     DirectoryTooLarge,
-    HostOperationFailed,
+    DeviceOperationFailed,
     UnknownStream,
     StreamFailed,
     InvalidMessage,
@@ -524,7 +524,7 @@ pub struct VideoOpened {
 }
 
 /// A `read`'s answer: the file's size, version and modification time,
-/// which the relay's raw route answers in `Last-Modified`, and the Host's
+/// which the relay's raw route answers in `Last-Modified`, and the device's
 /// number before it read, as the relay's `X-Demi-Read-At`; its bytes follow.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -553,7 +553,7 @@ impl ReadOpened {
 }
 
 /// A `text`'s answer: the file's version, whether it is the one the header
-/// named, in which case no text follows, and the Host's number before it
+/// named, in which case no text follows, and the device's number before it
 /// read, as the relay's `X-Demi-Read-At`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -565,7 +565,7 @@ pub struct TextOpened {
 }
 
 /// A `list`'s answer, the relay's `{ path, home, entries }`, with the
-/// Host's number before it listed.
+/// device's number before it listed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Listed {

@@ -1,5 +1,5 @@
 //! The product's `demi conversation` group
-//! (`crates/backend-host-access/src/host_commands.rs`).
+//! (`crates/backend-device-access/src/device_commands.rs`).
 //!
 //! The group asks no permission. An agent renames its conversation at once:
 //! the title is the conversation's own, and the user renames it back as
@@ -9,8 +9,8 @@
 //! which the user sees in the sidebar, stops and archives. An archived
 //! conversation is listed nowhere and receives nothing, so an archive keeps
 //! it out of the way. Where the conversation runs decides its project, so an
-//! agent moves it into or out of one with `demi host move`
-//! (`host_commands.rs`).
+//! agent moves it into or out of one with `demi device move`
+//! (`device_commands.rs`).
 //!
 //! A conversation an agent starts (`new`) is the user's own, as one they
 //! started: it takes the starting conversation's place and settings, and its
@@ -24,9 +24,9 @@ use demi_backend_database::conversation_index::{ConversationRecord, Conversation
 use demi_conversation_lane_protocol::ClientContent;
 use demi_shared_types::WorkflowChoice;
 use demi_web_api_protocol::conversations::{ConversationPatch, ConversationTarget, FieldResult};
-use demi_backend_host_access::host_commands::conversation_of;
-use demi_backend_host_access::root_of;
-use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
+use demi_backend_device_access::device_commands::conversation_of;
+use demi_backend_device_access::root_of;
+use demi_device_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_shared_types::output::{self, Cell, Table};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, Sender as AgentSender, SenderConversation, Timestamp};
 use demi_web_api_protocol::devices::DeviceKind;
@@ -53,13 +53,13 @@ const COST_SUMMARY: &str = "Print what this conversation's calls to model vendor
 
 const RENAME_SUMMARY: &str = "Rename this conversation, as its title in the user's sidebar.";
 
-const PROJECTS_SUMMARY: &str = "List the user's projects of every workspace: id, workspace, Host, directory and name.";
+const PROJECTS_SUMMARY: &str = "List the user's projects of every workspace: id, workspace, device, directory and name.";
 
 const LIST_SUMMARY: &str = "List the user's conversations that are not archived, newest change first, twenty to a page, of every workspace: id, title, workspace, project and the time of the last change. With words, only those the app's Search finds with them in the title or the messages, fifty at most, which stderr says when more match. A conversation's id goes to history --conversation to read it, and to `send` to message it; stderr names the next page.";
 
 const SEND_SUMMARY: &str = "Send a message to the main agent of another conversation of the user that is not archived, by its id from list. A busy recipient takes it into its running turn; an idle one wakes. Returns once it is accepted, without waiting for an answer: the recipient answers, if it does, by sending to this conversation.";
 
-const NEW_SUMMARY: &str = "Start a new conversation of the user for a separate piece of work, which runs on its own in the user's sidebar: the brief on stdin is its first message, a message from this conversation, so its agent can answer with send. It starts in this conversation's Host and directory, or in --project's, with this conversation's model and workflow, and is titled from the brief unless --title names it. Returns once the brief is taken, with the new conversation's id.";
+const NEW_SUMMARY: &str = "Start a new conversation of the user for a separate piece of work, which runs on its own in the user's sidebar: the brief on stdin is its first message, a message from this conversation, so its agent can answer with send. It starts in this conversation's device and directory, or in --project's, with this conversation's model and workflow, and is titled from the brief unless --title names it. Returns once the brief is taken, with the new conversation's id.";
 
 /// The input of `demi conversation rename`.
 #[derive(Deserialize, JsonSchema)]
@@ -90,7 +90,7 @@ struct NewArgs {
     /// Its title; generated from the brief when absent
     #[schemars(length(min = 1))]
     title: Option<String>,
-    /// The project it starts in, by its id from `demi conversation projects`; this conversation's Host and directory when absent
+    /// The project it starts in, by its id from `demi conversation projects`; this conversation's device and directory when absent
     project: Option<ProjectId>,
 }
 
@@ -380,10 +380,10 @@ async fn new(shard: Rc<Shard>, call: Call<NewArgs>, port: RpcPort) -> Result<u8,
 }
 
 /// Where `starting` works, as a new conversation is to start there: its
-/// Host and directory, the worktree it works in included, and on the Cloud
+/// device and directory, the worktree it works in included, and on the Cloud
 /// its own directory, as a Fork keeps it (`fork.rs`).
 async fn place_of(shard: &Shard, starting: &ConversationRecord) -> Result<ConversationTarget, RpcError> {
-    let resolved = shard.host_shard().resolve_target(starting).await.map_err(failed)?;
+    let resolved = shard.device_shard().resolve_target(starting).await.map_err(failed)?;
     Ok(match &starting.target {
         Selection::Cloud { path: None } => ConversationTarget::Cloud {
             path: Some(resolved.path().to_owned()),
@@ -413,9 +413,9 @@ struct ListedProject {
     name: String,
     /// The name of the workspace it is in.
     workspace: String,
-    /// The name of the Host it is on.
-    host: String,
-    /// Its directory on that Host.
+    /// The name of the device it is on.
+    device: String,
+    /// Its directory on that device.
     directory: String,
 }
 
@@ -433,7 +433,7 @@ async fn projects(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result
             id: project.id.to_string(),
             name: project.name.clone(),
             workspace: workspace_name(&workspaces, &project.workspace),
-            host: shard.host_name(&project.device).await,
+            device: shard.device_name(&project.device).await,
             directory: project.path.clone(),
         });
     }
@@ -442,12 +442,12 @@ async fn projects(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result
         port.stdout(text + "\n").await?;
         return Ok(0);
     }
-    let mut table = Table::new(["id", "workspace", "host", "directory", "name"]);
+    let mut table = Table::new(["id", "workspace", "device", "directory", "name"]);
     for project in &projects {
         table.row([
             project.id.as_str(),
             project.workspace.as_str(),
-            project.host.as_str(),
+            project.device.as_str(),
             project.directory.as_str(),
             project.name.as_str(),
         ]);
@@ -582,7 +582,7 @@ fn workspace_name(workspaces: &[WorkspaceRecord], id: &WorkspaceId) -> String {
 impl Shard {
     /// A device's name, or Cloud for the user's Cloud, as Demi's commands
     /// name it.
-    pub(crate) async fn host_name(&self, device: &DeviceId) -> String {
+    pub(crate) async fn device_name(&self, device: &DeviceId) -> String {
         match self.services().control.device(device.clone()).await {
             Ok(Some(record)) if record.kind == DeviceKind::Managed => "Cloud".to_owned(),
             Ok(Some(record)) => record.name,

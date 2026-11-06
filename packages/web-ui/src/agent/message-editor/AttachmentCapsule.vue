@@ -87,7 +87,7 @@ const missing = computed(() => props.transfer?.phase === 'missing')
 /** The file cannot go as it is: its capsule is tinted as a failure. */
 const broken = computed(() => failed.value || missing.value)
 const caption = computed(() => {
-  const { host, path, name } = props.capsule
+  const { device, path, name } = props.capsule
   if (missing.value) {
     return t('attachments.missing', { name })
   }
@@ -100,7 +100,7 @@ const caption = computed(() => {
   if (attaching.value) {
     return t('attachments.attaching', { name })
   }
-  return host ? `${host} · ${path ?? name}` : path ?? name
+  return device ? `${device} · ${path ?? name}` : path ?? name
 })
 
 /**
@@ -210,9 +210,9 @@ const preview = computed<
         :class="busy ? 'text-fg-muted' : ''"
       >{{ capsule.name }}</span>
       <span
-        v-if="capsule.host"
+        v-if="capsule.device"
         class="shrink-0 text-fg-muted"
-      >· {{ capsule.host }}</span>
+      >· {{ capsule.device }}</span>
     </span>
     <template #overlay>
       <pre

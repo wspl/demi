@@ -1,6 +1,6 @@
 //! Project skills: the skills a project carries in `.agents/skills` and
-//! `.claude/skills` of its directory, and nowhere else, found through Host
-//! reads that never wake the Host.
+//! `.claude/skills` of its directory, and nowhere else, found through device
+//! reads that never wake the device.
 //!
 //! Each round of the search reads every path it needs in one request. The
 //! backend keeps the result and searches again when what the search names to
@@ -16,9 +16,9 @@
 //! one above it, a subagent's own working directory, the user's home or another
 //! agent's configuration.
 
-use demi_host_paths::HostPaths;
+use demi_device_paths::DevicePaths;
 use demi_plugin_interface::{PluginPort, PortFailure, SubscriptionKind, WatchSubject};
-use demi_host_interface::{EntryKind, HostFile, HostRead};
+use demi_device_interface::{EntryKind, DeviceFile, DeviceRead};
 use serde::{Deserialize, Serialize};
 
 use crate::skill::{self, SKILL_MD_MAX_BYTES};
@@ -34,13 +34,13 @@ const MAX_DEPTH: usize = 6;
 /// The skills directories of the project, the first over the second.
 const SKILLS_DIRECTORIES: [&str; 2] = [".agents/skills", ".claude/skills"];
 
-/// A project skill, listed at its own path on the Host.
+/// A project skill, listed at its own path on the device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ProjectSkill {
     pub(crate) name: String,
     pub(crate) description: String,
-    /// The path of its `SKILL.md` on the Host.
+    /// The path of its `SKILL.md` on the device.
     pub(crate) location: String,
     pub(crate) disable_model_invocation: bool,
 }
@@ -62,11 +62,11 @@ pub(crate) struct ProjectSkill {
 /// A skill's own directory is not listed, so a file added beside its `SKILL.md`
 /// changes nothing. What is not a skill, has warnings or is shadowed is logged.
 ///
-/// `paths` is how the Host writes its paths, which every path the search reads
+/// `paths` is how the device writes its paths, which every path the search reads
 /// is built in.
 pub(crate) async fn search(
     port: &PluginPort,
-    paths: HostPaths,
+    paths: DevicePaths,
     directory: &str,
 ) -> Result<(Vec<ProjectSkill>, Vec<WatchSubject>), PortFailure> {
     let join = |directory: &str, name: &str| paths.join(directory, name);
@@ -92,43 +92,43 @@ pub(crate) async fn search(
         let room = MAX_DIRECTORIES - read;
         frontier.truncate(room);
         read += frontier.len();
-        let reads: Vec<HostRead> = frontier
+        let reads: Vec<DeviceRead> = frontier
             .iter()
             .flat_map(|node| {
                 // A skills directory has no manifest; the folder it is in is
                 // read instead, to know which of the two is missing.
                 let second = if node.depth == 0 {
-                    HostRead::new(above(&node.path), 0)
+                    DeviceRead::new(above(&node.path), 0)
                 } else {
-                    HostRead::new(
+                    DeviceRead::new(
                         join(&node.path, "SKILL.md"),
                         u64::try_from(SKILL_MD_MAX_BYTES).expect("a size fits") + 1,
                     )
                 };
-                [HostRead::new(node.path.clone(), 0), second]
+                [DeviceRead::new(node.path.clone(), 0), second]
             })
             .collect();
-        let files = port.read_host_files(reads).await?;
+        let files = port.read_device_files(reads).await?;
         let mut next = Vec::new();
         for (node, answers) in frontier.iter().zip(files.chunks(2)) {
             let [listing, second] = answers else {
                 unreachable!("two answers per node")
             };
             let entries = match listing {
-                HostFile::Directory { entries } => Some(entries),
+                DeviceFile::Directory { entries } => Some(entries),
                 _ => None,
             };
             if node.depth == 0 {
                 if entries.is_none() {
                     let missing = match second {
-                        HostFile::Directory { .. } => node.path.clone(),
+                        DeviceFile::Directory { .. } => node.path.clone(),
                         _ => above(&node.path),
                     };
                     watch.push(file(missing));
                 }
             } else {
                 watch.push(file(join(&node.path, "SKILL.md")));
-                if let HostFile::File { bytes, size } = second {
+                if let DeviceFile::File { bytes, size } = second {
                     if let Some(skill) = project_skill(paths, &node.path, bytes.as_bytes(), *size) {
                         found.push((node.rank, skill));
                     }
@@ -186,7 +186,7 @@ struct Node {
 
 /// The skill in `directory` whose `SKILL.md` is `text`, of `size` bytes;
 /// none, logged, when it is not one.
-fn project_skill(paths: HostPaths, directory: &str, text: &[u8], size: u64) -> Option<ProjectSkill> {
+fn project_skill(paths: DevicePaths, directory: &str, text: &[u8], size: u64) -> Option<ProjectSkill> {
     let location = paths.join(directory, "SKILL.md");
     let name = paths.file_name(directory);
     let too_large = usize::try_from(size).map_or(true, |size| size > SKILL_MD_MAX_BYTES);

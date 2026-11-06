@@ -1,0 +1,48 @@
+{
+  "menu": {
+    "where": "此對話的執行位置",
+    "runOn": "執行於",
+    "addDevice": "新增裝置…",
+    "attached": "已附加",
+    "detach": "取消附加"
+  },
+  "lock": {
+    "archived": "此對話已封存。",
+    "moving": "此對話正在移動。"
+  },
+  "choices": {
+    "offline": "此裝置已離線。"
+  },
+  "move": {
+    "title": "將此對話移到 {device}？",
+    "runsHome": "它將在該處的主目錄中執行。",
+    "runsIn": "它將在 {directory} 中執行。",
+    "runsOwn": "它將在該處的專屬目錄中執行。",
+    "filesStay": "{device} 上的檔案會保留在原處。",
+    "move": "移動"
+  },
+  "project": {
+    "title": "新增專案",
+    "selectFolder": "選取資料夾",
+    "loading": "正在載入裝置…",
+    "cloudDescription": "代管的環境，立即可用。",
+    "device": "裝置",
+    "deviceDescription": "你其中一台裝置上的目錄。",
+    "chooseDevice": "選擇裝置",
+    "name": "專案名稱",
+    "addDevice": "新增裝置…",
+    "noDevices": "沒有裝置",
+    "directory": "目錄",
+    "browse": "瀏覽…",
+    "called": "專案將命名為 {name}。",
+    "takesName": "專案將使用資料夾的名稱。",
+    "add": "新增專案",
+    "create": "建立專案"
+  },
+  "directory": {
+    "switch": "切換目錄",
+    "chooseAnother": "選擇其他目錄…",
+    "useThis": "使用此資料夾",
+    "worktree": "工作樹 {name}"
+  }
+}

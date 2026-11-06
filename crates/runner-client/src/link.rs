@@ -38,14 +38,14 @@ use std::{
 
 use bytes::Bytes;
 use demi_command_protocol::{ArtifactLocation, CommandContext, PackageDescriptor, ResidentSequence};
-use demi_host_interface::{
-    HostError, HostErrorKind, HostIdentity, HostKey, JobCaller, ProcessEnd, ProcessOutput,
+use demi_device_interface::{
+    DeviceError, DeviceErrorKind, DeviceIdentity, DeviceKey, JobCaller, ProcessEnd, ProcessOutput,
     RpcError, RpcInvocation, RpcPort, SpawnError, SpawnErrorKind,
 };
 use demi_runner_protocol::direct::{DialRefusal, Introduced, OfferRefusal, StunUrl};
 use demi_runner_protocol::forward::{Forward, ForwardRunState};
 use demi_runner_protocol::wire::{LinkedWorktree, 
-    self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, HostDownload, HostLogLine, Inbound, Outbound,
+    self, ArtifactOwner, FileRead, FsResult, GitResult, DeviceArtifact, DeviceDownload, DeviceLogLine, Inbound, Outbound,
     Read, ReadAt,
 };
 use demi_shared_gates::GateLease;
@@ -80,7 +80,7 @@ pub const END_GRACE: Duration = Duration::from_secs(5);
 /// policy on top of the generic plumbing.
 pub trait LinkPolicy {
     /// Whether calls from `job` may run, such as whether the job belongs to
-    /// the conversation of the Host that started it, and whether the
+    /// the conversation of the device that started it, and whether the
     /// conversation still reaches the job's device. A refusal is the call's
     /// failure, before any pipe is minted.
     fn admit_call<'a>(&'a self, job: &'a JobOrigin) -> LocalBoxFuture<'a, Result<(), String>>;
@@ -150,27 +150,27 @@ pub trait LinkPolicy {
     fn forward_event(&self, event: ForwardEvent);
 
     /// The runner reported the linked worktrees of the repository of its
-    /// project directory `directory` (`crates/runner-host/src/worktrees.rs`).
+    /// project directory `directory` (`crates/runner-device/src/worktrees.rs`).
     /// The policy takes them before the connection routes the runner's next
     /// message, which may follow their change, as a move does.
     fn worktrees(&self, directory: String, worktrees: Vec<LinkedWorktree>);
 
-    /// Where the Host's log lines go; none keeps the connection without one,
+    /// Where the device's log lines go; none keeps the connection without one,
     /// and then the backend never asks the runner to send them.
-    fn host_log(&self) -> Option<Rc<dyn HostLog>> {
+    fn device_log(&self) -> Option<Rc<dyn DeviceLog>> {
         None
     }
 }
 
-/// The backend's store of one Host's log lines, which the runner's `log_lines`
-/// frames fill (`crates/runner/src/host_log.rs`).
-pub trait HostLog {
-    /// The highest `seq` stored for the Host; none for a Host with no line.
+/// The backend's store of one device's log lines, which the runner's `log_lines`
+/// frames fill (`crates/runner/src/device_log.rs`).
+pub trait DeviceLog {
+    /// The highest `seq` stored for the device; none for a device with no line.
     fn since(&self) -> LocalBoxFuture<'static, Option<u64>>;
 
     /// Stores a frame's lines, `missed` being the lines the runner no longer
     /// held.
-    fn store(&self, lines: Vec<HostLogLine>, missed: u64);
+    fn store(&self, lines: Vec<DeviceLogLine>, missed: u64);
 }
 
 /// What a runner says of the user's port forwards (`crates/backend-user-shard/src/shard/port_forwards.rs`).
@@ -226,8 +226,8 @@ pub struct DirectAdmission {
 /// Whose a job is, recorded when it starts and read by its calls.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobOrigin {
-    /// The Host that started the job.
-    pub host: HostKey,
+    /// The device that started the job.
+    pub device: DeviceKey,
     /// What the job's declared commands receive.
     pub context: CommandContext,
     /// The agent node its `rpc` calls act for; none for a job no agent
@@ -240,12 +240,12 @@ pub struct LinkOptions {
     /// The device whose runner this is: the name of its pipe ends.
     pub device: String,
     /// The account the runner works as, from its `hello`.
-    pub identity: HostIdentity,
+    pub identity: DeviceIdentity,
     /// The kernel and the `SHELL` a process the runner starts sees, from
     /// its `hello`.
     pub kernel: Option<wire::Kernel>,
     pub shell: Option<String>,
-    /// The Host's physical memory in bytes, from its `hello`.
+    /// The device's physical memory in bytes, from its `hello`.
     pub memory: u64,
     pub pipes: Pipes,
     pub policy: Rc<dyn LinkPolicy>,
@@ -301,7 +301,7 @@ pub enum SocketEnd {
     Refused(String),
 }
 
-/// One runner connection, as the Hosts on its device reach it. Cloning it is
+/// One runner connection, as the devices on its device reach it. Cloning it is
 /// cheap; two handles are equal when they are the same connection.
 #[derive(Clone)]
 pub struct Link(Rc<Inner>);
@@ -316,7 +316,7 @@ impl Eq for Link {}
 
 /// A connection's identity that does not keep the connection: what is
 /// remembered for as long as a connection lasts, such as the directories a
-/// Host was checked for, compares with it.
+/// device was checked for, compares with it.
 #[derive(Clone)]
 pub struct WeakLink(Weak<Inner>);
 
@@ -331,7 +331,7 @@ pub(crate) struct Inner {
     device: String,
     /// The instance of the runner at its other end, from its hello.
     instance: u64,
-    identity: HostIdentity,
+    identity: DeviceIdentity,
     kernel: Option<wire::Kernel>,
     shell: Option<String>,
     memory: u64,
@@ -346,7 +346,7 @@ pub(crate) struct Inner {
     pipes: Pipes,
     policy: Rc<dyn LinkPolicy>,
     /// Where the runner's log lines are stored, when the policy keeps them.
-    host_log: Option<Rc<dyn HostLog>>,
+    device_log: Option<Rc<dyn DeviceLog>>,
     state: RefCell<State>,
     /// The backend's work for the connection, such as its calls and artifact
     /// resolutions, which its end waits for.
@@ -372,10 +372,10 @@ pub(crate) struct Inner {
     pongs: watch::Sender<()>,
     /// What the runner last reported its artifact cache holds; none until
     /// it reports.
-    installed: watch::Sender<Option<Vec<HostArtifact>>>,
+    installed: watch::Sender<Option<Vec<DeviceArtifact>>>,
     /// What the runner's cache downloads now, as it last said; kept in
     /// memory only.
-    downloading: watch::Sender<Vec<HostDownload>>,
+    downloading: watch::Sender<Vec<DeviceDownload>>,
 }
 
 #[derive(Default)]
@@ -455,7 +455,7 @@ pub(crate) enum Expected {
 }
 
 pub(crate) enum Answer {
-    /// An fs call's result, with the Host's number as the runner received
+    /// An fs call's result, with the device's number as the runner received
     /// the call.
     Fs(FsResult, ReadAt),
     Git(GitResult, ReadAt),
@@ -510,7 +510,7 @@ pub enum DirectAnswer {
 
 struct Waiting {
     expected: Expected,
-    answer: oneshot::Sender<Result<Answer, HostError>>,
+    answer: oneshot::Sender<Result<Answer, DeviceError>>,
 }
 
 /// Output and an end that the connection delivers and one consumer takes: a
@@ -735,7 +735,7 @@ pub(crate) struct ResidentEntry {
     pub(crate) resolver: Rc<dyn crate::ArtifactResolver>,
     pub(crate) attached: Vec<crate::AttachedArtifact>,
     pub(crate) cancel: CancellationToken,
-    pub(crate) done: Option<oneshot::Sender<Result<crate::ResidentEnd, HostError>>>,
+    pub(crate) done: Option<oneshot::Sender<Result<crate::ResidentEnd, DeviceError>>>,
 }
 
 impl Link {
@@ -762,7 +762,7 @@ impl Link {
             control,
             input,
             pipes: options.pipes,
-            host_log: options.policy.host_log(),
+            device_log: options.policy.device_log(),
             policy: options.policy,
             state: RefCell::default(),
             tasks: TaskTracker::new(),
@@ -777,13 +777,13 @@ impl Link {
             downloading: watch::Sender::new(Vec::new()),
             pongs: watch::Sender::new(()),
         }));
-        if let Some(log) = link.0.host_log.clone() {
+        if let Some(log) = link.0.device_log.clone() {
             let following = link.clone();
             link.spawn("log follow", async move {
                 let since = log.since().await;
                 tracing::info!(
                     event = "log.followed",
-                    host_id = %following.0.device,
+                    device_id = %following.0.device,
                     since,
                     "the runner's log is followed"
                 );
@@ -792,7 +792,7 @@ impl Link {
         }
         tracing::info!(
             event = "link.opened",
-            host_id = %link.0.device,
+            device_id = %link.0.device,
             protocol = wire::VERSION,
             release = options.hello.release.as_str(),
             "a runner connection opened"
@@ -803,7 +803,7 @@ impl Link {
         if listed > 0 || adoption.lost > 0 || !adoption.resend.is_empty() {
             tracing::info!(
                 event = "jobs.adopted",
-                host_id = %link.0.device,
+                device_id = %link.0.device,
                 listed,
                 stopped = adoption.stop.len(),
                 released = adoption.release.len(),
@@ -888,14 +888,14 @@ impl Link {
     async fn resync(&self, job: &str, lengths: wire::OutputLengths) {
         let began = tokio::time::Instant::now();
         let read = async {
-            let reader = crate::remote_host::filled_job_read(self, job).await?;
-            let bytes = crate::remote_host::collect_pipe(reader, wire::JOB_KEPT_READ_BYTES).await?;
+            let reader = crate::remote_device::filled_job_read(self, job).await?;
+            let bytes = crate::remote_device::collect_pipe(reader, wire::JOB_KEPT_READ_BYTES).await?;
             let read_bytes = bytes.len();
             decode_output(&bytes, None)
                 .map(|output| (output, read_bytes))
                 .map_err(|error| {
-                    HostError::new(
-                        HostErrorKind::Protocol,
+                    DeviceError::new(
+                        DeviceErrorKind::Protocol,
                         format!("the job's kept output does not decode: {error}"),
                     )
                 })
@@ -904,7 +904,7 @@ impl Link {
             Ok((output, read_bytes)) => {
                 tracing::info!(
                     event = "output.resynced",
-                    host_id = %self.0.device,
+                    device_id = %self.0.device,
                     job_id = job,
                     stdout_bytes = lengths.stdout_bytes,
                     stderr_bytes = lengths.stderr_bytes,
@@ -917,7 +917,7 @@ impl Link {
             Err(error) => {
                 tracing::warn!(
                     event = "output.missed",
-                    host_id = %self.0.device,
+                    device_id = %self.0.device,
                     %error,
                     job_id = job,
                     stdout_bytes = lengths.stdout_bytes,
@@ -934,7 +934,7 @@ impl Link {
         &self.0.device
     }
 
-    pub fn identity(&self) -> &HostIdentity {
+    pub fn identity(&self) -> &DeviceIdentity {
         &self.0.identity
     }
 
@@ -944,7 +944,7 @@ impl Link {
         self.0.kernel.as_ref()
     }
 
-    /// The Host's physical memory in bytes, as the runner's hello reported
+    /// The device's physical memory in bytes, as the runner's hello reported
     /// it.
     pub fn memory(&self) -> u64 {
         self.0.memory
@@ -965,13 +965,13 @@ impl Link {
     /// What the runner reports its artifact cache holds, from now on
     /// (`crates/runner-command-packages/src/cache.rs`): none until its first
     /// report.
-    pub fn watch_installed(&self) -> watch::Receiver<Option<Vec<HostArtifact>>> {
+    pub fn watch_installed(&self) -> watch::Receiver<Option<Vec<DeviceArtifact>>> {
         self.0.installed.subscribe()
     }
 
     /// What the runner's cache downloads now and how far each came, as it
     /// last said (`crates/runner-command-packages/src/cache.rs`).
-    pub fn watch_downloading(&self) -> watch::Receiver<Vec<HostDownload>> {
+    pub fn watch_downloading(&self) -> watch::Receiver<Vec<DeviceDownload>> {
         self.0.downloading.subscribe()
     }
 
@@ -1036,7 +1036,7 @@ impl Link {
         if !answered && !self.is_closed() {
             tracing::warn!(
                 event = "link.ping_unanswered",
-                host_id = %self.0.device,
+                device_id = %self.0.device,
                 within_ms = within.as_millis() as u64,
                 since_heard_ms = self.0.heard.get().elapsed().as_millis() as u64,
                 "a runner did not answer a ping that asked whether its connection lives"
@@ -1060,7 +1060,7 @@ impl Link {
     }
 
     /// Asks a managed guest to flush its writable filesystems.
-    pub async fn sync(&self) -> Result<(), HostError> {
+    pub async fn sync(&self) -> Result<(), DeviceError> {
         self.call(Expected::Sync, |id| Inbound::Sync { id })
             .await
             .map(|_| ())
@@ -1092,7 +1092,7 @@ impl Link {
         sha256: &str,
         size: u64,
         programs: Option<CommandCatalog>,
-    ) -> Result<(), HostError> {
+    ) -> Result<(), DeviceError> {
         let answered = self.wait_for(prefetch_id(release), Expected::Prefetch)?;
         let packages = programs.as_ref().map(CommandCatalog::packages).unwrap_or_default();
         self.0.state.borrow_mut().next_programs = programs;
@@ -1132,19 +1132,19 @@ impl Link {
         });
     }
 
-    fn told(&self, what: &str, conversation: &str, packages: usize, asked: std::time::Instant, result: Result<(), HostError>) {
+    fn told(&self, what: &str, conversation: &str, packages: usize, asked: std::time::Instant, result: Result<(), DeviceError>) {
         let ms = u64::try_from(asked.elapsed().as_millis()).unwrap_or(u64::MAX);
         match result {
-            Ok(()) => tracing::info!(event = "release.told", host_id = %self.0.device, what, conversation, packages, ms, "a Host answered a release"),
+            Ok(()) => tracing::info!(event = "release.told", device_id = %self.0.device, what, conversation, packages, ms, "a device answered a release"),
             Err(error) => tracing::warn!(
                 event = "release.lost",
-                host_id = %self.0.device,
+                device_id = %self.0.device,
                 what,
                 conversation,
                 packages,
                 ms,
                 %error,
-                "a Host did not answer a release; its next hello names what it holds"
+                "a device did not answer a release; its next hello names what it holds"
             ),
         }
     }
@@ -1152,7 +1152,7 @@ impl Link {
     /// Asks the runner to release what its residents hold for
     /// `conversation`, and with `over`, since the conversation is archived or
     /// deleted, what it keeps itself: its recordings.
-    async fn release_conversation(&self, conversation: &str, over: bool) -> Result<(), HostError> {
+    async fn release_conversation(&self, conversation: &str, over: bool) -> Result<(), DeviceError> {
         self.call(Expected::Release, |id| Inbound::ConversationRelease {
             id,
             conversation_id: conversation.into(),
@@ -1164,7 +1164,7 @@ impl Link {
 
     /// Asks the runner to stop the residents of `packages`, which ends what
     /// they hold for every conversation.
-    async fn release_packages(&self, packages: Vec<String>) -> Result<(), HostError> {
+    async fn release_packages(&self, packages: Vec<String>) -> Result<(), DeviceError> {
         self.call(Expected::PackageRelease, |id| Inbound::PackageRelease { id, packages })
             .await
             .map(|_| ())
@@ -1181,7 +1181,7 @@ impl Link {
         sdp: String,
         introduction: Introduced,
         stun: Vec<StunUrl>,
-    ) -> Result<DirectAnswer, HostError> {
+    ) -> Result<DirectAnswer, DeviceError> {
         let answer = self
             .call(Expected::DirectOffer, |id| Inbound::DirectOffer {
                 id,
@@ -1193,8 +1193,8 @@ impl Link {
             .await?;
         match answer {
             Answer::Direct(answer) => Ok(answer),
-            _ => Err(HostError::new(
-                HostErrorKind::Protocol,
+            _ => Err(DeviceError::new(
+                DeviceErrorKind::Protocol,
                 "the runner answered an offer with another reply",
             )),
         }
@@ -1263,7 +1263,7 @@ impl Link {
         self.post(&message);
     }
 
-    /// Tells the runner the directories of the projects on its Host, whose
+    /// Tells the runner the directories of the projects on its device, whose
     /// worktrees it reports.
     pub fn projects(&self, directories: Vec<String>) {
         self.post(&Inbound::Projects { directories });
@@ -1311,7 +1311,7 @@ impl Link {
         request: HttpRequest,
         body: Option<wire::PipeRef>,
         answer: wire::PipeRef,
-    ) -> Result<HttpHead, HostError> {
+    ) -> Result<HttpHead, DeviceError> {
         let answered = self
             .call(Expected::Http, |id| Inbound::HttpRequest {
                 id,
@@ -1324,8 +1324,8 @@ impl Link {
             .await?;
         match answered {
             Answer::Http(head) => Ok(head),
-            _ => Err(HostError::new(
-                HostErrorKind::Protocol,
+            _ => Err(DeviceError::new(
+                DeviceErrorKind::Protocol,
                 "the runner answered a request it made with another reply",
             )),
         }
@@ -1361,7 +1361,7 @@ impl Link {
                 () = task => {}
                 () = overdue.cancelled() => tracing::warn!(
                     event = "link_task.aborted",
-                    host_id = %device,
+                    device_id = %device,
                     task = name.as_str(),
                     grace_ms = END_GRACE.as_millis() as u64,
                     "a task of a runner connection was aborted after its end"
@@ -1394,7 +1394,7 @@ impl Link {
         &self,
         commands: Option<&CommandSelection>,
         start: &Inbound,
-    ) -> Result<(), HostError> {
+    ) -> Result<(), DeviceError> {
         let sent = (|| {
             if let Some(commands) = commands
                 && self.sent_manifest().as_deref() != Some(commands.hash())
@@ -1422,13 +1422,13 @@ impl Link {
             .unwrap_or_else(|| "runner disconnected".into())
     }
 
-    pub(crate) fn offline(&self) -> HostError {
-        HostError::offline(self.end_reason())
+    pub(crate) fn offline(&self) -> DeviceError {
+        DeviceError::offline(self.end_reason())
     }
 
     /// Queues `message` for the runner, in the queue of its class. A message
     /// over the wire's limit fails here and leaves the connection as it is.
-    pub(crate) fn send(&self, message: &Inbound) -> Result<(), HostError> {
+    pub(crate) fn send(&self, message: &Inbound) -> Result<(), DeviceError> {
         if self.is_closed() {
             return Err(self.offline());
         }
@@ -1442,7 +1442,7 @@ impl Link {
         let _ = self.send(message);
     }
 
-    fn queue(&self, input: bool, frame: wire::Frame) -> Result<(), HostError> {
+    fn queue(&self, input: bool, frame: wire::Frame) -> Result<(), DeviceError> {
         let queue = if input { &self.0.input } else { &self.0.control };
         queue.send(frame).map_err(|_| self.offline())
     }
@@ -1453,7 +1453,7 @@ impl Link {
         &self,
         expected: Expected,
         message: impl FnOnce(String) -> Inbound,
-    ) -> Result<Answer, HostError> {
+    ) -> Result<Answer, DeviceError> {
         let id = uuid::Uuid::new_v4().simple().to_string();
         let operation = match expected {
             Expected::Fs(name) | Expected::Git(name) => name,
@@ -1473,16 +1473,16 @@ impl Link {
             _ => "runner",
         };
         tracing::info!(
-            event = "host_call.started",
-            host_id = %self.0.device,
+            event = "device_call.started",
+            device_id = %self.0.device,
             call = id.as_str(),
             kind,
             operation,
-            "a call to a Host began"
+            "a call to a device began"
         );
         // Written when the call is dropped, a call its caller gave up included.
         let mut ending = CallEnding {
-            host_id: self.0.device.clone(),
+            device_id: self.0.device.clone(),
             call: id.clone(),
             kind,
             operation,
@@ -1507,7 +1507,7 @@ impl Link {
         &self,
         id: String,
         expected: Expected,
-    ) -> Result<Registration, HostError> {
+    ) -> Result<Registration, DeviceError> {
         if self.is_closed() {
             return Err(self.offline());
         }
@@ -1547,12 +1547,12 @@ impl Link {
         match message {
             Outbound::ConversationReleased { id, error } => match error {
                 None => self.answer(&id, Expected::Release, Answer::Done),
-                Some(error) => self.refuse(&id, HostError::failed(None, error)),
+                Some(error) => self.refuse(&id, DeviceError::failed(None, error)),
             },
             Outbound::PackageReleased { id } => self.answer(&id, Expected::PackageRelease, Answer::Done),
             Outbound::JobRead { id, error } => match error {
                 None => self.answer(&id, Expected::JobRead, Answer::Done),
-                Some(error) => self.refuse(&id, HostError::failed(None, error)),
+                Some(error) => self.refuse(&id, DeviceError::failed(None, error)),
             },
             Outbound::JobMediaRead { id, media } => {
                 self.answer(&id, Expected::JobMediaRead, Answer::Read(media));
@@ -1595,11 +1595,11 @@ impl Link {
                 self.answer(&prefetch_id(&release), Expected::Prefetch, Answer::Done);
             }
             Outbound::PrefetchFailed { release, reason } => {
-                self.refuse(&prefetch_id(&release), HostError::failed(None, reason));
+                self.refuse(&prefetch_id(&release), DeviceError::failed(None, reason));
             }
             Outbound::SyncDone { id, error } => match error {
                 None => self.answer(&id, Expected::Sync, Answer::Done),
-                Some(error) => self.refuse(&id, HostError::failed(None, error)),
+                Some(error) => self.refuse(&id, DeviceError::failed(None, error)),
             },
             // A repeated hello on a bound connection says nothing new.
             Outbound::Hello { .. } => {}
@@ -1654,7 +1654,7 @@ impl Link {
             Outbound::HttpAnswered { id, status, headers } => {
                 self.answer(&id, Expected::Http, Answer::Http(HttpHead { status, headers }));
             }
-            Outbound::HttpFailed { id, message } => self.refuse(&id, HostError::failed(None, message)),
+            Outbound::HttpFailed { id, message } => self.refuse(&id, DeviceError::failed(None, message)),
             Outbound::DirectRefused { id, code, message } => {
                 let answer = Answer::Direct(DirectAnswer::Refused(code, message));
                 self.answer(&id, Expected::DirectOffer, answer);
@@ -1681,7 +1681,7 @@ impl Link {
                 code,
                 message,
             } => {
-                self.refuse(&id, HostError::failed(Some(code), message).with_read_at(read_at));
+                self.refuse(&id, DeviceError::failed(Some(code), message).with_read_at(read_at));
             }
             Outbound::FsLive { id, since, epoch } => {
                 self.with_subscriptions(|subscriptions| subscriptions.live(&id, since, epoch));
@@ -1689,7 +1689,7 @@ impl Link {
             Outbound::FsChanged { changes } => {
                 tracing::debug!(
                     event = "file_watch.fired",
-                    host_id = %self.0.device,
+                    device_id = %self.0.device,
                     changes = changes.len(),
                     "a runner reported changes of watched paths"
                 );
@@ -1699,7 +1699,7 @@ impl Link {
                 self.with_subscriptions(|subscriptions| subscriptions.failed(&id, reason));
             }
             Outbound::LogLines { lines, missed } => {
-                if let Some(log) = &self.0.host_log {
+                if let Some(log) = &self.0.device_log {
                     log.store(lines, missed);
                 }
             }
@@ -1711,7 +1711,7 @@ impl Link {
                 code,
                 message,
             } => {
-                let error = HostError::failed(Some(code.to_string()), message);
+                let error = DeviceError::failed(Some(code.to_string()), message);
                 // A one-shot call that opened ends with it; a stream still
                 // opening is refused.
                 self.end_resident(&stream_id, Err(error.clone()));
@@ -1787,7 +1787,7 @@ impl Link {
             Outbound::JobContextEnded { job_id } => {
                 tracing::info!(
                     event = "job_context.ended",
-                    host_id = %self.0.device,
+                    device_id = %self.0.device,
                     job_id = job_id.as_str(),
                     "a runner's job context ended"
                 );
@@ -1889,13 +1889,13 @@ impl Link {
                         .pipes
                         .fail_from_device(&pipe_id, &self.0.device, &reason)
                     {
-                        tracing::info!(event = "pipe.failed", host_id = %self.0.device, pipe = %pipe_id, %reason, "a pipe failed on the device");
+                        tracing::info!(event = "pipe.failed", device_id = %self.0.device, pipe = %pipe_id, %reason, "a pipe failed on the device");
                     }
                 }
             }
             Outbound::PipeQueued { pipe_id } => {
                 self.0.pipes.queued_from_device(&pipe_id, &self.0.device);
-                tracing::info!(event = "pipe.queued", host_id = %self.0.device, pipe = %pipe_id, "a device's upload into a pipe waits for its turn");
+                tracing::info!(event = "pipe.queued", device_id = %self.0.device, pipe = %pipe_id, "a device's upload into a pipe waits for its turn");
             }
             Outbound::ArtifactResolve {
                 id,
@@ -1933,7 +1933,7 @@ impl Link {
             };
             tracing::warn!(
                 event = "package_event.dropped",
-                host_id = %self.0.device,
+                device_id = %self.0.device,
                 package,
                 kind,
                 cause = "link_ended",
@@ -1951,8 +1951,8 @@ impl Link {
         let result = if waiting.expected == answered {
             Ok(answer)
         } else {
-            Err(HostError::new(
-                HostErrorKind::Protocol,
+            Err(DeviceError::new(
+                DeviceErrorKind::Protocol,
                 format!(
                     "the runner answered {answered:?} to a {:?} request",
                     waiting.expected
@@ -1963,7 +1963,7 @@ impl Link {
         let _ = waiting.answer.send(result);
     }
 
-    fn refuse(&self, id: &str, error: HostError) {
+    fn refuse(&self, id: &str, error: DeviceError) {
         let Some(waiting) = self.0.state.borrow_mut().waiting.remove(id) else {
             return;
         };
@@ -1971,7 +1971,7 @@ impl Link {
         let _ = waiting.answer.send(Err(error));
     }
 
-    fn end_resident(&self, stream: &str, end: Result<crate::ResidentEnd, HostError>) {
+    fn end_resident(&self, stream: &str, end: Result<crate::ResidentEnd, DeviceError>) {
         let done = self
             .0
             .state
@@ -1994,7 +1994,7 @@ impl Link {
         let device = self.0.device.clone();
         self.spawn("revocation", async move {
             if let Err(error) = revocation.await {
-                tracing::warn!(event = "runner_revocation.failed", host_id = %device, %error, "the runner's revocation failed");
+                tracing::warn!(event = "runner_revocation.failed", device_id = %device, %error, "the runner's revocation failed");
             }
         });
     }
@@ -2103,7 +2103,7 @@ impl Link {
         {
             let mut state = self.0.state.borrow_mut();
             if state.direct_streams.contains_key(&stream) {
-                tracing::warn!(event = "direct_stream.reported_twice", host_id = %self.0.device, %stream, "a direct stream was reported open twice");
+                tracing::warn!(event = "direct_stream.reported_twice", device_id = %self.0.device, %stream, "a direct stream was reported open twice");
                 return;
             }
             let opened = DirectStream {
@@ -2139,7 +2139,7 @@ impl Link {
                     }));
                 }
                 Err(error) => {
-                    tracing::warn!(event = "direct_stream.refused", host_id = %link.0.device, %conversation, %error, "a direct stream was not admitted");
+                    tracing::warn!(event = "direct_stream.refused", device_id = %link.0.device, %conversation, %error, "a direct stream was not admitted");
                     open.admitted.send_replace(Admitted::No);
                 }
             }
@@ -2184,7 +2184,7 @@ impl Link {
                 Ok(lease) if open.watched && open.lease.is_none() => open.lease = Some(lease),
                 Ok(_) => {}
                 Err(error) => {
-                    tracing::warn!(event = "direct_stream.rewatch_failed", host_id = %link.0.device, %conversation, %error, "a direct stream watched again holds nothing");
+                    tracing::warn!(event = "direct_stream.rewatch_failed", device_id = %link.0.device, %conversation, %error, "a direct stream watched again holds nothing");
                 }
             }
         });
@@ -2221,7 +2221,7 @@ impl Link {
             };
             let answer = Inbound::NumbersReserved { id, first, error };
             if let Err(error) = link.send(&answer) {
-                tracing::warn!(event = "numbers_answer.send_failed", host_id = %link.0.device, %error, "a numbers answer was not sent");
+                tracing::warn!(event = "numbers_answer.send_failed", device_id = %link.0.device, %error, "a numbers answer was not sent");
             }
         });
     }
@@ -2237,7 +2237,7 @@ impl Link {
             error,
         };
         if let Err(error) = self.send(&answer) {
-            tracing::warn!(event = "artifact_location.send_failed", host_id = %self.0.device, %error, "an artifact location was not sent");
+            tracing::warn!(event = "artifact_location.send_failed", device_id = %self.0.device, %error, "an artifact location was not sent");
         }
     }
 
@@ -2305,14 +2305,14 @@ impl Link {
         let mut state = std::mem::take(&mut *self.0.state.borrow_mut());
         state.subscriptions.end();
         let aborted = Aborted {
-            host_calls: state.waiting.len(),
+            device_calls: state.waiting.len(),
             spawns: state.spawns.len(),
             residents: state.residents.len(),
             tasks: 0,
         };
         for (_, waiting) in state.waiting {
             // A requester that gave up waits for nothing.
-            let _ = waiting.answer.send(Err(HostError::offline(reason)));
+            let _ = waiting.answer.send(Err(DeviceError::offline(reason)));
         }
         self.0.device_jobs.detach(self);
         for (_, spawn) in state.spawns {
@@ -2322,7 +2322,7 @@ impl Link {
             resident.cancel.cancel();
             if let Some(done) = resident.done.take() {
                 // An owner that stopped waiting has closed its stream.
-                let _ = done.send(Err(HostError::offline(reason)));
+                let _ = done.send(Err(DeviceError::offline(reason)));
             }
         }
         self.0.pipes.device_gone(&self.0.device);
@@ -2331,9 +2331,9 @@ impl Link {
     }
 }
 
-/// The line that ends a call to a Host.
+/// The line that ends a call to a device.
 struct CallEnding {
-    host_id: String,
+    device_id: String,
     call: String,
     kind: &'static str,
     operation: &'static str,
@@ -2344,11 +2344,11 @@ struct CallEnding {
 }
 
 impl CallEnding {
-    fn fail(&mut self, error: &HostError) {
+    fn fail(&mut self, error: &DeviceError) {
         self.outcome = match error.kind {
-            HostErrorKind::Offline | HostErrorKind::Unavailable => "offline",
-            HostErrorKind::Interrupted => "cancelled",
-            HostErrorKind::Failed { .. } | HostErrorKind::TooLarge | HostErrorKind::Protocol => "refused",
+            DeviceErrorKind::Offline | DeviceErrorKind::Unavailable => "offline",
+            DeviceErrorKind::Interrupted => "cancelled",
+            DeviceErrorKind::Failed { .. } | DeviceErrorKind::TooLarge | DeviceErrorKind::Protocol => "refused",
         };
     }
 }
@@ -2356,8 +2356,8 @@ impl CallEnding {
 impl Drop for CallEnding {
     fn drop(&mut self) {
         tracing::info!(
-            event = "host_call.ended",
-            host_id = self.host_id.as_str(),
+            event = "device_call.ended",
+            device_id = self.device_id.as_str(),
             call = self.call.as_str(),
             kind = self.kind,
             operation = self.operation,
@@ -2365,7 +2365,7 @@ impl Drop for CallEnding {
             ms = self.began.elapsed().as_millis() as u64,
             send_ms = self.send_ms,
             bytes = self.bytes,
-            "a call to a Host ended"
+            "a call to a device ended"
         );
     }
 }
@@ -2373,15 +2373,15 @@ impl Drop for CallEnding {
 /// What a connection's end cut short, for its `link.ended` line.
 #[derive(Default)]
 pub(crate) struct Aborted {
-    /// The Host's calls that waited for an answer.
-    host_calls: usize,
+    /// The device's calls that waited for an answer.
+    device_calls: usize,
     spawns: usize,
     residents: usize,
     /// The tasks of the backend's that outlasted [`END_GRACE`].
     tasks: usize,
 }
 
-/// What a connection's state offers the Host facets.
+/// What a connection's state offers the device facets.
 pub(crate) struct StateView<'a>(&'a mut State);
 
 impl StateView<'_> {
@@ -2425,11 +2425,11 @@ struct Grant {
 pub(crate) struct Registration {
     link: Link,
     id: String,
-    receiver: oneshot::Receiver<Result<Answer, HostError>>,
+    receiver: oneshot::Receiver<Result<Answer, DeviceError>>,
 }
 
 impl Registration {
-    pub(crate) async fn receive(mut self) -> Result<Answer, HostError> {
+    pub(crate) async fn receive(mut self) -> Result<Answer, DeviceError> {
         let answered = (&mut self.receiver).await;
         match answered {
             Ok(result) => result,
@@ -2465,7 +2465,7 @@ impl LinkDriver {
     }
 
     /// Serves the connection: routes every frame from `incoming`, writes the
-    /// frames the Hosts queue to `outgoing`, and pings, until either side
+    /// frames the devices queue to `outgoing`, and pings, until either side
     /// ends it. Everything in flight then ends with the reason, and the
     /// backend's work for the connection gets [`END_GRACE`] to finish
     /// before it is aborted.
@@ -2555,7 +2555,7 @@ impl LinkDriver {
                         None => {
                             tracing::warn!(
                                 event = "link.lost",
-                                host_id = %link.0.device,
+                                device_id = %link.0.device,
                                 cause = "write",
                                 stalled_ms = wire::LINK_WRITE_TIMEOUT.as_millis() as u64,
                                 queued_control = controls.len(),
@@ -2641,7 +2641,7 @@ impl LinkDriver {
                         {
                             tracing::warn!(
                                 event = "link.lost",
-                                host_id = %link.0.device,
+                                device_id = %link.0.device,
                                 cause = "silence",
                                 silent_ms = wire::LINK_SILENCE.as_millis() as u64,
                                 "nothing was heard from the runner"
@@ -2673,7 +2673,7 @@ impl LinkDriver {
         }
         tracing::info!(
             event = "link.ended",
-            host_id = %link.0.device,
+            device_id = %link.0.device,
             cause = match &end {
                 LinkEnd::Closed(_) => "closed_by_runner",
                 LinkEnd::Refused(_) => "refused_by_backend",
@@ -2683,7 +2683,7 @@ impl LinkDriver {
             session_ms = began.elapsed().as_millis() as u64,
             frames_in = frames_in.get(),
             frames_out = frames_out.get(),
-            host_calls_aborted = aborted.host_calls,
+            device_calls_aborted = aborted.device_calls,
             spawns_aborted = aborted.spawns,
             residents_aborted = aborted.residents,
             tasks_aborted = aborted.tasks,
@@ -2695,12 +2695,12 @@ impl LinkDriver {
 
 /// `message` as the frame the connection sends; a message over the wire's
 /// limit cannot be one.
-fn frame(message: &Inbound) -> Result<wire::Frame, HostError> {
+fn frame(message: &Inbound) -> Result<wire::Frame, DeviceError> {
     let frame = wire::encode(message)
-        .map_err(|error| HostError::new(HostErrorKind::Protocol, error.to_string()))?;
+        .map_err(|error| DeviceError::new(DeviceErrorKind::Protocol, error.to_string()))?;
     if frame.encoded_len() > wire::MAX_MESSAGE_BYTES {
-        return Err(HostError::new(
-            HostErrorKind::TooLarge,
+        return Err(DeviceError::new(
+            DeviceErrorKind::TooLarge,
             format!(
                 "the request is {} bytes, over the {}-byte message limit",
                 frame.encoded_len(),
@@ -2740,9 +2740,9 @@ pub(crate) fn process_end(
 
 /// An fs failure the runner reports: `too_large` fails the request alone;
 /// any other code is the operating system's.
-pub(crate) fn fs_error(code: Option<String>, message: String) -> HostError {
+pub(crate) fn fs_error(code: Option<String>, message: String) -> DeviceError {
     match code.as_deref() {
-        Some("too_large") => HostError::new(HostErrorKind::TooLarge, message),
-        _ => HostError::failed(code, message),
+        Some("too_large") => DeviceError::new(DeviceErrorKind::TooLarge, message),
+        _ => DeviceError::failed(code, message),
     }
 }

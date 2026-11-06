@@ -1,7 +1,7 @@
 import { reasonSentence } from '../devices/direct'
 import type { DeviceMark } from '../devices/mark'
 import type { DeviceState } from '../devices/state'
-import type { HostKind } from '../hosts/types'
+import type { TargetKind } from '../targets/types'
 import type { SentenceText } from '../ui/ui-text'
 import { t } from './locales/text'
 
@@ -28,7 +28,7 @@ export interface SettingsPortForward {
   id: string
   listenDevice: string
   listenPort: number
-  /** Null until the user chooses the Host it connects on. */
+  /** Null until the user chooses the device it connects on. */
   connectDevice: string | null
   connectAddress: string
   enabled: boolean
@@ -41,53 +41,53 @@ export type PortForwardChange = Partial<
   Pick<SettingsPortForward, 'listenDevice' | 'listenPort' | 'connectDevice' | 'connectAddress' | 'enabled'>
 >
 
-/** One of the user's Hosts, as a forward's ends are chosen among them: the Cloud is named Cloud. */
-export interface ForwardHost {
+/** One of the user's devices, as a forward's ends are chosen among them: the Cloud is named Cloud. */
+export interface ForwardDevice {
   id: string
   name: string
-  kind: HostKind
+  kind: TargetKind
   state: DeviceState
   /** A device's mark, with the number it shows (`shownMark`); null for the Cloud. */
   mark: DeviceMark | null
 }
 
-function hostName(hosts: readonly ForwardHost[], id: string): string {
-  return hosts.find((host) => host.id === id)?.name ?? t('portForwards.unknownHost')
+function deviceName(devices: readonly ForwardDevice[], id: string): string {
+  return devices.find((device) => device.id === id)?.name ?? t('portForwards.unknownDevice')
 }
 
 /** Where the forward listens: *Cloud · 11434*. */
-export function forwardListen(forward: SettingsPortForward, hosts: readonly ForwardHost[]): string {
-  return `${hostName(hosts, forward.listenDevice)} · ${forward.listenPort}`
+export function forwardListen(forward: SettingsPortForward, devices: readonly ForwardDevice[]): string {
+  return `${deviceName(devices, forward.listenDevice)} · ${forward.listenPort}`
 }
 
-/** Where the forward connects: *MacBook Pro · localhost:11434*, the address alone while no Host is chosen. */
-export function forwardConnect(forward: SettingsPortForward, hosts: readonly ForwardHost[]): string {
+/** Where the forward connects: *MacBook Pro · localhost:11434*, the address alone while no device is chosen. */
+export function forwardConnect(forward: SettingsPortForward, devices: readonly ForwardDevice[]): string {
   return forward.connectDevice === null
     ? forward.connectAddress
-    : `${hostName(hosts, forward.connectDevice)} · ${forward.connectAddress}`
+    : `${deviceName(devices, forward.connectDevice)} · ${forward.connectAddress}`
 }
 
 /** The forward's ends in one line, which says the forward wherever it is said alone: *Cloud · 11434 → MacBook Pro · localhost:11434*. */
-export function forwardRoute(forward: SettingsPortForward, hosts: readonly ForwardHost[]): string {
-  return `${forwardListen(forward, hosts)} → ${forwardConnect(forward, hosts)}`
+export function forwardRoute(forward: SettingsPortForward, devices: readonly ForwardDevice[]): string {
+  return `${forwardListen(forward, devices)} → ${forwardConnect(forward, devices)}`
 }
 
 /**
  * What a forward does now, one row of the design's table: off, its Connect
- * To missing, a Host offline, which the page knows from the user's devices,
+ * To missing, a device offline, which the page knows from the user's devices,
  * or what its Listen On runner announced.
  */
-export function forwardState(forward: SettingsPortForward, hosts: readonly ForwardHost[]): SentenceText {
+export function forwardState(forward: SettingsPortForward, devices: readonly ForwardDevice[]): SentenceText {
   if (!forward.enabled) {
     return t('portForwards.state.off')
   }
   if (forward.connectDevice === null) {
-    return t('portForwards.state.chooseHost')
+    return t('portForwards.state.chooseDevice')
   }
   for (const id of [forward.listenDevice, forward.connectDevice]) {
-    const host = hosts.find((candidate) => candidate.id === id)
-    if (host?.state !== 'online') {
-      return t('portForwards.state.offline', { host: hostName(hosts, id) })
+    const device = devices.find((candidate) => candidate.id === id)
+    if (device?.state !== 'online') {
+      return t('portForwards.state.offline', { device: deviceName(devices, id) })
     }
   }
   const state = forward.state
@@ -95,7 +95,7 @@ export function forwardState(forward: SettingsPortForward, hosts: readonly Forwa
     return t('portForwards.state.starting')
   }
   if (state.kind === 'portInUse') {
-    return t('portForwards.state.portInUse', { port: forward.listenPort, host: hostName(hosts, forward.listenDevice) })
+    return t('portForwards.state.portInUse', { port: forward.listenPort, device: deviceName(devices, forward.listenDevice) })
   }
   const paths = [
     ...(state.direct > 0 ? [t('portForwards.state.direct', { count: state.direct }, state.direct)] : []),
@@ -106,17 +106,17 @@ export function forwardState(forward: SettingsPortForward, hosts: readonly Forwa
 
 /**
  * How a forward fares, for its dot: off; failed, its port taken; waiting,
- * its Connect To missing or a Host offline; carrying connections; or idle,
+ * its Connect To missing or a device offline; carrying connections; or idle,
  * listening with none or starting.
  */
 export type ForwardTone = 'off' | 'failed' | 'waiting' | 'carrying' | 'idle'
 
-export function forwardTone(forward: SettingsPortForward, hosts: readonly ForwardHost[]): ForwardTone {
+export function forwardTone(forward: SettingsPortForward, devices: readonly ForwardDevice[]): ForwardTone {
   if (!forward.enabled) {
     return 'off'
   }
   const away = [forward.listenDevice, forward.connectDevice].some(
-    (id) => id === null || hosts.find((host) => host.id === id)?.state !== 'online',
+    (id) => id === null || devices.find((device) => device.id === id)?.state !== 'online',
   )
   if (away) {
     return 'waiting'

@@ -10,8 +10,8 @@ import { useResources } from '../state/resources'
 import { usePreferences } from '../state/preferences'
 import { useProduct } from '../state/product'
 import { useProviderSettings } from './providers'
-import { deviceMarkOf, hostKindOf, hostLabel } from '../state/hosts'
-import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import { deviceMarkOf, targetKindOf, deviceLabel } from '../state/devices'
+import type { MenuDevice } from '@demicodes/web-ui/targets/types'
 
 /** The shapes before the catalog is read, while the page keeps their menus disabled: none besides None. */
 const NO_SHAPES: SettingsCompatibleShapes = { audio: [] }
@@ -48,16 +48,16 @@ const {
   installCli,
 } = settings
 
-/** The Hosts an entry may connect through, the Cloud first, as the Host menu lists them; none until the snapshot names them. */
-const hosts = computed<HostMenuHost[] | undefined>(() => {
-  const devices = product.snapshot?.devices
-  return devices
+/** The Devices an entry may connect through, the Cloud first, as the device menu lists them; none until the snapshot names them. */
+const devices = computed<MenuDevice[] | undefined>(() => {
+  const known = product.snapshot?.devices
+  return known
     ?.map((device) => ({
       id: device.id,
-      name: hostLabel(hostKindOf(device), device),
-      kind: hostKindOf(device),
+      name: deviceLabel(targetKindOf(device), device),
+      kind: targetKindOf(device),
       state: device.state,
-      mark: deviceMarkOf(device, devices),
+      mark: deviceMarkOf(device, known),
     }))
     .sort((a, b) => Number(b.kind === 'cloud') - Number(a.kind === 'cloud'))
 })
@@ -117,7 +117,7 @@ watch(
     @remove="removeProvider"
     @sign-in="beginLogin"
     @test="test"
-    :hosts="hosts"
+    :devices="devices"
     @refresh="refresh"
     @refresh-usage="refreshUsage"
     @check-cli="checkCli"

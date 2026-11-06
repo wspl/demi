@@ -1,17 +1,17 @@
 /**
  * A file source that keeps what it read: the reads a host makes, each a
- * request, over the Host's kept files (`HostFiles`), whose entries the source's
+ * request, over the device's kept files (`DeviceFiles`), whose entries the source's
  * watch keeps current.
  *
  * - A view shows an entry through the source and sees it replaced in place when
  *   it is read again.
  * - A one-shot read answers from what is current, and reads otherwise.
  * - The source's own writes edit the listings they change as their answers
- *   tell, without listing them again: the Host's watch reports the write, and
+ *   tell, without listing them again: the device's watch reports the write, and
  *   the folder is listed once for it.
  */
 import { reactive } from 'vue'
-import { goneMessage, type Answered, type HostFiles, type KeptSpec, type Read, type Showing } from './file-cache'
+import { goneMessage, type Answered, type DeviceFiles, type KeptSpec, type Read, type Showing } from './file-cache'
 import { baseName } from '@demicodes/utils'
 import { t } from './locales/text'
 import { parentPath } from './paths'
@@ -36,8 +36,8 @@ export interface ContentReads {
 }
 
 /**
- * How a host reads and writes a Host's files, each a request: the source
- * built over them keeps what they answer, each with the Host's number
+ * How a host reads and writes a device's files, each a request: the source
+ * built over them keeps what they answer, each with the device's number
  * before it read.
  */
 export interface FileReads extends Pick<FileBrowserSource, 'platform' | 'home' | 'createDirectory' | 'upload' | 'remove' | 'search'> {
@@ -46,7 +46,7 @@ export interface FileReads extends Pick<FileBrowserSource, 'platform' | 'home' |
    * A file's text with its version. A read the browser's cache does not
    * hold, as a direct channel's, answers unchanged when the file still has
    * the version `held` names, so its text did not travel; a read over HTTP
-   * has the browser's cache ask the Host and always answers the text, and
+   * has the browser's cache ask the device and always answers the text, and
    * takes no `held`. A file that is not text, or too large to read as text,
    * rejects with that answer.
    */
@@ -55,7 +55,7 @@ export interface FileReads extends Pick<FileBrowserSource, 'platform' | 'home' |
 }
 
 export interface KeptSourceOptions {
-  files: HostFiles
+  files: DeviceFiles
   /** The watch of the source's route, which carries the subscriptions of what it keeps; none without one. */
   watch?: WatchChannel | null
   /** The source's views show sizes and times, as a folder dialog does, so its listings follow them. */
@@ -181,7 +181,7 @@ export function keptSource(reads: FileReads, options: KeptSourceOptions): FileBr
 
 /**
  * The working tree's uncommitted changes as a host reads them, each a request with
- * the Host's number before it read.
+ * the device's number before it read.
  */
 export interface ChangeReads {
   /** The list of changes, or why there is none. */
@@ -259,7 +259,7 @@ export function keptChangeSet(
     },
     get failure() {
       const kept = entry()
-      // The working directory itself is not there: that is the Host's refusal
+      // The working directory itself is not there: that is the device's refusal
       // to list it, in its words, not a tree with nothing changed.
       if (kept.answer === 'gone') {
         return kept.goneReason ?? goneMessage()
@@ -277,7 +277,7 @@ export function keptChangeSet(
 }
 
 /**
- * A repository's history as a host reads it, each a request with the Host's
+ * A repository's history as a host reads it, each a request with the device's
  * number before it read: an answer that nothing is there, a branch deleted
  * or a commit the repository lacks, rejects as not found.
  */

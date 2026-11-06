@@ -1,5 +1,5 @@
-//! The Host's number a read was taken at (`crates/runner-host/src/subscriptions.rs`):
-//! the count of file system events the Host's runner had received when the
+//! The device's number a read was taken at (`crates/runner-device/src/subscriptions.rs`):
+//! the count of file system events the device's runner had received when the
 //! read began, and the epoch that names the runner's run.
 
 use std::fmt;
@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::MAX_SAFE_INTEGER;
 
-/// Where in the Host's run of numbers a read began. An answer read at 40 is
+/// Where in the device's run of numbers a read began. An answer read at 40 is
 /// out of date once a change at 41 is reported; one read at 41 already
 /// holds it. Numbers of another epoch, another run of the runner, compare
 /// with nothing.

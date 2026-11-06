@@ -21,7 +21,7 @@ use demi_backend_database::search::SearchIndexes;
 use demi_backend_database::server_log::ServerLog;
 use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::ConversationId;
-use demi_backend_host_access::stream::UserStreams;
+use demi_backend_device_access::stream::UserStreams;
 use demi_backend_page_sync::SyncRegistry;
 use demi_plugin_host::{Registry, RegistryError};
 use demi_provider_registry::registry::ProviderRegistry;
@@ -127,12 +127,12 @@ pub struct Services {
     /// This run of the backend, chosen when the services start: the
     /// revisions counted in memory compare only within one run.
     pub run: String,
-    /// When a conversation's Host resources are reclaimed.
+    /// When a conversation's device resources are reclaimed.
     pub lifecycle: LifecycleTuning,
     /// Each user's open synchronization channels, which every change a
     /// page shows marks.
     pub sync: SyncRegistry,
-    /// The devices the backend's last shutdown disconnected, which Host
+    /// The devices the backend's last shutdown disconnected, which device
     /// operations wait for in the grace after the start
     /// (`crates/runner-client/src/device_jobs.rs`).
     pub returning: Arc<Returning>,

@@ -227,7 +227,7 @@ input! {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TabListResult {
-    /// The list's number in the Host's sequence, for a `user` caller only.
+    /// The list's number in the device's sequence, for a `user` caller only.
     /// The model has no use for it, so the agent's command never prints it and
     /// its `--json` schema does not name it.
     #[serde(
@@ -515,7 +515,7 @@ input! {
     tab
     /// `screenshot`: captures a tab's viewport, whole page or a rectangle as PNG.
     pub struct ScreenshotInput {
-        /// New output file on this Host
+        /// New output file on this device
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
         #[garde(length(chars, min = 1))]
@@ -605,7 +605,7 @@ input! {
         #[schemars(with = "bool")]
         #[garde(skip)]
         pub include_non_interactable: Option<bool>,
-        /// New output file on this Host
+        /// New output file on this device
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
         #[garde(length(chars, min = 1))]
@@ -942,7 +942,7 @@ input! {
         #[schemars(with = "Vec<Modifier>")]
         #[garde(skip)]
         pub modifier: Option<Vec<Modifier>>,
-        /// New output file on this Host
+        /// New output file on this device
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
         #[garde(length(chars, min = 1))]
@@ -990,7 +990,7 @@ input! {
         #[schemars(with = "ClipboardFormat")]
         #[garde(skip)]
         pub format: Option<ClipboardFormat>,
-        /// Output directory on the invoking Host
+        /// Output directory on the invoking device
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
         #[garde(length(chars, min = 1))]
@@ -1279,7 +1279,7 @@ input! {
         #[schemars(with = "ContentFormat")]
         #[garde(skip)]
         pub format: Option<ContentFormat>,
-        /// New output file on this Host
+        /// New output file on this device
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
         #[garde(length(chars, min = 1))]
@@ -1395,7 +1395,7 @@ input! {
         #[schemars(with = "Vec<AssetKind>")]
         #[garde(skip)]
         pub kind: Option<Vec<AssetKind>>,
-        /// Output directory on the invoking Host
+        /// Output directory on the invoking device
         #[garde(length(chars, min = 1))]
         pub output_dir: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
@@ -1424,7 +1424,7 @@ pub struct AssetsExportResult {
 }
 
 input!(@struct
-    /// `install`: installs the pinned Chrome for Testing on the Host.
+    /// `install`: installs the pinned Chrome for Testing on the device.
     InstallInput {}
 );
 
@@ -1473,8 +1473,8 @@ input! {
     }
 }
 
-/// What `draw` answers: where on the Host its picture is, a PNG at twice
-/// the CSS pixels, which its caller reads as a Host file, since bulk bytes
+/// What `draw` answers: where on the device its picture is, a PNG at twice
+/// the CSS pixels, which its caller reads as a device file, since bulk bytes
 /// never travel in an answer. The next drawings remove it after
 /// `DRAWING_KEPT`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -1490,7 +1490,7 @@ pub struct DrawResult {
     pub content_height: u32,
 }
 
-/// How long a drawing's picture stays on the Host for its caller to read.
+/// How long a drawing's picture stays on the device for its caller to read.
 pub const DRAWING_KEPT: std::time::Duration = std::time::Duration::from_secs(600);
 
 input! {

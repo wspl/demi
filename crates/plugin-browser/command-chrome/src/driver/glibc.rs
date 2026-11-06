@@ -1,4 +1,4 @@
-//! The Host's glibc version, which the Chrome runtime needs at 2.28 or newer.
+//! The device's glibc version, which the Chrome runtime needs at 2.28 or newer.
 //!
 //! This program is a static musl executable with no glibc of its own to ask, so
 //! it reads the version from the glibc dynamic loader that Chrome's executable
@@ -48,9 +48,9 @@ fn loader() -> Option<&'static Path> {
     }
 }
 
-/// The Host's glibc version; none on a Host without glibc's loader, such as
+/// The device's glibc version; none on a device without glibc's loader, such as
 /// one with musl alone.
-pub fn host() -> io::Result<Option<GlibcVersion>> {
+pub fn device() -> io::Result<Option<GlibcVersion>> {
     let Some(loader) = loader() else {
         return Ok(None);
     };

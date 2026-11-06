@@ -33,7 +33,7 @@ export function demoProjects(): SidebarProject[] {
       id: 'p-demi',
       // The same name runs on another device below: both rows name their device before the mark.
       name: 'demi',
-      hostKind: 'device',
+      targetKind: 'device',
       device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
       path: '/Users/alex/Projects/demi',
       // Its conversations share one list of saved messages, of three.
@@ -43,7 +43,7 @@ export function demoProjects(): SidebarProject[] {
     {
       id: 'p-demi-mini',
       name: 'demi',
-      hostKind: 'device',
+      targetKind: 'device',
       device: { kind: 'paired', name: 'mac-mini', state: 'online', mark: GALLERY_MARKS.macMini },
       path: '/Users/alex/Projects/demi',
       savedScope: 'conversation',
@@ -53,7 +53,7 @@ export function demoProjects(): SidebarProject[] {
       id: 'p-api-work',
       // Two of one name on one device: each row ends its name with the folder it is in.
       name: 'api',
-      hostKind: 'device',
+      targetKind: 'device',
       device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
       path: '/Users/alex/work/api',
       savedScope: 'conversation',
@@ -62,7 +62,7 @@ export function demoProjects(): SidebarProject[] {
     {
       id: 'p-api-old',
       name: 'api',
-      hostKind: 'device',
+      targetKind: 'device',
       device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
       path: '/Users/alex/old/api',
       savedScope: 'conversation',
@@ -72,7 +72,7 @@ export function demoProjects(): SidebarProject[] {
       id: 'p-photo-album',
       // The only project of its name: the mark alone shows its device, whose name shows in its tip.
       name: 'photo-album',
-      hostKind: 'device',
+      targetKind: 'device',
       device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'online', mark: GALLERY_MARKS.macPro },
       path: '/Users/alex/Projects/photo-album',
       savedScope: 'conversation',
@@ -82,7 +82,7 @@ export function demoProjects(): SidebarProject[] {
       id: 'p-assets',
       // A long name, cut at its end; the device is offline.
       name: 'renderfarm-render-pipeline',
-      hostKind: 'device',
+      targetKind: 'device',
       device: { kind: 'paired', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu },
       path: '/srv/renderfarm-render-pipeline',
       savedScope: 'conversation',
@@ -93,7 +93,7 @@ export function demoProjects(): SidebarProject[] {
       // A long name on a long device's name, with a namesake on another device: the device's
       // name is cut at half of the text, the project's name in the rest; each shows whole on hover.
       name: 'dotfiles-and-machine-setup-scripts',
-      hostKind: 'device',
+      targetKind: 'device',
       // Its runner replaces itself with the server's release, a quarter downloaded.
       device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'updating', downloadPercent: 26, mark: GALLERY_MARKS.macPro },
       path: '/Users/alex/dotfiles-and-machine-setup-scripts',
@@ -103,7 +103,7 @@ export function demoProjects(): SidebarProject[] {
     {
       id: 'p-dotfiles-build',
       name: 'dotfiles-and-machine-setup-scripts',
-      hostKind: 'device',
+      targetKind: 'device',
       device: { kind: 'paired', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu },
       path: '/home/build/dotfiles-and-machine-setup-scripts',
       savedScope: 'conversation',
@@ -113,7 +113,7 @@ export function demoProjects(): SidebarProject[] {
       id: 'p-old',
       // Its device was removed since: the mark has no dot.
       name: 'old-experiments',
-      hostKind: 'device',
+      targetKind: 'device',
       device: { kind: 'removed' },
       path: '/Users/alex/old-experiments',
       savedScope: 'conversation',
@@ -122,7 +122,7 @@ export function demoProjects(): SidebarProject[] {
     {
       id: 'p-notebooks',
       name: 'notebooks',
-      hostKind: 'cloud',
+      targetKind: 'cloud',
       path: '/home/demi/notebooks',
       savedScope: 'conversation',
       savedCount: 0,
@@ -131,7 +131,7 @@ export function demoProjects(): SidebarProject[] {
       id: 'p-scratch',
       // No conversation runs in it, so the list does not show it.
       name: 'scratch',
-      hostKind: 'device',
+      targetKind: 'device',
       device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
       path: '/Users/alex/scratch',
       savedScope: 'conversation',

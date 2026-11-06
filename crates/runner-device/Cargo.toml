@@ -1,0 +1,48 @@
+[package]
+name = "demi-runner-device"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# No doc examples.
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+demi-shared-artifacts = { path = "../shared-artifacts" }
+demi-command-protocol = { path = "../command-protocol" }
+demi-command-sdk = { path = "../command-sdk" }
+demi-runner-process = { path = "../runner-process" }
+demi-runner-protocol = { path = "../runner-protocol" }
+bytes.workspace = true
+# A canonical path without Windows' verbatim prefix, as a device names a directory.
+dunce = "1"
+filetime = "0.2"
+futures-util.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+grep-matcher = "0.1.9"
+grep-regex = "0.1.14"
+grep-searcher = "0.1.17"
+ignore = "0.4.33"
+gix = { version = "0.87", default-features = false, features = ["status", "blob-diff", "sha1", "parallel"] }
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+rustix = { version = "1", features = ["event", "fs"] }
+
+# The working-tree watch's FSEvents stream (`src/tree_watch.rs`).
+[target.'cfg(target_os = "macos")'.dependencies]
+fsevent-sys = "4.1"
+
+# The working-tree watch elsewhere (`src/tree_watch.rs`).
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+notify = "8.2"

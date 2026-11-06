@@ -7,7 +7,7 @@ import { shownAmong } from './device-marks'
 
 /**
  * The paths a demo device's attempts take, one per state its page shows
- * (`packages/web-ui/src/devices/direct.ts`), and the devices of the Devices
+ * (`packages/web-ui/src/devices/direct.ts`), and the devices of the devices
  * specimens, whose controls act on them as the product's do:
  *
  * - Try Again runs an attempt that ends as the device's path says.
@@ -141,7 +141,7 @@ function demoDevice(
 export const DEMO_RUNNER_RELEASE = '9c1f…release'
 
 /**
- * The paired devices of the Devices specimens, each with its mark as the backend serves it: the
+ * The paired devices of the devices specimens, each with its mark as the backend serves it: the
  * two Ubuntu computers are Ubuntu 1 and 2.
  */
 export function galleryDevices(): GalleryDevice[] {
@@ -172,7 +172,7 @@ export function galleryDevices(): GalleryDevice[] {
 }
 
 /**
- * The state of a Devices specimen: its devices, the page shown, and what
+ * The state of a devices specimen: its devices, the page shown, and what
  * each control does to them. An attempt takes a moment.
  */
 export function useGalleryDevices(initial: () => GalleryDevice[]) {
@@ -301,7 +301,7 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
     const apple = devices.value.filter((device) => device.mark?.logo === 'apple')
     const device: SettingsDevice = {
       id: `device-${Date.now()}`,
-      name: `host-${devices.value.length + 1}`,
+      name: `device-${devices.value.length + 1}`,
       state: 'online',
       mark: { logo: 'apple', number: Math.max(0, ...apple.map((device) => device.mark?.number ?? 0)) + 1 },
       seen: new Date().toISOString(),

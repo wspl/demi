@@ -32,7 +32,7 @@ const MAKERS: readonly { name: string; url: string; fit: number; paint: string }
 const PARTS: readonly { part: Exclude<RuntimePart, 'compact'>; label: string }[] = [
   { part: 'programs', label: 'rg · git · …' },
   { part: 'browser', label: 'demi browser' },
-  { part: 'host', label: 'demi host' },
+  { part: 'device', label: 'demi device' },
   { part: 'agent', label: 'demi agent' },
 ]
 

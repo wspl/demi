@@ -43,7 +43,7 @@
       "allowed": "你已允許此對話{action}",
       "denied": "你已拒絕此對話{action}",
       "reached": "另一個對話聯絡了此對話，因此已允許它{action}",
-      "moved": "你已將此對話移到 {host} · {path}",
+      "moved": "你已將此對話移到 {device} · {path}",
       "moveFailed": "移動失敗：{reason}",
       "fromMain": "來自{agent}的訊息",
       "mainAgent": "主智慧體",
@@ -67,7 +67,7 @@
       "failed": "失敗",
       "stopped": "已停止",
       "stopping": "正在停止…",
-      "waiting": "正在等待 {host}",
+      "waiting": "正在等待 {device}",
       "lost": "已遺失",
       "exitCode": "結束代碼 {code}"
     },
@@ -75,7 +75,7 @@
       "lost": "已遺失",
       "lostWhy": "已遺失：{reason}",
       "stopping": "正在停止…",
-      "waiting": "正在等待 {host}",
+      "waiting": "正在等待 {device}",
       "running": "已執行 {span}",
       "exited": "{span} 後結束",
       "exitedZero": "{span} 後結束，結束代碼 0",
@@ -238,7 +238,7 @@
     "tabsOpen": "分頁，已開啟 {count} 個",
     "closePanel": "關閉面板",
     "options": "{title}，對話選項",
-    "hostState": "{name} {state}",
+    "deviceState": "{name} {state}",
     "renameTitle": "重新命名對話",
     "titleLabel": "對話標題",
     "runsOn": "執行於",
@@ -281,9 +281,9 @@
     "lastTurnRate": "上一輪速度：{rate} token/秒"
   },
   "notices": {
-    "hostOffline": "{name} 已離線。",
-    "moveHost": "移到其他主機…",
-    "hostOfflineLastSeen": "{name} 已離線，最後上線 {time}。",
+    "deviceOffline": "{name} 已離線。",
+    "moveDevice": "移到其他裝置…",
+    "deviceOfflineLastSeen": "{name} 已離線，最後上線 {time}。",
     "pluginsChanged": "外掛程式已變更"
   },
   "composer": {
@@ -435,7 +435,7 @@
     "nothingOpen": "沒有開啟的內容",
     "noFiles": "沒有檔案或變更",
     "reading": "正在讀取 {name}",
-    "hostOffline": "{name} 已離線。",
-    "hostOfflineDetail": "重新連線後，檔案、變更和瀏覽器會再次顯示。"
+    "deviceOffline": "{name} 已離線。",
+    "deviceOfflineDetail": "重新連線後，檔案、變更和瀏覽器會再次顯示。"
   }
 }

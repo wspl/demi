@@ -35,8 +35,8 @@ export function useMessageAttachments(
   })
 }
 
-/** The conversation's Host as a file card's opening asks it. */
-export interface OpeningHost {
+/** The conversation's device as a file card's opening asks it. */
+export interface OpeningDevice {
   /** The conversation whose card opens. */
   conversation: string
   /** The device it runs on; null while it is not known. */
@@ -47,23 +47,23 @@ export interface OpeningHost {
 
 /**
  * The path of the file attachment `id` was uploaded from, when a card that
- * opens it shows that file: its Host is the conversation's and online, and the
+ * opens it shows that file: its device is the conversation's and online, and the
  * backend, asked once for this opening, finds the file there. The backend asks
- * the Host the conversation runs on then, only while it is the attachment's,
+ * the device the conversation runs on then, only while it is the attachment's,
  * and never wakes a stopped Cloud (`GET …/attachments/:id/file`). Any other
- * answer, a failed one included, opens the copy. A Host the page knows offline,
- * a stopped Cloud included, or another Host is not asked.
+ * answer, a failed one included, opens the copy. A Device the page knows offline,
+ * a stopped Cloud included, or another device is not asked.
  */
-export async function attachmentOrigin(id: string, { source }: MessageAttachment, host: OpeningHost): Promise<string | null> {
-  if (!source || source.host !== host.device || !host.online) {
+export async function attachmentOrigin(id: string, { source }: MessageAttachment, device: OpeningDevice): Promise<string | null> {
+  if (!source || source.device !== device.device || !device.online) {
     return null
   }
   try {
     // An unreachable backend is no reason to wait: the copy opens.
-    await apiRequest(`/conversations/${encodeURIComponent(host.conversation)}/attachments/${encodeURIComponent(id)}/file`, { waits: false })
+    await apiRequest(`/conversations/${encodeURIComponent(device.conversation)}/attachments/${encodeURIComponent(id)}/file`, { waits: false })
     return source.path
   } catch {
-    // The file is not there, the Host is another or stopped, or the backend
+    // The file is not there, the device is another or stopped, or the backend
     // could not say: the copy opens.
     return null
   }

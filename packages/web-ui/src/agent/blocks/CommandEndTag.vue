@@ -10,7 +10,7 @@ import { t } from '../locales/text'
  *
  * - red Failed, with the exit code in its tooltip
  * - grey Stopping… while a stop waits for the command's runner to end it
- * - grey Waiting for MacBook Pro while its start waits for its offline Host
+ * - grey Waiting for MacBook Pro while its start waits for its offline device
  * - grey Stopped
  * - grey Lost, with why in its tooltip
  */
@@ -26,5 +26,5 @@ const hint = computed(() => {
 </script>
 
 <template>
-  <RunEndTag :kind="mark.kind" :hint="hint" :host="mark.kind === 'waiting' ? mark.host : undefined" />
+  <RunEndTag :kind="mark.kind" :hint="hint" :device="mark.kind === 'waiting' ? mark.device : undefined" />
 </template>

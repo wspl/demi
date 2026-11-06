@@ -1,6 +1,6 @@
 //! `nohup COMMAND…`: runs COMMAND with `SIGHUP` ignored, with GNU's options,
-//! messages and statuses. It is the job's own on every Host, Windows included,
-//! so that a script does not depend on a Host having one.
+//! messages and statuses. It is the job's own on every device, Windows included,
+//! so that a script does not depend on a device having one.
 //!
 //! A job's output is never a terminal, so there is no `nohup.out` to write and
 //! no input to take from the null device, and where the system has no signals,

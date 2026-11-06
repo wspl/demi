@@ -3,7 +3,7 @@ import { diffChunks } from '@demicodes/web-ui/editor/unifiedDiff'
 
 /**
  * The lines a diff from `original` to `modified` adds and removes, for the
- * gallery's working tree, which plays the Host's git status: the page
+ * gallery's working tree, which plays the device's git status: the page
  * counts no line itself, and shows the counts its sources give.
  */
 export function diffLineCounts(original: string, modified: string): { added: number; removed: number } {

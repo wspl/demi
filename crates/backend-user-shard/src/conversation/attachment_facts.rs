@@ -4,7 +4,7 @@
 //!
 //! A reply names an attachment by a line that is its tag alone,
 //! `<attachment id="a3" />`, the rule the page's renderer follows, and by the
-//! copy it keeps of a picture of the Host it shows
+//! copy it keeps of a picture of the device it shows
 //! (`demi_backend_database::shares::block_attachments`). The socket's
 //! transcript frames and the history route both carry the attachments their
 //! blocks and their text name, whoever in the conversation stored them, so the

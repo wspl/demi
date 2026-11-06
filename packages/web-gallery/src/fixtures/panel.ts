@@ -190,7 +190,7 @@ export function galleryBrowserPlugin(browser: GalleryBrowser, panel: GalleryPane
         }
         return tab
       } catch (error) {
-        // The browser's or the Host's own reason, as the backend's plugin keeps
+        // The browser's or the device's own reason, as the backend's plugin keeps
         // it, or the status a call would answer a failure without one with.
         const message = error instanceof Error ? error.message : String(error)
         const reason = error instanceof BrowserTabsError ? error.reason : null

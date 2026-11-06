@@ -12,14 +12,14 @@ import { ICON_PX, useIconPx } from '@demicodes/web-ui/ui/icon-metrics'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
 import ConversationDot from './ConversationDot.vue'
 import DeviceMark from './DeviceMark.vue'
-import { projectTarget, type ProjectQualifier } from './project-hosts'
+import { projectTarget, type ProjectQualifier } from './project-devices'
 import type { SidebarConversation, SidebarProject } from './types'
 
-/** A project row: the checkout's name, the host it is on as the row's end mark, and the fold. */
+/** A project row: the checkout's name, the device it is on as the row's end mark, and the fold. */
 const props = defineProps<{
   project: SidebarProject
   /**
-   * Another project has its name: what tells this one apart, its host or the end of its parent
+   * Another project has its name: what tells this one apart, its device or the end of its parent
    * folders, in secondary text after the name, and where it is, the name's tooltip
    * (`projectQualifiers`).
    */
@@ -39,7 +39,7 @@ const props = defineProps<{
   menu: (project: SidebarProject) => ContextMenuDeclaration
 }>()
 
-// An operation on the project, such as Remove Project from its menu, shows the spinner where the host's mark stands.
+// An operation on the project, such as Remove Project from its menu, shows the spinner where the device's mark stands.
 const working = provideRowTarget(() => projectTarget(props.project.id))
 
 const phone = usePhone()
@@ -68,7 +68,7 @@ const emit = defineEmits<{
       :size="icons.row"
       class="shrink-0 text-fg-muted"
     />
-    <!-- The text, then the host's mark in its own box at the row's end, 6px from it, as a
+    <!-- The text, then the device's mark in its own box at the row's end, 6px from it, as a
          conversation's row ends. The mark stays on hover; New conversation stands to its left, its
          glyph 6px from the mark's as Archive's is, over the end of the text, which gives it the
          place by the same margin a conversation's title does. -->
@@ -110,7 +110,7 @@ const emit = defineEmits<{
     </span>
     <!-- The spinner takes the device mark's box, so the name keeps its width. -->
     <RowSpinner v-if="working" class="h-6! w-4! phone:size-8!" />
-    <DeviceMark v-else :host="project.hostKind === 'cloud' ? { kind: 'cloud' } : project.device" />
+    <DeviceMark v-else :device="project.targetKind === 'cloud' ? { kind: 'cloud' } : project.device" />
     <span
       class="absolute inset-y-0 right-[23px] flex items-center opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto phone:right-9 phone:opacity-100 phone:pointer-events-auto"
     >

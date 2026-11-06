@@ -20,7 +20,7 @@
 //!   other directory in its job root: what a runner that ended without
 //!   cleanup left.
 //!
-//! So the Host keeps nothing of a command once it has ended, which is why a
+//! So the device keeps nothing of a command once it has ended, which is why a
 //! conversation release has no files to remove.
 
 use std::collections::HashMap;

@@ -22,7 +22,7 @@ export interface WorkflowOption {
   id: string
   /** What the menu shows; null for a file that cannot be used. */
   name: string | null
-  /** The file on the Host. */
+  /** The file on the device. */
   path: string
   /**
    * Why it cannot be used, a link or a file that does not read; null while it

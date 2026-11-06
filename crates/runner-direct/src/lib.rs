@@ -16,7 +16,7 @@
 //! # Why a direct channel
 //!
 //! A page and a paired device's runner can talk without the backend between
-//! them, when the network lets them. A user's Mac that is the Host of a
+//! them, when the network lets them. A user's Mac that is the device of a
 //! conversation on a far server would otherwise send every byte of a file or a
 //! live view to the server and back to the same Mac.
 //!
@@ -35,7 +35,7 @@
 //! - Nothing waits for it, so a firewall, a policy or a browser's permission
 //!   prompt can never slow or break the page.
 //! - Only operations whose bytes are large or whose round trips the user feels
-//!   go direct, for a conversation whose primary Host is a paired device. A
+//!   go direct, for a conversation whose primary device is a paired one. A
 //!   Cloud runs beside the backend, so it is never offered one.
 //!
 //! # Why WebRTC
@@ -100,7 +100,7 @@
 //! # Boundaries
 //!
 //! The crate knows no backend connection, jobs or commands, and carries out no
-//! operation in a way of its own: only through the Host operations and resident
+//! operation in a way of its own: only through the device operations and resident
 //! streams the runner supplies.
 
 mod addresses;

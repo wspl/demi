@@ -1,10 +1,10 @@
-//! What a plugin's package on a Host last reported of a conversation.
+//! What a plugin's package on a device last reported of a conversation.
 //!
 //! A package tells its plugin the whole of what it holds for a conversation
 //! when that changes, an empty state too; the backend keeps the latest per
-//! plugin, conversation and Host. A page reads it from here at once, also
-//! after a restart of the backend while the Host is away, and never asks the
-//! Host (`crates/plugin-interface/src/request.rs`).
+//! plugin, conversation and device. A page reads it from here at once, also
+//! after a restart of the backend while the device is away, and never asks the
+//! device (`crates/plugin-interface/src/request.rs`).
 
 use demi_plugin_host::store::PluginReport;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
@@ -18,7 +18,7 @@ use super::control::ControlService;
 const TABLE: &str = "plugin_reports";
 
 impl ControlService {
-    /// What `plugin`'s package on the Host of `device` last reported of
+    /// What `plugin`'s package on the device of `device` last reported of
     /// `conversation`; none before it reported.
     pub async fn plugin_report(
         &self,
@@ -44,7 +44,7 @@ impl ControlService {
         .await
     }
 
-    /// Keeps `value` as what `plugin`'s package on the Host of `device`
+    /// Keeps `value` as what `plugin`'s package on the device of `device`
     /// reported of `conversation` now; answers whether it differs from what
     /// was kept. A conversation that is gone keeps nothing and answers false.
     pub async fn keep_plugin_report(

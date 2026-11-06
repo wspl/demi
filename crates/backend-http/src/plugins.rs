@@ -259,7 +259,7 @@ pub(super) fn refused(error: PageCallError) -> ApiError {
         }
         PageCallError::Plugin(PluginError::Port {
             refusal:
-                PortRefusal::Host {
+                PortRefusal::Device {
                     code,
                     status,
                     message,

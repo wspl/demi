@@ -16,9 +16,9 @@ use std::rc::{Rc, Weak};
 
 use demi_agent_server::instructions::{self, NONE_LEFT, ProjectFile, WorkflowText, render};
 use demi_agent_tools::{ContextAnswer, ContextSource, NodeContext, WORKFLOW_EXTENSION};
-use demi_backend_host_access::conversation_of;
-use demi_backend_host_access::kept::Found;
-use demi_backend_host_access::plugin_files::ReadFilesError;
+use demi_backend_device_access::conversation_of;
+use demi_backend_device_access::kept::Found;
+use demi_backend_device_access::plugin_files::ReadFilesError;
 use demi_runner_protocol::files::{Subject, SubscriptionKind};
 use demi_shared_types::{INSTRUCTIONS_SOURCE, TurnId, WorkflowChoice};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
@@ -150,7 +150,7 @@ impl ContextSource for Instructions {
     }
 }
 
-/// The project files for a node in `cwd` on the conversation's Host
+/// The project files for a node in `cwd` on the conversation's device
 /// `device`, root first, whole, with what to watch
 /// (`crates/agent-server/src/instructions.rs`).
 pub(crate) async fn search_instructions(
@@ -164,9 +164,9 @@ pub(crate) async fn search_instructions(
         .device_paths(device)
         .await
         .map_err(|error| ReadFilesError::Access(error.into()))?;
-    let host = shard.host_shard();
+    let access = shard.device_shard();
     let found = instructions::search(paths, cwd, |reads| async move {
-        let (answers, _) = host.read_files_on(conversation, Some(device), &reads, cancel).await?;
+        let (answers, _) = access.read_files_on(conversation, Some(device), &reads, cancel).await?;
         Ok::<_, ReadFilesError>(answers)
     })
     .await?;

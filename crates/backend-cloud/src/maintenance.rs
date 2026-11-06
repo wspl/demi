@@ -17,7 +17,7 @@
 //! conversation's Chrome, ends with the machine, and no command's output is
 //! left on its disk to save with it. The conversations' own idle watches
 //! (`crates/backend-user-shard/src/lifecycle/conversations.rs`) find the Cloud
-//! stopped and release the conversations on their other Hosts. The same holds
+//! stopped and release the conversations on their other devices. The same holds
 //! for a Cloud that stops for another reason: at its lifetime cap, for a reset,
 //! at the backend's shutdown or because it died.
 
@@ -48,7 +48,7 @@ impl dyn CloudShard {
             machine: machine.clone(),
         };
         let watch = demi_backend_idle_watch::watch(idle, window, sweep, self.tasks().clone())
-            .instrument(tracing::info_span!("idle_watch", host_id = %machine.device.id));
+            .instrument(tracing::info_span!("idle_watch", device_id = %machine.device.id));
         let maintenance = maintain(Rc::downgrade(&self.this()), machine.clone());
         vec![
             AbortOnDropHandle::new(self.tasks().spawn_local(watch)),
@@ -148,7 +148,7 @@ impl dyn CloudShard {
             Err(error) => {
                 tracing::warn!(
                     event = "cloud.checkpoint_failed",
-                    host_id = %device,
+                    device_id = %device,
                     %error,
                     ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
                     "the Cloud's checkpoint failed"
@@ -170,7 +170,7 @@ impl dyn CloudShard {
             Err(error) => {
                 tracing::warn!(
                     event = "cloud.lifetime_cap_failed",
-                    host_id = %machine.device.id,
+                    device_id = %machine.device.id,
                     step = "read_conversations",
                     %error,
                     "the Cloud's lifetime cap could not read its conversations"
@@ -198,7 +198,7 @@ impl dyn CloudShard {
                 match tokio::time::timeout(hold, reserving).await {
                     Ok(reserved) => reserved,
                     Err(_) => {
-                        tracing::warn!(event = "cloud.jobs_end_timed_out", host_id = %device, step = "lifetime_cap", waited_ms = u64::try_from(hold.as_millis()).unwrap_or(u64::MAX), "the Cloud's jobs did not end at its lifetime cap");
+                        tracing::warn!(event = "cloud.jobs_end_timed_out", device_id = %device, step = "lifetime_cap", waited_ms = u64::try_from(hold.as_millis()).unwrap_or(u64::MAX), "the Cloud's jobs did not end at its lifetime cap");
                         return;
                     }
                 }
@@ -214,7 +214,7 @@ impl dyn CloudShard {
         self.tasks().spawn_local(async move {
             let _held = (reserved, held);
             if let Err(error) = shard.hibernate_reserved(&machine).await {
-                tracing::warn!(event = "cloud.save_failed", host_id = %machine.device.id, step = "lifetime_cap", %error, "the Cloud was not saved at its lifetime cap");
+                tracing::warn!(event = "cloud.save_failed", device_id = %machine.device.id, step = "lifetime_cap", %error, "the Cloud was not saved at its lifetime cap");
             }
         });
     }

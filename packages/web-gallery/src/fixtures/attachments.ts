@@ -4,35 +4,35 @@ import type { AttachmentLookup, AttachmentOrigin } from '@demicodes/web-ui/markd
 import { galleryBlobSize, galleryBlobUrl, galleryBlobs } from './blobs'
 import { PROJECT_ROOT } from './project'
 
-/** The id of the Host the gallery's conversation runs on, which its agent's uploads record. */
-export const GALLERY_HOST = 'host-1'
+/** The id of the device the gallery's conversation runs on, which its agent's uploads record. */
+export const GALLERY_DEVICE = 'device-1'
 
 /**
  * The attachments the gallery's conversation holds, as `demi attachment
- * upload` numbered them (`crates/backend-host-access/src/attachment_commands.rs`), over the
+ * upload` numbered them (`crates/backend-device-access/src/attachment_commands.rs`), over the
  * gallery's blobs, each with its file's size. The guide, the build, the demo
  * and the chart were uploaded from the project's files, the chart from a
  * version its file has changed since, which its viewer does not show: it shows
  * its copy; the release notes from a file the project no longer has; the
  * others before uploads recorded their file. a14 and a15 are the copies the
  * backend made of the project's pictures that a reply shows
- * (`hostPictureCopies`).
+ * (`devicePictureCopies`).
  */
 const attachments: Record<string, { name: string; mediaType: string; size: number; blob: string; source?: AttachmentOrigin }> = {
   a1: { name: 'login.png', mediaType: 'image/png', size: 15822, blob: galleryBlobs.screenshot },
   a2: { name: 'checkout.webm', mediaType: 'video/webm', size: 23336, blob: galleryBlobs.recording },
-  a3: { name: 'guide.pdf', mediaType: 'application/pdf', size: 734, blob: galleryBlobs.guide, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/docs/guide.pdf` } },
+  a3: { name: 'guide.pdf', mediaType: 'application/pdf', size: 734, blob: galleryBlobs.guide, source: { device: GALLERY_DEVICE, path: `${PROJECT_ROOT}/docs/guide.pdf` } },
   a4: { name: 'dashboard-full.png', mediaType: 'image/png', size: 8035, blob: galleryBlobs.fullPage },
   a5: { name: 'timeline.png', mediaType: 'image/png', size: 5883, blob: galleryBlobs.timeline },
-  a6: { name: 'chart.png', mediaType: 'image/png', size: 16078, blob: galleryBlobs.chart, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/assets/photo.png` } },
-  a7: { name: 'demo.mp4', mediaType: 'video/mp4', size: 31814, blob: galleryBlobs.unsizedRecording, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/assets/demo.mp4` } },
+  a6: { name: 'chart.png', mediaType: 'image/png', size: 16078, blob: galleryBlobs.chart, source: { device: GALLERY_DEVICE, path: `${PROJECT_ROOT}/assets/photo.png` } },
+  a7: { name: 'demo.mp4', mediaType: 'video/mp4', size: 31814, blob: galleryBlobs.unsizedRecording, source: { device: GALLERY_DEVICE, path: `${PROJECT_ROOT}/assets/demo.mp4` } },
   a8: { name: 'settings-light.png', mediaType: 'image/png', size: 1745, blob: galleryBlobs.whiteScreen },
   a10: { name: 'settings-dark.png', mediaType: 'image/png', size: 1753, blob: galleryBlobs.darkScreen },
   a11: { name: 'welcome.mp3', mediaType: 'audio/mpeg', size: 16423, blob: galleryBlobs.voiceOver },
-  a12: { name: 'release-notes.md', mediaType: 'text/markdown', size: 496, blob: galleryBlobs.releaseNotes, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/release-notes.md` } },
-  a14: { name: 'photo.png', mediaType: 'image/png', size: 15822, blob: galleryBlobs.screenshot, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/assets/photo.png` } },
-  a15: { name: 'page-full.png', mediaType: 'image/png', size: 8035, blob: galleryBlobs.fullPage, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/assets/page-full.png` } },
-  a13: { name: 'app.zip', mediaType: 'application/zip', size: 140, blob: galleryBlobs.archive, source: { host: GALLERY_HOST, path: `${PROJECT_ROOT}/dist/app.zip` } },
+  a12: { name: 'release-notes.md', mediaType: 'text/markdown', size: 496, blob: galleryBlobs.releaseNotes, source: { device: GALLERY_DEVICE, path: `${PROJECT_ROOT}/release-notes.md` } },
+  a14: { name: 'photo.png', mediaType: 'image/png', size: 15822, blob: galleryBlobs.screenshot, source: { device: GALLERY_DEVICE, path: `${PROJECT_ROOT}/assets/photo.png` } },
+  a15: { name: 'page-full.png', mediaType: 'image/png', size: 8035, blob: galleryBlobs.fullPage, source: { device: GALLERY_DEVICE, path: `${PROJECT_ROOT}/assets/page-full.png` } },
+  a13: { name: 'app.zip', mediaType: 'application/zip', size: 140, blob: galleryBlobs.archive, source: { device: GALLERY_DEVICE, path: `${PROJECT_ROOT}/dist/app.zip` } },
 }
 
 /**
@@ -40,7 +40,7 @@ const attachments: Record<string, { name: string; mediaType: string; size: numbe
  * backend settled each once the reply ended: the copies of the test pattern
  * and the whole login page.
  */
-export const hostPictureCopies: ReplyPicture[] = [
+export const devicePictureCopies: ReplyPicture[] = [
   { target: 'assets/photo.png', copy: { state: 'copied', attachment: 'a14' } },
   { target: 'assets/page-full.png', copy: { state: 'copied', attachment: 'a15' } },
 ]
@@ -50,7 +50,7 @@ export const hostPictureCopies: ReplyPicture[] = [
  * copied, five the backend could not copy, each for a cause it can give, and
  * one of a reply written before copies were kept.
  */
-export const hostPicturesMarkdown = `The sign-in page works again. The test pattern and the whole page, from the project:
+export const devicePicturesMarkdown = `The sign-in page works again. The test pattern and the whole page, from the project:
 
 ![The test pattern](assets/photo.png)
 ![The whole page](assets/page-full.png)
@@ -74,14 +74,14 @@ These could not be copied, each for its own reason, and the last was written bef
 ![The old capture](assets/old.png)
 `
 
-/** What \`hostPicturesMarkdown\` keeps: the copy of each picture, or why there is none. */
-export const hostPicturesKept: ReplyPicture[] = [
-  ...hostPictureCopies,
+/** What \`devicePicturesMarkdown\` keeps: the copy of each picture, or why there is none. */
+export const devicePicturesKept: ReplyPicture[] = [
+  ...devicePictureCopies,
   { target: 'out/chart.png', copy: { state: 'copying' } },
   { target: 'out/report.png', copy: { state: 'failed', reason: { kind: 'missing' } } },
   { target: 'out/recording.png', copy: { state: 'failed', reason: { kind: 'too_large', size: 31_457_280 } } },
   { target: 'out/notes.md', copy: { state: 'failed', reason: { kind: 'not_an_image', mediaType: 'text/markdown' } } },
-  { target: 'out/capture.png', copy: { state: 'failed', reason: { kind: 'host_unavailable' } } },
+  { target: 'out/capture.png', copy: { state: 'failed', reason: { kind: 'device_unavailable' } } },
   { target: 'out/locked.png', copy: { state: 'failed', reason: { kind: 'unreadable' } } },
 ]
 

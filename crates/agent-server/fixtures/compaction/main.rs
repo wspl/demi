@@ -37,12 +37,12 @@ use demi_agent_store::{
     testing::MemoryTreeStore,
 };
 use demi_agent_tools::{
-    HostResolver, ProfileModel, SubagentSettings, Toolset, Unavailable,
-    testing::{NoHost, NoShells},
+    DeviceResolver, ProfileModel, SubagentSettings, Toolset, Unavailable,
+    testing::{NoDevice, NoShells},
 };
 use demi_agent_transcript::RandomIds;
 use demi_conversation_lane_protocol::{ClientFrame, ServerFrame};
-use demi_host_interface::CommandSet;
+use demi_device_interface::CommandSet;
 use demi_provider_common::{
     InferenceItem, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime,
     ModelWires, RequestLimits, RuntimeEnv, Secret,
@@ -336,11 +336,11 @@ impl ProviderRuntime for Recorded {
     }
 }
 
-/// The fixture's agents: no Host, so no shell tool runs.
-struct NoHosts;
+/// The fixture's agents: no device, so no shell tool runs.
+struct NoDevices;
 
-impl HostResolver for NoHosts {
-    type Host = NoHost;
+impl DeviceResolver for NoDevices {
+    type Device = NoDevice;
 }
 
 /// Every runtime is DeepSeek's, recorded, and the conversation opens with
@@ -460,8 +460,8 @@ impl Summary {
 
 /// The fixture opened as a conversation, and what the harness asks it.
 struct Conversation {
-    server: Rc<AgentServer<NoHosts>>,
-    client: TestClient<NoHosts>,
+    server: Rc<AgentServer<NoDevices>>,
+    client: TestClient<NoDevices>,
     root: NodeId,
     /// The model the conversation's next request uses.
     model: ModelSelection,
@@ -519,7 +519,7 @@ impl Conversation {
             }),
             instructions: Rc::from(SYSTEM_PROMPT),
             guide: Rc::from(""),
-            hosts: Rc::new(NoHosts),
+            devices: Rc::new(NoDevices),
             context: Rc::new([]),
             providers: deepseek,
             shells: Rc::new(NoShells),
@@ -532,7 +532,7 @@ impl Conversation {
             status_changed: Rc::new(|_| {}),
             idle_compaction_due: Rc::new(|_, _| {}),
             agents: Rc::new(demi_agent_server::testing::NoKeptAgents),
-            reply_files: Rc::new(demi_agent_server::testing::NoHostFiles),
+            reply_files: Rc::new(demi_agent_server::testing::NoDeviceFiles),
         });
         let client = open_client(&server, &root).await;
         Ok(Self {
@@ -734,9 +734,9 @@ impl Conversation {
 /// A client attached to the conversation `root`, opened. A turn of the
 /// real model may take minutes.
 async fn open_client(
-    server: &Rc<AgentServer<NoHosts>>,
+    server: &Rc<AgentServer<NoDevices>>,
     root: &NodeId,
-) -> TestClient<NoHosts> {
+) -> TestClient<NoDevices> {
     let mut client = TestClient::connect(server, root).with_hang_guard(TURN_TIMEOUT);
     client.open().await;
     client
@@ -761,7 +761,7 @@ fn idle_state(model: ModelSelection) -> CheckpointState {
     }
 }
 
-fn blocks_of(server: &AgentServer<NoHosts>, root: &NodeId) -> Vec<Block> {
+fn blocks_of(server: &AgentServer<NoDevices>, root: &NodeId) -> Vec<Block> {
     server
         .tree(root)
         .expect("the conversation is open")
@@ -773,7 +773,7 @@ fn blocks_of(server: &AgentServer<NoHosts>, root: &NodeId) -> Vec<Block> {
 
 /// Runs `frame` to the end of the action it starts; a wait longer than an
 /// action may take fails as a hang.
-async fn act(client: &mut TestClient<NoHosts>, frame: ClientFrame) {
+async fn act(client: &mut TestClient<NoDevices>, frame: ClientFrame) {
     client.send(frame).await;
     client.until_idle().await;
 }
@@ -782,8 +782,8 @@ async fn act(client: &mut TestClient<NoHosts>, frame: ClientFrame) {
 /// model's text and reasoning after the message, wherever a compaction put
 /// the message.
 async fn send(
-    server: &AgentServer<NoHosts>,
-    client: &mut TestClient<NoHosts>,
+    server: &AgentServer<NoDevices>,
+    client: &mut TestClient<NoDevices>,
     root: &NodeId,
     text: &str,
 ) -> Turn {

@@ -62,7 +62,7 @@
   "permissions": {
     "skills_manage": {
       "action": "Skills zu verwalten",
-      "description": "Damit können die Agenten dieses Chats Skill-Quellen hinzufügen, aktualisieren und entfernen sowie Skills aktivieren und deaktivieren. Globale Skills erreichen jeden Chat, die Skills eines Arbeitsbereichs die Chats dieses Arbeitsbereichs, und aktivierte Skills werden auf den Hosts installiert, die diese Chats verwenden."
+      "description": "Damit können die Agenten dieses Chats Skill-Quellen hinzufügen, aktualisieren und entfernen sowie Skills aktivieren und deaktivieren. Globale Skills erreichen jeden Chat, die Skills eines Arbeitsbereichs die Chats dieses Arbeitsbereichs, und aktivierte Skills werden auf den Geräten installiert, die diese Chats verwenden."
     }
   },
   "problems": {

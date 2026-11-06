@@ -9,7 +9,7 @@ import { pictureQuote } from './anchors'
  * A picture in the agent's reply as a comment, a side question and Send to
  * Conversation take it:
  *
- * - For an attachment, and for a picture of the Host the reply shows, whose
+ * - For an attachment, and for a picture of the device the reply shows, whose
  *   copy is an attachment, the blob of the user's it already is.
  * - For a picture of the web whose site lets the page read it, the same kind of
  *   blob, so every provider reads its bytes.

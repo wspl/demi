@@ -9,7 +9,7 @@
 //! namespace holds already is remembered for a day, since it writes nothing
 //! that would show its age.
 //!
-//! A content a Host holds is read into the namespace once
+//! A content a device holds is read into the namespace once
 //! ([`UserBlobs::fetch_once`]): a read of the same content that comes while one
 //! is under way waits for it, as Docker's transfer manager joins a transfer
 //! already running for the same layer, and the day of grace keeps it for the

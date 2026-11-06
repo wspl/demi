@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct ValueError(String);
 
 /// A backend's URL (`crates/runner-protocol/src/wire/mod.rs`): `http`, `https`,
-/// `ws` or `wss`, naming a host, without credentials or a fragment.
+/// `ws` or `wss`, naming a device, without credentials or a fragment.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct BackendUrl(url::Url);

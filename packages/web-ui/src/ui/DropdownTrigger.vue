@@ -36,7 +36,7 @@ import { ICON_PX, useIconPx } from './icon-metrics'
  *
  * - `icon` with `indicator` as the row's dot on its corner.
  * - The `icon` slot for an icon drawn otherwise, such as a warning in its place.
- * - A Host's glyph (`hostGlyph`) carries its state's dot itself.
+ * - A device's glyph (`targetGlyph`) carries its state's dot itself.
  *
  * A choice with no icon of its own stays text.
  */

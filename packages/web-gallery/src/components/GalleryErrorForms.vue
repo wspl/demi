@@ -15,11 +15,11 @@ import ProviderLoginDialog, {
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
-import ProjectDialog from '@demicodes/web-ui/hosts/ProjectDialog.vue'
-import type { ProjectHostChoice } from '@demicodes/web-ui/hosts/project'
+import ProjectDialog from '@demicodes/web-ui/targets/ProjectDialog.vue'
+import type { ProjectDeviceChoice } from '@demicodes/web-ui/targets/project'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { createGalleryFileHosts } from '../fixtures/files'
+import { createGalleryFileDevices } from '../fixtures/files'
 import { demoInstallCommands } from '../fixtures/device-installation'
 import { productWould } from '../product-would'
 import GalleryDialogFrame from './GalleryDialogFrame.vue'
@@ -64,9 +64,9 @@ const pairing: PairingPhase = {
 }
 /** Back and Next move the pairing specimen as the product's do; Open puts the failure back. */
 const pairingShown = ref<PairingPhase>(pairing)
-const hosts = createGalleryFileHosts()
+const devices = createGalleryFileDevices()
 /** The failed project form's remembered choice: Device on the laptop the Create was for. */
-const failedProjectHost = ref<ProjectHostChoice>({ kind: 'device', deviceId: 'preview-device' })
+const failedProjectDevice = ref<ProjectDeviceChoice>({ kind: 'device', deviceId: 'preview-device' })
 </script>
 
 <template>
@@ -151,7 +151,7 @@ const failedProjectHost = ref<ProjectHostChoice>({ kind: 'device', deviceId: 'pr
               @close="close"
               @next="pairingShown = { kind: 'code' }"
               @back="pairingShown = { kind: 'setup' }"
-              @submit="(code) => productWould(`Pair the Device with Code ${code}`)"
+              @submit="(code) => productWould(`Pair the device with Code ${code}`)"
             />
           </GalleryDialogFrame>
         </GallerySpecimen>
@@ -163,10 +163,10 @@ const failedProjectHost = ref<ProjectHostChoice>({ kind: 'device', deviceId: 'pr
               :devices="shownAmong([
                 { id: 'preview-device', name: 'Preview laptop', state: 'online', mark: GALLERY_MARKS.mac },
               ])"
-              :source-for="() => hosts[0]!.source"
-              :last-host="failedProjectHost"
+              :source-for="() => devices[0]!.source"
+              :last-device="failedProjectDevice"
               :message="requestFailure('Could not create the project. The selected device is offline.')"
-              @choose="failedProjectHost = $event"
+              @choose="failedProjectDevice = $event"
               @close="close"
               @create="(draft) => productWould(draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name}` : `Set Up the Project at ${draft.path}`)"
               @connect-device="productWould('Add Device')"

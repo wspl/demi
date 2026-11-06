@@ -30,13 +30,13 @@
 //! is its own, closed with its session; a model switch changes the root's
 //! selection only.
 //!
-//! A node works in a place, a Host and a working directory there:
+//! A node works in a place, a device and a working directory there:
 //!
 //! - The root's is the conversation's, and a move of the conversation moves
 //!   it.
 //! - A child's is its parent's when it is spawned, or the directory `--cwd`
-//!   names on its parent's Host, and changes only by its own `demi agent
-//!   cwd`, on the same Host. A move of the conversation leaves it, so work
+//!   names on its parent's device, and changes only by its own `demi agent
+//!   cwd`, on the same device. A move of the conversation leaves it, so work
 //!   a child started goes on where it started.
 //! - A child's instructions are read from its own directory; its skills are the
 //!   conversation's.
@@ -62,14 +62,14 @@ use demi_agent_store::{
     media::store_result,
 };
 use demi_agent_tools::{
-    CallError, ContextSource, EndOf, Environments, HostResolver, ModelIdentity, NodeContext, OwnPlacement,
+    CallError, ContextSource, EndOf, Environments, DeviceResolver, ModelIdentity, NodeContext, OwnPlacement,
     ShellAccess, ShellEnvironmentFactory, Stopper, StoreNumbers, definitions, end_report,
     fill_output, interrupted_look, progress_report, report_media, runs_together, stored_running_commands,
     system_prompt, whole_status,
 };
 use demi_agent_transcript::IdSource;
-use demi_host_interface::{
-    CapabilityIndex, CommandSet, CommandState, CommandStatus, Ending, FileKind, Host, HostError, Numbers, PageFeed, PageState, PageView, Seen,
+use demi_device_interface::{
+    CapabilityIndex, CommandSet, CommandState, CommandStatus, Ending, FileKind, Device, DeviceError, Numbers, PageFeed, PageState, PageView, Seen,
     ShellEnvironment,
 };
 use demi_provider_common::{ProviderRuntime, RequestLimits, ToolDefinition};
@@ -102,7 +102,7 @@ pub(crate) enum NodeRole {
 
 /// One live node: its role, its session, and its runtime, which holds its
 /// record.
-pub struct Node<H: HostResolver> {
+pub struct Node<H: DeviceResolver> {
     role: NodeRole,
     session: AgentSession,
     runtime: Rc<NodeRuntime<H>>,
@@ -111,7 +111,7 @@ pub struct Node<H: HostResolver> {
     _reply_files: reply_files::Following,
 }
 
-impl<H: HostResolver> Node<H> {
+impl<H: DeviceResolver> Node<H> {
     pub fn id(&self) -> &NodeId {
         &self.runtime.node
     }
@@ -132,14 +132,14 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// Where the conversation works now.
-    pub(crate) async fn conversation_placement(&self) -> Result<Placement, HostError> {
+    pub(crate) async fn conversation_placement(&self) -> Result<Placement, DeviceError> {
         self.runtime.conversation_placement().await
     }
 
-    /// The name of the Host whose device is `device`, as the pages name it;
+    /// The name of the device whose device is `device`, as the pages name it;
     /// none when it is not known.
-    pub(crate) async fn host_name(&self, device: &str) -> Option<String> {
-        self.runtime.hosts.host_name(device).await
+    pub(crate) async fn device_name(&self, device: &str) -> Option<String> {
+        self.runtime.devices.device_name(device).await
     }
 
     /// The node's place while the conversation works at `conversation`: a
@@ -155,35 +155,35 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// The place `dir`, read against the node's working directory while the
-    /// conversation works at `conversation`, names on the node's Host, when
-    /// that is a directory the host access reaches.
+    /// conversation works at `conversation`, names on the node's device, when
+    /// that is a directory the device access reaches.
     ///
     /// Otherwise the error says why it is not.
     pub(crate) async fn existing_directory(&self, dir: &str, conversation: &Placement) -> Result<Placement, String> {
         let base = self.placement_at(conversation);
-        // On the Host of the placement read, not wherever the conversation
+        // On the device of the placement read, not wherever the conversation
         // works by now, which is where the answer says the directory is.
-        let host = self
+        let remote = self
             .runtime
-            .hosts
-            .host(self.runtime.context_in(Some(&base)))
+            .devices
+            .device(self.runtime.context_in(Some(&base)))
             .await
             .map_err(|error| error.to_string())?;
-        let path = host.identity().paths.resolve(&base.directory, dir);
-        match host.fs().stat(&path).await {
+        let path = remote.identity().paths.resolve(&base.directory, dir);
+        match remote.fs().stat(&path).await {
             Ok(stat) if stat.kind == FileKind::Directory => Ok(Placement {
                 device: base.device,
                 directory: path,
             }),
             Ok(_) => Err(format!("{path}: not a directory")),
             Err(error) if error.code() == Some("ENOENT") => {
-                Err(format!("{path}: no such directory on this agent's Host"))
+                Err(format!("{path}: no such directory on this agent's device"))
             }
             Err(error) => Err(format!("{path}: {error}")),
         }
     }
 
-    /// Moves the child to `placement`, a directory on its own Host, from its
+    /// Moves the child to `placement`, a directory on its own device, from its
     /// next `shell` call on: recorded, then the node's.
     pub(crate) async fn set_placement(&self, placement: Placement) -> Result<(), StoreError> {
         self.runtime.store.set_placement(&self.runtime.node, &placement).await?;
@@ -219,7 +219,7 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// Stops a running command through the node's environment for the
-    /// conversation's current Host, as a page's `shell_abort` asks.
+    /// conversation's current device, as a page's `shell_abort` asks.
     pub(crate) async fn shell_abort(&self, command: &CommandId) -> Result<(), CallError> {
         self.runtime.shell_access().abort(command).await
     }
@@ -335,12 +335,12 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// Ends each of the node's commands whose start still waits for its
-    /// Host, as the user's Stop does.
+    /// device, as the user's Stop does.
     pub(crate) async fn stop_waiting(&self) {
         self.runtime.environments.stop_waiting().await;
     }
 
-    /// Ends the node's shells on every Host, their running commands with
+    /// Ends the node's shells on every device, their running commands with
     /// them; a later tool call makes fresh ones.
     pub(crate) async fn end_shells(&self) {
         self.runtime.environments.end_all().await;
@@ -353,7 +353,7 @@ impl<H: HostResolver> Node<H> {
     /// taken up in shells made for it with this node's means and telling the
     /// pages through `feed`. It asks each to stop again and hands the shells
     /// over (`crates/agent-server/src/server/tree/supervisor.rs`). A command
-    /// whose Host cannot be reached now stays recorded running for the next
+    /// whose device cannot be reached now stays recorded running for the next
     /// restore.
     pub(crate) async fn take_up_closed(
         &self,
@@ -381,7 +381,7 @@ impl<H: HostResolver> Node<H> {
         }
         let environments = Environments::default();
         let access = ShellAccess {
-            hosts: runtime.hosts.as_ref(),
+            devices: runtime.devices.as_ref(),
             shells: runtime.shells.as_ref(),
             environments: &environments,
             node: &closed.id,
@@ -398,7 +398,7 @@ impl<H: HostResolver> Node<H> {
         environments.stop_all().await
     }
 
-    /// Asks the node's commands on every Host to stop and hands over its
+    /// Asks the node's commands on every device to stop and hands over its
     /// shells.
     ///
     /// The shells follow the commands until their runners report their ends;
@@ -440,13 +440,13 @@ impl<H: HostResolver> Node<H> {
     ///
     /// What this changed is saved at once.
     pub(crate) async fn continue_from(&self, continuation: Continuation) -> Result<(), StoreError> {
-        // The commands the node left running go on where their Host kept them
+        // The commands the node left running go on where their device kept them
         // (`crates/runner-client/src/device_jobs.rs`). They are taken up
-        // as last recorded, on a Host that admits nothing: no wait for the
+        // as last recorded, on a device that admits nothing: no wait for the
         // device, no wake of its Cloud, and the runner's hello says what
         // became of each.
         //
-        // One whose Host cannot be resolved stays recorded running. The
+        // One whose device cannot be resolved stays recorded running. The
         // failure is logged, and a report or an rpc call of it tries again.
         let _ = self.runtime.take_up(|_| true).await;
         let session = &self.session;
@@ -470,7 +470,7 @@ impl<H: HostResolver> Node<H> {
 /// Takes up each of `running` in `access`'s shells, counting the time each
 /// has run from its start to `now`, in milliseconds since the epoch; answers
 /// why the last one that failed stays recorded running.
-async fn adopt_all<H: HostResolver>(
+async fn adopt_all<H: DeviceResolver>(
     access: ShellAccess<'_, H>,
     running: &[RunningCommand],
     now: i64,
@@ -513,7 +513,7 @@ async fn adopt_all<H: HostResolver>(
 /// What the session calls in its node: the tree's admission, the system
 /// prompt, the preamble, the context sources, the tools, the window its
 /// model is used with, and the hold on its children that an edit needs.
-pub(crate) struct NodeRuntime<H: HostResolver> {
+pub(crate) struct NodeRuntime<H: DeviceResolver> {
     node: NodeId,
     root: NodeId,
     /// The server whose tree the node is in; weak, since the tree holds the
@@ -524,7 +524,7 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     /// The node's record, the one live copy: `demi agent cwd` changes a
     /// child's place in it.
     record: RefCell<NodeRecord>,
-    hosts: Rc<H>,
+    devices: Rc<H>,
     /// The instructions of its system prompt.
     instructions: Instructions,
     /// The product's harness guide.
@@ -540,8 +540,8 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     admission: ActivityGate,
     lifecycle: ActivityGate,
     store: Rc<dyn AgentTreeStore>,
-    shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
-    /// The node's shell environment on each Host its tools used.
+    shells: Rc<dyn ShellEnvironmentFactory<H::Device>>,
+    /// The node's shell environment on each device its tools used.
     environments: Environments,
     /// Where its environments tell the pages of its commands.
     feed: Rc<dyn PageFeed>,
@@ -557,16 +557,16 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
 }
 
 /// The child's placement as its record holds it now.
-impl<H: HostResolver> OwnPlacement for NodeRuntime<H> {
+impl<H: DeviceResolver> OwnPlacement for NodeRuntime<H> {
     fn own_placement(&self) -> Option<Placement> {
         self.record.borrow().placement.clone()
     }
 }
 
 /// What a child's `working_directory` block tells it: its directory, and
-/// `host`, the name of its Host, when that is not the conversation's.
-fn working_directory_text(cwd: &str, host: Option<&str>) -> String {
-    let on = host.map(|host| format!(" on {host}")).unwrap_or_default();
+/// `device`, the name of its device, when that is not the conversation's.
+fn working_directory_text(cwd: &str, device: Option<&str>) -> String {
+    let on = device.map(|device| format!(" on {device}")).unwrap_or_default();
     format!(
         "Your working directory is {cwd}{on}: your shell calls start there, and the relative paths you write are read against it. `demi agent cwd <dir>` changes it."
     )
@@ -575,15 +575,15 @@ fn working_directory_text(cwd: &str, host: Option<&str>) -> String {
 /// The `working_directory` block a child's next request needs, given the
 /// context blocks it receives, `seen`.
 ///
-/// It is one naming `cwd`, the child's directory, and `host`, the name of its
-/// Host when that is not the conversation's, unless the newest it receives
+/// It is one naming `cwd`, the child's directory, and `device`, the name of its
+/// device when that is not the conversation's, unless the newest it receives
 /// says so already. A child has one before its first request, after each
-/// change, after each move of the conversation that changes whether its Host
+/// change, after each move of the conversation that changes whether its device
 /// is the conversation's, and after each compaction; the root, whose place
 /// the execution context names, none.
-fn working_directory(cwd: Option<String>, host: Option<&str>, seen: &[SeenContext<'_>]) -> Option<NewContext> {
+fn working_directory(cwd: Option<String>, device: Option<&str>, seen: &[SeenContext<'_>]) -> Option<NewContext> {
     let cwd = cwd?;
-    let text = working_directory_text(&cwd, host);
+    let text = working_directory_text(&cwd, device);
     let newest = seen
         .iter()
         .rev()
@@ -597,10 +597,10 @@ fn working_directory(cwd: Option<String>, host: Option<&str>, seen: &[SeenContex
     })
 }
 
-impl<H: HostResolver> NodeRuntime<H> {
+impl<H: DeviceResolver> NodeRuntime<H> {
     /// Where the conversation works now, read through its resolver.
-    async fn conversation_placement(&self) -> Result<Placement, HostError> {
-        self.hosts.placement(self.context_in(None)).await
+    async fn conversation_placement(&self) -> Result<Placement, DeviceError> {
+        self.devices.placement(self.context_in(None)).await
     }
 
     /// The node's place while the conversation works at `conversation`.
@@ -626,10 +626,10 @@ impl<H: HostResolver> NodeRuntime<H> {
         }
     }
 
-    /// The name of a child's Host when it is not the conversation's; none
-    /// for the root, for a child on the conversation's Host, and, with the
+    /// The name of a child's device when it is not the conversation's; none
+    /// for the root, for a child on the conversation's device, and, with the
     /// failure logged, when where the conversation works cannot be read.
-    async fn host_elsewhere(&self) -> Option<String> {
+    async fn device_elsewhere(&self) -> Option<String> {
         let placement = self.record.borrow().placement.clone()?;
         let device = placement.device?;
         let now = self.conversation_placement().await;
@@ -649,7 +649,7 @@ impl<H: HostResolver> NodeRuntime<H> {
         if now.device.as_deref() == Some(device.as_str()) {
             return None;
         }
-        Some(self.hosts.host_name(&device).await.unwrap_or(device))
+        Some(self.devices.device_name(&device).await.unwrap_or(device))
     }
 
     /// Takes up the commands the node ran that the conversation records
@@ -657,7 +657,7 @@ impl<H: HostResolver> NodeRuntime<H> {
     /// (`crates/runner-client/src/device_jobs.rs`).
     ///
     /// Answers whether `which` picked one, or why one stays recorded running
-    /// without being taken up, as when its Host cannot be reached now; the next
+    /// without being taken up, as when its device cannot be reached now; the next
     /// restore tries again.
     async fn take_up(&self, which: impl Fn(&RunningCommand) -> bool) -> Result<bool, String> {
         let running = self.store.running_commands(&self.node).await.map_err(|error| {
@@ -694,7 +694,7 @@ impl<H: HostResolver> NodeRuntime<H> {
     /// What the `shell` tool reaches the node's shells through.
     fn shell_access(&self) -> ShellAccess<'_, H> {
         ShellAccess {
-            hosts: &self.hosts,
+            devices: &self.devices,
             shells: self.shells.as_ref(),
             environments: &self.environments,
             node: &self.node,
@@ -787,7 +787,7 @@ impl<H: HostResolver> NodeRuntime<H> {
     }
 }
 
-impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
+impl<H: DeviceResolver> SessionRuntime for NodeRuntime<H> {
     fn enter_action(&self) -> LocalBoxFuture<'_, GateLease> {
         Box::pin(self.admission.enter(Purpose::Demand))
     }
@@ -873,7 +873,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     /// Asks every source at once, each with its own blocks, and takes their
     /// answers in the sources' order.
     ///
-    /// A source that reads a Host does not make the others wait. A source that
+    /// A source that reads a device does not make the others wait. A source that
     /// fails adds nothing: it is asked again before the next request.
     fn context<'a>(
         &'a self,
@@ -882,7 +882,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     ) -> LocalBoxFuture<'a, Vec<NewContext>> {
         Box::pin(async move {
             let placement = self.record.borrow().placement.clone();
-            let host = self.host_elsewhere().await;
+            let device = self.device_elsewhere().await;
             let node = self.context_in(placement.as_ref());
             let asked = self.context.iter().map(|source| async move {
                 let name = source.name();
@@ -914,7 +914,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                     ),
                 }
             }
-            news.extend(working_directory(placement.map(|placement| placement.directory), host.as_deref(), seen));
+            news.extend(working_directory(placement.map(|placement| placement.directory), device.as_deref(), seen));
             news
         })
     }
@@ -1013,7 +1013,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
 
     fn command_ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, ()> {
         Box::pin(async move {
-            // A command its Host cannot be reached for now has not ended:
+            // A command its device cannot be reached for now has not ended:
             // it reports nothing until the node takes it up.
             if self.environments.owning(command).is_none()
                 && self.take_up(|running| running.command == *command).await.is_err()
@@ -1072,13 +1072,13 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             if let Some(environment) = self.environments.owning(command)
                 && environment.ended(command).now_or_never().is_none()
             {
-                // A command whose Host's connection is away reports nothing
+                // A command whose device's connection is away reports nothing
                 // until it is back: the silence is the connection's
                 // (`crates/agent-session/src/reports.rs`). So does one whose
-                // start waits for its Host, which never ran
-                // (`crates/backend-host-access/src/access.rs`).
+                // start waits for its device, which never ran
+                // (`crates/backend-device-access/src/access.rs`).
                 if environment.unreachable(command).is_some() {
-                    dropped("silence", "host_away");
+                    dropped("silence", "device_away");
                     return None;
                 }
                 let view = environment
@@ -1157,7 +1157,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         }
     }
 
-    /// Lets go of the node's shells on every Host; their running commands
+    /// Lets go of the node's shells on every device; their running commands
     /// run on.
     fn dispose(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(self.environments.dispose())
@@ -1244,7 +1244,7 @@ pub(crate) struct Instructions {
 }
 
 /// What makes a node itself, and what it is built with.
-pub(crate) struct NodeSpec<H: HostResolver> {
+pub(crate) struct NodeSpec<H: DeviceResolver> {
     pub(crate) origin: Origin,
     pub(crate) role: NodeRole,
     pub(crate) root: NodeId,
@@ -1253,7 +1253,7 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     /// A runtime that serves the origin's model selection's provider entry.
     pub(crate) runtime: Box<dyn ProviderRuntime>,
     pub(crate) providers: Rc<dyn ProviderResolver>,
-    pub(crate) hosts: Rc<H>,
+    pub(crate) devices: Rc<H>,
     pub(crate) instructions: Instructions,
     /// The product's harness guide, which every node carries.
     pub(crate) guide: Rc<str>,
@@ -1266,7 +1266,7 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     /// `inherited` with the node's `demi agent` group grafted.
     pub(crate) commands: Rc<CommandSet>,
     pub(crate) store: Rc<dyn AgentTreeStore>,
-    pub(crate) shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
+    pub(crate) shells: Rc<dyn ShellEnvironmentFactory<H::Device>>,
     /// Where the node's environments tell the pages of its commands: the
     /// node's feed of its tree.
     pub(crate) feed: Rc<dyn PageFeed>,
@@ -1283,7 +1283,7 @@ pub(crate) struct NodeSpec<H: HostResolver> {
 
 /// A node, and what it has yet to run: what its restore handed back, or a new
 /// node's first message.
-pub(crate) struct Assembled<H: HostResolver> {
+pub(crate) struct Assembled<H: DeviceResolver> {
     pub(crate) node: Node<H>,
     pub(crate) continuation: Option<Continuation>,
 }
@@ -1303,7 +1303,7 @@ pub(crate) enum AssembleError {
 /// When assembly fails, the provider runtime it was given served no run, and
 /// dropping it releases what it holds, the provider contract's fallback for a
 /// runtime that is not closed.
-pub(crate) async fn assemble<H: HostResolver>(
+pub(crate) async fn assemble<H: DeviceResolver>(
     spec: NodeSpec<H>,
 ) -> Result<Assembled<H>, AssembleError> {
     let NodeSpec {
@@ -1313,7 +1313,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         server,
         runtime,
         providers,
-        hosts,
+        devices,
         instructions,
         guide,
         preamble,
@@ -1339,7 +1339,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         server,
         providers,
         record: RefCell::new(record.clone()),
-        hosts,
+        devices,
         instructions,
         guide,
         index,

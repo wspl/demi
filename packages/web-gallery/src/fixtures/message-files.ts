@@ -4,11 +4,11 @@ import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import { baseName } from '@demicodes/utils'
 import { readCommitHash } from '@demicodes/web-ui/files/history'
 import { productWould } from '../product-would'
-import { GALLERY_HOST, galleryAttachment } from './attachments'
+import { GALLERY_DEVICE, galleryAttachment } from './attachments'
 import { LINKED_COMMIT, sharedHistory } from './history'
 import { galleryReplyBlock } from './widgets'
 
-/** Whether `path` is a file of the memory tree `root`, as a Host's stat says. */
+/** Whether `path` is a file of the memory tree `root`, as a device's stat says. */
 function isFile(root: MemoryDirectory, path: string): boolean {
   let node: MemoryDirectory['children'][string] | undefined = root
   for (const part of path.split('/').filter(Boolean)) {
@@ -19,7 +19,7 @@ function isFile(root: MemoryDirectory, path: string): boolean {
 
 /**
  * Which file a card of an attachment opens in place of its copy, as the
- * product answers: the one it was uploaded from while the gallery's Host is
+ * product answers: the one it was uploaded from while the gallery's device is
  * online, as `online` says, and the project has the file.
  */
 export function galleryAttachmentOrigin(
@@ -27,7 +27,7 @@ export function galleryAttachmentOrigin(
   online: () => boolean,
 ): NonNullable<ConversationFiles['attachmentOrigin']> {
   return async (_id, { source: origin }) =>
-    origin && origin.host === GALLERY_HOST && online() && isFile(source.root, origin.path) ? origin.path : null
+    origin && origin.device === GALLERY_DEVICE && online() && isFile(source.root, origin.path) ? origin.path : null
 }
 
 /**
@@ -40,7 +40,7 @@ export function galleryAttachmentOrigin(
  *   `openCommit`.
  * - A conversation a link names says the product would open it, in a new tab
  *   for a click with a modifier or the middle button.
- * - The Host's answer about a reply's inline code paths is the gallery's: the
+ * - The Device's answer about a reply's inline code paths is the gallery's: the
  *   files of its demo project, answered at once.
  * - A file link's Show in Files goes to `showInFiles`, which outside a panel
  *   says what the product would do.
@@ -72,7 +72,7 @@ export function galleryConversationFiles(
     openAttachment,
     home: source.home,
     contents: source.contents,
-    device: GALLERY_HOST,
+    device: GALLERY_DEVICE,
     attachment: galleryAttachment,
     replyBlock: galleryReplyBlock,
     open,

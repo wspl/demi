@@ -37,15 +37,15 @@ pub const VERSION: u64 = 1;
 /// The targets a published release carries.
 ///
 /// A published version supplies the same operations on all of them, so a job
-/// can pick its Host without meeting a platform-specific gap. Completeness is a
+/// can pick its device without meeting a platform-specific gap. Completeness is a
 /// rule of the published release, not of a descriptor or the object store:
 ///
 /// - Packaging writes all six unless told otherwise, and the release workflow
 ///   publishes only that.
-/// - A developer's release carries just the targets of the Hosts in use, and
+/// - A developer's release carries just the targets of the devices in use, and
 ///   the backend serves any nonempty set the same way.
 ///
-/// A Host whose target a release lacks fails the command with a catalog
+/// A device whose target a release lacks fails the command with a catalog
 /// mismatch and cannot install its runner from that release. Nothing falls back
 /// to another target.
 pub const TARGETS: &[&str] = &[

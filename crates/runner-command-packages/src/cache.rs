@@ -11,7 +11,7 @@
 //! Beside each entry a record names its line and version. A line is the package
 //! and the name, the versions of one thing. The records let the cache answer
 //! which artifacts of a line it has, and remove a line's older ones once a
-//! newer one is installed, except those a running resident holds. A Host
+//! newer one is installed, except those a running resident holds. A device
 //! therefore keeps one Claude Code CLI, one Chrome and one executable of each
 //! package, however often each is updated, beside what still runs.
 //!
@@ -42,7 +42,7 @@
 //! - A copy that does not match is logged and passed over. The backend locates
 //!   every artifact it grants, so a damaged image costs a download, not a
 //!   command.
-//! - The runner does not ask what kind of Host it runs on. A directory that
+//! - The runner does not ask what kind of device it runs on. A directory that
 //!   does not exist (every paired device) is silently no copy.
 //!
 //! # Location and sharing
@@ -74,7 +74,7 @@ use demi_shared_artifacts::{
 };
 use serde::{Deserialize, Serialize};
 use demi_runner_process::backend::Backend;
-use demi_runner_protocol::wire::{HostArtifact, HostDownload};
+use demi_runner_protocol::wire::{DeviceArtifact, DeviceDownload};
 use tokio::io::AsyncWrite;
 use futures_util::FutureExt;
 use futures_util::future::{BoxFuture, Shared, WeakShared};
@@ -192,7 +192,7 @@ impl Drop for Joined<'_> {
 
 pub struct ArtifactCache {
     root: PathBuf,
-    /// Where the Host's image preinstalls command artifacts, each in a
+    /// Where the device's image preinstalls command artifacts, each in a
     /// directory named by its SHA-256. Nothing is there on a paired device.
     image: Option<PathBuf>,
     checked: Mutex<Checked>,
@@ -204,7 +204,7 @@ pub struct ArtifactCache {
     /// The installs in progress, by digest, which concurrent callers share.
     installs: Mutex<HashMap<String, InFlight>>,
     /// What the cache holds, which the connection reports to the backend.
-    contents: watch::Sender<Vec<HostArtifact>>,
+    contents: watch::Sender<Vec<DeviceArtifact>>,
     /// The digests put here ahead of an update ([`Self::prefetch`]), which
     /// no install of the release running now removes. The runner of their
     /// release starts with none, and its installs remove the older.
@@ -221,7 +221,7 @@ pub struct ArtifactCache {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Downloading {
     pub sha256: String,
-    pub download: HostDownload,
+    pub download: DeviceDownload,
 }
 
 /// How often a download's progress is published at most: four times a
@@ -244,7 +244,7 @@ impl<'a> Shown<'a> {
     ) -> Self {
         let shown = Downloading {
             sha256: artifact.sha256.clone(),
-            download: HostDownload {
+            download: DeviceDownload {
                 package: line.package.clone(),
                 name: line.name.clone(),
                 version: version.to_owned(),
@@ -400,7 +400,7 @@ impl ArtifactCache {
 
     /// What the cache holds now, and each later list: every artifact it
     /// recorded, by package, line and version.
-    pub fn contents(&self) -> watch::Receiver<Vec<HostArtifact>> {
+    pub fn contents(&self) -> watch::Receiver<Vec<DeviceArtifact>> {
         self.contents.subscribe()
     }
 
@@ -521,9 +521,9 @@ impl ArtifactCache {
                 return;
             }
         };
-        let mut contents: Vec<HostArtifact> = records
+        let mut contents: Vec<DeviceArtifact> = records
             .into_iter()
-            .map(|(_, record)| HostArtifact {
+            .map(|(_, record)| DeviceArtifact {
                 package: record.package,
                 name: record.name,
                 version: record.version,
@@ -910,7 +910,7 @@ impl ArtifactCache {
     ///
     /// The process checks each copy once, the first time it needs it. One that
     /// matched is used unread from then on, and one that did not is written to
-    /// the Host log and passed over. A check that was cancelled or ran out of
+    /// the device log and passed over. A check that was cancelled or ran out of
     /// open files decides nothing.
     async fn preinstalled(
         &self,

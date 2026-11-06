@@ -23,14 +23,14 @@ use demi_provider_registry::registry::RegistryError;
 use demi_backend_providers::vault::accounts::AccountRefusal;
 use demi_backend_providers::vault::logins::LoginRefusal;
 use demi_backend_runners::files::{TextError, TextRefusal};
-use demi_host_interface::HostError;
+use demi_device_interface::DeviceError;
 use demi_shared_types::ReadAt;
 
-use demi_backend_host_access::access::{HostAccessError, host_error_code};
-use demi_backend_host_access::stream::StreamError;
+use demi_backend_device_access::access::{DeviceAccessError, device_error_code};
+use demi_backend_device_access::stream::StreamError;
 use demi_backend_user_shard::shard::ShardUnavailable;
 
-/// The header that carries the Host's number a read answer was read at.
+/// The header that carries the device's number a read answer was read at.
 pub(crate) const READ_AT: HeaderName = HeaderName::from_static("x-demi-read-at");
 
 /// `<epoch>.<number>`, as [`READ_AT`] carries it; none for an epoch a
@@ -60,7 +60,7 @@ pub(crate) struct ApiError {
     /// The ETag of the file a refused read is an answer of, such as one
     /// that is binary.
     etag: Option<String>,
-    /// The Host's number before the read the failure answers, which the
+    /// The device's number before the read the failure answers, which the
     /// answer carries as `X-Demi-Read-At`.
     read_at: Option<ReadAt>,
 }
@@ -69,7 +69,7 @@ impl ApiError {
     /// The backend's own answer, which carries its `{ code, message }` and the
     /// request's ID.
     ///
-    /// It is never 502 or 504, even for a vendor or a Host that failed or did not
+    /// It is never 502 or 504, even for a vendor or a device that failed or did not
     /// answer in time. A CDN in front of the backend, such as Cloudflare
     /// (`crates/backend/src/config/mod.rs`), replaces those answers with a page of
     /// its own, and the web app reads a 502, 503 or 504 without the backend's body
@@ -98,7 +98,7 @@ impl ApiError {
         self
     }
 
-    /// The error as the answer of a read the Host took at `read_at`.
+    /// The error as the answer of a read the device took at `read_at`.
     pub(crate) fn with_read_at(mut self, read_at: ReadAt) -> Self {
         self.read_at = Some(read_at);
         self
@@ -243,9 +243,9 @@ impl ApiError {
         )
     }
 
-    /// A Host's failure of a file operation (`host_error_code`).
-    pub(crate) fn host_operation(error: HostError) -> Self {
-        let (code, status) = host_error_code(&error);
+    /// A device's failure of a file operation (`device_error_code`).
+    pub(crate) fn device_operation(error: DeviceError) -> Self {
+        let (code, status) = device_error_code(&error);
         let answered = Self::new(status_of(status), code, error.message);
         match error.read_at {
             Some(read_at) => answered.with_read_at(read_at),
@@ -253,10 +253,10 @@ impl ApiError {
         }
     }
 
-    /// A Host's failure of a history read: a commit or a branch the repository
+    /// A device's failure of a history read: a commit or a branch the repository
     /// does not have is 404 `not_found`, and otherwise as a working-tree
     /// operation's.
-    pub(crate) fn history(error: HostError) -> Self {
+    pub(crate) fn history(error: DeviceError) -> Self {
         if error.code() != Some("ENOENT") {
             return Self::working_tree(error);
         }
@@ -267,9 +267,9 @@ impl ApiError {
         }
     }
 
-    /// A Host's failure of a working-tree operation: the runner's git codes,
+    /// A device's failure of a working-tree operation: the runner's git codes,
     /// and otherwise as a file operation's.
-    pub(crate) fn working_tree(error: HostError) -> Self {
+    pub(crate) fn working_tree(error: DeviceError) -> Self {
         let message = error.message.clone();
         let read_at = error.read_at.clone();
         let answered = match error.code() {
@@ -287,7 +287,7 @@ impl ApiError {
                 ErrorCode::FileTooLarge,
                 message,
             ),
-            Some("ENOENT" | "EACCES" | "EPERM") | None => Self::host_operation(error),
+            Some("ENOENT" | "EACCES" | "EPERM") | None => Self::device_operation(error),
             Some(_) => Self::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 ErrorCode::ChangesFailed,
@@ -499,18 +499,18 @@ impl From<CloudError> for ApiError {
     }
 }
 
-impl From<HostAccessError> for ApiError {
-    fn from(error: HostAccessError) -> Self {
+impl From<DeviceAccessError> for ApiError {
+    fn from(error: DeviceAccessError) -> Self {
         Self::from(&error)
     }
 }
 
 /// A refusal kept and answered more than once, as a kept search's.
-impl From<&HostAccessError> for ApiError {
-    fn from(error: &HostAccessError) -> Self {
+impl From<&DeviceAccessError> for ApiError {
+    fn from(error: &DeviceAccessError) -> Self {
         match error {
-            HostAccessError::Host(error) => Self::host_operation(error.clone()),
-            HostAccessError::Cancelled | HostAccessError::Storage(_) => Self::internal(error),
+            DeviceAccessError::Device(error) => Self::device_operation(error.clone()),
+            DeviceAccessError::Cancelled | DeviceAccessError::Storage(_) => Self::internal(error),
             error => {
                 let (code, status) = error.code();
                 Self::new(status_of(status), code, error.to_string())
@@ -539,7 +539,7 @@ pub(crate) fn status_of(status: u16) -> StatusCode {
 impl From<TextError> for ApiError {
     fn from(error: TextError) -> Self {
         match error {
-            TextError::Host(error) => Self::host_operation(error),
+            TextError::Device(error) => Self::device_operation(error),
             TextError::Refused(refusal) => refusal.into(),
         }
     }

@@ -7,7 +7,7 @@
     "search": "Web Search",
     "searchDescription": "The model searches the web with Exa, with your account or key, or within a limit every user shares.",
     "fetch": "Web Fetch",
-    "fetchDescription": "The model reads a page or downloads a file from the conversation’s Host."
+    "fetchDescription": "The model reads a page or downloads a file from the conversation’s device."
   },
   "account": {
     "label": "Exa account",

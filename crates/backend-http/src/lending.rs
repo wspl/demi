@@ -78,8 +78,8 @@ async fn borrowing(
     let Some(TypedHeader(Authorization(bearer))) = bearer else {
         return Err(refused());
     };
-    // The host the borrower gives, as the key's row shows it; a name no
-    // host has is shown as it came, cut to a host's length.
+    // The device the borrower gives, as the key's row shows it; a name no
+    // device has is shown as it came, cut to a device's length.
     let server: String = named(SERVER_HEADER).unwrap_or("").chars().take(253).collect();
     match services.borrowing(bearer.token(), server).await {
         Ok(Some(borrowing)) => Ok(borrowing),

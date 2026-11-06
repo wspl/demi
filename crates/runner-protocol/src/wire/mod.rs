@@ -52,11 +52,11 @@
 //!   dropped as the connection ended is written again.
 //! - What waits while the other end is gone depends on the message. A call's
 //!   messages wait in a backlog for the next connection. A command's output,
-//!   previews, file changes and the Host's log lines are not queued, as the next
-//!   connection reads what it needs from the Host's kept output
+//!   previews, file changes and the device's log lines are not queued, as the next
+//!   connection reads what it needs from the device's kept output
 //!   (`crates/runner/src/connection/kept.rs`); sent again, a message of output
 //!   is harmless, since the backend takes output by its offset.
-//! - A Host request in flight fails as offline when the connection drops, as
+//! - A device request in flight fails as offline when the connection drops, as
 //!   it does without a session.
 //! - A different runner start or backend start begins a new session: what the
 //!   old one kept is dropped, and its calls end with the reason.
@@ -76,7 +76,7 @@
 //!
 //! # A connection's end
 //!
-//! A connection's end ends what it carries but the device's session: a Host
+//! A connection's end ends what it carries but the device's session: a device
 //! request fails as offline, a process ends as lost, and an `rpc` call goes on,
 //! since it belongs to the session. The backend's work for the connection, such
 //! as a conversation's release, gets [`END_GRACE`] to finish and the rest is
@@ -121,12 +121,12 @@ pub use kept::{
 pub use messages::{
     ArtifactOwner, AutostartUnavailable, ChangeKind, Descriptor, DirEntry, DirectoryFile, FileHash, FileRead, FileStat, OpenedFile, file_version, names_version, GitBranches, GitChange, GitChanges,
     GitCommit, GitCommitEntry, GitCommitFile, GitLog, GitLogEntry, GitRepositories, commit_time,
-    HelloErrorCode, HostArtifact, HostDownload, HostIdentity, Inbound, JobArtifactOwner, ProgramsArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget, LinkedWorktree,
+    HelloErrorCode, DeviceArtifact, DeviceDownload, DeviceIdentity, Inbound, JobArtifactOwner, ProgramsArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget, LinkedWorktree,
     LookPath, Looked, SymbolicLink, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef, FileOffer,
     Resume, RunnerInfo, RunnerPlatform, ResidentErrorCode, Signal, SpawnError, SpawnErrorKind,
     StreamArtifactOwner, WriteExists,
 };
-pub use demi_shared_types::{HostLogLine, LogLevel, LogLine, LogOrigin, ReadAt, is_event_name};
+pub use demi_shared_types::{DeviceLogLine, LogLevel, LogLine, LogOrigin, ReadAt, is_event_name};
 pub use pipe_connection::{PIPE_CONNECTION_ROUTE, PIPE_LANE_CREDIT, PipeLaneRefusal, PipeLaneTarget};
 pub use pipe_frames::{
     CALL_OUTPUT_ROUTE, PIPE_DATA_BYTES, PIPE_IDLE, PIPE_SESSION_MESSAGE_BYTES, UPLOAD_CHUNK_BYTES, UPLOAD_COMPLETE,
@@ -146,7 +146,7 @@ use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names. A hello of another
 /// version is refused, whatever release headers the socket opened with.
-pub const VERSION: u32 = 69;
+pub const VERSION: u32 = 70;
 /// How long a stopped job has after `TERM` before a stop sends `KILL`, the
 /// backend's stop and the runner's own alike (`crates/runner-shell/src/job.rs`).
 pub const STOP_GRACE: Duration = Duration::from_secs(5);
@@ -190,7 +190,7 @@ pub const JOB_LIVE_INTERVAL: Duration = Duration::from_millis(250);
 /// the same reason as [`JOB_LIVE_INTERVAL`].
 pub const JOB_GROWTH_INTERVAL: Duration = Duration::from_secs(2);
 /// The most bytes of one binary message of a stream pipe's lane
-/// (`crates/runner-host/src/lib.rs`): the runner splits larger writes, so a
+/// (`crates/runner-device/src/lib.rs`): the runner splits larger writes, so a
 /// reader holds one message at a time and a ping is not stuck behind a large
 /// one.
 pub const STREAM_PIPE_MESSAGE_BYTES: usize = 64 * 1024;
@@ -201,10 +201,10 @@ const CLOSE_REASON_BYTES: usize = 123;
 /// the frame being written, so this bounds how long input can delay it.
 pub const STDIN_CHUNK_BYTES: usize = 64 * 1024;
 /// How long the runner gathers the subscriptions that changed before it
-/// reports them, each once (`crates/runner-host/src/subscriptions.rs`).
+/// reports them, each once (`crates/runner-device/src/subscriptions.rs`).
 pub const WATCH_GATHER: Duration = Duration::from_millis(100);
 /// How long a subscription's lease runs from the `fs_subscribe` or the
-/// `fs_renew` that started it, as each end counts it (`crates/runner-host/src/subscriptions.rs`).
+/// `fs_renew` that started it, as each end counts it (`crates/runner-device/src/subscriptions.rs`).
 pub const SUBSCRIPTION_LEASE: Duration = Duration::from_secs(10 * 60);
 /// The most subscriptions one `fs_changed` names; more changed at once go
 /// in as many messages as they take, which keeps each within
@@ -212,8 +212,8 @@ pub const SUBSCRIPTION_LEASE: Duration = Duration::from_secs(10 * 60);
 pub const CHANGES_PER_MESSAGE: usize = 16 * 1024;
 /// The most bytes of the lines one `log_lines` carries, a line over it being
 /// alone in its frame. A frame that is being written cannot be interrupted, and
-/// the messages behind it wait for it, so a frame of the Host's log is small
-/// (`crates/runner/src/host_log.rs`).
+/// the messages behind it wait for it, so a frame of the device's log is small
+/// (`crates/runner/src/device_log.rs`).
 pub const LOG_FRAME_BYTES: usize = 32 * 1024;
 /// The most of an invocation's standard error a `resident_done` carries, in
 /// Unicode scalar values (`crates/shared-types/src/lib.rs`). The runner keeps the

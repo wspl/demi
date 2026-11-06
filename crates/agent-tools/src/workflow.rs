@@ -23,7 +23,7 @@ pub const WORKFLOWS_DIRECTORY: [&str; 2] = [".demi", "workflows"];
 pub const WORKFLOW_EXTENSION: &str = ".yaml";
 
 /// The longest workflow file read, in bytes: a file is read whole into memory
-/// from a Host, whose files have no bound of their own.
+/// from a device, whose files have no bound of their own.
 pub const WORKFLOW_FILE_MAX_BYTES: u64 = 1024 * 1024;
 
 /// What a menu item's name does not hold: colons, plus signs and brackets,

@@ -59,7 +59,7 @@ pub const CONSOLE_BYTES: usize = 1024 * 1024;
 pub const CDP_EVENTS: usize = 10000;
 pub const CDP_BYTES: usize = 8 * 1024 * 1024;
 /// The longest output path an input carries, in Unicode scalar values: the
-/// longest path the systems the Host runs on take.
+/// longest path the systems the device runs on take.
 pub const PATH_LENGTH: usize = 4096;
 /// The most characters of a tab's icon as a `data:` URL: a 32-pixel PNG
 /// takes a few thousand, and the icon travels in every listing of the tabs.
@@ -746,7 +746,7 @@ pub struct BrowserMessage {
     pub tabs: TabsChange,
 }
 
-/// The conversation's tabs on the Host.
+/// The conversation's tabs on the device.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TabsChange {

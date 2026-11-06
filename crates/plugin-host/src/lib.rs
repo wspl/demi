@@ -12,7 +12,7 @@
 //! or off while it runs. What the host keeps, and the changes it tells the
 //! user's pages of, go through the traits of `store` ([`store::PluginStore`],
 //! [`store::PluginChanges`]), which the program implements; the rest of what
-//! a plugin's port asks, such as a Host's files or a generated image, through
+//! a plugin's port asks, such as a device's files or a generated image, through
 //! [`ProductPort`].
 //!
 //! A plugin lives while the user has it on:
@@ -22,7 +22,7 @@
 //! instance     made at its first request   dropped with its tasks
 //! commands     in every open tree          gone: a call fails as any
 //!                                          unknown command does
-//! Hosts        opened again on demand      its packages' residents stop
+//! devices        opened again on demand      its packages' residents stop
 //! panel tabs   opened again on demand      closed
 //! data         kept either way
 //! ```
@@ -36,7 +36,7 @@
 //! when it is built. The host must not:
 //!
 //! - See the program's state but through its store and its `ProductPort`.
-//! - Reach a Host.
+//! - Reach a device.
 //! - Know an agent's session.
 //! - Hold the logic of one plugin.
 

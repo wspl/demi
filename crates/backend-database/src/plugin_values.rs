@@ -7,14 +7,14 @@
 //!   each of its features, one with no row taking its default;
 //! - each plugin's JSON documents for a user, by key, each with the revision a
 //!   conditional write names and the blobs it names;
-//! - each plugin's Host directories for a user.
+//! - each plugin's device directories for a user.
 //!
 //! The control database decodes a document only as JSON; its plugin decodes it
 //! into its own type.
 
 use std::collections::BTreeMap;
 
-use demi_plugin_interface::{DirectoryFile, HostDirectory};
+use demi_plugin_interface::{DirectoryFile, DeviceDirectory};
 use demi_plugin_host::store::{PluginValue, ValueWrite, Written};
 use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::{UserId, WorkspaceId};
@@ -229,23 +229,23 @@ impl ControlService {
         .await
     }
 
-    /// Every Host directory of each of `user`'s plugins, by plugin id, each
+    /// Every device directory of each of `user`'s plugins, by plugin id, each
     /// set in name order.
     pub async fn plugin_directories(
         &self,
         user: UserId,
-    ) -> Result<BTreeMap<String, Vec<HostDirectory>>, StorageError> {
+    ) -> Result<BTreeMap<String, Vec<DeviceDirectory>>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(
                 "SELECT plugin, name, files, workspace_id FROM plugin_directories
                  WHERE user_id = ?1 ORDER BY plugin, name",
             )?;
             let mut rows = statement.query([user.as_str()])?;
-            let mut sets: BTreeMap<String, Vec<HostDirectory>> = BTreeMap::new();
+            let mut sets: BTreeMap<String, Vec<DeviceDirectory>> = BTreeMap::new();
             while let Some(row) = rows.next()? {
                 let files: String = row.get(2)?;
                 let workspace: Option<String> = row.get(3)?;
-                let directory = HostDirectory {
+                let directory = DeviceDirectory {
                     name: row.get(1)?,
                     files: decode(DIRECTORIES, "files", serde_json::from_str(&files))?,
                     workspace: workspace
@@ -259,14 +259,14 @@ impl ControlService {
         .await
     }
 
-    /// Replaces `plugin`'s Host directories for `user` whole, in one
+    /// Replaces `plugin`'s device directories for `user` whole, in one
     /// transaction. A directory of a workspace that no longer exists is
     /// dropped, as the workspace's deletion drops those it had.
     pub async fn set_plugin_directories(
         &self,
         user: UserId,
         plugin: String,
-        directories: Vec<HostDirectory>,
+        directories: Vec<DeviceDirectory>,
     ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
@@ -299,7 +299,7 @@ impl ControlService {
 }
 
 /// The blobs `user`'s plugins name: each value's list, and the files of each
-/// Host directory.
+/// device directory.
 pub(crate) fn plugin_blobs(
     connection: &Connection,
     user: &UserId,

@@ -22,7 +22,7 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { Raw } from 'vue'
 import type { Slot } from '@demicodes/web-ui/infra/slot'
-import type { AttachedHost, ConversationMetadata, ConversationTarget, CostWindow, DeviceKind, ConversationWorkflowList, RecentCost, SuggestedReplies } from '../api/generated/web-api'
+import type { AttachedDevice, ConversationMetadata, ConversationTarget, CostWindow, DeviceKind, ConversationWorkflowList, RecentCost, SuggestedReplies } from '../api/generated/web-api'
 import type { WorkflowChoice } from '@demicodes/protocol'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import type { RecordSlot } from '../conversation/record'
@@ -170,8 +170,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   removing: string[]
   messageEdit: MessageEditState | null
   scroll: PersistedScrollState | null
-  /** The devices the conversation's agents attached, as a slot under the revision the metadata's hosts carry. */
-  attachedHosts: Raw<Slot<AttachedHost[]>>
+  /** The devices the conversation's agents attached, as a slot under the revision the metadata's devices carry. */
+  attachedDevices: Raw<Slot<AttachedDevice[]>>
   /**
    * The descriptions of the attachments its replies name, by their ids, such
    * as `a3`, whichever agent uploaded them: what the transcript's frames and

@@ -3,7 +3,7 @@
     "turnStopped": "轮次因错误而停止。",
     "saveCredential": "保存凭据“{name}”？"
   },
-  "hosts": {
+  "devices": {
     "unavailableDevice": "不可用的设备"
   },
   "failures": {

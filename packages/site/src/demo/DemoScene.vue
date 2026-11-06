@@ -9,11 +9,11 @@ import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import SelectionFieldHost from '@demicodes/web-ui/agent/comments/SelectionFieldHost.vue'
-import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
-import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
-import ProjectDirectoryMenu from '@demicodes/web-ui/hosts/ProjectDirectoryMenu.vue'
-import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
-import type { HostChoice } from '@demicodes/web-ui/hosts/types'
+import DeviceMenu from '@demicodes/web-ui/targets/DeviceMenu.vue'
+import MoveConversationDialog from '@demicodes/web-ui/targets/MoveConversationDialog.vue'
+import ProjectDirectoryMenu from '@demicodes/web-ui/targets/ProjectDirectoryMenu.vue'
+import { useMoveQuestion } from '@demicodes/web-ui/targets/move-question'
+import type { DeviceChoice } from '@demicodes/web-ui/targets/types'
 import { homePath } from '@demicodes/web-ui/files/paths'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import type { ReplyCommenting, WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
@@ -25,7 +25,7 @@ import { createChangeSetOf, createGalleryProject } from '@demicodes/web-gallery/
 import type { DemoId } from '@/features'
 import { Conversation, MODEL_SETTINGS, MODELS, PROVIDERS, Stopped } from './conversation'
 import type { ConversationSchedule } from '@demicodes/web-ui/schedules/types'
-import { CLOUD, PROJECTS, SCENES, sidebarRows, type DemoHosts, type Form } from './scenes'
+import { CLOUD, PROJECTS, SCENES, sidebarRows, type DemoDevices, type Form } from './scenes'
 import { CAMERA_MS, tellCamera, tellCard, tellShot, type CameraRect, type DeviceShot, type StageCard } from './message'
 import { animateEntrances } from './entrances'
 import { README_SCENES, readmeExtras, readmeSubagents } from './readme'
@@ -63,9 +63,9 @@ function readmeFiles(files: ReturnType<typeof galleryFiles>): ReturnType<typeof 
   return { ...files, tree: { ...tree, source: { ...tree.source, contents: { ...contents, url } } } } as typeof files
 }
 work.open.value = false
-const hosts = reactive<DemoHosts>({ primary: scene.primary ?? CLOUD, attached: [] })
+const running = reactive<DemoDevices>({ primary: scene.primary ?? CLOUD, attached: [] })
 const devices = scene.devices ?? []
-/** Where the conversation's work starts on the Host it runs on, which the header's directory names. */
+/** Where the conversation's work starts on the device it runs on, which the header's directory names. */
 const projectName = () => conversation.state.cwd.split('/').filter(Boolean).at(-1) ?? null
 const moveQuestion = useMoveQuestion()
 /** The schedules that wake the conversation, which the agent may add to. */
@@ -75,20 +75,20 @@ const schedules = ref<readonly ConversationSchedule[]>(scene.schedules ?? [])
 const HOME = '/Users/alex'
 
 /**
- * The user chose a Host in the header's menu: once they confirm, the
+ * The user chose a device in the header's menu: once they confirm, the
  * conversation runs there, in the project of the same name, and the agent
  * hears of the move.
  */
-function choose(choice: HostChoice): void {
+function choose(choice: DeviceChoice): void {
   const device = choice.kind === 'device' ? devices.find((each) => each.id === choice.id) : undefined
   if (!device)
     return
   const home = HOME
   const path = `${home}/Projects/${projectName() ?? ''}`
   void moveQuestion.ask(
-    { host: device.name, directory: homePath(path, home), from: hosts.primary.name, fromCloud: hosts.primary.kind === 'cloud' },
+    { device: device.name, directory: homePath(path, home), from: running.primary.name, fromCloud: running.primary.kind === 'cloud' },
     async () => {
-      hosts.primary = { id: device.id, name: device.name, kind: 'device', state: device.state, mark: device.mark }
+      running.primary = { id: device.id, name: device.name, kind: 'device', state: device.state, mark: device.mark }
       conversation.moved(device.name, path, home)
       return true
     },
@@ -178,7 +178,7 @@ async function compose(text: string, ms: number, on?: Form): Promise<void> {
 }
 
 // The scene starts before the first render, so the conversation never shows empty.
-scene.play({ conversation, work, form: props.form, hosts, schedules, open, look, shoot, card, compose, commenting }).catch((error: unknown) => {
+scene.play({ conversation, work, form: props.form, devices: running, schedules, open, look, shoot, card, compose, commenting }).catch((error: unknown) => {
   if (!(error instanceof Stopped))
     throw error
 })
@@ -228,17 +228,17 @@ onBeforeUnmount(() => {
             :overlay-store="appOverlayStore"
             :path="conversation.state.cwd"
             :project-name="projectName()"
-            :device-id="hosts.primary.kind === 'device' ? hosts.primary.id : null"
+            :device-id="running.primary.kind === 'device' ? running.primary.id : null"
             :locked="false"
             :browse-enabled="false"
             :projects="[]"
-            :hosts="[]"
+            :devices="[]"
             :select-folder="async () => false"
           >
-            <HostMenu
-              :primary-host="hosts.primary"
+            <DeviceMenu
+              :primary-device="running.primary"
               :conversation-id="conversation.state.id"
-              :attached-hosts="hosts.attached"
+              :attached-devices="running.attached"
               :devices="[...devices]"
               @choose="choose"
             />

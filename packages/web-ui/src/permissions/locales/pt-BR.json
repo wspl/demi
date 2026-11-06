@@ -22,9 +22,7 @@
   "device": {
     "title": "Permitir que esta conversa use “{name}”?",
     "description": "Os agentes dela podem executar comandos em seu nome em “{name}” até você desconectá-lo.",
-    "use": "usar “{name}”"
-  },
-  "host": {
+    "use": "usar “{name}”",
     "pair": "parear um computador e acessá-lo"
   },
   "categories": {
@@ -32,7 +30,7 @@
       "action": "usar suas credenciais",
       "description": "Permite que os agentes desta conversa listem, leiam, salvem, substituam e removam suas credenciais salvas, e peçam novas a você."
     },
-    "host_use": {
+    "device_use": {
       "action": "usar seus dispositivos",
       "description": "Permite que os agentes desta conversa executem comandos em seu nome em qualquer um dos seus dispositivos e na nuvem, movam esta conversa para um deles, pareiem um computador com sua conta e adicionem ou removam encaminhamentos de porta, que continuam depois desta conversa."
     },

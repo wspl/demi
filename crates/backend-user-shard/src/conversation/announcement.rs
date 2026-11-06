@@ -1,16 +1,16 @@
 //! The context block a node reads before its first request, and before its next
 //! one once the conversation's execution context changed
-//! (`crates/backend-host-access/src/transition.rs`).
+//! (`crates/backend-device-access/src/transition.rs`).
 //!
 //! A block holds, in order:
 //!
-//! 1. The primary Host with its system and the directory its shells start in.
+//! 1. The primary device with its system and the directory its shells start in.
 //! 2. For a block after a reset of the user's Cloud, a line that says so, before
 //!    what changed.
 //! 3. After a switch, the departed and current targets, that no files moved, and
 //!    the departed device under the name it stays attached as.
-//! 4. After a change of the attached hosts, that change.
-//! 5. The attached hosts as they now stand.
+//! 4. After a change of the attached devices, that change.
+//! 5. The attached devices as they now stand.
 //!
 //! What a node saw is the context blocks of its own transcript: each block names
 //! the revision it describes, and a switch and a reset are each announced to a
@@ -18,16 +18,16 @@
 
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{
-    AttachedHost, ExecutionTarget, TargetSwitch,
+    AttachedDevice, ExecutionTarget, TargetSwitch,
 };
 use demi_backend_database::devices::{CLOUD_NAME, DeviceRecord};
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_agent_store::Placement;
 use demi_conversation_lane_protocol::{AgentEntry, Version};
 use demi_agent_tools::NodeContext;
-use demi_backend_host_access::access::HostAccessError;
-use demi_backend_host_access::{conversation_of, root_of};
-use demi_host_paths::HostPaths;
+use demi_backend_device_access::access::DeviceAccessError;
+use demi_backend_device_access::{conversation_of, root_of};
+use demi_device_paths::DevicePaths;
 use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
@@ -37,7 +37,7 @@ use crate::shard::Shard;
 #[derive(Debug, thiserror::Error)]
 pub enum AgentsError {
     #[error(transparent)]
-    Host(#[from] HostAccessError),
+    Device(#[from] DeviceAccessError),
     /// The conversation's database could not be read.
     #[error(transparent)]
     Unreadable(demi_agent_store::StoreError),
@@ -49,7 +49,7 @@ const CONTEXT: &str = "[Execution context ";
 /// The line that opens a switch's announcement.
 const SWITCHED: &str = "[Execution target switched]";
 
-/// What a block for Linux, or for a Host whose system is not known, says of a
+/// What a block for Linux, or for a device whose system is not known, says of a
 /// job's standard utilities and shells (`crates/runner-shell/src/utilities.rs`):
 /// the utilities that write files or start programs are Demi's, so that their
 /// changes are recorded, and the others are the system's own.
@@ -77,13 +77,13 @@ const WINDOWS_UTILITIES: &str = "sh, bash and the standard utilities that write 
 /// otherwise guesses Git Bash or MSYS, and which drive path a program takes.
 const WINDOWS_SHELLS: &str = "Shells are bash (Demi's own, not Git Bash or WSL); Windows programs such as cmd, powershell and git run by name. The shell and its utilities read /c/Users/… as C:/Users/…, a Windows program only C:/Users/…; quote a path with backslashes.";
 
-/// The line of a block after the conversation's attached hosts changed.
-const ATTACHED_CHANGED: &str = "[Attached hosts changed]";
+/// The line of a block after the conversation's attached devices changed.
+const ATTACHED_CHANGED: &str = "[Attached devices changed]";
 
-/// What opens a block's line of attached hosts.
-const ATTACHED: &str = "Attached hosts: ";
+/// What opens a block's line of attached devices.
+const ATTACHED: &str = "Attached devices: ";
 
-/// What follows each attached host's connection in that line.
+/// What follows each attached device's connection in that line.
 const STARTS_IN: &str = ", shells start in ";
 
 /// What a node learns once the user's Cloud was reset.
@@ -106,9 +106,9 @@ impl Shard {
         if seen.iter().any(|text| text.contains(&marker)) {
             return Ok(None);
         }
-        let primary = self.host_shard().resolve_target(&record).await?;
-        let attached = control.attached_hosts(record.id.clone()).await?;
-        let mut lines = vec![marker, self.primary_host_line(&primary).await?];
+        let primary = self.device_shard().resolve_target(&record).await?;
+        let attached = control.attached_devices(record.id.clone()).await?;
+        let mut lines = vec![marker, self.primary_device_line(&primary).await?];
         // A Cloud reset is announced to a node once
         // (`crates/backend-cloud/src/reset.rs`).
         if let Some(reset) = control.announced_cloud_reset(record.id.clone()).await? {
@@ -136,7 +136,7 @@ impl Shard {
             _ => None,
         };
         // A node that read an earlier revision learns that the attached
-        // hosts changed since, when they did; a block a runner's report
+        // devices changed since, when they did; a block a runner's report
         // caused names no change, and one a node reads first learns the
         // context as it stands.
         let earlier = seen.iter().rev().find(|text| text.contains(CONTEXT));
@@ -147,13 +147,13 @@ impl Shard {
             }
             None => {}
         }
-        lines.push(self.attached_hosts_line(&attached));
+        lines.push(self.attached_devices_line(&attached));
         Ok(Some(lines.join("\n")))
     }
 
-    /// The primary Host's device record, when it has one, and its name as
+    /// The primary device's record, when it has one, and its name as
     /// the model reads it: the device's, or Cloud for a Cloud not made yet.
-    pub(crate) async fn primary_host(
+    pub(crate) async fn primary_device(
         &self,
         target: &ExecutionTarget,
     ) -> Result<(Option<DeviceRecord>, String), StorageError> {
@@ -171,19 +171,19 @@ impl Shard {
 
     /// Where `node` works: a child's own placement, and for the root the
     /// conversation's, its target's (`crates/agent-server/src/node/mod.rs`).
-    pub(crate) async fn node_placement(&self, node: NodeContext<'_>) -> Result<Placement, HostAccessError> {
+    pub(crate) async fn node_placement(&self, node: NodeContext<'_>) -> Result<Placement, DeviceAccessError> {
         match node.placement {
             Some(placement) => Ok(placement.clone()),
             None => self.placement(&conversation_of(node.root)).await,
         }
     }
 
-    /// Where the conversation `id` works now: its primary Host's device,
+    /// Where the conversation `id` works now: its primary device,
     /// none for a Cloud not made yet, and its directory there, read without
-    /// reaching the Host.
-    pub async fn placement(&self, id: &ConversationId) -> Result<Placement, HostAccessError> {
-        let record = self.host_shard().owned_conversation(id).await?;
-        let target = self.host_shard().resolve_target(&record).await?;
+    /// reaching the device.
+    pub async fn placement(&self, id: &ConversationId) -> Result<Placement, DeviceAccessError> {
+        let record = self.device_shard().owned_conversation(id).await?;
+        let target = self.device_shard().resolve_target(&record).await?;
         Ok(Placement {
             device: target.device().map(ToString::to_string),
             directory: target.path().to_owned(),
@@ -201,26 +201,26 @@ impl Shard {
             .map_err(AgentsError::Unreadable)
     }
 
-    /// How the Host of `device` writes its paths, in the form of the system
+    /// How the device of `device` writes its paths, in the form of the system
     /// its runner reported; POSIX for a device not known.
-    pub(crate) async fn device_paths(&self, device: &DeviceId) -> Result<HostPaths, StorageError> {
+    pub(crate) async fn device_paths(&self, device: &DeviceId) -> Result<DevicePaths, StorageError> {
         let record = self.services().control.device(device.clone()).await?;
-        Ok(record.map_or(HostPaths::Posix, |record| record.platform.paths()))
+        Ok(record.map_or(DevicePaths::Posix, |record| record.platform.paths()))
     }
 
-    /// How the primary Host of the conversation `id` writes its paths: in
+    /// How the primary device of the conversation `id` writes its paths: in
     /// the form of the system its runner reported, which the device keeps;
     /// a Cloud's is Linux's.
-    pub(crate) async fn host_paths(&self, id: &ConversationId) -> Result<HostPaths, StorageError> {
+    pub(crate) async fn primary_device_paths(&self, id: &ConversationId) -> Result<DevicePaths, StorageError> {
         let Some(record) = self.services().control.conversation(id.clone()).await? else {
-            return Ok(HostPaths::Posix);
+            return Ok(DevicePaths::Posix);
         };
-        let target = self.host_shard().resolve_target(&record).await?;
-        let (device, _) = self.primary_host(&target).await?;
-        Ok(device.map_or(HostPaths::Posix, |record| record.platform.paths()))
+        let target = self.device_shard().resolve_target(&record).await?;
+        let (device, _) = self.primary_device(&target).await?;
+        Ok(device.map_or(DevicePaths::Posix, |record| record.platform.paths()))
     }
 
-    /// The primary Host as the model reads it.
+    /// The primary device as the model reads it.
     ///
     /// It gives:
     ///
@@ -230,12 +230,12 @@ impl Shard {
     /// - the directory its shells start in, and where the files only the agent
     ///   needs go;
     /// - which of its standard utilities are Demi's own, GNU's, and which the
-    ///   system's, and what a Windows Host's shell is.
+    ///   system's, and what a Windows device's shell is.
     ///
-    /// A Host whose runner never connected, such as a Cloud not made yet, is named
+    /// A device whose runner never connected, such as a Cloud not made yet, is named
     /// without its system.
-    async fn primary_host_line(&self, target: &ExecutionTarget) -> Result<String, StorageError> {
-        let (device, name) = self.primary_host(target).await?;
+    async fn primary_device_line(&self, target: &ExecutionTarget) -> Result<String, StorageError> {
+        let (device, name) = self.primary_device(target).await?;
         let mut utilities = match device.as_ref().map(|record| &record.platform) {
             Some(RunnerPlatform::Darwin) => format!("{MACOS_UTILITIES}."),
             Some(RunnerPlatform::Win32) => format!("{WINDOWS_UTILITIES}. {WINDOWS_SHELLS}"),
@@ -247,12 +247,12 @@ impl Shard {
         if device.as_ref().is_none_or(|record| record.kind == DeviceKind::Managed && limited(record)) {
             utilities = format!("{utilities} {CLOUD_NETWORK_POLICY}");
         }
-        let host = match device.and_then(|record| record.os) {
+        let described = match device.and_then(|record| record.os) {
             Some(os) => format!("{name}, {} ({})", os.name, os.arch),
             None => name,
         };
         Ok(format!(
-            "Primary host: {host}. Shells start in {}. {SCRATCH} {utilities}",
+            "Primary device: {described}. Shells start in {}. {SCRATCH} {utilities}",
             target.path()
         ))
     }
@@ -278,32 +278,32 @@ impl Shard {
                 format!("project \"{project}\" — directory {path} on device {name}")
             }
             ExecutionTarget::Cloud { .. } | ExecutionTarget::Device { .. } => {
-                format!("the machine {name} (host {device})")
+                format!("the machine {name} (device {device})")
             }
         })
     }
 
-    /// The attached hosts as one line: each one's name, connection and
+    /// The attached devices as one line: each one's name, connection and
     /// directory, and how to reach them.
-    fn attached_hosts_line(&self, attached: &[AttachedHost]) -> String {
-        const LIST: &str = "`demi host list` shows all of the user's devices; `demi host shell --host <name> <script>` runs a shell string on any of them, attaching it first.";
+    fn attached_devices_line(&self, attached: &[AttachedDevice]) -> String {
+        const LIST: &str = "`demi device list` shows all of the user's devices; `demi device shell --device <name> <script>` runs a shell string on any of them, attaching it first.";
         if attached.is_empty() {
             return format!("{ATTACHED}none. {LIST}");
         }
         let entries: Vec<String> = attached
             .iter()
-            .map(|host| {
-                let state = if self.devices().online(&host.device) {
+            .map(|each| {
+                let state = if self.devices().online(&each.device) {
                     "online"
                 } else {
                     "offline"
                 };
-                let directory = host
+                let directory = each
                     .cwd
                     .clone()
-                    .or_else(|| self.devices().home(&host.device))
+                    .or_else(|| self.devices().home(&each.device))
                     .unwrap_or_else(|| "its home directory".into());
-                format!("{}{state}{STARTS_IN}{directory})", entry(host))
+                format!("{}{state}{STARTS_IN}{directory})", entry(each))
             })
             .collect();
         format!("{ATTACHED}{}. {LIST}", entries.join(", "))
@@ -317,19 +317,19 @@ fn read_revision(text: &str) -> Option<u64> {
     rest.split_once(']')?.0.parse().ok()
 }
 
-/// How an attached host's entry in a block's line of attached hosts opens:
+/// How an attached device's entry in a block's line of attached devices opens:
 /// its name and its device.
-fn entry(host: &AttachedHost) -> String {
-    format!("\"{}\" (host {}, ", host.name, host.device)
+fn entry(attached: &AttachedDevice) -> String {
+    format!("\"{}\" (attached {}, ", attached.name, attached.device)
 }
 
-/// Whether the hosts `attached` now are others than the ones the block `seen`, a
+/// Whether the devices `attached` now are others than the ones the block `seen`, a
 /// node's latest, listed, in order.
 ///
-/// The attached hosts changed when a host joined or left, or a name now stands
+/// The attached devices changed when a device joined or left, or a name now stands
 /// for another device, as when a rename gives a device the name another went by.
-/// A host's connection or directory is no change of the attached hosts.
-fn attached_changed(seen: &str, attached: &[AttachedHost]) -> bool {
+/// A device's connection or directory is no change of the attached devices.
+fn attached_changed(seen: &str, attached: &[AttachedDevice]) -> bool {
     let Some(listed) = seen.lines().find(|line| line.starts_with(ATTACHED)) else {
         return true;
     };
@@ -337,8 +337,8 @@ fn attached_changed(seen: &str, attached: &[AttachedHost]) -> bool {
         return true;
     }
     let mut rest = listed;
-    for host in attached {
-        let entry = entry(host);
+    for device in attached {
+        let entry = entry(device);
         let Some(at) = rest.find(&entry) else {
             return true;
         };
@@ -352,7 +352,7 @@ fn attached_changed(seen: &str, attached: &[AttachedHost]) -> bool {
 fn switch_lines(
     switch: &TargetSwitch,
     description: String,
-    attached: &[AttachedHost],
+    attached: &[AttachedDevice],
 ) -> Vec<String> {
     let mut lines = vec![
         SWITCHED.to_owned(),
@@ -362,12 +362,12 @@ fn switch_lines(
     let departed = switch
         .from
         .device()
-        .and_then(|device| attached.iter().find(|host| host.device == *device));
+        .and_then(|device| attached.iter().find(|each| each.device == *device));
     if let Some(departed) = departed {
         let name = &departed.name;
         let from = switch.from.path();
         lines.push(format!(
-            "The previous host stays attached as \"{name}\": `demi host shell --host {name} <script>` runs a shell string there with byte-faithful stdio, starting in {from} (e.g. `demi host shell --host {name} \"tar c -C {from} .\" | tar x` pulls its files into the current directory)."
+            "The previous device stays attached as \"{name}\": `demi device shell --device {name} <script>` runs a shell string there with byte-faithful stdio, starting in {from} (e.g. `demi device shell --device {name} \"tar c -C {from} .\" | tar x` pulls its files into the current directory)."
         ));
     }
     if let (

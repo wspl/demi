@@ -1,5 +1,5 @@
 import { TEXT_FILE_BYTES } from '@demicodes/protocol'
-import { HostFiles } from './file-cache'
+import { DeviceFiles } from './file-cache'
 import { keptSource } from './kept-source'
 import { isBinary } from './text-start'
 import { FileBrowserError, type FileBrowserSource, type FileDescription } from './types'
@@ -67,5 +67,5 @@ export function attachmentSource(file: AttachmentFile): FileBrowserSource {
         return read(`bytes=0-${length - 1}`, options?.signal)
       },
     },
-  }, { files: new HostFiles() })
+  }, { files: new DeviceFiles() })
 }

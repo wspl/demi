@@ -1,4 +1,4 @@
-//! The pages read, kept on the Host for 15 minutes, so that reading on
+//! The pages read, kept on the device for 15 minutes, so that reading on
 //! fetches a page once: one file per URL under the temporary directory's
 //! `demi-fetch/pages/`, on disk since the resident may exit between calls.
 //! Only text answered with a 2xx status is kept.

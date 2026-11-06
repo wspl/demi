@@ -4,7 +4,7 @@ import { t as uiText } from '../locales/text'
 import { computed, ref } from 'vue'
 import { TriangleAlert } from '@lucide/vue'
 import { ICON_PX } from '../ui/icon-metrics'
-import { deviceGlyph, hostGlyph } from '../devices/device-glyphs'
+import { deviceGlyph, targetGlyph } from '../devices/device-glyphs'
 import Button from '../ui/Button.vue'
 import CommitTextInput from '../ui/CommitTextInput.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
@@ -27,7 +27,7 @@ import {
   forwardRoute,
   forwardState,
   forwardTone,
-  type ForwardHost,
+  type ForwardDevice,
   type PortForwardChange,
   type SettingsPortForward,
 } from './port-forwards'
@@ -40,11 +40,11 @@ import {
  * - why it goes through the relay when a direct path failed, and
  * - every field, each saved as it is committed.
  *
- * Connect To shows as missing until a Host is chosen, and Remove Forward asks first.
+ * Connect To shows as missing until a device is chosen, and Remove Forward asks first.
  */
 const props = defineProps<{
   forward: SettingsPortForward
-  hosts: readonly ForwardHost[]
+  devices: readonly ForwardDevice[]
   overlayStore: OverlayStore
   /** Saves a change; a refusal the user can fix is thrown, and its field shows it. */
   onChange: (change: PortForwardChange) => Promise<void>
@@ -72,20 +72,20 @@ function portProblem(value: string): SentenceText | null {
   return /^\d+$/.test(value.trim()) && port >= 1 && port <= 65535 ? null : t('portForwards.page.portProblem')
 }
 
-const hostName = (id: string | null) =>
-  id === null ? null : (props.hosts.find((host) => host.id === id)?.name ?? t('portForwards.unknownHost'))
+const deviceName = (id: string | null) =>
+  id === null ? null : (props.devices.find((device) => device.id === id)?.name ?? t('portForwards.unknownDevice'))
 
-/** A chosen Host's glyph as its menu row draws it; a Host the account no longer lists is the plain computer. */
+/** A chosen device's glyph as its menu row draws it; a device the account no longer lists is the plain computer. */
 function chosenGlyph(id: string) {
-  const host = props.hosts.find((candidate) => candidate.id === id)
-  return host ? hostGlyph(host) : deviceGlyph(null, null)
+  const device = props.devices.find((candidate) => candidate.id === id)
+  return device ? targetGlyph(device) : deviceGlyph(null, null)
 }
 
-const state = computed(() => forwardState(props.forward, props.hosts))
+const state = computed(() => forwardState(props.forward, props.devices))
 const reason = computed(() => forwardReason(props.forward))
 /** The dot before the state: green while it works, amber while it cannot, grey while off. */
 const tone = computed<StatusDotTone>(() => {
-  const fares = forwardTone(props.forward, props.hosts)
+  const fares = forwardTone(props.forward, props.devices)
   return fares === 'off' ? 'muted' : fares === 'failed' || fares === 'waiting' ? 'warning' : 'success'
 })
 const portInUse = computed(() => props.forward.enabled && props.forward.state?.kind === 'portInUse')
@@ -103,7 +103,7 @@ async function remove(): Promise<void> {
 
 <template>
   <SettingsPage
-    :title="forwardListen(forward, hosts)"
+    :title="forwardListen(forward, devices)"
     :back="t('portForwards.title')"
     :status-tone="tone"
     @back="emit('back')"
@@ -128,7 +128,7 @@ async function remove(): Promise<void> {
     </SettingsGroup>
 
     <SettingsGroup :title="t('portForwards.page.listenOn')">
-      <SettingsRow :label="t('portForwards.page.host')" :description="t('portForwards.page.listenDescription')">
+      <SettingsRow :label="t('portForwards.page.device')" :description="t('portForwards.page.listenDescription')">
         <template v-if="problems.listenDevice" #detail>
           <InlineError :message="problems.listenDevice" />
         </template>
@@ -140,17 +140,17 @@ async function remove(): Promise<void> {
           :trigger-label="t('portForwards.page.listenOn')"
           :icon="chosenGlyph(forward.listenDevice)"
         >
-          <template #trigger><span class="min-w-0 truncate">{{ hostName(forward.listenDevice) }}</span></template>
+          <template #trigger><span class="min-w-0 truncate">{{ deviceName(forward.listenDevice) }}</span></template>
           <template #content="{ close }">
             <Menu>
               <MenuItem
-                v-for="host in hosts"
-                :key="host.id"
-                :icon="hostGlyph(host)"
-                :label="host.name"
+                v-for="device in devices"
+                :key="device.id"
+                :icon="targetGlyph(device)"
+                :label="device.name"
                 choice
-                :is-selected="forward.listenDevice === host.id"
-                @select="close(); host.id !== forward.listenDevice && save('listenDevice', { listenDevice: host.id })"
+                :is-selected="forward.listenDevice === device.id"
+                @select="close(); device.id !== forward.listenDevice && save('listenDevice', { listenDevice: device.id })"
               />
             </Menu>
           </template>
@@ -174,7 +174,7 @@ async function remove(): Promise<void> {
     </SettingsGroup>
 
     <SettingsGroup :title="t('portForwards.page.connectTo')">
-      <SettingsRow :label="t('portForwards.page.host')" :description="t('portForwards.page.connectDescription')">
+      <SettingsRow :label="t('portForwards.page.device')" :description="t('portForwards.page.connectDescription')">
         <!-- Missing is no failure: the menu's face says it, amber, as the page's state does. -->
         <template v-if="problems.connectDevice" #detail>
           <InlineError :message="problems.connectDevice" />
@@ -187,23 +187,23 @@ async function remove(): Promise<void> {
           :trigger-label="t('portForwards.page.connectTo')"
           :icon="forward.connectDevice === null ? undefined : chosenGlyph(forward.connectDevice)"
         >
-          <!-- Missing, the warning takes the Host's icon's place. -->
+          <!-- Missing, the warning takes the device's icon's place. -->
           <template v-if="forward.connectDevice === null" #icon>
             <TriangleAlert :size="ICON_PX.in28" class="text-on-warning" aria-hidden="true" />
           </template>
           <template #trigger>
-            <span class="min-w-0 truncate">{{ hostName(forward.connectDevice) ?? t('portForwards.page.chooseHost') }}</span>
+            <span class="min-w-0 truncate">{{ deviceName(forward.connectDevice) ?? t('portForwards.page.chooseDevice') }}</span>
           </template>
           <template #content="{ close }">
             <Menu>
               <MenuItem
-                v-for="host in hosts"
-                :key="host.id"
-                :icon="hostGlyph(host)"
-                :label="host.name"
+                v-for="device in devices"
+                :key="device.id"
+                :icon="targetGlyph(device)"
+                :label="device.name"
                 choice
-                :is-selected="forward.connectDevice === host.id"
-                @select="close(); host.id !== forward.connectDevice && save('connectDevice', { connectDevice: host.id })"
+                :is-selected="forward.connectDevice === device.id"
+                @select="close(); device.id !== forward.connectDevice && save('connectDevice', { connectDevice: device.id })"
               />
             </Menu>
           </template>
@@ -234,7 +234,7 @@ async function remove(): Promise<void> {
     <ConfirmDialog
       :is-open="removeOpen"
       :overlay-store="overlayStore"
-      :title="t('portForwards.page.removeTitle', { forward: forwardRoute(forward, hosts) })"
+      :title="t('portForwards.page.removeTitle', { forward: forwardRoute(forward, devices) })"
       :action="uiText('common.remove')"
       :operation="removing"
       :on-confirm="remove"

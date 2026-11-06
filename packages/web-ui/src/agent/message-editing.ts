@@ -44,7 +44,7 @@ export const editRemoteFileSchema = z.object({
   type: z.literal('remote_file'),
   deviceId: z.string().min(1),
   path: z.string().min(1),
-  host: z.string(),
+  device: z.string(),
 })
 
 /**

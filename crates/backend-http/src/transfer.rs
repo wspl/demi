@@ -1,13 +1,13 @@
-//! The bytes of file transfers (`crates/backend-host-access/src/access.rs`).
+//! The bytes of file transfers (`crates/backend-device-access/src/access.rs`).
 //!
 //! The edge moves them while the user's shard holds the transfer's admission
 //! through its lease.
 //!
 //! - A download's body is read as the user's browser takes it. It is cut short,
-//!   never ended, when the Host's read fails or the shard ends the transfer.
+//!   never ended, when the device's read fails or the shard ends the transfer.
 //!   A connection on which nothing moves for a minute is closed.
-//! - An upload's body is read as the Host writes it. The upload stalls when the
-//!   user's browser sends nothing for a minute, and a Host that takes nothing
+//! - An upload's body is read as the device writes it. The upload stalls when the
+//!   user's browser sends nothing for a minute, and a device that takes nothing
 //!   for a minute closes its connection.
 
 use std::io;
@@ -17,23 +17,23 @@ use axum::body::Body;
 use axum::http::StatusCode;
 use bytes::Bytes;
 use demi_runner_client::PipeReader;
-use demi_host_interface::HostError;
+use demi_device_interface::DeviceError;
 use demi_web_api_protocol::error::ErrorCode;
 use futures_util::StreamExt as _;
 
 use super::error::ApiError;
 use super::listener::ConnectionWatch;
-use demi_backend_host_access::lease::Lease;
-use demi_backend_host_access::transfer::OpenUpload;
+use demi_backend_device_access::lease::Lease;
+use demi_backend_device_access::transfer::OpenUpload;
 
 /// How long a transfer waits for the user's browser, and a connection for
 /// any byte, before it ends: the stalled-client timeout web servers use,
 /// nginx's `send_timeout` among them.
 pub(super) const TRANSFER_IDLE: Duration = Duration::from_secs(60);
 
-/// A download's body: the Host's bytes as the user's browser takes them.
+/// A download's body: the device's bytes as the user's browser takes them.
 ///
-/// It ends complete only when the Host's read did. A failing read, or the shard
+/// It ends complete only when the device's read did. A failing read, or the shard
 /// ending the transfer, cuts it short, and the user's browser receives an
 /// incomplete response. The lease and the connection's watch go with the body,
 /// whether it ends or the user's browser leaves.
@@ -79,18 +79,18 @@ pub(super) fn paced_body(reader: PipeReader, lease: Lease, watch: ConnectionWatc
 pub(super) enum UploadEnd {
     /// The file is in place.
     Written,
-    /// The Host took nothing for the limit: nothing moved on the connection,
+    /// The device took nothing for the limit: nothing moved on the connection,
     /// which is closed.
-    HostStalled,
-    /// The Host's write failed, such as for what the path holds.
-    WriteFailed(HostError),
+    DeviceStalled,
+    /// The device's write failed, such as for what the path holds.
+    WriteFailed(DeviceError),
     Refused(ApiError),
 }
 
 /// Streams the body the user's browser sends into an open upload.
 ///
-/// A chunk is read only once the Host took the one before, so a slow Host slows
-/// the upload, and time the Host takes does not count against the user's
+/// A chunk is read only once the device took the one before, so a slow device slows
+/// the upload, and time the device takes does not count against the user's
 /// browser. However the copy ends short of its end, the file stays as it was.
 pub(super) async fn copy_upload(body: Body, upload: OpenUpload) -> UploadEnd {
     let OpenUpload {
@@ -137,10 +137,10 @@ pub(super) async fn copy_upload(body: Body, upload: OpenUpload) -> UploadEnd {
         };
         match wrote {
             Err(_) => {
-                writer.fail("the Host took nothing for too long");
-                return UploadEnd::HostStalled;
+                writer.fail("the device took nothing for too long");
+                return UploadEnd::DeviceStalled;
             }
-            // The write failed on the Host; its outcome says why.
+            // The write failed on the device; its outcome says why.
             Ok(Err(_)) => break,
             Ok(Ok(())) => {}
         }

@@ -43,7 +43,7 @@
       "allowed": "Você permitiu que esta conversa possa {action}",
       "denied": "Você negou a esta conversa a permissão para {action}",
       "reached": "Outra conversa entrou em contato com esta, então ela pode {action}",
-      "moved": "Você moveu esta conversa para {host} · {path}",
+      "moved": "Você moveu esta conversa para {device} · {path}",
       "moveFailed": "Falha ao mover: {reason}",
       "fromMain": "Mensagem de {agent}",
       "mainAgent": "agente principal",
@@ -67,7 +67,7 @@
       "failed": "Falhou",
       "stopped": "Parado",
       "stopping": "Parando…",
-      "waiting": "Aguardando {host}",
+      "waiting": "Aguardando {device}",
       "lost": "Perdido",
       "exitCode": "Código de saída {code}"
     },
@@ -75,7 +75,7 @@
       "lost": "Perdido",
       "lostWhy": "Perdido: {reason}",
       "stopping": "Parando…",
-      "waiting": "Aguardando {host}",
+      "waiting": "Aguardando {device}",
       "running": "Em execução há {span}",
       "exited": "Encerrado após {span}",
       "exitedZero": "Encerrado com 0 após {span}",
@@ -238,7 +238,7 @@
     "tabsOpen": "Abas, {count} abertas",
     "closePanel": "Fechar painel",
     "options": "{title}, opções da conversa",
-    "hostState": "{name} está {state}",
+    "deviceState": "{name} está {state}",
     "renameTitle": "Renomear conversa",
     "titleLabel": "Título da conversa",
     "runsOn": "Executa em",
@@ -281,9 +281,9 @@
     "lastTurnRate": "Último turno: {rate} tok/s"
   },
   "notices": {
-    "hostOffline": "{name} está offline.",
-    "moveHost": "Mover para outro host…",
-    "hostOfflineLastSeen": "{name} está offline. Visto por último {time}.",
+    "deviceOffline": "{name} está offline.",
+    "moveDevice": "Mover para outro dispositivo…",
+    "deviceOfflineLastSeen": "{name} está offline. Visto por último {time}.",
     "pluginsChanged": "Os plugins mudaram"
   },
   "composer": {
@@ -435,7 +435,7 @@
     "nothingOpen": "Nada aberto",
     "noFiles": "Nenhum arquivo ou alteração",
     "reading": "Lendo {name}",
-    "hostOffline": "{name} está offline.",
-    "hostOfflineDetail": "Arquivos, alterações e o navegador aparecem novamente quando ele se reconectar."
+    "deviceOffline": "{name} está offline.",
+    "deviceOfflineDetail": "Arquivos, alterações e o navegador aparecem novamente quando ele se reconectar."
   }
 }

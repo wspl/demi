@@ -3,9 +3,9 @@
 //! The backend does four things:
 //!
 //! - Authenticates the web app's requests.
-//! - Hosts conversation agent trees.
+//! - devices conversation agent trees.
 //! - Assembles providers and commands.
-//! - Connects those sessions to Hosts through their runners.
+//! - Connects those sessions to devices through their runners.
 //!
 //! Runners execute work on a device; the backend owns conversation state and
 //! product policy.
@@ -24,7 +24,7 @@
 //!             socket                        |  agent tree -> conversation db
 //!                         +-----------------+------------------+
 //!                         v                                    v
-//!                 provider runtime               the conversation's host access
+//!                 provider runtime               the conversation's device access
 //!                   |         |                                |
 //!        vendor HTTP API    process on the user's Cloud   runner connection
 //!                           (Claude Code CLI) --------------> |  -> the device
@@ -72,7 +72,7 @@
 //!   `-- backend-http (the HTTP edge)
 //!         `-- backend-user-shard (the user's shard, conversations)
 //!               |-- backend-permissions (conversation permissions)
-//!               |-- backend-host-access --> backend-cloud, backend-runners
+//!               |-- backend-device-access --> backend-cloud, backend-runners
 //!               |-- backend-cloud -------> backend-runners, backend-providers,
 //!               |                          backend-idle-watch
 //!               |-- backend-accounts

@@ -1,9 +1,9 @@
-//! Devices: the list, pairing, and a Host's log.
+//! Devices: the list, pairing, and a device's log.
 
 use demi_runner_protocol::direct::CANDIDATE_CHARS;
 /// The STUN servers' URLs, which the product state names to the page.
 pub use demi_runner_protocol::direct::{NotAStunUrl, StunUrl};
-use demi_runner_protocol::wire::{AutostartUnavailable, HostArtifact, HostDownload, OperatingSystem, RunnerPlatform};
+use demi_runner_protocol::wire::{AutostartUnavailable, DeviceArtifact, DeviceDownload, OperatingSystem, RunnerPlatform};
 use demi_shared_types::{Nullable, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
@@ -138,8 +138,8 @@ pub struct DeviceDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub home: Option<String>,
-    pub installed: Vec<HostArtifact>,
-    pub downloading: Vec<HostDownload>,
+    pub installed: Vec<DeviceArtifact>,
+    pub downloading: Vec<DeviceDownload>,
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<OperatingSystem>")]
     pub os: Option<OperatingSystem>,
@@ -159,7 +159,7 @@ pub struct DeviceDto {
 }
 
 /// The commands that install and start the runner on a computer of each
-/// system, which the Add Device dialog and `demi host install-command` show
+/// system, which the Add Device dialog and `demi device install-command` show
 /// as they are. They hold no credential.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct InstallCommands {
