@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Check, Copy, Plus } from '@lucide/vue'
+import { Plus } from '@lucide/vue'
+import CopyLabel from '../ui/CopyLabel.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
@@ -173,12 +174,7 @@ async function revoke(): Promise<void> {
     <template #footer>
       <Button v-if="made?.status === 'failed'" variant="primary" @click="emit('make')">{{ t('providers.share.tryAgain') }}</Button>
       <Button v-else variant="primary" :disabled="!key" @click="emit('copy')">
-        <component :is="copied ? Check : Copy" :size="14" />
-        <!-- Both labels take one cell, so the button keeps the wider one's width. -->
-        <span class="inline-grid">
-          <span class="col-start-1 row-start-1" :class="copied ? 'invisible' : ''">{{ t('providers.share.copy') }}</span>
-          <span class="col-start-1 row-start-1" :class="copied ? '' : 'invisible'">{{ shared('common.copied') }}</span>
-        </span>
+        <CopyLabel :label="t('providers.share.copy')" :copied="copied" />
       </Button>
     </template>
   </Dialog>

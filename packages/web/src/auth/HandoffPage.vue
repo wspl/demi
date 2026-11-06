@@ -6,7 +6,7 @@ import { spendHandoffCode } from './handoff'
 import { usePasskeyOffer } from './passkey-offer'
 
 /**
- * The page a phone's camera opens from a handoff code
+ * The page a handoff code's QR code or link opens
  * (`crates/backend-accounts/src/sessions.rs`): the code is after `#`, which a
  * browser never sends to a server.
  *
@@ -16,10 +16,10 @@ import { usePasskeyOffer } from './passkey-offer'
  * 2. Spends it.
  * 3. Loads the page it opens, signed in.
  *
- * It loads the page rather than navigating, since the phone may have been
- * signed out, or in to another account, whose state the page held. A phone
+ * It loads the page rather than navigating, since the device may have been
+ * signed out, or in to another account, whose state the page held. A device
  * signed in to the account keeps its session. The page it opens offers the
- * phone a passkey.
+ * device a passkey.
  */
 const router = useRouter()
 const offer = usePasskeyOffer()

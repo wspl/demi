@@ -13,7 +13,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
 use demi_backend_accounts::passkeys;
-use demi_backend_accounts::sessions::{PhoneSession, SignOut, Spend};
+use demi_backend_accounts::sessions::{DeviceSession, SignOut, Spend};
 use demi_backend_page_sync::Part;
 use demi_backend_user_shard::services::Services;
 use demi_web_api_protocol::error::ErrorCode;
@@ -110,7 +110,7 @@ pub(super) fn require_verification(services: &Services, session: &CurrentSession
     ))
 }
 
-/// `POST /auth/handoff/code`: a code that opens `to` on a phone, for a
+/// `POST /auth/handoff/code`: a code that opens `to` on another device, for a
 /// session verified in the last five minutes; it ends the account's
 /// earlier code.
 pub(super) async fn make_code(
@@ -173,8 +173,8 @@ pub(super) async fn spend_code(
     services.sync.mark_everyone(&Part::Users);
     let answer = Json(HandoffAnswer { to: handed.to });
     match handed.session {
-        PhoneSession::Kept => Ok(answer.into_response()),
-        PhoneSession::Opened { session, ended } => {
+        DeviceSession::Kept => Ok(answer.into_response()),
+        DeviceSession::Opened { session, ended } => {
             if let Some(ended) = ended {
                 services.sync.end_session(&ended.user, &ended.token);
                 services.sync.mark(&ended.user, Part::Sessions);

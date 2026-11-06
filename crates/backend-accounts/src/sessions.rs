@@ -1,5 +1,5 @@
 //! The web app's login sessions, and the handoff codes that open an account on
-//! a phone.
+//! another device.
 //!
 //! A session works like this:
 //!
@@ -12,18 +12,19 @@
 //! - A session verified by password or passkey in the last five minutes makes
 //!   handoff codes and adds passkeys.
 //! - A sign-in counts as a verification. So does a handoff code, by which a
-//!   phone that keeps its session is verified.
+//!   device that keeps its session is verified.
 //!
 //! A handoff code works like this:
 //!
 //! - It is 256 random bits, kept as their SHA-256 for ten minutes and spent
 //!   once.
-//! - It opens the account on a phone: in the phone's own session of the account
+//! - It travels as a QR code or as a link the user copies.
+//! - It opens the account on a device: in the device's own session of the account
 //!   when it has one, else in a new session.
 //! - It travels after `#` in its URL, which a browser never sends to a server,
 //!   so no access log or proxy holds it.
 //! - Its `to` is a path of the product, checked when the code is made and again
-//!   when it is spent, so a code never sends a phone to another site.
+//!   when it is spent, so a code never sends a device to another site.
 //! - The laptop learns of the spending from the account's sessions, the
 //!   synchronization channel's `sessions` part, whose new session names the
 //!   code that made it. The laptop never asks.
@@ -87,20 +88,21 @@ pub enum Spend {
     Opened(HandedOff),
 }
 
-/// A handoff code just spent: the phone's session, its account, and the
+/// A handoff code just spent: the device's session, its account, and the
 /// page it opens.
 pub struct HandedOff {
-    pub session: PhoneSession,
+    pub session: DeviceSession,
     pub user: UserId,
     pub to: ProductPath,
 }
 
-/// The session a handoff code opens its account in on the phone.
-pub enum PhoneSession {
-    /// The phone's own session of the account, which now carries the code.
+/// The session a handoff code opens its account in on the device that spends
+/// it.
+pub enum DeviceSession {
+    /// The device's own session of the account, which now carries the code.
     Kept,
     /// A new session, made by the code; `ended` is the session of another
-    /// account the phone held, which it replaces.
+    /// account the device held, which it replaces.
     Opened {
         session: OpenedSession,
         ended: Option<EndedSession>,
@@ -290,7 +292,7 @@ impl WebSessions {
                         .record_handoff_on_web_session(token, spent.id)
                         .await?;
                     return Ok(Spend::Opened(HandedOff {
-                        session: PhoneSession::Kept,
+                        session: DeviceSession::Kept,
                         user: spent.user,
                         to: spent.to,
                     }));
@@ -309,7 +311,7 @@ impl WebSessions {
             .open_made_by(spent.user.clone(), user_agent, Some((spent.id, spent.issued_by)))
             .await?;
         Ok(Spend::Opened(HandedOff {
-            session: PhoneSession::Opened { session, ended },
+            session: DeviceSession::Opened { session, ended },
             user: spent.user,
             to: spent.to,
         }))

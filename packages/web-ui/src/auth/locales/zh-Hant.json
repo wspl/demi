@@ -63,21 +63,21 @@
     "other": "使用裝置的螢幕鎖定取代密碼登入。"
   },
   "handoff": {
-    "title": "接力到手機",
-    "confirm": "請確認是你本人。隨後你的手機會開啟此頁面，並登入此帳號。",
-    "scan": "用手機相機掃描。",
+    "title": "接力到其他裝置",
+    "confirm": "請確認是你本人。隨後你的其他裝置會開啟此頁面，並登入此帳號。",
+    "scan": "用手機相機掃描，或在其他裝置上開啟連結。",
     "done": "已接力到 {browser}。",
     "codeTitle": "登入代碼",
-    "codeConfirm": "請確認是你本人。隨後會產生一個代碼，用於登入「{name}」手機上的帳號。",
-    "codeScan": "用對方手機的相機掃描。",
+    "codeConfirm": "請確認是你本人。隨後會產生一個代碼，讓「{name}」在自己的裝置上登入帳號。",
+    "codeScan": "用對方手機的相機掃描，或把連結傳給對方。",
     "codeDone": "已在 {browser} 上登入。",
-    "readyScan": "或用對方手機的相機掃描以登入。",
     "making": "正在產生代碼",
     "qr": "QR 碼",
     "expires": "{left} 後到期",
     "expired": "此代碼已過期。",
     "usePasskey": "使用通行密鑰",
-    "showNew": "顯示新代碼"
+    "showNew": "顯示新代碼",
+    "copyLink": "複製連結"
   },
   "verify": {
     "title": "確認是你本人",

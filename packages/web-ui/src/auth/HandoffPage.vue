@@ -7,7 +7,7 @@ import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import InlineError from '../ui/InlineError.vue'
 
 /**
- * The page a phone's camera opens from a handoff code. It says it opens the page
+ * The page a handoff code's QR code or link opens. It says it opens the page
  * while the host spends the code, then the host goes on to the page the code
  * opens, signed in to its account.
  *

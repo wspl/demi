@@ -3,7 +3,7 @@ import { keptComputed } from '../infra/keep-same'
 import { t } from './locales/text'
 import { conversationTitle } from '../agent/conversation-title'
 import { computed, nextTick, ref, useId, watch } from 'vue'
-import { Archive, CircleArrowUp, FolderPlus, Search, Settings, Smartphone, SquarePen } from '@lucide/vue'
+import { Archive, CircleArrowUp, FolderPlus, MonitorSmartphone, Search, Settings, SquarePen } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { closeContextMenu, shownContextMenu, type ContextMenuDeclaration } from '@demicodes/web-ui/ui/context-menu'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -115,8 +115,8 @@ const emit = defineEmits<{
   delete: [ids: string[]]
   /** Settings, on a section when an entry names one (`archived`, or an entry's own). */
   openSettings: [section?: string]
-  /** The phone mark at the foot: hand off to a phone by a QR code. */
-  handOffToPhone: []
+  /** The device mark at the foot: hand off to another device by a code. */
+  handOff: []
   retryList: []
   /** The switcher's choice of another workspace. */
   switchWorkspace: [id: string]
@@ -862,14 +862,14 @@ function selectProjectConversations(project: SidebarProject): void {
         :settings-shortcut="settingsShortcut"
         @open-settings="emit('openSettings')"
       />
-      <!-- A page that is itself on a phone has no phone to hand the account to. -->
+      <!-- A computer hands off; a page on a phone has no button for it. -->
       <Tooltip v-if="!phone" :content="t('foot.handOff')" placement="top">
         <IconButton
-          :icon="Smartphone"
+          :icon="MonitorSmartphone"
           :size="phone ? 'lg' : 'md'"
           variant="ghost"
           :aria-label="t('foot.handOff')"
-          @click="emit('handOffToPhone')"
+          @click="emit('handOff')"
         />
       </Tooltip>
       <!-- The last button's tip opens to the right, over the page; one before it would hide the next button. -->

@@ -15,7 +15,7 @@
     "failed": "チャットを読み込めませんでした。"
   },
   "foot": {
-    "handOff": "スマートフォンにハンドオフ",
+    "handOff": "ほかのデバイスにハンドオフ",
     "settings": "設定",
     "updateAvailable": "Demi {version} を利用できます",
     "updating": "Demi をアップデート中"

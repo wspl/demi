@@ -536,8 +536,8 @@
       "newPassword": "Confirmez votre identité pour créer un nouveau mot de passe."
     },
     "ready": {
-      "added": "Le compte de {email} est prêt. Donnez-lui ce mot de passe ou faites-lui scanner le code.",
-      "reset": "{email} a un nouveau mot de passe. Donnez-lui ce mot de passe ou faites-lui scanner le code."
+      "added": "Le compte de {email} est prêt. Donnez-lui ce mot de passe ou connectez cette personne avec le code ci-dessous.",
+      "reset": "{email} a un nouveau mot de passe. Donnez-lui ce mot de passe ou connectez cette personne avec le code ci-dessous."
     },
     "reset": {
       "title": "Réinitialiser le mot de passe de {name} ?",

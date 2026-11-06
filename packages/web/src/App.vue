@@ -154,7 +154,7 @@ const searchIn = computed<MessageSource | null>(() => {
   const id = searchScope.value
   return id === null ? null : (query, signal) => searchConversation(id, query, signal)
 })
-/** Hand Off to Your Phone: its code opens the page the window shows. */
+/** Hand Off to Another Device: its code opens the page the window shows. */
 const handoffOpen = ref(false)
 const sessions = useSessions()
 const handoffHost = computed(() => sessions.handoffHost(() => pageRoute.value.fullPath))
@@ -498,7 +498,7 @@ useAppShortcuts(
     :failure="session.current.status === 'failed' ? session.current.error : null"
     :on-retry="() => session.restore()"
   />
-  <!-- A phone signed in opens a handoff code on its own page too, which goes on to the page the code opens. -->
+  <!-- A device signed in opens a handoff code on its own page too, which goes on to the page the code opens. -->
   <div v-else-if="productShown" class="flex h-full flex-col">
     <SidebarLayout
       class="min-h-0 flex-1"
@@ -546,7 +546,7 @@ useAppShortcuts(
           @archive="conversations.archive"
           @delete="conversations.remove"
           @open-settings="settingsAddress.open"
-          @hand-off-to-phone="handoffOpen = true"
+          @hand-off="handoffOpen = true"
           @sign-out="signOut"
         />
       </template>

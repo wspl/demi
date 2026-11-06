@@ -15,7 +15,7 @@
     "failed": "無法載入對話。"
   },
   "foot": {
-    "handOff": "接力到手機",
+    "handOff": "接力到其他裝置",
     "settings": "設定",
     "updateAvailable": "有新版本：Demi {version}",
     "updating": "正在更新 Demi"

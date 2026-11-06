@@ -536,8 +536,8 @@
       "newPassword": "Confirme que é você para criar uma nova senha."
     },
     "ready": {
-      "added": "A conta de {email} está pronta. Passe esta senha para a pessoa ou peça que ela escaneie o código.",
-      "reset": "{email} tem uma nova senha. Passe esta senha para a pessoa ou peça que ela escaneie o código."
+      "added": "A conta de {email} está pronta. Passe esta senha para a pessoa ou conecte-a com o código abaixo.",
+      "reset": "{email} tem uma nova senha. Passe esta senha para a pessoa ou conecte-a com o código abaixo."
     },
     "reset": {
       "title": "Redefinir a senha de {name}?",

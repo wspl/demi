@@ -55,7 +55,7 @@ import { roleDescription, roleLabel, assignableRoles, userActions, type UserActi
  * - Reset Password… asks first and makes another.
  * - Both end on one last step: the password, with Copy and New Password, beside
  *   a sign-in code, which Show Code… shows alone. Those three ask the
- *   administrator's own confirmation, as Hand Off to Your Phone does, when the
+ *   administrator's own confirmation, as Hand Off to Another Device does, when the
  *   session has not been verified in the last five minutes.
  * - A role chosen, Cloud Storage…, Sign Out Everywhere… and Disable… ask for one
  *   thing or confirm, saying what happens.

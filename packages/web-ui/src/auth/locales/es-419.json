@@ -63,21 +63,21 @@
     "other": "Inicia sesión con el bloqueo de pantalla de tu dispositivo en lugar de tu contraseña."
   },
   "handoff": {
-    "title": "Pasar a tu teléfono",
-    "confirm": "Confirma que eres tú. Tu teléfono abrirá esta página con la sesión iniciada en esta cuenta.",
-    "scan": "Escanea con la cámara de tu teléfono.",
+    "title": "Pasar a otro dispositivo",
+    "confirm": "Confirma que eres tú. Tu otro dispositivo abrirá esta página con la sesión iniciada en esta cuenta.",
+    "scan": "Escanea con la cámara de tu teléfono o abre el enlace en otro dispositivo.",
     "done": "Se pasó a {browser}.",
     "codeTitle": "Código de inicio de sesión",
-    "codeConfirm": "Confirma que eres tú. Un código iniciará sesión en el teléfono de {name} con su propia cuenta.",
-    "codeScan": "Escanea con la cámara de ese teléfono.",
+    "codeConfirm": "Confirma que eres tú. Un código iniciará la sesión de {name} en su propia cuenta, en su dispositivo.",
+    "codeScan": "Escanea con la cámara de ese teléfono o envíale el enlace.",
     "codeDone": "Sesión iniciada en {browser}.",
-    "readyScan": "O escanea con la cámara de ese teléfono para iniciar sesión en él.",
     "making": "Creando un código",
     "qr": "Código QR",
     "expires": "Vence en {left}",
     "expired": "Este código venció.",
     "usePasskey": "Usar llave de acceso",
-    "showNew": "Mostrar un código nuevo"
+    "showNew": "Mostrar un código nuevo",
+    "copyLink": "Copiar enlace"
   },
   "verify": {
     "title": "Confirma que eres tú",

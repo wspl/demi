@@ -30,7 +30,7 @@
     "signin": {
       "signin": "Connexion",
       "setup": "Configuration",
-      "handoff": "Relais vers le téléphone",
+      "handoff": "Relais",
       "starting": "Démarrage"
     },
     "primitives": {

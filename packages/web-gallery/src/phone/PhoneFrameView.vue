@@ -305,7 +305,7 @@ onMounted(async () => {
           @remove-project="deleteProject"
           @switch-saved-scope="(id, scope, to) => (projects = savedScopeSwitched(projects, id, scope, to))"
           @open-settings="settingsOpen = true"
-          @hand-off-to-phone="productWould('Open Hand Off to Your Phone')"
+          @hand-off="productWould('Open Hand Off to Another Device')"
           @sign-out="productWould('Sign Out')"
         />
       </template>

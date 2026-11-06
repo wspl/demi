@@ -536,8 +536,8 @@
       "newPassword": "Confirma que eres tú para crear una contraseña nueva."
     },
     "ready": {
-      "added": "La cuenta de {email} está lista. Dale esta contraseña o pídele que escanee el código.",
-      "reset": "{email} tiene una contraseña nueva. Dale esta contraseña o pídele que escanee el código."
+      "added": "La cuenta de {email} está lista. Dale esta contraseña o inicia su sesión con el código de abajo.",
+      "reset": "{email} tiene una contraseña nueva. Dale esta contraseña o inicia su sesión con el código de abajo."
     },
     "reset": {
       "title": "¿Restablecer la contraseña de {name}?",

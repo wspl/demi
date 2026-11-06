@@ -27,7 +27,7 @@ export interface Verification {
 }
 
 /**
- * The confirmation that Hand Off to Your Phone, an administrator's Sign-In Code…
+ * The confirmation that Hand Off to Another Device, an administrator's Sign-In Code…
  * and the actions that ask it share: the password, red with Required or the
  * host's sentence under it, or Use Passkey where the host offers one.
  *

@@ -4,6 +4,8 @@ import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { CircleCheck } from '@lucide/vue'
+import { useCopy } from '../composables/useCopy'
+import CopyLabel from '../ui/CopyLabel.vue'
 import QRCode from 'qrcode'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
@@ -21,15 +23,18 @@ import VerifyForm from './VerifyForm.vue'
 import { useVerification } from './verification'
 
 /**
- * Hand Off to Your Phone: shows a code that another browser scans to sign in.
+ * Hand Off to Another Device: shows a code that another browser scans or opens
+ * to sign in.
  *
  * Opening it asks the host for a code. When the backend wants the user to
  * confirm it is them first, the confirmation step comes before the code: the
  * password, red with Required or the host's sentence under it as other forms
  * are, or Use Passkey where the host offers one.
  *
- * The code step shows the code's URL as a QR code and the time left. An expired
- * code offers Show New Code, which asks again. Once the host names the browser
+ * The code step shows the code's URL as a QR code and the time left, and Copy
+ * Link copies the URL, whose text the dialog never shows, so a shared screen
+ * does not give the code away. An expired code offers Show New Code, which asks
+ * again. Once the host names the browser
  * the code was handed off to, the dialog says so and closes by itself a moment
  * later.
  *
@@ -52,7 +57,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
-/** How long the dialog says it handed off to the phone before it closes. */
+/** How long the dialog says it handed off to the other device before it closes. */
 const CLOSE_AFTER_MS = 1600
 
 type Step =
@@ -128,6 +133,18 @@ onBeforeUnmount(() => {
   stopTimers()
 })
 const left = computed(() => (step.value.kind === 'code' ? timeLeft(step.value.code.deadline, now.value) : null))
+const { copy, copied } = useCopy(() => (step.value.kind === 'code' ? step.value.code.url : undefined))
+/**
+ * Copies the code's link while it is valid. The clock is read again first: a
+ * tab in the background ticks late, and a code that expired in the meantime
+ * shows as expired instead of being copied.
+ */
+function copyLink(): void {
+  now.value = Date.now()
+  if (left.value !== null) {
+    void copy()
+  }
+}
 const handedOffTo = computed(() =>
   step.value.kind === 'code' ? props.host.handedOffTo(step.value.code.id) : null,
 )
@@ -225,6 +242,12 @@ watch(handedOffTo, (name) => {
       <template v-else-if="step.kind === 'failed'">
         <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
         <Button variant="primary" @click="start">{{ uiText('common.retry') }}</Button>
+      </template>
+      <template v-else-if="step.kind === 'code' && handedOffTo === null">
+        <Button @click="copyLink">
+          <CopyLabel :label="t('handoff.copyLink')" :copied="copied" />
+        </Button>
+        <Button variant="primary" @click="emit('close')">{{ uiText('common.done') }}</Button>
       </template>
       <Button v-else variant="primary" @click="emit('close')">{{ uiText('common.done') }}</Button>
     </template>

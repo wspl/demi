@@ -536,8 +536,8 @@
       "newPassword": "Confirm it’s you to make a new password."
     },
     "ready": {
-      "added": "The account for {email} is ready. Give them this password, or have them scan the code.",
-      "reset": "{email} has a new password. Give them this password, or have them scan the code."
+      "added": "The account for {email} is ready. Give them this password, or sign them in with the code below.",
+      "reset": "{email} has a new password. Give them this password, or sign them in with the code below."
     },
     "reset": {
       "title": "Reset {name}’s password?",

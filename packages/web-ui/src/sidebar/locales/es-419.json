@@ -15,7 +15,7 @@
     "failed": "No se pudieron cargar los chats."
   },
   "foot": {
-    "handOff": "Pasar al teléfono",
+    "handOff": "Pasar a otro dispositivo",
     "settings": "Configuración",
     "updateAvailable": "Demi {version} está disponible",
     "updating": "Actualizando Demi"

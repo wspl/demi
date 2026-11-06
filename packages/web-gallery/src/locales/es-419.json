@@ -30,7 +30,7 @@
     "signin": {
       "signin": "Iniciar sesión",
       "setup": "Configuración inicial",
-      "handoff": "Traspaso al teléfono",
+      "handoff": "Traspaso",
       "starting": "Inicio"
     },
     "primitives": {
