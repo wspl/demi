@@ -56,6 +56,10 @@ program                                    demi-core --data <dir>
 - A second core on the same data directory is refused: the first holds an
   exclusive lock on `<data>/core.lock` while it runs.
 
+The wire is the SDK's, not a program's: a program calls the TypeScript
+SDK, whose own interface the series' fourth record decides, and the SDK
+speaks this wire with the typed client the web app uses.
+
 ### One set of routes, two ways in
 
 The core's routes move out of `backend-http` into a crate of their own,
