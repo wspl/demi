@@ -14,7 +14,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_core_store::credentials::CredentialRefusal;
-use demi_backend_user_shard::shard::credentials::CredentialError;
+use demi_core::shard::credentials::CredentialError;
 use demi_web_api_protocol::credentials::{
     CredentialAnswer, CredentialList, CredentialPatch, NewCredential, RevealedValue, refusal,
 };

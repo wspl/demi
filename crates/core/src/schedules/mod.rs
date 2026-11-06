@@ -786,25 +786,6 @@ impl Shard {
     }
 }
 
-/// Opens the shard of every user who has a schedule, whose scheduler
-/// then fires what a backend that was down missed and waits for the next
-/// times.
-pub async fn start_schedulers(
-    cores: &[(demi_web_api_protocol::ids::UserId, demi_core_store::store::CoreStore)],
-    shards: &crate::shard::Shards,
-) -> Result<(), StorageError> {
-    for (user, store) in cores {
-        if !store.has_schedules().await? {
-            continue;
-        }
-        // The shard's first call starts its scheduler; a shard that cannot
-        // be reached starts it on its next call.
-        if let Err(error) = shards.of(user).call(|_, _| async {}).await {
-            tracing::warn!(event = "schedule_scheduler.start_failed", %user, %error, "the schedules' scheduler did not start");
-        }
-    }
-    Ok(())
-}
 
 fn run_dto(run: StoredRun) -> ScheduleRunDto {
     ScheduleRunDto {

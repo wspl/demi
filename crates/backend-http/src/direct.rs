@@ -24,7 +24,7 @@ use std::time::Duration;
 use axum::http::StatusCode;
 use demi_runner_client::{DirectAnswer, PeerEvent};
 use demi_core_hosts::command_context::{Reported, reported};
-use demi_backend_user_shard::shard::lane::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader};
+use demi_core::shard::lane::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader};
 use demi_runner_protocol::direct::{CONNECT_TIMEOUT, Introduced, Introduction, OfferRefusal};
 use demi_web_api_protocol::devices::{DeviceKind, DirectMessage, DirectPeer, DirectRequest, Unanswered};
 use demi_web_api_protocol::error::ErrorCode;

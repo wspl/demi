@@ -4,18 +4,16 @@
 //!   (`PermissionShard`).
 //! - The delivery at start of the decisions a restart cut off.
 
-use demi_web_api_protocol::ids::UserId;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_core_store::StorageError;
 use demi_core_store::store::CoreStore;
 use demi_core_store::credentials::CredentialSeal;
 use demi_core_store::permissions::AskingAgent;
 use demi_core_host_access::root_of;
 use demi_core_sync::UserMarks;
 use demi_core_sync::Revisions;
-use demi_core_permissions::{PermissionShard, Waits, deliver};
+use demi_core_permissions::{PermissionShard, Waits};
 use demi_command_declarations::{Category, Node};
 use demi_shared_types::{AgentMessage, NodeId};
 use demi_web_api_protocol::ids::ConversationId;
@@ -23,7 +21,7 @@ use demi_web_api_protocol::permissions::{PermissionRequestId, RequestingAgent};
 use demi_web_api_protocol::push::PushAsk;
 use futures_util::future::LocalBoxFuture;
 
-use super::{Shard, Shards};
+use super::Shard;
 
 impl PermissionShard for Shard {
     fn store(&self) -> &CoreStore {
@@ -129,25 +127,3 @@ impl Shard {
     }
 }
 
-/// Delivers at start each decision whose message a restart cut off: each
-/// user's shard sends it to the agent that asked, opening its conversation's
-/// tree. Answers once each shard has its tasks.
-pub async fn deliver_decisions(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
-    for (owner, store) in cores {
-        for request in store.undelivered_permissions().await? {
-            let handed = shards
-                .of(owner)
-                .adopt(move |shard| {
-                    let shard: Rc<dyn PermissionShard> = shard;
-                    deliver(shard, request)
-                })
-                .await;
-            if handed.is_err() {
-                // The backend is shutting down; the next start delivers what
-                // is left.
-                return Ok(());
-            }
-        }
-    }
-    Ok(())
-}

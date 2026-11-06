@@ -8,7 +8,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::shard::Shards;
+use demi_backend_user_shard::pool::Shards;
 use demi_backend_user_shard::upgrades::RunRefused;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::server_upgrade::{RunUpgrade, ServerUpgrade, SetPrepareAhead, SetUpgradeChannel, WorkingAgents};

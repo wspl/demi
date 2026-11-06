@@ -54,7 +54,7 @@ use axum::response::Response;
 use axum_extra::extract::CookieJar;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::shard::lane::{
+use demi_core::shard::lane::{
     Counted, FromConnection, Lane, LaneKind, LaneMessage, LaneOrigin, LanePriority, LaneReader,
     PageSession, ToConnection, open_lane,
 };

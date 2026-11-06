@@ -23,7 +23,7 @@ use super::AppState;
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
-use demi_backend_user_shard::conversation::CloudProject;
+use demi_core::conversation::CloudProject;
 use demi_backend_user_shard::services::Services;
 
 pub(super) async fn list(

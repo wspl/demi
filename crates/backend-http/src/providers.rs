@@ -30,9 +30,9 @@ use demi_web_api_protocol::providers::{
 use super::body::{JsonBody, OptionalJsonBody};
 use super::error::ApiError;
 use super::gate::AuthUser;
-use demi_backend_user_shard::provider_settings::ProviderRefusal;
+use demi_core::provider_settings::ProviderRefusal;
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::shard::Shards;
+use demi_backend_user_shard::pool::Shards;
 
 /// The entry the path names, when the caller infers with it and manages
 /// it; one they only infer with is refused, and any other answers like a

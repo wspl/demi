@@ -64,16 +64,17 @@ use demi_core_store::StorageError;
 use demi_web_api_protocol::ids::UserId;
 use demi_backend_database::update::Update;
 use demi_backend_http::{AppState, Edge, Listening, Site, WebBuildError, manage_socket, runner_socket, web_build};
-use demi_backend_user_shard::conversation::search::index_at_start;
-use demi_backend_user_shard::conversation::{
-    arm_idle_compactions, finish_deletions, recover_forks, resume_after_restart,
+use demi_backend_cloud::user_core::CloudOfCore;
+use demi_backend_user_shard::start_passes::{
+    arm_idle_compactions, deliver_decisions, finish_deletions, index_at_start, resume_after_restart,
+    start_media_followers, start_schedulers,
 };
-use demi_backend_user_shard::shard::deliver_decisions;
+use demi_core::conversation::recover_forks;
 use demi_backend_user_shard::services::{
     CloseError, ProviderSetup, ServiceKeys, ServiceSettings, Services, ServicesError, Storage,
 };
-use demi_backend_user_shard::shard::ShardPool;
-use demi_backend_user_shard::shard::cloud::{route_deaths, route_statuses};
+use demi_backend_user_shard::pool::ShardPool;
+use demi_backend_user_shard::cloud::{route_deaths, route_statuses};
 use tokio_util::task::AbortOnDropHandle;
 
 use crate::config::BackendConfig;
@@ -233,7 +234,7 @@ async fn announce_runtimes(mut runtimes: tokio::sync::mpsc::Receiver<()>, servic
 
 async fn recover_in_background(
     services: Arc<demi_backend_user_shard::services::Services>,
-    shards: demi_backend_user_shard::shard::Shards,
+    shards: demi_backend_user_shard::pool::Shards,
 ) {
     let running = loop {
         match recover_clouds(&services.control, &services.stores, &services.cloud).await {
@@ -261,7 +262,7 @@ async fn recover_in_background(
 /// (`crates/machine-manager-protocol/src/lib.rs`).
 async fn take_over_clouds(
     running: Vec<(UserId, demi_core_store::devices::DeviceRecord)>,
-    shards: &demi_backend_user_shard::shard::Shards,
+    shards: &demi_backend_user_shard::pool::Shards,
 ) -> Result<(), String> {
     for (owner, device) in running {
         shards
@@ -307,7 +308,7 @@ async fn forget_stopped_clouds(
 async fn take_up_stopped_clouds(
     taken: &[demi_web_api_protocol::ids::DeviceId],
     services: &demi_backend_user_shard::services::Services,
-    shards: &demi_backend_user_shard::shard::Shards,
+    shards: &demi_backend_user_shard::pool::Shards,
 ) -> Result<(), String> {
     let cores = services
         .stores
@@ -593,7 +594,7 @@ impl Backend {
         // user's next call starts them.
         start_step(
             "schedule_users",
-            demi_backend_user_shard::schedules::start_schedulers(&cores, &shards.shards()),
+            start_schedulers(&cores, &shards.shards()),
         )
         .await;
         // Each media job a vendor took before the restart is followed to
@@ -601,7 +602,7 @@ impl Backend {
         // stop the start: a user's next call follows them.
         start_step(
             "media_jobs",
-            demi_backend_user_shard::shard::start_media_followers(&cores, &shards.shards()),
+            start_media_followers(&cores, &shards.shards()),
         )
         .await;
         // Each user's search index catches up with the conversations, in the
@@ -672,7 +673,7 @@ impl Backend {
     }
 
     /// What the shards hold now: the live trees and the work they run.
-    pub async fn census(&self) -> demi_backend_user_shard::shard::Census {
+    pub async fn census(&self) -> demi_core::shard::Census {
         self.shards.shards().census().await
     }
 

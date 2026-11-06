@@ -10,7 +10,7 @@ use axum::http::StatusCode;
 use demi_core_store::workspaces::{MoveRefusal, WorkspaceChange};
 use demi_core_sync::Part;
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::shard::workspaces::WorkspaceRefusal;
+use demi_core::shard::workspaces::WorkspaceRefusal;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::WorkspaceId;
 use demi_web_api_protocol::workspaces::{

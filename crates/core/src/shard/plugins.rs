@@ -308,7 +308,7 @@ impl ProductPort for ShardPort {
 /// The client of a shard thread's plugins' outbound requests
 /// (`crates/plugin-host/src/web.rs`). A test's backend trusts the
 /// authorities its HTTPS servers present.
-pub(crate) fn web_client(services: &CoreServices) -> reqwest::Client {
+pub fn web_client(services: &CoreServices) -> reqwest::Client {
     let roots = {
         let _ = services;
         &[]
@@ -456,7 +456,7 @@ impl Shard {
     /// saying so: each plugin of such a package with panel tabs in a
     /// conversation that reaches the device hears it, for that conversation
     /// (`crates/command-protocol/src/messages.rs`).
-    pub(crate) async fn package_lost(&self, device: &DeviceId, lost: Lost<'_>) {
+    pub async fn package_lost(&self, device: &DeviceId, lost: Lost<'_>) {
         self.cli_package_lost(device, &lost);
         let panelled = match self
             .store().panelled_conversations()

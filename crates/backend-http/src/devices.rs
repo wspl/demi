@@ -26,7 +26,7 @@ use demi_web_api_protocol::files::{
 };
 use demi_web_api_protocol::ids::DeviceId;
 use demi_web_api_protocol::workflows::{KeptWorkflowList, WorkflowsQuery};
-use demi_backend_user_shard::conversation::workflows::DeviceWorkflowsRefusal;
+use demi_core::conversation::workflows::DeviceWorkflowsRefusal;
 
 use super::AppState;
 use super::body::JsonBody;

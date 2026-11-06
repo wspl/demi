@@ -345,7 +345,7 @@ impl Work {
 /// A runtime of `provider`, an entry of `user`'s, for a session another
 /// server borrows with the share key `key`: a conversation's, under the
 /// entry's rotation, but unmetered. Its first request makes its runtime.
-pub(crate) fn lent_runtime(
+pub fn lent_runtime(
     shard: &Rc<Shard>,
     services: Arc<CoreServices>,
     user: UserId,
@@ -385,7 +385,7 @@ pub(crate) fn lent_runtime(
 
 /// What one request of each of `models` of `entry` may hold, as the runtime
 /// of a session lent with the share key `key` would say.
-pub(crate) async fn lent_limits(
+pub async fn lent_limits(
     shard: &Rc<Shard>,
     services: Arc<CoreServices>,
     user: UserId,

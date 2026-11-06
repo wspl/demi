@@ -56,7 +56,7 @@ use demi_web_api_protocol::search::{
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::services::CoreServices;
-use crate::shard::{Shard, Shards};
+use crate::shard::Shard;
 
 /// The user's indexer: the watch of the user's changes, one indexing at a
 /// time per conversation, the conversations marked since their last look
@@ -255,7 +255,7 @@ impl Shard {
     /// It covers each of the user's conversations, the most recently active first,
     /// and then the rows of any conversation that is gone. An index built again is
     /// empty, so this fills it. Asked for while it runs, it runs once more after.
-    pub(crate) async fn catch_up_everything(self: Rc<Self>) {
+    pub async fn catch_up_everything(self: Rc<Self>) {
         let indexer = self.search_indexer();
         if indexer.catching_up.get() != CatchUp::Idle {
             indexer.catching_up.set(CatchUp::Again);
@@ -321,24 +321,6 @@ fn report_catch_up(id: &ConversationId, caught_up: Result<(), StorageError>) {
     }
 }
 
-/// Brings each user's search index in step with the conversations at start
-/// (`crates/core-store/src/search.rs`): every user who has a conversation has
-/// their shard index it in the background, while the backend serves. Answers
-/// once each shard has its task.
-pub async fn index_at_start(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
-    for (owner, store) in cores {
-        if store.conversations(false).await?.is_empty() && store.conversations(true).await?.is_empty() {
-            continue;
-        }
-        let handed = shards.of(owner).adopt(Shard::catch_up_everything).await;
-        if handed.is_err() {
-            // The backend is shutting down; the next start indexes what is
-            // left.
-            return Ok(());
-        }
-    }
-    Ok(())
-}
 
 impl Shard {
     /// Indexes every conversation again as at start each time the user's

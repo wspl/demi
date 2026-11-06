@@ -14,7 +14,8 @@
 //! every shard shares.
 //!
 //! The Cloud's operations are methods of `dyn CloudShard`, what the Cloud needs
-//! of its user's shard, which the shard implements.
+//! of its user's core, which this crate implements for the core
+//! (`user_core`).
 //!
 //! # Lifecycle rules
 //!
@@ -109,6 +110,7 @@ pub mod network;
 pub mod reset;
 pub mod status;
 pub mod tuning;
+pub mod user_core;
 mod uses;
 
 use std::rc::Rc;

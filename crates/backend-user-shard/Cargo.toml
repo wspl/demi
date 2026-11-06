@@ -12,22 +12,12 @@ doctest = false
 bench = false
 
 [dependencies]
-# The IANA time zones and the locale canonicalization a reported locale is
-# checked against, from ICU4X's compiled data: the same on every machine,
-# without a system time zone database.
-icu_locale = "2"
-icu_time = { version = "2", default-features = false, features = ["compiled_data"] }
+demi-core = { path = "../core" }
 demi-core-hosts = { path = "../core-hosts" }
-demi-agent-server = { path = "../agent-server" }
 demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
-demi-agent-session = { path = "../agent-session" }
-demi-agent-store = { path = "../agent-store" }
-demi-agent-tools = { path = "../agent-tools" }
-demi-agent-transcript = { path = "../agent-transcript" }
 demi-backend-accounts = { path = "../backend-accounts" }
 demi-backend-cloud = { path = "../backend-cloud" }
 demi-core-host-access = { path = "../core-host-access" }
-demi-core-idle-watch = { path = "../core-idle-watch" }
 demi-core-blobs = { path = "../core-blobs" }
 demi-core-providers = { path = "../core-providers" }
 demi-backend-runners = { path = "../backend-runners" }
@@ -35,14 +25,10 @@ demi-backend-database = { path = "../backend-database" }
 demi-core-store = { path = "../core-store" }
 demi-core-sync = { path = "../core-sync" }
 demi-core-permissions = { path = "../core-permissions" }
-demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
 demi-plugin-host = { path = "../plugin-host" }
 demi-plugin-interface = { path = "../plugin-interface" }
-demi-command-protocol = { path = "../command-protocol" }
-demi-command-declarations = { path = "../command-declarations" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-shared-types = { path = "../shared-types", features = ["audio", "mp4"] }
-demi-shared-gates = { path = "../shared-gates" }
 demi-runner-client = { path = "../runner-client" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-provider-common = { path = "../provider-common" }
@@ -50,33 +36,21 @@ demi-provider-registry = { path = "../provider-registry" }
 demi-provider-relay = { path = "../provider-relay" }
 demi-provider-claude-code = { path = "../provider-claude-code" }
 demi-runner-protocol = { path = "../runner-protocol" }
-demi-host-interface = { path = "../host-interface" }
-demi-host-paths = { path = "../host-paths" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 axum = { version = "0.8", features = ["ws"] }
 base64.workspace = true
 bytes.workspace = true
-async-stream = "0.3"
 futures-util.workspace = true
 http.workspace = true
-garde.workspace = true
 object_store.workspace = true
 rand = "0.9"
 reqwest = { workspace = true, features = ["rustls", "stream"] }
-schemars.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"
-hex = "0.4"
-hmac = "0.12"
-subtle = "2"
 thiserror.workspace = true
 semver.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-jiff = { workspace = true, features = ["tz-system", "tzdb-bundle-platform"] }
 tracing.workspace = true
 url = "2"
 uuid = { version = "1", features = ["v4"] }
-# The public holidays a schedule's working days skip, kept compressed.
-zstd = { version = "0.13", default-features = false }

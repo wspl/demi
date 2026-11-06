@@ -37,7 +37,7 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use super::hosts;
 use super::query::QueryParams;
-use demi_backend_user_shard::conversation::{AgentsError, ForkRefusal};
+use demi_core::conversation::{AgentsError, ForkRefusal};
 use demi_backend_user_shard::services::Services;
 use demi_core_sync::etag_of;
 

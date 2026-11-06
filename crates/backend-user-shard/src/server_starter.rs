@@ -3,6 +3,7 @@
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
+use demi_backend_cloud::user_core::UserCloud;
 use demi_core_host_access::cloud::CloudHost;
 use demi_core_store::StorageError;
 use demi_core_store::devices::DeviceRecord;
@@ -22,9 +23,9 @@ use futures_util::future::LocalBoxFuture;
 
 use crate::page_notifications::PageNotifications;
 use crate::services::Services;
-use crate::shard::Shard;
-use crate::shard::lent_media::LentJobs;
-use crate::starter::{Notified, Reach, Starter};
+use demi_core::shard::Shard;
+use crate::lent_media::LentJobs;
+use demi_core::starter::{Notified, Reach, Starter};
 
 /// What the server gives one user's core.
 pub struct ServerStarter {
@@ -69,9 +70,20 @@ impl ServerSide {
     }
 }
 
+/// The server's services, as its work on a core reaches them.
+pub trait ServerCore {
+    fn server_services(&self) -> &Arc<Services>;
+}
+
+impl ServerCore for Shard {
+    fn server_services(&self) -> &Arc<Services> {
+        &ServerSide::of(self).services
+    }
+}
+
 impl Starter for ServerStarter {
     fn cloud(&self) -> Option<Rc<dyn CloudHost>> {
-        Some(self.shard.upgrade()?)
+        Some(Rc::new(UserCloud(self.shard.upgrade()?)))
     }
 
     fn cloud_network_limited(&self, device: &DeviceRecord) -> bool {

@@ -13,7 +13,7 @@
 //!   is the borrower's.
 //! - Revoking a key closes every session it opened and ends every media call
 //!   it made, which cancels a video's job left unfinished
-//!   (`crate::shard::lent_media`).
+//!   (`demi_core::shard::lent_media`).
 //!
 //! A borrowed session runs on the shard of the key's maker, on the runtime a
 //! conversation of theirs would have, unmetered
@@ -40,10 +40,11 @@ use demi_web_api_protocol::providers::{NewShareKey, ShareKey, ShareKeyUse, Share
 use futures_util::{Sink, Stream};
 use tokio_util::sync::CancellationToken;
 
-use crate::conversation::{lent_limits, lent_runtime};
-use crate::provider_settings::ProviderRefusal;
+use demi_core::conversation::{lent_limits, lent_runtime};
+use demi_core::provider_settings::ProviderRefusal;
+use crate::server_starter::ServerCore;
 use crate::services::Services;
-use crate::shard::Shard;
+use demi_core::shard::Shard;
 
 /// How long a key nobody used keeps working: a key pasted into a chat and
 /// forgotten should not stay valid, and a week is how long an invite link
@@ -221,11 +222,28 @@ impl Services {
     }
 }
 
-impl Shard {
+/// The user's provider entries lent to other servers, on the user's core.
+#[expect(
+    async_fn_in_trait,
+    reason = "a core runs on one thread: its futures are never sent to another"
+)]
+pub trait ProviderSharing {
     /// What the lender says of `borrowing`'s entry: its name, its catalog of
     /// the models the key's maker has on, and what one request of each may
     /// hold; nothing but its name while they have it turned off.
-    pub async fn lent(self: Rc<Self>, borrowing: Borrowing) -> Result<Lent, String> {
+    async fn lent(self: Rc<Self>, borrowing: Borrowing) -> Result<Lent, String>;
+
+    /// Serves the session borrowed with `borrowing`'s key over a socket's
+    /// messages until it closes or the key is revoked.
+    async fn lend<In, Out>(self: Rc<Self>, borrowing: Borrowing, incoming: In, outgoing: Out)
+    where
+        In: Stream<Item = ClientMessage> + Unpin,
+        Out: Sink<ServerMessage> + Unpin,
+;
+}
+
+impl ProviderSharing for Shard {
+    async fn lent(self: Rc<Self>, borrowing: Borrowing) -> Result<Lent, String> {
         let services = self.server_services().clone();
         let registry = &services.provider_registry;
         let entry = &borrowing.entry;
@@ -291,9 +309,7 @@ impl Shard {
         })
     }
 
-    /// Serves the session borrowed with `borrowing`'s key over a socket's
-    /// messages until it closes or the key is revoked.
-    pub async fn lend<In, Out>(self: Rc<Self>, borrowing: Borrowing, incoming: In, outgoing: Out)
+    async fn lend<In, Out>(self: Rc<Self>, borrowing: Borrowing, incoming: In, outgoing: Out)
     where
         In: Stream<Item = ClientMessage> + Unpin,
         Out: Sink<ServerMessage> + Unpin,

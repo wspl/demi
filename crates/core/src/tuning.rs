@@ -1,0 +1,125 @@
+//! The times and bounds the shard and the edge run with.
+//!
+//! The configuration sets them and tests shorten them
+//! (`crates/backend/src/config/mod.rs`).
+
+use std::time::Duration;
+
+/// When Demi reclaims what a conversation uses on a Host, one idle window
+/// for the conversation's release and for a Cloud's stop (`crates/backend-user-shard/src/lifecycle/mod.rs`).
+/// Tests shorten the times.
+#[derive(Debug, Clone, Copy)]
+pub struct LifecycleTuning {
+    /// How long a conversation, or every conversation using the Cloud, stays
+    /// inactive before its Host's resources are reclaimed.
+    pub idle_window: Duration,
+    /// How often a conversation's idle watch reads its activity.
+    pub idle_poll: Duration,
+}
+
+impl Default for LifecycleTuning {
+    fn default() -> Self {
+        Self {
+            idle_window: Duration::from_secs(60 * 60),
+            idle_poll: Duration::from_secs(30),
+        }
+    }
+}
+
+/// How the backend serves conversations. Tests lower the bounds.
+#[derive(Debug, Clone, Copy)]
+pub struct ConversationTuning {
+    /// The most steps a conversation lane's outbox holds, each the frames
+    /// of one change; a client that falls this far behind is disconnected as
+    /// lagging.
+    pub outbox_steps: usize,
+    /// Whether the backend asks the conversation's model for a title; off, a
+    /// title stays the one the first message gives. A test whose scripted vendor
+    /// answers only the turns turns it off.
+    pub titles: bool,
+    /// The least time between two indexings of one conversation for search
+    /// (`crates/core-store/src/search.rs`); a change within it is
+    /// indexed once it has passed.
+    pub search_interval: Duration,
+    /// The longest a `shell` call watches a command that still runs, in
+    /// milliseconds (`crates/agent-tools/src/lib.rs`): the product's, which a
+    /// test shortens to see a call return within its time.
+    pub call_window_ms: u32,
+    /// How long a command that is not a service prints nothing before
+    /// it wakes its agent, once (`crates/agent-session/src/reports.rs`): the
+    /// product's, which a test shortens to see the wake-up within its time.
+    pub silence: Duration,
+}
+
+impl Default for ConversationTuning {
+    fn default() -> Self {
+        Self {
+            outbox_steps: demi_agent_server::ServerConfig::default().outbox_steps,
+            titles: true,
+            search_interval: Duration::from_secs(2),
+            call_window_ms: demi_agent_server::ServerConfig::default().call_window_ms,
+            silence: demi_agent_server::ServerConfig::default().session.silence,
+        }
+    }
+}
+
+/// How a media job is waited for: its state read every 5 seconds, as each
+/// vendor's own SDK does, since no vendor announces a finished job to a caller
+/// without a public address and a callback would need one.
+///
+/// The whole job is bounded by 10 minutes from the ask to the end of the
+/// download, which the slowest video vendor's documented wait fits; an image's
+/// or a sound's ends in seconds. Tests shorten both.
+#[derive(Debug, Clone, Copy)]
+pub struct MediaTuning {
+    pub job_reads_every: Duration,
+    pub job_bound: Duration,
+}
+
+impl Default for MediaTuning {
+    fn default() -> Self {
+        Self {
+            job_reads_every: Duration::from_secs(5),
+            job_bound: Duration::from_secs(10 * 60),
+        }
+    }
+}
+
+/// How the backend treats runner connections (`crates/runner-protocol/src/wire/mod.rs`, `crates/backend-http/src/runner_socket.rs`). Tests shorten the
+/// times.
+#[derive(Debug, Clone, Copy)]
+pub struct RunnerTuning {
+    /// A connection that sends no hello within this is closed.
+    pub hello_deadline: Duration,
+    /// How long a pairing code lives before its waiting runner gets a new one.
+    pub claim_lifetime: Duration,
+    /// How many pairing codes one user may try within a minute.
+    pub claims_per_minute: usize,
+    /// How often a connected runner is asked whether it is there; none turns
+    /// liveness off.
+    pub ping: Option<Duration>,
+    /// How long the connection that holds a device has to answer a ping
+    /// when a new hello for the device arrives, before it gives way.
+    pub probe: Duration,
+    /// How long a device shows as updating after the 409 that sent its
+    /// runner to an update, or after the last byte of its download served,
+    /// unless a hello comes first.
+    pub updating: Duration,
+    /// How long a device whose connection dropped counts as online while
+    /// its runner reconnects (`crates/backend-runners/src/devices.rs`).
+    pub returning: Duration,
+}
+
+impl Default for RunnerTuning {
+    fn default() -> Self {
+        Self {
+            hello_deadline: Duration::from_secs(30),
+            claim_lifetime: Duration::from_secs(10 * 60),
+            claims_per_minute: 10,
+            ping: Some(demi_runner_client::PING_INTERVAL),
+            probe: Duration::from_secs(5),
+            updating: Duration::from_secs(2 * 60),
+            returning: Duration::from_secs(10),
+        }
+    }
+}

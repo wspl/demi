@@ -31,14 +31,13 @@ pub(crate) mod notifications;
 pub(crate) mod project_files;
 pub(crate) mod organize;
 pub(crate) mod product;
-mod providers;
+pub mod providers;
 pub(crate) mod restart_resume;
 pub(crate) mod retry_resume;
 mod runs_on;
 pub mod side_questions;
 pub mod search;
 pub mod settings;
-pub mod shares;
 mod lane;
 mod summary;
 mod turn_timing;
@@ -66,15 +65,12 @@ use demi_core_sync::Part;
 use demi_shared_types::NodeId;
 use demi_web_api_protocol::ids::UserId;
 
-pub use self::deletion::finish_deletions;
 pub use self::attachment_facts::{attachment_facts, named_blocks, replies, reply_block_facts};
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
-pub use self::idle_compaction::arm_idle_compactions;
-pub use self::restart_resume::resume_after_restart;
 pub use self::announcement::AgentsError;
 pub(crate) use self::product::ShardHosts;
-pub(crate) use self::providers::{lent_limits, lent_runtime};
+pub use self::providers::{lent_limits, lent_runtime};
 use self::product::{
     ExecutionContext, HARNESS_GUIDE, INSTRUCTIONS, PluginContext, ShardAgents, ShardReplyFiles, ShardSubagents, ShardToolsets,
 };

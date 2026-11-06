@@ -11,13 +11,14 @@ use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocketUpgrade, close_code};
 use axum::http::StatusCode;
 use axum::response::Response;
-use demi_backend_user_shard::shard::lane::PageSession;
+use demi_core::shard::lane::PageSession;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::state::{SyncEvent, SyncFollowed};
 
 use super::AppState;
 use super::connection::Opened;
 use super::error::ApiError;
+use demi_backend_user_shard::sync::SyncChannel;
 
 /// The synchronization channel of the session `session`.
 pub(super) fn open(state: &AppState, session: PageSession) -> Opened {

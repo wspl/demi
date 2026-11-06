@@ -30,15 +30,12 @@
 //! read when it started is read through its marker once it ends. Until that
 //! is stored, its entry is listed read.
 
-use demi_core_store::store::CoreStore;
-use demi_web_api_protocol::ids::UserId;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use demi_agent_session::IdleCompactionDue;
-use demi_core_store::StorageError;
 use demi_core_store::idle_compactions::IdleCompaction;
 use demi_core_host_access::root_of;
 use demi_core_sync::Part;
@@ -46,7 +43,7 @@ use demi_shared_types::{IDLE_COMPACTION_CONTEXT, SessionPhase};
 use demi_web_api_protocol::ids::ConversationId;
 use tokio_util::task::AbortOnDropHandle;
 
-use crate::shard::{Shard, Shards};
+use crate::shard::Shard;
 
 /// Each conversation's timer.
 #[derive(Default)]
@@ -136,7 +133,7 @@ impl Shard {
 
     /// Arms a timer for each of the user's stored times, as the shard opens
     /// at the backend's start.
-    async fn arm_idle_compactions(self: Rc<Self>) {
+    pub async fn arm_idle_compactions(self: Rc<Self>) {
         match self.store().idle_compactions().await {
             Ok(stored) => {
                 for (conversation, due) in stored {
@@ -296,18 +293,3 @@ async fn idle_compaction_timer(
     tracing::info!(event = "idle_compaction.settled", %conversation, outcome, "an idle compaction's time came");
 }
 
-/// Opens at start the shard of each user with a stored idle compaction time,
-/// which arms its timers in the background, so the start waits for none.
-pub async fn arm_idle_compactions(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
-    for (owner, store) in cores {
-        if store.idle_compactions().await?.is_empty() {
-            continue;
-        }
-        let handed = shards.of(owner).adopt(Shard::arm_idle_compactions).await;
-        if handed.is_err() {
-            // The backend is shutting down; the rows stay for the next start.
-            return Ok(());
-        }
-    }
-    Ok(())
-}

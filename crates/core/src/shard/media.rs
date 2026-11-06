@@ -85,10 +85,10 @@ use crate::services::CoreServices;
 
 /// An entry that makes media of a kind, with what makes them for its
 /// active account, in the order a call tries the entries.
-pub(super) struct Route {
+pub struct Route {
     entry: ProviderEntry,
     kind: MediaKind,
-    pub(super) maker: MakerOf,
+    pub maker: MakerOf,
     /// The user turned the entry off in Settings › Providers.
     hidden: bool,
 }
@@ -100,7 +100,7 @@ impl Route {
 
     /// The client the entry's calls go through on `client`, the shard's or
     /// the shared services'.
-    pub(super) fn http(&self, services: &CoreServices, client: &reqwest::Client) -> demi_provider_common::ProviderHttp {
+    pub fn http(&self, services: &CoreServices, client: &reqwest::Client) -> demi_provider_common::ProviderHttp {
         services.provider_registry.http_for(&self.entry, client.clone())
     }
 
@@ -167,7 +167,7 @@ async fn routes(
     Ok(routes)
 }
 
-pub(super) async fn route(
+pub async fn route(
     services: &CoreServices,
     entry: ProviderEntry,
     preferences: &demi_web_api_protocol::settings::Preferences,
@@ -220,7 +220,7 @@ async fn current(
 }
 
 /// The model `id` as a rotation reads a window's scope.
-pub(super) fn model_of(id: &str) -> Model {
+pub fn model_of(id: &str) -> Model {
     Model {
         id: id.to_owned(),
         name: id.to_owned(),
@@ -1644,7 +1644,7 @@ impl Making<'_> {
 }
 
 /// Why a call on an entry ended without what it made.
-pub(super) enum Unmade {
+pub enum Unmade {
     /// Demi's, told before a request is sent or instead of the vendor's
     /// answer, such as every account used up.
     Refusal(MediaRefusal),
@@ -1658,7 +1658,7 @@ pub(super) enum Unmade {
 /// vendor finds that one used up. Each used-up account is marked as a turn's
 /// failure marks it. `send` is told the account and, when `manages`, its
 /// label.
-pub(super) async fn on_accounts<T>(
+pub async fn on_accounts<T>(
     shard: &Shard,
     route: &Route,
     model: &Model,

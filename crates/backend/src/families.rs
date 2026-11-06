@@ -12,7 +12,7 @@ use demi_provider_registry::families::{
     ProviderFamily,
 };
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
-use demi_backend_user_shard::conversation::claude_cli::MachineSlot;
+use demi_core::conversation::claude_cli::MachineSlot;
 use demi_provider_claude_code::{AccountMachine, ClaudeCodeConfig, ClaudeCodeProvider};
 use demi_provider_codex::{CodexConfig, CodexProvider, CodexReleases};
 use demi_provider_common::credentials::SubscriptionAccounts;

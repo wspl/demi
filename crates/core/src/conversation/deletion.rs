@@ -16,45 +16,14 @@
 //!
 //! The owner's blob namespace is collected after it (`lifecycle::collection`).
 
-use demi_core_store::store::CoreStore;
-use demi_web_api_protocol::ids::UserId;
 use demi_core_store::StorageError;
 use demi_core_host_access::access::Leaving;
 use demi_core_host_access::root_of;
 use demi_core_sync::Part;
 use demi_web_api_protocol::ids::{ConversationId, WorkspaceId};
 
-use crate::shard::{Shard, Shards};
+use crate::shard::Shard;
 
-/// Finishes each deletion an earlier backend left pending
-/// (`crates/core-store/src/deletions.rs`), in its owner's shard, and
-/// collects the owner's blobs after it. A deletion that fails again stays
-/// pending for the next start; only listing them fails the call.
-pub async fn finish_deletions(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
-    for (owner, store) in cores {
-        for id in store.pending_deletions().await? {
-            let finished = shards
-                .of(owner)
-                .call(move |shard, _| async move {
-                    let finished = shard.finish_deletion(&id).await;
-                    if finished.is_ok() {
-                        shard.collect_blobs();
-                    }
-                    finished.map_err(|error| (id, error))
-                })
-                .await;
-            match finished {
-                Ok(Ok(())) => {}
-                Ok(Err((id, error))) => {
-                    tracing::error!(event = "conversation_deletion.failed", conversation = %id, stage = "finish", outcome = "next_start", error = &error as &dyn std::error::Error, "a pending deletion was not finished");
-                }
-                // The backend is shutting down; the next start finishes the rest.
-                Err(_) => return Ok(()),
-            }
-        }
-    }
-    Ok(())
-}
 
 impl Shard {
     /// Deletes the user's conversation `id`; false when the user has no such

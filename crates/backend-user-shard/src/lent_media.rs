@@ -37,10 +37,10 @@ use demi_shared_types::{MediaKind, VendorTrace};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 
-use super::Shard;
-use super::media::{Route, Unmade, model_of, on_accounts, route};
+use demi_core::shard::Shard;
+use demi_core::shard::media::{Route, Unmade, model_of, on_accounts, route};
 use crate::provider_sharing::Borrowing;
-use crate::server_starter::ServerSide;
+use crate::server_starter::{ServerCore, ServerSide};
 
 /// Why a lent call was not taken.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,7 +58,7 @@ pub(crate) struct LentJobs(RefCell<HashMap<String, LentJob>>);
 /// A job a borrower asked for: who took it, and until when its handle is
 /// kept.
 #[derive(Clone)]
-struct LentJob {
+pub struct LentJob {
     /// The share key it was asked with, whose calls alone name it.
     key: String,
     maker: MakerOf,
@@ -120,10 +120,46 @@ fn crossing(failure: MediaFailure) -> MediaFailure {
     }
 }
 
-impl Shard {
+/// The media jobs of the user's entries lent to other servers, on the user's core.
+#[expect(
+    async_fn_in_trait,
+    reason = "a core runs on one thread: its futures are never sent to another"
+)]
+pub trait LentMedia {
     /// Takes the borrower's `call` of the lent entry's maker of `kind`, and
     /// answers the receiver of its reply.
-    pub async fn lent_media(
+    async fn lent_media(
+        self: Rc<Self>,
+        borrowing: Borrowing,
+        kind: MediaKind,
+        call: Call,
+    ) -> Result<oneshot::Receiver<Reply>, Unlent>;
+
+    /// Sends `call`'s reply to `sender`, unless the borrower went or the key
+    /// was `revoked` first.
+    async fn lend_call(
+        &self,
+        borrowing: &Borrowing,
+        route: Route,
+        call: Call,
+        sender: oneshot::Sender<Reply>,
+        revoked: &tokio_util::sync::CancellationToken,
+    );
+
+    /// Sends the reply of `call`, a read or the cancel of the job `lent`,
+    /// whose handle is `handle`, to `sender`.
+    async fn lend_job_call(
+        &self,
+        lent: LentJob,
+        handle: &str,
+        call: Call,
+        sender: oneshot::Sender<Reply>,
+        revoked: &tokio_util::sync::CancellationToken,
+    );
+}
+
+impl LentMedia for Shard {
+    async fn lent_media(
         self: Rc<Self>,
         borrowing: Borrowing,
         kind: MediaKind,
@@ -190,8 +226,6 @@ impl Shard {
         Ok(receiver)
     }
 
-    /// Sends `call`'s reply to `sender`, unless the borrower went or the key
-    /// was `revoked` first.
     async fn lend_call(
         &self,
         borrowing: &Borrowing,
@@ -261,8 +295,6 @@ impl Shard {
         }
     }
 
-    /// Sends the reply of `call`, a read or the cancel of the job `lent`,
-    /// whose handle is `handle`, to `sender`.
     async fn lend_job_call(
         &self,
         lent: LentJob,

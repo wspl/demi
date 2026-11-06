@@ -545,23 +545,6 @@ fn with_bytes(made: Made, bytes: B64Bytes) -> Made {
     }
 }
 
-/// Starts the shard of each user with a running job, whose start follows
-/// them.
-pub async fn start_media_followers(
-    cores: &[(demi_web_api_protocol::ids::UserId, demi_core_store::store::CoreStore)],
-    shards: &super::Shards,
-) -> Result<(), demi_core_store::StorageError> {
-    for (user, store) in cores {
-        if !store.has_running_media_jobs().await? {
-            continue;
-        }
-        // A shard that cannot be reached follows them at its next call.
-        if let Err(error) = shards.of(user).call(|_, _| async {}).await {
-            tracing::warn!(event = "media_job.start_failed", %user, %error, "the media jobs were not followed");
-        }
-    }
-    Ok(())
-}
 
 /// Keeps the windows of the account's quota a response reported.
 fn observe(row: &mut UsageRow, observed: &[QuotaWindow]) {

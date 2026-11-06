@@ -85,7 +85,7 @@ pub(crate) struct ConversationWatches {
 impl Shard {
     /// What the conversation is doing: a turn of its tree, an operation
     /// holding its file gate, or a user stream someone has open.
-    pub(crate) fn conversation_activity(&self, id: &ConversationId) -> Activity {
+    pub fn conversation_activity(&self, id: &ConversationId) -> Activity {
         let slot = self.conversations().slot(id);
         let host = Activity::of(&slot.file_gate().state()).and(Activity::of(&slot.streams.state()));
         match self.agent().tree(&root_of(id)) {

@@ -19,7 +19,7 @@ use axum_extra::headers::Authorization;
 use axum_extra::headers::authorization::Bearer;
 use demi_backend_user_shard::provider_sharing::Borrowing;
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::shard::lent_media::Unlent;
+use demi_backend_user_shard::lent_media::Unlent;
 use demi_provider_common::media::channel::Call;
 use demi_provider_relay::wire::media::{Frames, KEEP_ALIVE, MAKES_NONE, frame, keep_alive};
 use demi_provider_relay::wire::{
@@ -34,6 +34,8 @@ use super::body::read_within;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use super::providers::refused;
+use demi_backend_user_shard::lent_media::LentMedia;
+use demi_backend_user_shard::provider_sharing::ProviderSharing;
 
 /// `GET /providers/:id/share-keys`.
 pub(super) async fn list(

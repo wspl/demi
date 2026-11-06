@@ -24,7 +24,9 @@ use demi_web_api_protocol::shares::{ShareTarget, ShareTranscriptQuery};
 use rand::TryRngCore as _;
 use rand::rngs::OsRng;
 
-use crate::shard::Shard;
+use demi_core::shard::Shard;
+
+use crate::server_starter::ServerCore;
 
 /// Why the owner's request about a share was refused.
 #[derive(Debug, thiserror::Error)]
@@ -53,11 +55,85 @@ fn new_token() -> ShareToken {
     ShareToken::try_from(URL_SAFE_NO_PAD.encode(bits)).expect("16 bytes encode to a nonempty token")
 }
 
-impl Shard {
+/// The shares of the user's conversations, on the user's core.
+#[expect(
+    async_fn_in_trait,
+    reason = "a core runs on one thread: its futures are never sent to another"
+)]
+pub trait ConversationSharing {
     /// The conversation's share of `target`: the one it has, or a new one
     /// with its list made now. A request that races another for the same
     /// target answers the share the first added, and drops its own list.
-    pub async fn share(
+    async fn share(
+        &self,
+        conversation: ConversationId,
+        target: ShareTarget,
+    ) -> Result<ShareRecord, ShareRefusal>;
+
+    /// Makes the share's list again under the same token: the
+    /// conversation as it is now, with its title now.
+    async fn update_share(
+        &self,
+        conversation: ConversationId,
+        token: ShareToken,
+    ) -> Result<ShareRecord, ShareRefusal>;
+
+    /// Removes the share: its link answers as one that never existed from
+    /// the record's removal on, and its list goes after it.
+    async fn stop_sharing(
+        &self,
+        conversation: ConversationId,
+        token: ShareToken,
+    ) -> Result<(), ShareRefusal>;
+
+    /// The share `token` of the user's conversation `conversation`.
+    async fn owned_share(
+        &self,
+        conversation: &ConversationId,
+        token: &ShareToken,
+    ) -> Result<ShareRecord, ShareRefusal>;
+
+    /// Makes the list of `target` under `token`, in place of one it had.
+    async fn make_list(
+        &self,
+        conversation: &ConversationId,
+        token: &ShareToken,
+        target: &ShareTarget,
+    ) -> Result<ShareCounts, ShareRefusal>;
+
+    /// Removes a list no record names any more. One that stays costs
+    /// storage only: nothing reads the rows of a token without its record.
+    async fn drop_list(&self, conversation: &ConversationId, token: ShareToken);
+
+    /// A page of what the share's list holds; none when the conversation
+    /// has no database.
+    async fn share_page(
+        &self,
+        share: &ShareRecord,
+        query: ShareTranscriptQuery,
+    ) -> Result<Option<PageRead>, StorageError>;
+
+    /// A block the share's list holds, whole.
+    async fn share_block(&self, share: &ShareRecord, block: BlockId) -> Result<Option<BlockRead>, StorageError>;
+
+    /// The attachment `number` when the share's text names it.
+    async fn shared_attachment(
+        &self,
+        share: &ShareRecord,
+        number: AttachmentNumber,
+    ) -> Result<Option<AttachmentRow>, StorageError>;
+
+    /// Whether the share shows the reply block `<tag id="id" />`: the block
+    /// a reply block's share is, or one a text of the list names
+    /// (`shares::shows_block`).
+    async fn shows_block(&self, share: &ShareRecord, tag: String, id: String) -> Result<bool, StorageError>;
+
+    /// The bytes of `blob` when the share shows it.
+    async fn share_blob(&self, share: &ShareRecord, blob: BlobRef) -> Result<Option<Bytes>, ShareBlobError>;
+}
+
+impl ConversationSharing for Shard {
+    async fn share(
         &self,
         conversation: ConversationId,
         target: ShareTarget,
@@ -79,7 +155,7 @@ impl Shard {
                 .await?
                 .unwrap_or(false);
             let held = [(tag.clone(), id.clone())].into_iter().collect();
-            if !named || super::reply_block_facts(self.plugins(), held).await.is_empty() {
+            if !named || demi_core::conversation::reply_block_facts(self.plugins(), held).await.is_empty() {
                 return Err(ShareRefusal::NoReplyBlock);
             }
         }
@@ -129,9 +205,7 @@ impl Shard {
         }
     }
 
-    /// Makes the share's list again under the same token: the
-    /// conversation as it is now, with its title now.
-    pub async fn update_share(
+    async fn update_share(
         &self,
         conversation: ConversationId,
         token: ShareToken,
@@ -157,9 +231,7 @@ impl Shard {
         Ok(share)
     }
 
-    /// Removes the share: its link answers as one that never existed from
-    /// the record's removal on, and its list goes after it.
-    pub async fn stop_sharing(
+    async fn stop_sharing(
         &self,
         conversation: ConversationId,
         token: ShareToken,
@@ -178,7 +250,6 @@ impl Shard {
         Ok(())
     }
 
-    /// The share `token` of the user's conversation `conversation`.
     async fn owned_share(
         &self,
         conversation: &ConversationId,
@@ -192,7 +263,6 @@ impl Shard {
             .ok_or(ShareRefusal::NoShare)
     }
 
-    /// Makes the list of `target` under `token`, in place of one it had.
     async fn make_list(
         &self,
         conversation: &ConversationId,
@@ -221,8 +291,6 @@ impl Shard {
         if taken.0 { Ok(taken.1) } else { Err(ShareRefusal::TargetInvalid) }
     }
 
-    /// Removes a list no record names any more. One that stays costs
-    /// storage only: nothing reads the rows of a token without its record.
     async fn drop_list(&self, conversation: &ConversationId, token: ShareToken) {
         let removed = self.store().databases()
             .db(conversation)
@@ -238,9 +306,7 @@ impl Shard {
         }
     }
 
-    /// A page of what the share's list holds; none when the conversation
-    /// has no database.
-    pub async fn share_page(
+    async fn share_page(
         &self,
         share: &ShareRecord,
         query: ShareTranscriptQuery,
@@ -276,8 +342,7 @@ impl Shard {
         read
     }
 
-    /// A block the share's list holds, whole.
-    pub async fn share_block(&self, share: &ShareRecord, block: BlockId) -> Result<Option<BlockRead>, StorageError> {
+    async fn share_block(&self, share: &ShareRecord, block: BlockId) -> Result<Option<BlockRead>, StorageError> {
         let transcript = Transcript::Shared {
             token: share.token.clone(),
         };
@@ -288,8 +353,7 @@ impl Shard {
             .await
     }
 
-    /// The attachment `number` when the share's text names it.
-    pub async fn shared_attachment(
+    async fn shared_attachment(
         &self,
         share: &ShareRecord,
         number: AttachmentNumber,
@@ -303,10 +367,7 @@ impl Shard {
             .flatten())
     }
 
-    /// Whether the share shows the reply block `<tag id="id" />`: the block
-    /// a reply block's share is, or one a text of the list names
-    /// (`shares::shows_block`).
-    pub async fn shows_block(&self, share: &ShareRecord, tag: String, id: String) -> Result<bool, StorageError> {
+    async fn shows_block(&self, share: &ShareRecord, tag: String, id: String) -> Result<bool, StorageError> {
         if let ShareTarget::ReplyBlock { tag: shared_tag, id: shared_id, .. } = &share.target {
             return Ok(*shared_tag == tag && *shared_id == id);
         }
@@ -317,8 +378,7 @@ impl Shard {
             .unwrap_or(false))
     }
 
-    /// The bytes of `blob` when the share shows it.
-    pub async fn share_blob(&self, share: &ShareRecord, blob: BlobRef) -> Result<Option<Bytes>, ShareBlobError> {
+    async fn share_blob(&self, share: &ShareRecord, blob: BlobRef) -> Result<Option<Bytes>, ShareBlobError> {
         let token = share.token.clone();
         let wanted = blob.clone();
         let shown = self.store().databases()

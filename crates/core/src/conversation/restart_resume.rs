@@ -36,21 +36,18 @@
 //! shows as failed a turn Demi is about to run. The shard holds the set in
 //! memory alone, since it lasts no longer than the process.
 
-use demi_core_store::store::CoreStore;
-use demi_web_api_protocol::ids::UserId;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 
 use demi_agent_transcript::INTERRUPTED_CODE;
-use demi_core_store::StorageError;
 use demi_core_host_access::{conversation_of, root_of};
 use demi_core_sync::Part;
 use demi_shared_types::{ErrorBlock, SessionPhase};
 use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::join_all;
 
-use crate::shard::{Shard, Shards};
+use crate::shard::Shard;
 
 /// What the resume tells the model.
 pub const RESTART_REASON: &str = "Demi resumed this turn after the backend restarted.";
@@ -132,7 +129,7 @@ impl Shard {
 
     /// Takes up the user's turns a shutdown interrupted, each in its own
     /// course, so that one slow to open holds up no other.
-    async fn resume_interrupted_turns(self: Rc<Self>) {
+    pub async fn resume_interrupted_turns(self: Rc<Self>) {
         let started = std::time::Instant::now();
         let marked = match self.store().interrupted_turns().await {
             Ok(marked) => marked,
@@ -218,19 +215,3 @@ impl Shard {
     }
 }
 
-/// Takes up at start the turns the last shutdown interrupted: each owner's
-/// shard resumes its own in the background, so the start waits for none.
-pub async fn resume_after_restart(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
-    for (owner, store) in cores {
-        if store.interrupted_turns().await?.is_empty() {
-            continue;
-        }
-        let handed = shards.of(owner).adopt(Shard::resume_interrupted_turns).await;
-        if handed.is_err() {
-            // The backend is shutting down; the next start takes up what is
-            // left.
-            return Ok(());
-        }
-    }
-    Ok(())
-}

@@ -11,7 +11,7 @@ use std::time::Instant;
 use axum::extract::{Path, Request, State};
 use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use demi_backend_user_shard::schedules::{CALLS_PER_MINUTE, HookAnswer, HookCall, ScheduleError};
+use demi_core::schedules::{CALLS_PER_MINUTE, HookAnswer, HookCall, ScheduleError};
 use demi_shared_types::ScheduleId;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ConversationId;

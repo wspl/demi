@@ -89,7 +89,8 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::services::CoreServices;
-use crate::shard::{Shard, Shards};
+use crate::shard::Shard;
+use crate::shard::cores::Cores;
 
 /// The most an operation of the package answers: one JSON document.
 ///
@@ -154,7 +155,7 @@ struct CliTarget {
 /// probe from any thread.
 #[derive(Clone)]
 pub struct ClaudeMachine {
-    shards: Shards,
+    cores: Arc<dyn Cores>,
     /// The vault, whose stores name the master.
     vault: Vault,
     /// The master, read once: an instance's master never changes.
@@ -166,9 +167,9 @@ pub struct ClaudeMachine {
 }
 
 impl ClaudeMachine {
-    pub fn new(shards: Shards, vault: Vault) -> Self {
+    pub fn new(cores: Arc<dyn Cores>, vault: Vault) -> Self {
         Self {
-            shards,
+            cores,
             vault,
             master: Arc::default(),
             idle: Arc::default(),
@@ -205,9 +206,8 @@ impl ClaudeMachine {
         T: Send + 'static,
     {
         let master = self.master().await?;
-        self.shards
-            .of(&master)
-            .call(work)
+        self.cores
+            .call(&master, work)
             .await
             .map_err(|error| StartError(error.to_string()))
     }
@@ -222,7 +222,7 @@ pub struct MachineSlot(Arc<std::sync::OnceLock<ClaudeMachine>>);
 impl MachineSlot {
     /// Puts `machine` there, once: a second is refused and the first kept,
     /// which the answer says.
-    pub(crate) fn set(&self, machine: ClaudeMachine) -> bool {
+    pub fn set(&self, machine: ClaudeMachine) -> bool {
         self.0.set(machine).is_ok()
     }
 
@@ -1873,15 +1873,14 @@ impl CliInstalls {
 /// Starts the install of `entry`'s CLI on the Claude Code machine for
 /// `user` unless one is under way. Nobody waits for it: the user's pages
 /// learn of its start and its end with the providers' part.
-pub async fn start_install(services: &CoreServices, shards: &Shards, user: &UserId, entry: &ProviderId) {
+pub async fn start_install(services: &CoreServices, cores: &dyn Cores, user: &UserId, entry: &ProviderId) {
     if !services.cli_installs.begin(user, entry) {
         return;
     }
     services.sync.mark(user, Part::Providers);
     let id = entry.clone();
-    let queued = shards
-        .of(user)
-        .call(move |shard, _| async move { shard.install_cli(id) })
+    let queued = cores
+        .call(user, move |shard, _| async move { shard.install_cli(id) })
         .await;
     if let Err(error) = queued {
         let failed = CliInstall::Failed {

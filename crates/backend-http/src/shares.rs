@@ -18,8 +18,8 @@ use axum::http::header::{CACHE_CONTROL, REFERRER_POLICY};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::Response;
 use demi_backend_database::shares::ShareRecord;
-use demi_backend_user_shard::conversation::{named_blocks, reply_block_facts};
-use demi_backend_user_shard::conversation::shares::{ShareBlobError, ShareRefusal};
+use demi_core::conversation::{named_blocks, reply_block_facts};
+use demi_backend_user_shard::shares::{ShareBlobError, ShareRefusal};
 use demi_backend_user_shard::services::Services;
 use demi_shared_types::{BlobRef, Block, BlockId};
 use demi_core_store::{tree::{Entry, PageRead}};
@@ -42,6 +42,7 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use super::history::block_answer;
 use super::query::QueryParams;
+use demi_backend_user_shard::shares::ConversationSharing;
 
 /// `POST /conversations/:id/shares { kind, blockId? }`: the conversation's
 /// share of that target, the one it has or a new one.

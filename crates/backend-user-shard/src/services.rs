@@ -55,8 +55,10 @@ use demi_provider_common::models_dev::ModelsDevClient;
 use demi_shared_types::Clock;
 use object_store::ObjectStore;
 
-use crate::conversation::claude_cli::{CliInstalls, MachineSlot};
-use crate::tuning::{ConversationTuning, LifecycleTuning, MediaTuning, PageTuning, RunnerTuning};
+use demi_core::conversation::claude_cli::{CliInstalls, MachineSlot};
+use demi_core::services::CoreServices;
+use demi_core::tuning::{ConversationTuning, LifecycleTuning, MediaTuning, RunnerTuning};
+use crate::tuning::PageTuning;
 
 const CONTROL_DATABASE: &str = "control.sqlite";
 
@@ -109,56 +111,6 @@ impl std::ops::Deref for Services {
     fn deref(&self) -> &CoreServices {
         &self.core
     }
-}
-
-/// The services every core of this process shares: one set for each core
-/// a program runs, one set for all of a server's users' cores.
-pub struct CoreServices {
-    /// Where runners and Cloud guests reach this backend, and where a
-    /// borrowing server reaches an entry this one lends.
-    pub public_url: PublicUrl,
-    /// The wall clock the backend reads times from.
-    pub clock: Arc<dyn Clock>,
-    pub blobs: BlobStores,
-    pub vault: Vault,
-    pub provider_registry: Arc<ProviderRegistry>,
-    /// The catalog of image and video models (`crates/provider-common/src/media_catalog.rs`).
-    pub media: MediaCatalog,
-    /// The vendor's Claude Code releases, which the CLI on the Claude Code machine follows.
-    pub claude_releases: ClaudeReleases,
-    /// The outcome of the CLI installs no conversation asked for.
-    pub cli_installs: CliInstalls,
-    /// The Claude Code machine, set as the shards start.
-    pub claude_machine: MachineSlot,
-    pub operations: Arc<ProviderOperations>,
-    pub logins: Arc<LoginFlows>,
-    /// The calls the schedules' URLs took this minute.
-    pub hook_limits: crate::schedules::HookLimits,
-    pub runners: RunnerTuning,
-    pub conversation_tuning: ConversationTuning,
-    /// How a video's job is waited for.
-    pub media_tuning: MediaTuning,
-    /// The same packages as the shards run them, at this backend's address.
-    pub packages: Arc<dyn Packages>,
-    /// The backend's plugins, checked at startup (`crates/plugin-host/src/lib.rs`).
-    pub plugins: Arc<Registry>,
-    /// The user streams a page may open.
-    pub user_streams: UserStreams,
-    /// The STUN servers pages and runners ask for their public address
-    /// (`crates/runner-direct/src/lib.rs`).
-    pub stun: Vec<StunUrl>,
-    /// This run of the backend, chosen when the services start: the
-    /// revisions counted in memory compare only within one run.
-    pub run: String,
-    /// When a conversation's Host resources are reclaimed.
-    pub lifecycle: LifecycleTuning,
-    /// Each user's open synchronization channels, which every change a
-    /// page shows marks.
-    pub sync: SyncRegistry,
-    /// The devices the backend's last shutdown disconnected, which Host
-    /// operations wait for in the grace after the start
-    /// (`crates/runner-client/src/device_jobs.rs`).
-    pub returning: Arc<Returning>,
 }
 
 /// What the provider services start with.
@@ -533,7 +485,7 @@ impl Services {
             claude_machine: providers.claude_machine,
             operations,
             logins,
-            hook_limits: crate::schedules::HookLimits::default(),
+            hook_limits: demi_core::schedules::HookLimits::default(),
             runners: settings.runners,
             conversation_tuning: settings.conversations,
             media_tuning: settings.media_tuning,

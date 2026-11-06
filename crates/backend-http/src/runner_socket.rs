@@ -20,7 +20,8 @@ use demi_backend_runners::codes::ClaimCode;
 use demi_core_hosts::devices::{RunnerSocket, send};
 
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::shard::{KeptJobs, Shards};
+use demi_backend_user_shard::pool::Shards;
+use demi_core::shard::KeptJobs;
 
 /// Serves a runner's socket until it is handed to a shard or closes.
 pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: RunnerSocket) {

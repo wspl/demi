@@ -51,7 +51,7 @@ impl BlobCollection {
 impl Shard {
     /// Collects the user's blob namespace in the background, or once more
     /// after the collection that runs.
-    pub(crate) fn collect_blobs(&self) {
+    pub fn collect_blobs(&self) {
         // A closing shard starts nothing; the next deletion collects.
         if self.is_closing() {
             return;

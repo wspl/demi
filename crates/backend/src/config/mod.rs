@@ -71,7 +71,7 @@ use url::Url;
 use demi_backend_accounts::email_change::AccountMail;
 use demi_core_blobs::store::{S3Config, Storage};
 use demi_backend_cloud::tuning::CloudTuning;
-use demi_backend_user_shard::conversation::claude_cli::MachineSlot;
+use demi_core::conversation::claude_cli::MachineSlot;
 use demi_provider_claude_code::releases::DEFAULT_RELEASES_URL;
 use demi_provider_registry::families::FamilyRegistry;
 use demi_core_providers::vault::entries::SeededAccount;
@@ -81,10 +81,9 @@ use demi_plugin_interface::PluginFactory;
 use demi_provider_common::media_catalog;
 use demi_provider_common::models_dev::ModelsDevClient;
 
-use demi_backend_user_shard::shard::ShardPlacement;
-use demi_backend_user_shard::tuning::{
-    ConversationTuning, LifecycleTuning, MediaTuning, PageTuning, RunnerTuning,
-};
+use demi_backend_user_shard::pool::ShardPlacement;
+use demi_backend_user_shard::tuning::PageTuning;
+use demi_core::tuning::{ConversationTuning, LifecycleTuning, MediaTuning, RunnerTuning};
 
 use self::secret::InstanceSecret;
 

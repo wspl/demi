@@ -39,8 +39,9 @@ use demi_web_api_protocol::state::{PageMessage, SyncEvent, SyncFollow, SyncFollo
 
 use crate::page_notifications::OpenPage;
 use crate::server_starter::ServerSide;
-use crate::shard::lane::PageSession;
-use crate::shard::{Lane, LaneClose, LaneEnd, LaneGone, LaneMessage, LaneReader, Shard};
+use crate::sync::StateReads;
+use demi_core::shard::lane::PageSession;
+use demi_core::shard::{Lane, LaneClose, LaneEnd, LaneGone, LaneMessage, LaneReader, Shard};
 
 /// How a channel ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,10 +78,24 @@ enum Woke {
     Stale,
 }
 
-impl Shard {
+/// The pages' synchronization channels, on the user's core.
+#[expect(
+    async_fn_in_trait,
+    reason = "a core runs on one thread: its futures are never sent to another"
+)]
+pub trait SyncChannel {
     /// Serves a page's synchronization channel on its lane until the page
     /// leaves or the shard closes.
-    pub async fn serve_sync_channel(
+    async fn serve_sync_channel(
+        self: Rc<Self>,
+        page: Lane,
+        from_page: LaneReader,
+        session: PageSession,
+    );
+}
+
+impl SyncChannel for Shard {
+    async fn serve_sync_channel(
         self: Rc<Self>,
         mut page: Lane,
         mut from_page: LaneReader,

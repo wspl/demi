@@ -9,7 +9,7 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_user_shard::conversation::side_questions::SideRefusal;
+use demi_core::conversation::side_questions::SideRefusal;
 use demi_shared_types::NodeId;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ConversationId;

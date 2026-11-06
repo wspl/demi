@@ -29,7 +29,7 @@ use axum::extract::{Path, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, LOCATION};
 use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use demi_backend_user_shard::conversation::reply_block_facts;
+use demi_core::conversation::reply_block_facts;
 use demi_web_api_protocol::plugins::{ReplyBlocksAnswer, ReplyBlocksRead};
 
 use super::AppState;

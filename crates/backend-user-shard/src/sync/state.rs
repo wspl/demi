@@ -24,8 +24,11 @@ use demi_core_sync::etag_of;
 use std::time::Instant;
 use futures_util::future::join_all;
 
-use crate::provider_settings::CatalogError;
-use crate::shard::Shard;
+use demi_core::provider_settings::CatalogError;
+use demi_backend_cloud::user_core::CloudOfCore;
+use demi_core::shard::Shard;
+
+use crate::server_starter::ServerCore;
 
 /// Why a part of the product state could not be read.
 #[derive(Debug, thiserror::Error)]
@@ -70,13 +73,40 @@ fn millis(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
-impl Shard {
+/// The product state a page reads, on the user's core.
+#[expect(
+    async_fn_in_trait,
+    reason = "a core runs on one thread: its futures are never sent to another"
+)]
+pub trait StateReads {
     /// The product state for `user`, this shard's user as the session
     /// resolved them.
     ///
     /// It writes how long each part took, which a page with no offline copy
     /// waits for before it shows anything.
-    pub async fn product_state(
+    async fn product_state(
+        &self,
+        user: UserDto,
+    ) -> Result<ProductState, StateError>;
+
+    /// The part as the message that carries it, read now for `user`, this
+    /// shard's user, and the page of the session `reader`; a conversation
+    /// the user no longer has was deleted.
+    async fn read_part(
+        &self,
+        part: &Part,
+        user: &UserDto,
+        reader: &TokenHash,
+    ) -> Result<Option<SyncEvent>, StateError>;
+
+    /// The entries `user` infers with, each with what its provider says now,
+    /// which a user who only infers sees without accounts, plan or usage.
+    /// One entry that cannot be read leaves the others intact.
+    async fn provider_states(&self, user: &UserDto) -> Result<Vec<ProviderState>, StorageError>;
+}
+
+impl StateReads for Shard {
+    async fn product_state(
         &self,
         user: UserDto,
     ) -> Result<ProductState, StateError> {
@@ -177,10 +207,7 @@ impl Shard {
         })
     }
 
-    /// The part as the message that carries it, read now for `user`, this
-    /// shard's user, and the page of the session `reader`; a conversation
-    /// the user no longer has was deleted.
-    pub(crate) async fn read_part(
+    async fn read_part(
         &self,
         part: &Part,
         user: &UserDto,
@@ -338,9 +365,6 @@ impl Shard {
         Ok(Some(event))
     }
 
-    /// The entries `user` infers with, each with what its provider says now,
-    /// which a user who only infers sees without accounts, plan or usage.
-    /// One entry that cannot be read leaves the others intact.
     async fn provider_states(&self, user: &UserDto) -> Result<Vec<ProviderState>, StorageError> {
         let services = self.server_services();
         let entries = services.vault.entries_for(&user.id).await?;

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use demi_backend_user_shard::settings;
+use demi_core::settings;
 use demi_backend_cloud::client::MachinesError;
 use demi_backend_cloud::isolation;
 use demi_backend_cloud::network::{self, AllowedError};

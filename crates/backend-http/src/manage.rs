@@ -29,6 +29,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use super::AppState;
+use demi_backend_user_shard::prefetch::RunnerPrefetch;
 
 /// The longest request line read.
 ///

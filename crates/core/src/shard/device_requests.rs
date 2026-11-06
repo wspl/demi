@@ -41,7 +41,8 @@ use futures_util::future::BoxFuture;
 use http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use tokio_util::sync::CancellationToken;
 
-use super::{Shard, Shards};
+use super::Shard;
+use super::cores::Cores;
 
 impl Shard {
     /// A request the backend makes for the user from `request`'s device, one
@@ -177,27 +178,26 @@ pub(crate) async fn through_device(stores: &dyn VaultStores, entry: &ProviderEnt
 /// The backend's way to its users' devices for the provider client: each
 /// request goes to the shard of the device's owner.
 pub struct DeviceRequests {
-    shards: Shards,
+    cores: Arc<dyn Cores>,
 }
 
 impl DeviceRequests {
-    pub fn new(shards: Shards) -> Arc<Self> {
-        Arc::new(Self { shards })
+    pub fn new(cores: Arc<dyn Cores>) -> Arc<Self> {
+        Arc::new(Self { cores })
     }
 }
 
 impl DeviceRoute for DeviceRequests {
     fn send(&self, owner: &str, request: DeviceRequest) -> BoxFuture<'static, Result<DeviceAnswer, DeviceRefusal>> {
-        let shards = self.shards.clone();
+        let cores = self.cores.clone();
         let owner = UserId::try_from(owner.to_owned());
         Box::pin(async move {
             // An owner that is no user's id has no devices.
             let Ok(owner) = owner else {
                 return Err(DeviceRefusal::Removed);
             };
-            shards
-                .of(&owner)
-                .call(move |shard, cancel| async move { shard.device_request(request, cancel).await })
+            cores
+                .call(&owner, move |shard, cancel| async move { shard.device_request(request, cancel).await })
                 .await
                 .unwrap_or_else(|error| Err(DeviceRefusal::Failed(error.to_string())))
         })

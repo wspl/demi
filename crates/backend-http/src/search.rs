@@ -5,7 +5,7 @@
 
 use axum::Json;
 use axum::extract::{Path, State};
-use demi_backend_user_shard::conversation::search;
+use demi_core::conversation::search;
 use demi_web_api_protocol::search::{MessageResults, SearchQuery, SearchResults};
 
 use super::AppState;

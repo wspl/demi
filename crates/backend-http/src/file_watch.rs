@@ -11,7 +11,7 @@
 //! Only a conversation's watch takes a subscription that names a host.
 
 use demi_core_host_access::file_watch::{FileWatchChannel, OpenedWatch};
-use demi_backend_user_shard::shard::lane::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader};
+use demi_core::shard::lane::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader};
 use demi_web_api_protocol::files::{ConversationWatchRequest, FileWatchMessage, FileWatchRequest};
 use demi_web_api_protocol::ids::UserId;
 use garde::Validate;
