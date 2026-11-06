@@ -28,8 +28,8 @@ use demi_core_store::schedules::StoredSchedule;
 
 use super::ScheduleError;
 use crate::conversation::organize::{failed, verb};
-use crate::shard::Shard;
-use crate::shard::credential_commands::print_json;
+use crate::Shard;
+use crate::credential_commands::print_json;
 
 const SUMMARY: &str = "This conversation's schedules, which wake it: once, on a repeating cycle with tasks in it, every interval, by cron, when a command's output changes, or when a URL is called. List, show, create, change, run now and delete them.";
 

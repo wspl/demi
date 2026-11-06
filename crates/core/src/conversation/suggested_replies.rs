@@ -34,7 +34,7 @@ use tokio_util::task::TaskTracker;
 use tracing::Instrument as _;
 
 use super::small_requests::{SmallRequestFailure, SmallRequests};
-use crate::shard::Shard;
+use crate::Shard;
 
 /// The suggested replies of a shard's conversations.
 pub(crate) struct SuggestedReplies {

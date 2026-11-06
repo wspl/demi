@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_backend_runners::prefetch::NextRelease;
-use demi_core::shard::Shard;
+use demi_core::Shard;
 use demi_runner_protocol::release::PrefetchState;
 
 /// The download of the next runner release, on the user's core.

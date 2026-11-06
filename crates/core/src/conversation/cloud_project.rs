@@ -8,7 +8,7 @@ use demi_core_store::projects::{ProjectCreation, ProjectRecord, new_project_id};
 use demi_web_api_protocol::ids::WorkspaceId;
 use demi_host_interface::{Host as _, HostErrorKind, HostFs, MkdirOptions};
 
-use crate::shard::Shard;
+use crate::Shard;
 use demi_core_host_access::access::{HostAccessError, Refusal};
 use demi_core_host_access::cloud::cloud_of;
 

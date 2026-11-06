@@ -24,7 +24,7 @@ use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::ProfileId;
 use demi_web_api_protocol::subagents::{NewProfile, ProfilePatch, SubagentProfile, SubagentsPatch};
 
-use crate::shard::Shard;
+use crate::Shard;
 
 /// The name no profile takes: omitting `--profile` selects the inherit
 /// profile, and naming it would read as that one.

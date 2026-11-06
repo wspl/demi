@@ -24,7 +24,7 @@ use demi_core_host_access::attachment_commands::attachment_group;
 use demi_core_host_access::host_commands::host_group;
 
 use super::organize::conversation_group;
-use crate::shard::provider_commands::providers_group;
+use crate::provider_commands::providers_group;
 use demi_core_host_access::{HostShard, conversation_of};
 use demi_plugin_host::ContextAsk;
 use demi_runner_client::RemoteHost;
@@ -39,10 +39,10 @@ use demi_web_api_protocol::subagents::SubagentProfile;
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
-use crate::shard::Shard;
+use crate::Shard;
 use crate::schedules::commands::schedule_group;
-use crate::shard::credential_commands::credentials_group;
-use crate::shard::notify_commands::notify_group;
+use crate::credential_commands::credentials_group;
+use crate::notify_commands::notify_group;
 
 /// The product's instructions, the identity that opens every node's system
 /// prompt, which a subagent profile's replace.

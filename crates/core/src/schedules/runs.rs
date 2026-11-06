@@ -30,7 +30,7 @@ use demi_web_api_protocol::schedules::{IfBusy, RunNote, RunState, Task, Timing, 
 
 use super::hooks::Call;
 use super::message;
-use crate::shard::Shard;
+use crate::Shard;
 
 /// What fired a run, with what its message carries of it.
 pub(crate) struct Fired {

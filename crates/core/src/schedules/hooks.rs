@@ -46,7 +46,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
 use super::runs::{Fired, Payload};
-use crate::shard::Shard;
+use crate::Shard;
 
 /// The wait each call of a burst restarts.
 pub(crate) const BURST_WAIT: Duration = Duration::from_secs(30);

@@ -13,7 +13,7 @@
 //!   is the borrower's.
 //! - Revoking a key closes every session it opened and ends every media call
 //!   it made, which cancels a video's job left unfinished
-//!   (`demi_core::shard::lent_media`).
+//!   (`demi_core::lent_media`).
 //!
 //! A borrowed session runs on the shard of the key's maker, on the runtime a
 //! conversation of theirs would have, unmetered
@@ -44,7 +44,7 @@ use demi_core::conversation::{lent_limits, lent_runtime};
 use demi_core::provider_settings::ProviderRefusal;
 use crate::server_starter::ServerCore;
 use crate::services::Services;
-use demi_core::shard::Shard;
+use demi_core::Shard;
 
 /// How long a key nobody used keeps working: a key pasted into a chat and
 /// forgotten should not stay valid, and a week is how long an invite link

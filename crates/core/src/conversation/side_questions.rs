@@ -23,7 +23,7 @@ use demi_web_api_protocol::ids::ConversationId;
 use demi_conversation_lane_protocol::SideQuestion;
 use demi_web_api_protocol::side_questions::AskRequest;
 
-use crate::shard::Shard;
+use crate::Shard;
 
 use super::lane::ConversationFiles;
 

@@ -28,7 +28,7 @@ use demi_shared_types::ReadAt;
 
 use demi_core_host_access::access::{HostAccessError, host_error_code};
 use demi_core_host_access::stream::StreamError;
-use demi_core::shard::cores::ShardUnavailable;
+use demi_core::cores::ShardUnavailable;
 
 /// The header that carries the Host's number a read answer was read at.
 pub(crate) const READ_AT: HeaderName = HeaderName::from_static("x-demi-read-at");

@@ -31,7 +31,7 @@ use demi_host_paths::HostPaths;
 use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
-use crate::shard::Shard;
+use crate::Shard;
 
 /// Why the conversation's agents could not be listed.
 #[derive(Debug, thiserror::Error)]

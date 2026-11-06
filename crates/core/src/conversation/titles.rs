@@ -31,7 +31,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use super::small_requests::{SmallRequestFailure, SmallRequests};
-use crate::shard::Shard;
+use crate::Shard;
 
 /// What one request reads, and the state it began from.
 pub(crate) struct TitleRequest {

@@ -34,7 +34,7 @@ use std::rc::Rc;
 
 use super::organize::failed;
 use super::product::entries;
-use crate::shard::Shard;
+use crate::Shard;
 
 /// The media purposes, whose calls make a file.
 const MEDIA: [&str; 3] = ["image", "video", "audio"];

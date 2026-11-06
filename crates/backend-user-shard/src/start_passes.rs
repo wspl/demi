@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use demi_core::shard::Shard;
+use demi_core::Shard;
 use demi_core_permissions::{PermissionShard, deliver};
 use demi_core_store::StorageError;
 use demi_core_store::store::CoreStore;

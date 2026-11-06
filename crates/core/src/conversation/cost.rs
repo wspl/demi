@@ -21,7 +21,7 @@ use demi_core_host_access::root_of;
 use demi_core_sync::Part;
 use tokio::sync::broadcast::error::RecvError;
 
-use crate::shard::Shard;
+use crate::Shard;
 
 impl Shard {
     /// Tells the conversation of the row `written` what its agent costs now.

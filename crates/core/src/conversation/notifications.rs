@@ -42,7 +42,7 @@ use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::permissions::PermissionRequestId;
 use demi_web_api_protocol::push::{ANSWER_START_CHARS, PushAsk, PushMessage};
 
-use crate::shard::Shard;
+use crate::Shard;
 
 /// What the shard keeps for the notifications of its conversations.
 #[derive(Default)]

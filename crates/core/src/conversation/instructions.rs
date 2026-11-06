@@ -26,7 +26,7 @@ use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
 use super::project_files::KeptWorkflows;
-use crate::shard::Shard;
+use crate::Shard;
 
 /// The product's instructions source, asked after the execution context.
 pub(crate) struct Instructions {

@@ -44,7 +44,7 @@ use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProjectId};
 use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::shard::Shard;
+use crate::Shard;
 
 /// How long each step of a move took, in milliseconds, as its log line says.
 #[derive(Default)]
@@ -284,7 +284,7 @@ impl Shard {
         let slot = self.conversations().slot(&record.id);
         // The worktrees the Host reported before the move are its
         // destination's, as a command that adds one and then moves there
-        // expects (`crate::shard::worktrees`).
+        // expects (`crate::worktrees`).
         self.worktrees_stored().await;
         // A destination's directory is stored as typed; its Host names it at
         // the first use.

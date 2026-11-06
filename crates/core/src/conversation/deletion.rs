@@ -22,7 +22,7 @@ use demi_core_host_access::root_of;
 use demi_core_sync::Part;
 use demi_web_api_protocol::ids::{ConversationId, WorkspaceId};
 
-use crate::shard::Shard;
+use crate::Shard;
 
 
 impl Shard {

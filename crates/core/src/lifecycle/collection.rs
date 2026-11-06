@@ -20,7 +20,7 @@ use demi_core_store::references::conversation_blobs;
 use demi_shared_types::{BlobRef, Timestamp};
 use tokio::sync::watch;
 
-use crate::shard::Shard;
+use crate::Shard;
 
 /// Where the user's collections stand.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

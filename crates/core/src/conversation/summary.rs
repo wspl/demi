@@ -29,7 +29,7 @@ use demi_web_api_protocol::panel::WorkPanel;
 use futures_util::future::try_join_all;
 use tokio_util::sync::CancellationToken;
 
-use crate::shard::Shard;
+use crate::Shard;
 use demi_core_host_access::root_of;
 
 impl Shard {

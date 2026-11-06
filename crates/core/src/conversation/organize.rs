@@ -42,7 +42,7 @@ use serde::{Deserialize, Serialize};
 use super::cost_report::{ConversationCost, CostArgs, cost};
 use super::history::{history_group, shell_word};
 use super::search::search;
-use crate::shard::Shard;
+use crate::Shard;
 
 const SUMMARY: &str = "This conversation in the user's sidebar: rename it, and list the user's projects and conversations; send a message to another conversation, or start a new one; what a conversation's calls to the model cost; and transcripts, which history searches and reads: an agent's of this conversation, or of another conversation of the user.";
 

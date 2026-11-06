@@ -9,7 +9,7 @@ use demi_core_store::StorageError;
 use demi_core_sync::Part;
 use demi_shared_types::is_blank;
 
-use crate::shard::Shard;
+use crate::Shard;
 
 /// The personal instructions `text` stores as: itself, or empty for a blank
 /// text, which removes them.

@@ -39,7 +39,7 @@ use demi_web_api_protocol::schedules::{
 use rand::RngCore;
 use tokio::sync::Notify;
 
-use crate::shard::Shard;
+use crate::Shard;
 use plan::{Plan, PlanError};
 
 pub use hooks::{CALLS_PER_MINUTE, HookAnswer, HookCall, HookLimits};

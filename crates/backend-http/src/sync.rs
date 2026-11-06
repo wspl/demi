@@ -11,7 +11,7 @@ use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocketUpgrade, close_code};
 use axum::http::StatusCode;
 use axum::response::Response;
-use demi_core::shard::lane::PageSession;
+use demi_core::lane::PageSession;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::state::{SyncEvent, SyncFollowed};
 

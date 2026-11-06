@@ -79,7 +79,7 @@ use self::small_requests::SmallRequests;
 use self::suggested_replies::SuggestedReplies;
 use self::titles::Titles;
 use crate::services::CoreServices;
-use crate::shard::Shard;
+use crate::Shard;
 
 /// What a shard's conversations run on: the agent server, and the title and
 /// suggested replies requests, small requests that infer with the same

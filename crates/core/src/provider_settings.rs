@@ -752,7 +752,7 @@ impl CoreServices {
         user: &UserId,
         kind: demi_shared_types::MediaKind,
     ) -> Result<std::collections::HashMap<String, Vec<demi_web_api_protocol::providers::EntryMediaModel>>, demi_provider_registry::registry::RegistryError> {
-        crate::shard::media::entry_media_models(self, user, kind).await
+        crate::media::entry_media_models(self, user, kind).await
     }
 
     /// The models.dev models `query` matches, filled from the vendor of the

@@ -66,7 +66,7 @@ use demi_shared_types::BlockId;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::ids::ConversationId;
 
-use crate::shard::Shard;
+use crate::Shard;
 use demi_core_host_access::root_of;
 
 /// A Fork's destination, and whether this request created it.

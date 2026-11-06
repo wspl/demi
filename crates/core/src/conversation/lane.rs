@@ -94,7 +94,7 @@ use futures_util::future::LocalBoxFuture;
 use super::attachment_facts::StreamedText;
 use super::failure_facts;
 use demi_core_sync::etag_of;
-use crate::shard::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader, Shard};
+use crate::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader, Shard};
 use demi_core_host_access::remote_files::{RemoteFile, RemoteFileRefusal};
 use demi_core_host_access::root_of;
 

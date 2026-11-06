@@ -89,8 +89,8 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::services::CoreServices;
-use crate::shard::Shard;
-use crate::shard::cores::Cores;
+use crate::Shard;
+use crate::cores::Cores;
 
 /// The most an operation of the package answers: one JSON document.
 ///

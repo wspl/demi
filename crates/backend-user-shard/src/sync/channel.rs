@@ -40,8 +40,8 @@ use demi_web_api_protocol::state::{PageMessage, SyncEvent, SyncFollow, SyncFollo
 use crate::page_notifications::OpenPage;
 use crate::server_starter::ServerSide;
 use crate::sync::StateReads;
-use demi_core::shard::lane::PageSession;
-use demi_core::shard::{Lane, LaneClose, LaneEnd, LaneGone, LaneMessage, LaneReader, Shard};
+use demi_core::lane::PageSession;
+use demi_core::{Lane, LaneClose, LaneEnd, LaneGone, LaneMessage, LaneReader, Shard};
 
 /// How a channel ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

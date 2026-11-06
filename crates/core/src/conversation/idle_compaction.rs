@@ -43,7 +43,7 @@ use demi_shared_types::{IDLE_COMPACTION_CONTEXT, SessionPhase};
 use demi_web_api_protocol::ids::ConversationId;
 use tokio_util::task::AbortOnDropHandle;
 
-use crate::shard::Shard;
+use crate::Shard;
 
 /// Each conversation's timer.
 #[derive(Default)]

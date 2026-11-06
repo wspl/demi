@@ -41,7 +41,7 @@ use tracing::Instrument as _;
 use crate::conversation::claude_cli::{CrossPlacement, ProcessWork};
 use crate::services::CoreServices;
 use demi_core_store::store::CoreStore;
-use crate::shard::Shard;
+use crate::Shard;
 use demi_core_host_access::conversation_of;
 
 impl Shard {

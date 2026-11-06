@@ -20,7 +20,7 @@ use futures_util::FutureExt as _;
 use futures_util::future::{LocalBoxFuture, Shared};
 
 use demi_core_host_access::root_of;
-use crate::shard::Shard;
+use crate::Shard;
 
 /// The shard's part.
 #[derive(Default)]

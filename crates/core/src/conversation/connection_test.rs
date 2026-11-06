@@ -22,8 +22,8 @@ use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
 use super::claude_cli::{CrossPlacement, ProcessWork};
-use crate::shard::Shard;
-use crate::shard::media::vendor_refusal;
+use crate::Shard;
+use crate::media::vendor_refusal;
 
 impl Shard {
     /// Tests the key of an entry of media alone, which makes no text, as its

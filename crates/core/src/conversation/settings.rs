@@ -17,7 +17,7 @@ use demi_shared_types::{ModelSelection, ProviderModel};
 use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 
-use crate::shard::Shard;
+use crate::Shard;
 use demi_core_host_access::root_of;
 use demi_core_host_access::transition::ChangeRefusal;
 

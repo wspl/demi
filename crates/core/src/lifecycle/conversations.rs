@@ -69,7 +69,7 @@ use demi_web_api_protocol::ids::ConversationId;
 use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument as _;
 
-use crate::shard::Shard;
+use crate::Shard;
 use demi_core_host_access::root_of;
 
 /// The idle watch of each conversation that reached a Host.

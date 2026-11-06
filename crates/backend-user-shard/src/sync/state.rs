@@ -26,7 +26,7 @@ use futures_util::future::join_all;
 
 use demi_core::provider_settings::CatalogError;
 use demi_backend_cloud::user_core::CloudOfCore;
-use demi_core::shard::Shard;
+use demi_core::Shard;
 
 use crate::server_starter::ServerCore;
 

@@ -7,8 +7,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use demi_backend_database::control::ControlService;
-use demi_core::shard::Shard;
-use demi_core::shard::holds::{IdleHold, ResetHold};
+use demi_core::Shard;
+use demi_core::holds::{IdleHold, ResetHold};
 use demi_core_host_access::cloud::{CloudAdmission, CloudError, CloudHost, MachineAccess};
 use demi_core_idle_watch::Activity;
 use demi_core_providers::vault::entries::Vault;

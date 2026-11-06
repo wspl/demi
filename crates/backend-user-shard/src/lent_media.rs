@@ -37,8 +37,8 @@ use demi_shared_types::{MediaKind, VendorTrace};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 
-use demi_core::shard::Shard;
-use demi_core::shard::media::{Route, Unmade, model_of, on_accounts, route};
+use demi_core::Shard;
+use demi_core::media::{Route, Unmade, model_of, on_accounts, route};
 use crate::provider_sharing::Borrowing;
 use crate::server_starter::{ServerCore, ServerSide};
 

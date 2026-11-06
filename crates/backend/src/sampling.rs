@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use demi_backend_database::server_log::ServerLog;
 use demi_backend_user_shard::pool::Shards;
-use demi_core::shard::lane::{open_connections, open_lanes};
+use demi_core::lane::{open_connections, open_lanes};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
 /// How often the backend samples itself. A line a minute is 1,440 lines a

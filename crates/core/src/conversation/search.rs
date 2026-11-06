@@ -56,7 +56,7 @@ use demi_web_api_protocol::search::{
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::services::CoreServices;
-use crate::shard::Shard;
+use crate::Shard;
 
 /// The user's indexer: the watch of the user's changes, one indexing at a
 /// time per conversation, the conversations marked since their last look

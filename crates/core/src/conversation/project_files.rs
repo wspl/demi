@@ -33,7 +33,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::instructions::search_instructions;
 use super::workflows::{ProjectWorkflows, search_conversation_workflows};
-use crate::shard::Shard;
+use crate::Shard;
 
 pub(crate) struct ProjectFiles {
     /// The instruction files of each working directory.

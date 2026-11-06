@@ -673,7 +673,7 @@ impl Backend {
     }
 
     /// What the shards hold now: the live trees and the work they run.
-    pub async fn census(&self) -> demi_core::shard::Census {
+    pub async fn census(&self) -> demi_core::Census {
         self.shards.shards().census().await
     }
 

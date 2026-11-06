@@ -49,8 +49,8 @@ use demi_web_api_protocol::workflows::{ConversationWorkflows, KeptWorkflowList, 
 use tokio_util::sync::CancellationToken;
 
 use super::project_files::KeptWorkflows;
-use crate::shard::Shard;
-use crate::shard::agent_profiles::{Scope, first_offering, named_entry};
+use crate::Shard;
+use crate::agent_profiles::{Scope, first_offering, named_entry};
 
 /// The workflows a working directory has now.
 pub(crate) struct ProjectWorkflows {

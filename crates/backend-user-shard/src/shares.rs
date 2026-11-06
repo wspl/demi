@@ -24,7 +24,7 @@ use demi_web_api_protocol::shares::{ShareTarget, ShareTranscriptQuery};
 use rand::TryRngCore as _;
 use rand::rngs::OsRng;
 
-use demi_core::shard::Shard;
+use demi_core::Shard;
 
 use crate::server_starter::ServerCore;
 

@@ -47,7 +47,7 @@ use demi_shared_types::{ErrorBlock, SessionPhase};
 use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::join_all;
 
-use crate::shard::Shard;
+use crate::Shard;
 
 /// What the resume tells the model.
 pub const RESTART_REASON: &str = "Demi resumed this turn after the backend restarted.";

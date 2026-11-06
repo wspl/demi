@@ -22,7 +22,7 @@ use demi_web_api_protocol::conversations::{
 };
 use demi_web_api_protocol::ids::ConversationId;
 
-use crate::shard::Shard;
+use crate::Shard;
 
 impl Shard {
     /// Creates the conversation as the request says, then admits the first

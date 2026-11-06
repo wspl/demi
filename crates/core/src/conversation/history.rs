@@ -49,7 +49,7 @@ use tokio_util::sync::CancellationToken;
 use super::organize::{failed, refused, verb};
 use super::cost_report::{CostRows, Labels, call_costs, render_calls, render_turns, turn_costs};
 use super::turn_timing::{Turn, TurnTiming, Turns, turn_of};
-use crate::shard::Shard;
+use crate::Shard;
 
 /// About how many characters a read prints, and a page of what `open`
 /// prints of a text.

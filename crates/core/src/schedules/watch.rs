@@ -32,7 +32,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::message::{CUT_BYTES, Output, last_bytes};
 use super::runs::{Fired, Payload, Unrunnable};
-use crate::shard::Shard;
+use crate::Shard;
 
 /// How long a watch's command may run.
 pub(crate) const COMMAND_TIME: Duration = Duration::from_secs(60);

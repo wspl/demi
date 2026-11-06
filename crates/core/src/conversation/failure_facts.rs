@@ -29,7 +29,7 @@ use demi_core_providers::vault::entries::Vault;
 use demi_provider_registry::registry::ProviderRegistry;
 use demi_provider_registry::entry::ProviderEntry;
 
-use crate::shard::device_requests::through_device;
+use crate::device_requests::through_device;
 
 /// The facts of the error blocks among `blocks`, by block id; none when no
 /// block yields one. A block whose provider entry is gone, or cannot be

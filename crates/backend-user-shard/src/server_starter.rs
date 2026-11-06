@@ -23,7 +23,7 @@ use futures_util::future::LocalBoxFuture;
 
 use crate::page_notifications::PageNotifications;
 use crate::services::Services;
-use demi_core::shard::Shard;
+use demi_core::Shard;
 use crate::lent_media::LentJobs;
 use demi_core::starter::{Notified, Reach, Starter};
 
