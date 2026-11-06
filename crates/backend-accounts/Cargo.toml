@@ -27,6 +27,7 @@ http.workspace = true
 # The IANA time zones and the locale canonicalization a reported locale is
 # checked against, from ICU4X's compiled data: the same on every machine,
 # without a system time zone database.
+jiff.workspace = true
 password-hash = { version = "0.5", features = ["getrandom"] }
 rand = "0.9"
 reqwest = { workspace = true, features = ["rustls"] }
