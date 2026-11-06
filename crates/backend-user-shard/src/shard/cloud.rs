@@ -30,7 +30,7 @@ use tokio_util::task::TaskTracker;
 use super::{Shard, Shards};
 use crate::services::Services;
 use demi_core_host_access::root_of;
-use demi_core_host_access::cloud::{CloudAdmission, CloudError, CloudHost};
+use demi_core_host_access::cloud::{CloudAdmission, CloudError, CloudHost, MachineAccess};
 use demi_core_host_access::transfer::TransfersClosed;
 use demi_core_store::StorageError;
 use demi_core_store::devices::DeviceRecord;
@@ -218,6 +218,22 @@ impl CloudHost for Shard {
 
     fn operation_admission<'a>(&'a self, device: &'a DeviceRecord) -> LocalBoxFuture<'a, Result<Admission, StorageError>> {
         Box::pin(self.cloud_shard().operation_admission(device))
+    }
+
+    fn machine_access(&self) -> LocalBoxFuture<'_, Result<MachineAccess, CloudError>> {
+        Box::pin(self.cloud_shard().machine_access())
+    }
+
+    fn claude_code_access(&self) -> LocalBoxFuture<'_, Result<MachineAccess, CloudError>> {
+        Box::pin(self.cloud_shard().claude_code_access())
+    }
+
+    fn stop(&self) {
+        self.cloud.stop();
+    }
+
+    fn close(&self) -> LocalBoxFuture<'_, ()> {
+        Box::pin(self.cloud_shard().close_cloud())
     }
 }
 

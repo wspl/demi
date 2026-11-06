@@ -3,7 +3,7 @@
 
 use demi_core_store::StorageError;
 use demi_core_store::devices::DeviceRecord;
-use demi_runner_client::Admission;
+use demi_runner_client::{Admission, RemoteHost};
 use demi_shared_gates::GateLease;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::DeviceId;
@@ -21,6 +21,45 @@ pub trait CloudHost {
     /// What each operation on the Cloud `device` takes, for one that holds no
     /// admission of its own, as a command its runner took up.
     fn operation_admission<'a>(&'a self, device: &'a DeviceRecord) -> LocalBoxFuture<'a, Result<Admission, StorageError>>;
+
+    /// The user's Cloud itself, made on its first use and woken when it is
+    /// stopped, for work that needs it rather than a conversation's files on
+    /// it.
+    fn machine_access(&self) -> LocalBoxFuture<'_, Result<MachineAccess, CloudError>>;
+
+    /// The Claude Code machine, made on its first use and woken when it is
+    /// stopped, for the core of the instance's master, whose record it is.
+    fn claude_code_access(&self) -> LocalBoxFuture<'_, Result<MachineAccess, CloudError>>;
+
+    /// Admits nothing more and ends the Cloud's schedules, as the core
+    /// starts to close.
+    fn stop(&self);
+
+    /// Closes the Cloud once the core's agents are gone: a transition under
+    /// way finishes, and a running machine keeps running for whoever starts
+    /// the core next.
+    fn close(&self) -> LocalBoxFuture<'_, ()>;
+}
+
+/// A managed machine, running, and a Host on it that starts in its home;
+/// the machine stays admitted while this is held.
+pub struct MachineAccess {
+    pub device: DeviceRecord,
+    pub host: RemoteHost,
+    /// The home directory the machine's runner reported.
+    pub home: String,
+    _admission: CloudAdmission,
+}
+
+impl MachineAccess {
+    pub fn new(device: DeviceRecord, host: RemoteHost, home: String, admission: CloudAdmission) -> Self {
+        Self {
+            device,
+            host,
+            home,
+            _admission: admission,
+        }
+    }
 }
 
 /// The Cloud of `shard`'s starter.

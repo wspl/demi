@@ -10,6 +10,7 @@ use demi_host_interface::{Host as _, HostErrorKind, HostFs, MkdirOptions};
 
 use crate::shard::Shard;
 use demi_core_host_access::access::{HostAccessError, Refusal};
+use demi_core_host_access::cloud::cloud_of;
 
 /// What a new Cloud project came to.
 #[derive(Debug)]
@@ -41,7 +42,7 @@ impl Shard {
         if name.contains(['/', '\\', '\0']) || name == "." || name == ".." {
             return Ok(CloudProject::NameInvalid);
         }
-        let access = self.cloud_shard().machine_access().await?;
+        let access = cloud_of(self)?.machine_access().await?;
         let paths = access.host.identity().paths;
         let projects = paths.join(&access.home, "projects");
         let path = paths.join(&projects, &name);

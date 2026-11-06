@@ -48,7 +48,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use bytes::Bytes;
-use demi_backend_cloud::access::MachineAccess;
+use demi_core_host_access::cloud::{MachineAccess, cloud_of};
 use demi_core_sync::Part;
 use demi_plugin_host::Lost;
 use demi_provider_claude_code::releases::ReleaseError;
@@ -262,8 +262,8 @@ impl AccountMachine for ClaudeMachine {
         Box::pin(async move {
             machine
                 .on_machine(move |shard, _| async move {
-                    let access = shard
-                        .cloud_shard()
+                    let access = cloud_of(&*shard)
+                        .map_err(|error| StartError(error.to_string()))?
                         .claude_code_access()
                         .await
                         .map_err(|error| StartError(error.to_string()))?;
@@ -754,8 +754,14 @@ impl MachinePlacement {
         let (held, mut released) = oneshot::channel::<()>();
         let holder = shard.clone();
         shard.tasks().spawn_local(async move {
+            let cloud = cloud_of(&*holder);
             let admitted = tokio::select! {
-                admitted = holder.cloud_shard().claude_code_access() => admitted,
+                admitted = async {
+                    match &cloud {
+                        Ok(cloud) => cloud.claude_code_access().await,
+                        Err(error) => Err(error.clone()),
+                    }
+                } => admitted,
                 _ = &mut released => return,
             };
             match admitted {
@@ -799,8 +805,8 @@ impl MachinePlacement {
                 *into = now - step;
                 step = now;
             };
-            let access = shard
-                .cloud_shard()
+            let access = cloud_of(&*shard)
+                .map_err(|error| StartError(error.to_string()))?
                 .claude_code_access()
                 .await
                 .map_err(|error| StartError(error.to_string()))?;
@@ -1628,8 +1634,8 @@ impl Shard {
         let entry = entry.clone();
         machine
             .on_machine(move |shard, _| async move {
-                let access = shard
-                    .cloud_shard()
+                let access = cloud_of(&*shard)
+                    .map_err(|error| error.to_string())?
                     .claude_code_access()
                     .await
                     .map_err(|error| error.to_string())?;

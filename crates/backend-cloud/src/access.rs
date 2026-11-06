@@ -8,20 +8,10 @@
 use demi_core_store::StorageError;
 use demi_core_store::devices::{DeviceRecord, ManagedMachine};
 use demi_core_sync::Part;
-use demi_runner_client::RemoteHost;
 
 use crate::CloudShard;
-use crate::machine::{CloudAdmission, CloudError};
-
-/// The user's Cloud, running, and a Host on it that starts in its home;
-/// the Cloud stays admitted while this is held.
-pub struct MachineAccess {
-    pub device: DeviceRecord,
-    pub host: RemoteHost,
-    /// The home directory the Cloud's runner reported.
-    pub home: String,
-    _admission: CloudAdmission,
-}
+use crate::machine::CloudError;
+use demi_core_host_access::cloud::MachineAccess;
 
 impl dyn CloudShard {
     /// The user's Cloud device, made on its first use, which the user's
@@ -64,11 +54,6 @@ impl dyn CloudShard {
         let host =
             self.devices()
                 .machine_host(&device.id, home.clone(), admission.per_operation.clone());
-        Ok(MachineAccess {
-            device,
-            host,
-            home,
-            _admission: admission,
-        })
+        Ok(MachineAccess::new(device, host, home, admission))
     }
 }

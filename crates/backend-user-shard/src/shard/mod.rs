@@ -469,7 +469,10 @@ impl Shard {
         self.stop_idle_watches();
         self.retry_resumes.clear();
         self.idle_compactions.clear();
-        self.cloud.stop();
+        let cloud = self.starter.cloud();
+        if let Some(cloud) = &cloud {
+            cloud.stop();
+        }
         self.titles.abort_all();
         self.suggested_replies.abort_all();
         self.tree_openers.close();
@@ -477,7 +480,9 @@ impl Shard {
         let _transfers_closed = closed("the transfers ended", self.conversations.end_transfers()).await;
         closed("the running roots were marked", self.mark_running_roots()).await;
         closed("the agents were disposed", self.agent.shutdown()).await;
-        closed("the Cloud closed", self.cloud_shard().close_cloud()).await;
+        if let Some(cloud) = &cloud {
+            closed("the Cloud closed", cloud.close()).await;
+        }
         closed("the devices were shut down", self.devices.shut_down(&self.store)).await;
         self.tasks.close();
         closed("the tasks ended", self.tasks.wait()).await;

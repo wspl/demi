@@ -63,6 +63,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
+use demi_core_host_access::cloud::{CloudError, cloud_of};
 use demi_core_store::StorageError;
 use demi_core_store::devices::DeviceRecord;
 use demi_core_store::port_forwards::{PortForwardChange, PortForwardRecord, PortForwardRefusal};
@@ -111,6 +112,9 @@ pub enum PortForwardError {
     Refused(#[from] PortForwardRefusal),
     #[error(transparent)]
     Storage(#[from] StorageError),
+    /// The user has no Host, and no Cloud runs to listen on.
+    #[error(transparent)]
+    Cloud(#[from] CloudError),
 }
 
 /// What a page's or a command's patch changes.
@@ -160,7 +164,7 @@ impl Shard {
     pub async fn create_port_forward(&self, patch: PortForwardPatch) -> Result<PortForwardDto, PortForwardError> {
         let first = match self.host_records().await?.into_iter().next() {
             Some(device) => device.id,
-            None => self.cloud_shard().cloud_device().await?.id,
+            None => cloud_of(self)?.cloud_device().await?.id,
         };
         let stored = self
             .store().create_port_forward(first, change_of(patch))

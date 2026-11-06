@@ -116,5 +116,6 @@ fn refused(error: PortForwardError) -> ApiError {
             ApiError::new(StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound, message)
         }
         PortForwardError::Storage(error) => error.into(),
+        PortForwardError::Cloud(error) => error.into(),
     }
 }
