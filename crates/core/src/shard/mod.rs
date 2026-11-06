@@ -10,7 +10,6 @@ pub(crate) mod notify_commands;
 pub mod credentials;
 pub mod cores;
 pub mod holds;
-pub mod instructions;
 mod host;
 pub mod lane;
 mod permissions;
@@ -25,7 +24,6 @@ pub use self::plugins::{ReloadRefusal, web_client};
 pub mod device_requests;
 mod policy;
 pub mod port_forwards;
-pub mod subagents;
 mod worktrees;
 pub mod workspaces;
 
