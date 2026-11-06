@@ -34,6 +34,7 @@ use demi_agent_store::{
 use demi_agent_transcript::testing::SequentialIds;
 
 mod compaction;
+mod failure;
 
 type Invoke =
     Rc<dyn Fn(ToolInvocation) -> LocalBoxFuture<'static, Result<ToolOutcome, ToolFailure>>>;

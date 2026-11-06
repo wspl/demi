@@ -1,8 +1,18 @@
-//! A root's failed turn resumed at its retry time.
+//! A root's failed turn at its retry time.
 //!
 //! A turn whose failure names when it can succeed again, such as a usage limit
-//! that resets at 09:00, is resumed then, as the user's Resume would, when the
-//! user's `resumeAtRetry` preference says so at that moment.
+//! that resets at 09:00, stops holding what arrives then: a message or a
+//! command report that comes afterwards opens a turn. The turn is resumed then
+//! too, as the user's Resume would, when the user's `resumeAtRetry` preference
+//! says so at that moment.
+//!
+//! A usage limit of an entry that rotates its accounts can succeed again as
+//! soon as one of them has room, whatever the reset of the account that
+//! refused.
+//!
+//! A message from another conversation is also preceded by a look at whether
+//! the failure has passed by then, since the timer's time was read when it
+//! was armed, and a tree the message opens learns it only after the message.
 //!
 //! Each conversation has at most one timer, for the failure that ended its
 //! root's last turn.
@@ -28,6 +38,7 @@ use demi_web_api_protocol::ids::ConversationId;
 use tokio_util::task::AbortOnDropHandle;
 
 use super::failure_facts;
+use super::failure_facts::rotation_has_room;
 use crate::shard::Shard;
 
 /// Each conversation's timer.
@@ -105,14 +116,49 @@ impl Shard {
         );
     }
 
-    /// When the failure `error` can succeed again, as its provider reads
-    /// its record; none for a failure that names no time, or one whose
-    /// provider entry is gone.
+    /// When the failure `error` can succeed again: now for a usage limit
+    /// another account has room for, else as its provider reads its record;
+    /// none for a failure that names no time, or one whose provider entry is
+    /// gone.
     async fn retry_at(&self, error: ErrorBlock) -> Option<Timestamp> {
+        let services = self.services();
+        if rotation_has_room(&services.vault, &services.provider_registry, &error).await {
+            return Some(services.clock.now());
+        }
         let id = error.id.clone();
         let blocks = [Block::Error(error)];
         let facts = failure_facts(&self.services().vault, &self.services().provider_registry, &blocks).await?;
         facts.get(&id)?.retry_at
+    }
+
+    /// Before a message from outside the conversation's tree is admitted:
+    /// tells a root at rest whose last turn failed that the failure has
+    /// passed when a request could succeed now, so the message opens a turn.
+    pub(crate) async fn settle_failure_hold(&self, conversation: &ConversationId) {
+        let Some(tree) = self.agent().tree(&root_of(conversation)) else {
+            return;
+        };
+        let session = tree.root().session();
+        if session.phase() != SessionPhase::Idle {
+            return;
+        }
+        let Some(error) = session.failed_turn() else {
+            return;
+        };
+        let id = error.id.clone();
+        let now = self.services().clock.now();
+        if self.retry_at(error).await.is_some_and(|at| at <= now) {
+            self.failure_passed(conversation, &id);
+        }
+    }
+
+    /// Tells the conversation's root, when its tree is open, that the failure
+    /// of its failed turn whose record is `error` has passed. A tree opened
+    /// later is told when its root comes to rest.
+    fn failure_passed(&self, conversation: &ConversationId, error: &BlockId) {
+        if let Some(tree) = self.agent().tree(&root_of(conversation)) {
+            tree.root().session().failure_passed(error);
+        }
     }
 
     /// Resumes the conversation's failed turn whose record is `error`, as the
@@ -192,9 +238,10 @@ impl Shard {
 }
 
 /// The timer of the failure `error` of `conversation`'s root: it waits
-/// until the failure's retry time, then resumes the turn when the user's
-/// preference says so. A failure that names no time, or one that has
-/// passed, waits for nothing.
+/// until the failure's retry time, then ends the turn's hold and resumes the
+/// turn when the user's preference says so. A failure whose time has passed
+/// ends the hold at once and resumes nothing; one that names no time waits for
+/// nothing.
 async fn resume_at_retry(shard: Weak<Shard>, conversation: ConversationId, error: ErrorBlock) {
     let id = error.id.clone();
     let wait = {
@@ -215,6 +262,7 @@ async fn resume_at_retry(shard: Weak<Shard>, conversation: ConversationId, error
             }
             _ => {
                 live.retry_resumes().take(&conversation, &id);
+                live.failure_passed(&conversation, &id);
                 return;
             }
         }
@@ -232,5 +280,6 @@ async fn resume_at_retry(shard: Weak<Shard>, conversation: ConversationId, error
     if live.is_closing() {
         return;
     }
+    live.failure_passed(&conversation, &id);
     live.resume_failed_turn(&conversation, &id).await;
 }
