@@ -660,7 +660,10 @@ CREATE INDEX saved_sends_by_age ON saved_sends (sent_at);
 
 -- A conversation's requests (crates/backend-database/src/permissions.rs),
 -- each of a kind: a permission request is a command an agent ran without the
--- grant of its category, a JSON array of its one id; a credential request
+-- grant of its category, a JSON array of its one id; a device request is a
+-- command that brings in a device the conversation does not reach, the
+-- device's id unreferenced, since a decided request outlives a removed device
+-- until its message is delivered; a credential request
 -- asks the user for a credential of a name, its ask a JSON document,
 -- credential request format 1, `{ reason, fields: [{ name, label, kind }],
 -- keep }`, and is gone once answered, since the command that asked waits for
@@ -672,8 +675,9 @@ CREATE INDEX saved_sends_by_age ON saved_sends (sent_at);
 CREATE TABLE permission_requests (
   id                TEXT PRIMARY KEY,
   conversation_id   TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  kind              TEXT NOT NULL CHECK (kind IN ('permission', 'credential')),
+  kind              TEXT NOT NULL CHECK (kind IN ('permission', 'device', 'credential')),
   categories        TEXT,
+  device_id         TEXT,
   credential_name   TEXT,
   ask               TEXT,
   command           TEXT NOT NULL,
@@ -687,7 +691,8 @@ CREATE TABLE permission_requests (
   decided_at        INTEGER,
   read              INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1)),
   CHECK ((kind = 'permission') = (categories IS NOT NULL)),
-  CHECK ((kind = 'permission') = (credential_name IS NULL)),
+  CHECK ((kind = 'device') = (device_id IS NOT NULL)),
+  CHECK ((kind = 'credential') = (credential_name IS NOT NULL)),
   CHECK ((kind = 'credential') = (ask IS NOT NULL)),
   CHECK (kind <> 'credential' OR decision IS NULL),
   CHECK ((agent_number IS NULL) = (agent_description IS NULL)),

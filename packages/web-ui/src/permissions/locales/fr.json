@@ -19,8 +19,12 @@
     "progress": "{position} / {count}"
   },
   "useCredential": "utiliser l’identifiant « {name} »",
+  "device": {
+    "title": "Autoriser cette conversation à utiliser « {name} » ?",
+    "description": "Ses agents peuvent exécuter des commandes en votre nom sur « {name} » jusqu’à ce que vous le détachiez.",
+    "use": "utiliser « {name} »"
+  },
   "host": {
-    "reach": "accéder à {host}",
     "pair": "jumeler un ordinateur et y accéder"
   },
   "categories": {

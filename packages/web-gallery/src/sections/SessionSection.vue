@@ -37,7 +37,7 @@ import {
 } from '@demicodes/web-ui/permissions/types'
 import {
   credentialsRequest,
-  devicesRequest,
+  deviceRequest,
   FIELDS_DIFFER,
   deployTokenRequest,
   googleKeyRequest,
@@ -315,7 +315,7 @@ const permissionSpecimens = reactive<
   { variant: 'one request', fixture: () => [rootRequest()], requests: [rootRequest()], error: null, refusal: null },
   { variant: 'a queue of three', fixture: queuedRequests, requests: queuedRequests(), error: null, refusal: null },
   { variant: 'a subagent asked', fixture: () => [subagentRequest()], requests: [subagentRequest()], error: null, refusal: null },
-  { variant: 'the user’s devices', fixture: () => [devicesRequest()], requests: [devicesRequest()], error: null, refusal: null },
+  { variant: 'a device', fixture: () => [deviceRequest()], requests: [deviceRequest()], error: null, refusal: null },
   { variant: 'the user’s credentials', fixture: () => [credentialsRequest()], requests: [credentialsRequest()], error: null, refusal: null },
   { variant: 'credential · one hidden field, kept for an hour', fixture: () => [googleKeyRequest()], requests: [googleKeyRequest()], error: null, refusal: null },
   { variant: 'credential · a visible and a hidden field, kept for 30 days', fixture: () => [signInRequest()], requests: [signInRequest()], error: null, refusal: null },
@@ -345,7 +345,9 @@ function decidePermission(
         : 'Tell the Agent the User Declined'
       : decision === 'deny'
         ? 'Tell the Agent the Request Was Denied'
-        : 'Allow the Category and Tell Each Agent That Asked',
+        : decided?.kind === 'permission' && decided.device
+          ? 'Pass the Device’s Calls, Which Attach It, and Tell Each Agent That Asked'
+          : 'Allow the Category and Tell Each Agent That Asked',
   )
   return afterDecision(requests, id, decision)
 }

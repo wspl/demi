@@ -295,6 +295,8 @@ pub enum PushAsk {
         #[schemars(length(min = 1))]
         categories: Vec<PermissionCategory>,
     },
+    /// To use the device `name`.
+    Device { name: String },
     /// To save the credential `name`.
     Credential { name: String },
 }

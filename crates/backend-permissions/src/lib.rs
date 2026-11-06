@@ -23,7 +23,9 @@
 //! and the directory. It asks only before acting on Demi itself, on what the
 //! user owns beyond the conversation. Each such power is one broad category,
 //! which the user judges once for a conversation and which covers every object
-//! and every step of it: every credential, every device.
+//! and every step of it, such as every credential. A device is the exception:
+//! a command there acts as the user on that machine, so the user allows each
+//! device a conversation brings in, and the call that brings it in attaches it.
 //!
 //! ```text
 //! demi skills add ... -> dispatch: the check -- grant? -- yes --> handler
@@ -35,12 +37,13 @@
 //!
 //! A request records one refused call:
 //!
-//! - A newer request of the same categories from the same agent replaces an
+//! - A newer request of the same need from the same agent replaces an
 //!   undecided one, since the agent ran the command again and its newest line
 //!   is the one to show.
 //! - Allow records the grant of each of the request's categories. It decides as
 //!   allowed every request of the conversation whose categories are now
-//!   granted.
+//!   granted. A device's Allow records nothing and decides every request of
+//!   that device.
 //! - Deny decides that one request and records nothing, so the next attempt
 //!   raises a new request.
 //! - Requests never expire. They survive a restart, and archiving withdraws
@@ -91,9 +94,10 @@ use demi_host_interface::{PortError, RpcError, RpcInvocation, RpcPort};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, PermissionOutcome};
 use demi_web_api_protocol::credentials::{CredentialField, Keep, RequestedValues};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::permissions::{
     ConversationPermissions, PermissionCategory, PermissionDecision, PermissionRequest,
-    PermissionRequestId,
+    PermissionRequestId, RequestedDevice,
 };
 use demi_web_api_protocol::push::PushAsk;
 use futures_util::future::LocalBoxFuture;
@@ -328,11 +332,11 @@ impl From<PermissionRefusal> for PermissionError {
 }
 
 /// What one `rpc` call needs of its conversation: its leaf's category, or
-/// the device it brings in, which the category of the user's devices
-/// covers; no command needs both.
+/// the device it brings in, by its id and the name the user knows it by; no
+/// command needs both.
 pub enum Need<'a> {
     Category(&'a Category),
-    Device(DeviceId),
+    Device { id: DeviceId, name: String },
 }
 
 /// The check of one `rpc` call that needs `need`.
@@ -360,17 +364,19 @@ pub async fn check(
         call,
         command,
     } = asking(shard, invocation)?;
-    let needed = match need {
-        Need::Category(category) => Needed::Category(category.id.clone()),
-        Need::Device(device) => Needed::Device(device),
-    };
-    let action = category_action(shard, needed.category()).await;
-    let ask = PushAsk::Permission {
-        categories: vec![PermissionCategory {
-            id: needed.category().to_owned(),
-            action: Some(action.clone()),
-            description: None,
-        }],
+    let (needed, action, ask) = match need {
+        Need::Category(category) => {
+            let action = category_action(shard, &category.id).await;
+            let ask = PushAsk::Permission {
+                categories: vec![PermissionCategory {
+                    id: category.id.clone(),
+                    action: Some(action.clone()),
+                    description: None,
+                }],
+            };
+            (Needed::Category(category.id.clone()), action, ask)
+        }
+        Need::Device { id, name } => (Needed::Device(id), device_action(&name), PushAsk::Device { name }),
     };
     let request = new_request_id();
     // Waiting before the request is stored, so that an allow of another
@@ -455,6 +461,22 @@ async fn category_action(shard: &dyn PermissionShard, id: &str) -> String {
         .into_iter()
         .find(|category| category.id == id)
         .map_or_else(|| id.to_owned(), |category| category.action)
+}
+
+/// What a device's allow lets the conversation do, as the refusal and the
+/// decision's message say it.
+fn device_action(name: &str) -> String {
+    format!("use \u{201c}{name}\u{201d}")
+}
+
+/// The name the user knows `device` by: `Cloud` for the user's Cloud, its
+/// id once it was removed.
+async fn device_name(shard: &dyn PermissionShard, device: &DeviceId) -> Result<String, StorageError> {
+    Ok(match shard.control().device(device.clone()).await? {
+        Some(record) if record.kind == DeviceKind::Managed => "Cloud".to_owned(),
+        Some(record) => record.name,
+        None => device.to_string(),
+    })
 }
 
 /// The conversation, the agent and the command line of a call that asks
@@ -668,6 +690,16 @@ pub async fn read(
                 agent,
                 created_at,
             },
+            StoredAsk::Device(device) => PermissionRequest::Device {
+                id,
+                device: RequestedDevice {
+                    name: device_name(shard, &device).await?,
+                    id: device.to_string(),
+                },
+                command,
+                agent,
+                created_at,
+            },
             StoredAsk::Credential { name, ask } => PermissionRequest::Credential {
                 id,
                 name,
@@ -756,7 +788,7 @@ fn settle(shard: &dyn PermissionShard, conversation: &ConversationId, decided: V
                 shard.waits().answer(&request.id, Answer::Declined);
                 continue;
             }
-            StoredAsk::Permission(_) => shard.waits().decided(
+            StoredAsk::Permission(_) | StoredAsk::Device(_) => shard.waits().decided(
                 &request.id,
                 match outcome {
                     PermissionOutcome::Allowed | PermissionOutcome::Reached => Decided::Allowed,
@@ -810,12 +842,16 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
     let Some(decision) = request.decision else {
         return;
     };
-    let category = match &request.ask {
-        StoredAsk::Permission(category) => category.clone(),
+    let (action, categories, host) = match &request.ask {
+        StoredAsk::Permission(category) => (category_action(&*shard, category).await, vec![category.clone()], None),
+        StoredAsk::Device(device) => {
+            // A name not read now names the device by its id, as a removed one.
+            let name = device_name(&*shard, device).await.unwrap_or_else(|_| device.to_string());
+            (device_action(&name), Vec::new(), Some(name))
+        }
         // A credential request's command returns its answer.
         StoredAsk::Credential { .. } => return,
     };
-    let action = category_action(&*shard, &category).await;
     let message = |recipient: &NodeId| AgentMessage {
         id: BlockId::try_from(format!("permission:{}", request.id))
             .expect("a permission message's id is not empty"),
@@ -826,9 +862,9 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
         event: AgentMessageEvent::Permission {
             outcome: decision.outcome,
             action: action.clone(),
-            categories: vec![category.clone()],
+            categories: categories.clone(),
             credential: None,
-            host: None,
+            host: host.clone(),
             pairing: false,
         },
         origin: None,

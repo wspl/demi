@@ -286,7 +286,7 @@ impl Shard {
     /// The attached hosts as one line: each one's name, connection and
     /// directory, and how to reach them.
     fn attached_hosts_line(&self, attached: &[AttachedHost]) -> String {
-        const LIST: &str = "`demi host list` shows every host this conversation can reach.";
+        const LIST: &str = "`demi host list` shows all of the user's devices; `demi host shell --host <name> <script>` runs a shell string on any of them, attaching it first.";
         if attached.is_empty() {
             return format!("{ATTACHED}none. {LIST}");
         }
@@ -306,10 +306,7 @@ impl Shard {
                 format!("{}{state}{STARTS_IN}{directory})", entry(host))
             })
             .collect();
-        format!(
-            "{ATTACHED}{}. `demi host shell --host <name> <script>` runs a shell string on one; {LIST}",
-            entries.join(", ")
-        )
+        format!("{ATTACHED}{}. {LIST}", entries.join(", "))
     }
 }
 

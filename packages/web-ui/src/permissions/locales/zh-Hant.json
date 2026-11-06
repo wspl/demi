@@ -19,8 +19,12 @@
     "progress": "{position} / {count}"
   },
   "useCredential": "使用憑證「{name}」",
+  "device": {
+    "title": "允許此對話使用「{name}」？",
+    "description": "此對話的智慧體可以用你的身分在「{name}」上執行指令，直到你將它卸下。",
+    "use": "使用「{name}」"
+  },
   "host": {
-    "reach": "存取 {host}",
     "pair": "配對一台電腦並存取它"
   },
   "categories": {

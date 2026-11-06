@@ -19,14 +19,6 @@ export const retiredCategory: PermissionCategoryView = {
   description: null,
 }
 
-/** Use Your Devices, as `demi host` declares it. */
-export const useDevices: PermissionCategoryView = {
-  id: 'host.use',
-  action: 'use your devices',
-  description:
-    'Use Your Devices lets the agents of this conversation run commands as you on any of your devices and the Cloud, move this conversation to one, pair a computer with your account, and add and remove port forwards, which outlive this conversation.',
-}
-
 /** Use Your Credentials, as `demi credentials` declares it. */
 export const useCredentials: PermissionCategoryView = {
   id: 'credentials.use',
@@ -35,14 +27,15 @@ export const useCredentials: PermissionCategoryView = {
     'Use Your Credentials lets the agents of this conversation list, read, save, replace and remove your saved credentials, and ask you for new ones.',
 }
 
-/** A move to a device the conversation does not reach yet, which asks for all of the user's devices. */
-export function devicesRequest(): PermissionRequestView {
+/** A command on a device the conversation does not reach yet, which asks for that device. */
+export function deviceRequest(): PermissionRequestView {
   return {
     kind: 'permission',
-    id: 'pr-devices',
-    categories: [useDevices],
-    command: 'demi host move build-box /srv/website',
+    id: 'pr-device',
+    categories: [],
+    command: 'demi host shell --host build-box "df -h /srv"',
     subagent: null,
+    device: { id: 'device-build-box', name: 'build-box' },
   }
 }
 
@@ -54,6 +47,7 @@ export function credentialsRequest(): PermissionRequestView {
     categories: [useCredentials],
     command: 'demi credentials read "GitHub token for deploys" token | gh auth login --with-token',
     subagent: null,
+    device: null,
   }
 }
 
@@ -65,6 +59,7 @@ export function rootRequest(): PermissionRequestView {
     categories: [manageSkills],
     command: 'demi skills add vercel-labs/agent-skills --skill web-design-guidelines',
     subagent: null,
+    device: null,
   }
 }
 
@@ -76,6 +71,7 @@ export function subagentRequest(): PermissionRequestView {
     categories: [manageSkills],
     command: 'demi skills enable vercel-labs/agent-skills --skill react-best-practices',
     subagent: { number: 2, description: 'Frontend review' },
+    device: null,
   }
 }
 
@@ -90,6 +86,7 @@ export function queuedRequests(): PermissionRequestView[] {
       categories: [retiredCategory],
       command: 'demi conversations show 12',
       subagent: { number: 3, description: 'History search' },
+      device: null,
     },
   ]
 }

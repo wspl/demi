@@ -19,8 +19,12 @@
     "progress": "{position} / {count}"
   },
   "useCredential": "“{name}” 자격 증명 사용",
+  "device": {
+    "title": "이 대화에서 “{name}” 사용을 허용하시겠습니까?",
+    "description": "이 대화의 에이전트가 연결을 해제할 때까지 “{name}”에서 사용자 권한으로 명령을 실행할 수 있습니다.",
+    "use": "“{name}” 사용"
+  },
   "host": {
-    "reach": "{host} 접근",
     "pair": "컴퓨터 페어링 및 접근"
   },
   "categories": {

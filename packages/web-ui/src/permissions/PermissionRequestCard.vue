@@ -30,8 +30,11 @@ const emit = defineEmits<{
 }>()
 
 const title = computed(() => requestTitle(props.request))
-/** What the request allows: its category's description while the command set still declares it. */
+/** What the request allows: the device's use, or its category's description while the command set still declares it. */
 const description = computed(() => {
+  if (props.request.device) {
+    return t('device.description', { name: props.request.device.name })
+  }
   const category = props.request.categories[0]
   return category ? categoryDescription(category) : null
 })

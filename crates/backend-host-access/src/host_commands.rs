@@ -1,12 +1,13 @@
 //! The product's `demi host` group: commands on the Hosts a conversation
 //! reaches.
 //!
-//! - `list` names the Hosts the calling conversation reaches.
+//! - `list` lists the user's devices, each with what it is to the calling
+//!   conversation.
 //! - `current` names its primary Host.
-//! - `shell --host` runs a script on one of them as one job there.
+//! - `shell --host` runs a script on one of them as one job there, attaching
+//!   it first when the conversation does not reach it.
 //! - `install-command` prints the command that installs the runner on a
 //!   computer.
-//! - `devices` lists the user's devices.
 //! - `pair` pairs the computer whose installer shows a code and attaches it.
 //! - `attach` attaches a device at once.
 //! - `detach` detaches a device at once, stopping the conversation's commands
@@ -14,10 +15,10 @@
 //! - `move` makes a host and a directory where the conversation runs, at once,
 //!   and answers once it is made.
 //!
-//! Bringing in a device the conversation does not reach without it, pairing a
-//! computer and the port forwards need the grant of the user's devices
-//! ([`DEVICES`]), which the user gives once for the conversation and which then
-//! covers every device.
+//! Bringing in a device the conversation does not reach asks the user for
+//! that device (`bringsHost`), and the call that brings it in attaches it.
+//! Pairing asks nothing: the agent pairs a computer it already runs commands
+//! on, and the pairing attaches it.
 //!
 //! A `shell` job carries its invoking job's command context, caller and
 //! commands. Its standard input and output are the calling command's. A script
@@ -51,7 +52,6 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::rc::{Rc, Weak};
 
-use demi_backend_database::permissions::DEVICES;
 use demi_runner_protocol::pairs::PairRoute;
 use demi_backend_database::conversation_index::{
     AttachedHostRecord, ExecutionTarget, RecordChange,
@@ -86,18 +86,9 @@ const SUMMARY: &str =
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "Hosts and devices: list, run a command on another, attach, detach, move the conversation, forward ports, pair.";
 
-/// The action of the category of the user's devices, which completes
-/// "Allow this conversation to …".
-const DEVICES_ACTION: &str = "use your devices";
+const MOVE_SUMMARY: &str = "Make another host where this conversation runs, or another directory there: `demi host move <host> <directory>`, the host by name or id from `demi host list` (`Cloud` for the user's Cloud), the directory an absolute path that exists there. The move applies at once: commands already running finish where they are, every later command runs there, and the host it leaves stays attached.";
 
-/// What a grant of the category of the user's devices allows.
-const DEVICES_DESCRIPTION: &str = "Use Your Devices lets the agents of this conversation run commands as you on any of your devices and the Cloud, move this conversation to one, pair a computer with your account, and add and remove port forwards, which outlive this conversation.";
-
-const MOVE_SUMMARY: &str = "Make another host where this conversation runs, or another directory there: `demi host move <host> <directory>`, the host by name or id from `demi host devices` (`Cloud` for the user's Cloud), the directory an absolute path that exists there. The move applies at once: commands already running finish where they are, every later command runs there, and the host it leaves stays attached.";
-
-const DEVICES_SUMMARY: &str = "List the user's paired devices and the Cloud: name, id, kind, status (a stopped Cloud wakes for work), and what each is to this conversation, with the name it reaches it by.";
-
-const ATTACH_SUMMARY: &str = "Attach one of the user's paired devices to this conversation, by name or id from `demi host devices`, so `demi host shell --host` reaches it.";
+const ATTACH_SUMMARY: &str = "Attach one of the user's devices or the Cloud to this conversation, by name or id from `demi host list`, so `demi host shell --host` reaches it; `shell` and `move` attach one themselves.";
 
 const INSTALL_COMMAND_SUMMARY: &str = "The command that installs the runner on a computer, as Add Device shows it; run it there and pass the pairing code it shows to `demi host pair`.";
 
@@ -105,11 +96,11 @@ const PAIR_SUMMARY: &str = "Pair the computer whose installer shows `<code>` wit
 
 const DETACH_SUMMARY: &str = "Detach an attached host, by name or id from `demi host list`, at once; this conversation's commands that run there end.";
 
-const LIST_SUMMARY: &str = "List the Hosts this conversation can reach with `demi host shell --host`: name, id, status, role (primary, attached, or subagent for a Host only a subagent works on) and the directory commands start in.";
+const LIST_SUMMARY: &str = "List the user's devices and the Cloud, each with what it is to this conversation: name, id, status (a stopped Cloud wakes for work), role (primary, attached, subagent for a Host only a subagent works on, or none) and the directory commands start in. `demi host shell --host` and `demi host move` take any of them; one the conversation does not reach asks the user once.";
 
 const CURRENT_SUMMARY: &str = "Show the primary host, where the shell tool's commands run: its name, id, status, project and directory.";
 
-const SHELL_SUMMARY: &str = "Run a script in another host's bash, as ssh does: `demi host shell --host <name|id> <script>`, or without the script argument, the script on stdin, so one with quotes of its own needs no escaping (`demi host shell --host ci <<'EOF'` … `EOF`). The script starts in that host's directory, which `demi host list` shows and no `cd` changes. With a script argument, this command's stdin and stdout are the script's, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci \"tar c -C /work .\" | tar x`, `tar c . | demi host shell --host ci \"tar x -C /work\"`); a script read from stdin has no stdin of its own. stderr and the exit code pass through.";
+const SHELL_SUMMARY: &str = "Run a script in another host's bash, as ssh does: `demi host shell --host <name|id> <script>`, or without the script argument, the script on stdin, so one with quotes of its own needs no escaping (`demi host shell --host ci <<'EOF'` … `EOF`). Any device `demi host list` shows: one this conversation does not reach is attached first, which asks the user once. The script starts in that host's directory, which `demi host list` shows and no `cd` changes. With a script argument, this command's stdin and stdout are the script's, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci \"tar c -C /work .\" | tar x`, `tar c . | demi host shell --host ci \"tar x -C /work\"`); a script read from stdin has no stdin of its own. stderr and the exit code pass through.";
 
 /// The input of a leaf that takes none, such as `demi host list`.
 #[derive(Deserialize, JsonSchema)]
@@ -120,7 +111,7 @@ pub struct NoArgs {}
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct AttachArgs {
-    /// Device name or id from demi host devices
+    /// Device name or id from demi host list
     #[expect(dead_code, reason = "the dispatch resolves it, as the call's `brought`")]
     device: String,
 }
@@ -156,7 +147,7 @@ struct PairArgs {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct MoveArgs {
-    /// Host name or device id from demi host devices; Cloud for the user's Cloud
+    /// Host name or device id from demi host list; Cloud for the user's Cloud
     #[expect(dead_code, reason = "the dispatch resolves it, as the call's `brought`")]
     host: String,
     /// An absolute directory on that host, which must exist
@@ -176,7 +167,8 @@ struct DetachArgs {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ShellArgs {
-    /// Host name or device id from demi host list
+    /// Host name or device id from demi host list; Cloud for the user's Cloud
+    #[expect(dead_code, reason = "the dispatch resolves it, as the call's `brought`")]
     host: String,
     /// One quoted shell script argument, to which stdin is streamed; without
     /// it, stdin is the script
@@ -188,7 +180,6 @@ struct ShellArgs {
 pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
     GroupBuilder::new("host", SUMMARY)
         .index_entry(ENTRY)
-        .permission(DEVICES, DEVICES_ACTION, DEVICES_DESCRIPTION)
         .group(crate::forward_commands::forward_group(shard.clone()))
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
@@ -206,14 +197,9 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
             LeafBuilder::rpc("shell", SHELL_SUMMARY)
                 .input::<ShellArgs>()
                 .positionals(["script"])
+                .brings_host("host")
                 .failure_output("writes the reason to stderr and exits non-zero (127 when the host cannot run bash)")
                 .bind(TypedRpc::new(verb(shard.clone(), shell))),
-        )
-        .leaf(
-            LeafBuilder::rpc("devices", DEVICES_SUMMARY)
-                .input::<NoArgs>()
-                .json_output::<Vec<ListedDevice>>()
-                .bind(TypedRpc::new(verb(shard.clone(), devices))),
         )
         .leaf(
             LeafBuilder::rpc("install-command", INSTALL_COMMAND_SUMMARY)
@@ -224,7 +210,6 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
             LeafBuilder::rpc("pair", PAIR_SUMMARY)
                 .input::<PairArgs>()
                 .positionals(["code"])
-                .permission(DEVICES)
                 .bind(TypedRpc::new(verb(shard.clone(), pair))),
         )
         .leaf(
@@ -277,7 +262,7 @@ pub async fn resolve_host(
         .await?
         .into_iter()
         .next()
-        .ok_or_else(|| RpcError::Failed(format!("{wanted}: no host of this name or id (see `demi host devices`)")))
+        .ok_or_else(|| RpcError::Failed(format!("{wanted}: no host of this name or id (see `demi host list`)")))
 }
 
 /// The host the dispatch resolved for the call's `bringsHost` argument.
@@ -357,7 +342,7 @@ where
     }
 }
 
-/// The user's Hosts, each by the name `demi host devices` gives it.
+/// The user's Hosts, each by the name `demi host list` gives it.
 pub(crate) struct HostNames(Vec<demi_backend_database::devices::DeviceRecord>);
 
 impl HostNames {
@@ -421,27 +406,22 @@ pub(crate) fn named_host<'a>(
         .or_else(|| hosts.iter().find(|host| host.device.as_str() == wanted))
 }
 
-fn online(shard: &dyn HostShard, host: &ReachableHost) -> &'static str {
-    if shard.devices().online(&host.device) {
-        "online"
-    } else {
-        "offline"
-    }
-}
-
-/// A Host as `demi host list` lists it.
+/// A device as `demi host list` lists it.
 #[derive(Serialize, JsonSchema)]
 struct ListedHost {
-    /// The name `--host` takes.
+    /// The name `--host` takes: the one this conversation reaches it by,
+    /// `Cloud` for the Cloud.
     name: String,
     /// Its device's id, which `--host` takes too.
     id: String,
-    /// `online` or `offline`.
+    /// `online`, `updating`, `offline`, or `stopped` for a Cloud that wakes
+    /// for work.
     status: &'static str,
-    /// `primary`, `attached`, or `subagent` for a Host only a subagent works
-    /// on.
-    role: &'static str,
-    /// Where a shell there starts; null when it is not known yet.
+    /// What it is to this conversation: `primary`, `attached`, or `subagent`
+    /// for a Host only a subagent works on; null for none.
+    role: Option<&'static str>,
+    /// Where a shell there starts; null for a device the conversation does
+    /// not reach, or one whose directory is not known yet.
     directory: Option<String>,
 }
 
@@ -453,23 +433,65 @@ fn role_word(role: HostRole) -> &'static str {
     }
 }
 
+/// What a device is to the user as `list` shows it: the Cloud, or a paired
+/// device, with its state.
+fn device_state(kind: DeviceKind, state: DeviceState) -> &'static str {
+    match (kind, state) {
+        (_, DeviceState::Online) => "online",
+        (_, DeviceState::Updating) => "updating",
+        (DeviceKind::Managed, DeviceState::Offline) => "stopped",
+        (DeviceKind::User, DeviceState::Offline) => "offline",
+    }
+}
+
+/// Lists the user's devices, those the conversation reaches first, in the
+/// order of their roles.
 async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
     let hosts = reachable(&*shard, &conversation).await?;
-    if hosts.is_empty() {
-        port.stderr(warning(&call.invocation.path.join(" "), "the Cloud has not been allocated"))
-            .await?;
+    let control = shard.control();
+    let failed = |error: demi_backend_database::StorageError| RpcError::Failed(error.to_string());
+    let cloud = control
+        .managed_device(shard.user().clone())
+        .await
+        .map_err(failed)?;
+    let paired = control
+        .paired_devices(shard.user().clone())
+        .await
+        .map_err(failed)?;
+    if cloud.is_none() {
+        let note = "the Cloud is not created yet; it is made when a conversation first runs there";
+        port.stderr(warning(&call.invocation.path.join(" "), note)).await?;
     }
-    let listed: Vec<ListedHost> = hosts
+    let mut listed: Vec<(Option<HostRole>, ListedHost)> = cloud
         .iter()
-        .map(|host| ListedHost {
-            name: host.name.clone(),
-            id: host.device.to_string(),
-            status: online(&*shard, host),
-            role: role_word(host.role),
-            directory: Some(host.path.clone()).filter(|path| !path.is_empty()),
+        .chain(&paired)
+        .map(|device| {
+            let host = hosts.iter().find(|host| host.device == device.id);
+            let name = match (host, device.kind) {
+                (Some(host), DeviceKind::User) => host.name.clone(),
+                (None, DeviceKind::User) => device.name.clone(),
+                (_, DeviceKind::Managed) => "Cloud".to_owned(),
+            };
+            (
+                host.map(|host| host.role),
+                ListedHost {
+                    name,
+                    id: device.id.to_string(),
+                    status: device_state(device.kind, shard.devices().state(&device.id)),
+                    role: host.map(|host| role_word(host.role)),
+                    directory: host.map(|host| host.path.clone()).filter(|path| !path.is_empty()),
+                },
+            )
         })
         .collect();
+    listed.sort_by_key(|(role, _)| match role {
+        Some(HostRole::Primary) => 0,
+        Some(HostRole::Attached) => 1,
+        Some(HostRole::Agent) => 2,
+        None => 3,
+    });
+    let listed: Vec<ListedHost> = listed.into_iter().map(|(_, host)| host).collect();
     if call.invocation.json {
         return print_json(&port, &listed).await;
     }
@@ -494,95 +516,6 @@ pub(crate) async fn print_json(port: &RpcPort, value: &impl Serialize) -> Result
     Ok(0)
 }
 
-/// What a device is to the user as `devices` lists it: the Cloud, or a
-/// paired device, with its state.
-fn device_state(kind: DeviceKind, state: DeviceState) -> &'static str {
-    match (kind, state) {
-        (_, DeviceState::Online) => "online",
-        (_, DeviceState::Updating) => "updating",
-        (DeviceKind::Managed, DeviceState::Offline) => "stopped",
-        (DeviceKind::User, DeviceState::Offline) => "offline",
-    }
-}
-
-async fn devices(
-    shard: Rc<dyn HostShard>,
-    call: Call<NoArgs>,
-    port: RpcPort,
-) -> Result<u8, RpcError> {
-    let conversation = conversation_of(&call.invocation)?;
-    let hosts = reachable(&*shard, &conversation).await?;
-    let control = shard.control();
-    let failed = |error: demi_backend_database::StorageError| RpcError::Failed(error.to_string());
-    let cloud = control
-        .managed_device(shard.user().clone())
-        .await
-        .map_err(failed)?;
-    let paired = control
-        .paired_devices(shard.user().clone())
-        .await
-        .map_err(failed)?;
-    if cloud.is_none() {
-        let note = "the Cloud is not created yet; it is made when a conversation first runs there";
-        port.stderr(warning(&call.invocation.path.join(" "), note)).await?;
-    }
-    let listed: Vec<ListedDevice> = cloud
-        .iter()
-        .chain(&paired)
-        .map(|device| {
-            let host = hosts.iter().find(|host| host.device == device.id);
-            ListedDevice {
-                name: match device.kind {
-                    DeviceKind::Managed => "Cloud".to_owned(),
-                    DeviceKind::User => device.name.clone(),
-                },
-                id: device.id.to_string(),
-                kind: match device.kind {
-                    DeviceKind::Managed => "cloud",
-                    DeviceKind::User => "paired",
-                },
-                status: device_state(device.kind, shard.devices().state(&device.id)),
-                role: host.map(|host| role_word(host.role)),
-                host: host.map(|host| host.name.clone()),
-            }
-        })
-        .collect();
-    if call.invocation.json {
-        return print_json(&port, &listed).await;
-    }
-    let mut table = Table::new(["name", "id", "kind", "status", "role", "host"]);
-    for device in &listed {
-        table.row::<Cell>([
-            device.name.as_str().into(),
-            device.id.as_str().into(),
-            device.kind.into(),
-            device.status.into(),
-            device.role.into(),
-            device.host.as_deref().into(),
-        ]);
-    }
-    port.stdout(table.render()).await?;
-    Ok(0)
-}
-
-/// A device as `demi host devices` lists it.
-#[derive(Serialize, JsonSchema)]
-struct ListedDevice {
-    /// The name `--host` and `attach` take: `Cloud` for the Cloud.
-    name: String,
-    id: String,
-    /// `cloud` or `paired`.
-    kind: &'static str,
-    /// `online`, `updating`, `offline`, or `stopped` for a Cloud that wakes
-    /// for work.
-    status: &'static str,
-    /// What it is to this conversation, `primary`, `attached`, or
-    /// `subagent` for a Host only a subagent works on; null for none.
-    role: Option<&'static str>,
-    /// The name this conversation reaches it by; null when it does not.
-    host: Option<String>,
-}
-
 async fn attach(
     shard: Rc<dyn HostShard>,
     call: Call<AttachArgs>,
@@ -591,11 +524,6 @@ async fn attach(
     let Call { invocation, .. } = call;
     let conversation = conversation_of(&invocation)?;
     let host = brought(&invocation)?;
-    if host.cloud {
-        return Err(RpcError::Failed(
-            "Cloud: the Cloud is attached only when the conversation moves off it".into(),
-        ));
-    }
     let device = DeviceId::try_from(host.device.clone())
         .map_err(|_| RpcError::Failed("the dispatch resolved no device".into()))?;
     let attached = attach_device(&*shard, &conversation, &device, &host.name).await?;
@@ -607,7 +535,7 @@ async fn attach(
     Ok(0)
 }
 
-/// Attaches the user's paired device `device`, named `device_name`, to the
+/// Attaches the user's device `device`, named `device_name`, to the
 /// conversation, and answers the name the conversation reaches it by: the
 /// device's, with a suffix when a host attached before goes by it already.
 async fn attach_device(
@@ -854,10 +782,7 @@ async fn shell(
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let Call {
-        args: ShellArgs {
-            host: wanted,
-            script,
-        },
+        args: ShellArgs { script, .. },
         invocation,
     } = call;
     // Without a script argument stdin is the script, as `ssh host bash -s`
@@ -869,10 +794,26 @@ async fn shell(
         None => (script_from_stdin(&port).await?, false),
     };
     let conversation = conversation_of(&invocation)?;
-    let hosts = reachable(&*shard, &conversation).await?;
-    let Some(host) = named_host(&hosts, &wanted) else {
+    let wanted = brought(&invocation)?;
+    // A Host only a subagent works on is not the conversation's own: the
+    // dispatch asked for it as for any other, and attaching it keeps the
+    // answer.
+    let reached = |hosts: &[ReachableHost]| {
+        hosts
+            .iter()
+            .position(|host| host.device.as_str() == wanted.device && host.role != HostRole::Agent)
+    };
+    let mut hosts = reachable(&*shard, &conversation).await?;
+    if reached(&hosts).is_none() {
+        let device = DeviceId::try_from(wanted.device.clone())
+            .map_err(|_| RpcError::Failed("the dispatch resolved no device".into()))?;
+        attach_device(&*shard, &conversation, &device, &wanted.name).await?;
+        hosts = reachable(&*shard, &conversation).await?;
+    }
+    let Some(host) = reached(&hosts).map(|at| &hosts[at]) else {
         return Err(RpcError::Failed(format!(
-            "{wanted}: not reachable from this conversation (see `demi host list`)"
+            "{}: not reachable from this conversation (see `demi host list`)",
+            wanted.name
         )));
     };
     run_on_host(

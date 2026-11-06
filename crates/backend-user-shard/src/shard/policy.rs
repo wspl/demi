@@ -203,10 +203,11 @@ impl LinkPolicy for ShardPolicy {
                 // A leaf declares a category or brings a host, never both
                 // (`command-declarations`).
                 let need = match (&brought, checked.category) {
-                    (Some(brought), _) => Some(Need::Device(
-                        DeviceId::try_from(brought.device.clone())
+                    (Some(brought), _) => Some(Need::Device {
+                        id: DeviceId::try_from(brought.device.clone())
                             .map_err(|_| RpcError::Failed("the resolved host has no id".into()))?,
-                    )),
+                        name: brought.name.clone(),
+                    }),
                     (None, Some(category)) => Some(Need::Category(category)),
                     (None, None) => None,
                 };

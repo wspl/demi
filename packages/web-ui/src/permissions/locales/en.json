@@ -19,8 +19,12 @@
     "progress": "{position} / {count}"
   },
   "useCredential": "use the credential “{name}”",
+  "device": {
+    "title": "Allow this conversation to use “{name}”?",
+    "description": "Its agents can run commands as you on “{name}” until you detach it.",
+    "use": "use “{name}”"
+  },
   "host": {
-    "reach": "reach {host}",
     "pair": "pair a computer and reach it"
   },
   "categories": {

@@ -19,8 +19,12 @@
     "progress": "{position} / {count}"
   },
   "useCredential": "die Zugangsdaten „{name}“ zu verwenden",
+  "device": {
+    "title": "Diesem Chat erlauben, „{name}“ zu verwenden?",
+    "description": "Seine Agenten können auf „{name}“ in deinem Namen Befehle ausführen, bis du es trennst.",
+    "use": "„{name}“ zu verwenden"
+  },
   "host": {
-    "reach": "{host} zu erreichen",
     "pair": "einen Computer zu koppeln und ihn zu erreichen"
   },
   "categories": {
