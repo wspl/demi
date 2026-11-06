@@ -23,8 +23,6 @@ use demi_core_host_access::plugin_files::{DirectorySets, PluginInstalls};
 use demi_runner_client::Pipes;
 use demi_core_hosts::devices::Devices;
 use demi_core_hosts::packages::Packages;
-use demi_backend_runners::claims::ClaimRefusal;
-use demi_backend_runners::install::install_commands;
 use demi_web_api_protocol::devices::{DeviceDto, InstallCommands};
 use demi_core_hosts::router::CommandRouter;
 use demi_shared_types::Clock;
@@ -77,31 +75,19 @@ impl HostShard for Shard {
     }
 
     fn pair<'a>(&'a self, code: &'a str) -> LocalBoxFuture<'a, Result<DeviceDto, String>> {
-        Box::pin(async move {
-            match self.services.claims.claim(self.store(), self.user(), code).await {
-                Ok(device) => Ok(device),
-                Err(ClaimRefusal::UnknownCode) => Err(format!(
-                    "{code}: no computer waits under this pairing code; it expired or was never issued. The installer shows a new code when one expires: read the newest one it shows and pass that."
-                )),
-                Err(ClaimRefusal::TooManyAttempts) => Err(
-                    "Too many pairing codes were tried in the last minute; wait a minute, then pass the newest code the installer shows.".into(),
-                ),
-                Err(ClaimRefusal::Storage(error)) => Err(error.to_string()),
-            }
-        })
+        self.starter().pair(code)
     }
 
     fn install_commands(&self) -> Option<InstallCommands> {
-        let backend = self.services.public_url.get()?;
-        Some(install_commands(backend.url()))
+        self.starter().install_commands()
     }
 
     fn tasks(&self) -> &TaskTracker {
         &self.tasks
     }
 
-    fn cloud_host(&self) -> &dyn CloudHost {
-        self
+    fn cloud_host(&self) -> Option<Rc<dyn CloudHost>> {
+        self.starter().cloud()
     }
 
     fn this(&self) -> Rc<dyn HostShard> {

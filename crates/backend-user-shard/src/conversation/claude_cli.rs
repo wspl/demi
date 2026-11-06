@@ -38,6 +38,7 @@
 //! Each run, sign-in and probe holds a lease of the machine for its whole life,
 //! which keeps it awake and wakes it.
 
+use demi_core_providers::vault::entries::Vault;
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -48,7 +49,6 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use demi_backend_cloud::access::MachineAccess;
-use demi_backend_database::control::ControlService;
 use demi_core_sync::Part;
 use demi_plugin_host::Lost;
 use demi_provider_claude_code::releases::ReleaseError;
@@ -155,7 +155,8 @@ struct CliTarget {
 #[derive(Clone)]
 pub struct ClaudeMachine {
     shards: Shards,
-    control: ControlService,
+    /// The vault, whose stores name the master.
+    vault: Vault,
     /// The master, read once: an instance's master never changes.
     master: Arc<tokio::sync::OnceCell<UserId>>,
     /// The machine's idle processes, of every user's runtimes.
@@ -165,10 +166,10 @@ pub struct ClaudeMachine {
 }
 
 impl ClaudeMachine {
-    pub fn new(shards: Shards, control: ControlService) -> Self {
+    pub fn new(shards: Shards, vault: Vault) -> Self {
         Self {
             shards,
-            control,
+            vault,
             master: Arc::default(),
             idle: Arc::default(),
             state: Arc::default(),
@@ -183,7 +184,8 @@ impl ClaudeMachine {
     async fn master(&self) -> Result<UserId, StartError> {
         self.master
             .get_or_try_init(|| async {
-                self.control
+                self.vault
+                    .stores()
                     .master()
                     .await
                     .map_err(|error| StartError(format!("The instance's master could not be read: {error}")))?

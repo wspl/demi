@@ -106,6 +106,9 @@ pub enum ChangeRefusal {
     ModelNotFound,
     #[error(transparent)]
     SettingUnavailable(#[from] demi_shared_types::UnavailableSetting),
+    /// The Cloud, the destination, did not answer.
+    #[error(transparent)]
+    Cloud(#[from] crate::cloud::CloudError),
     /// An effort or a tier for a conversation without a model.
     #[error("Choose a model for the conversation first")]
     ModelNotSelected,
@@ -157,6 +160,7 @@ impl ChangeRefusal {
             Self::ProviderNotFound => (ErrorCode::ProviderNotFound, 404),
             Self::ModelNotFound => (ErrorCode::ModelNotFound, 404),
             Self::SettingUnavailable(_) => (ErrorCode::SettingUnavailable, 409),
+            Self::Cloud(error) => error.code(),
             Self::ModelNotSelected => (ErrorCode::ModelNotSelected, 409),
             Self::ProjectNotFound => (ErrorCode::ProjectNotFound, 404),
             Self::WorkspaceNotFound => (ErrorCode::WorkspaceNotFound, 404),

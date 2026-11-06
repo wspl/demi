@@ -271,7 +271,14 @@ impl Shard {
             },
             TurnOutcome::Stopped => return,
         };
-        self.push(message, None);
+        self.notify(message).await;
+    }
+
+    /// Sends `message` to the user through the starter; a failure is logged.
+    async fn notify(&self, message: PushMessage) {
+        if let Err(error) = self.starter().notify(message).await {
+            tracing::warn!(event = "notification.failed", user = %self.user(), error = &error as &dyn std::error::Error, "a notification was not sent");
+        }
     }
 
     /// Notifies that the conversation asks the user what `ask` says.
@@ -288,7 +295,7 @@ impl Shard {
                 request,
                 ask,
             };
-            this.push(message, None);
+            this.notify(message).await;
         });
     }
 

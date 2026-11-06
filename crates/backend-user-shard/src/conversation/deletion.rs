@@ -126,7 +126,7 @@ impl Shard {
         self.mark(Part::Conversation(id.clone()));
         // What the shard holds of its schedules stops.
         self.conversation_deleted_schedules(&schedules);
-        self.forget_schedule_owners(&schedules).await;
+        self.tell_schedules_deleted(&schedules).await;
         self.agent().close_tree(&root).await;
         drop(stopped);
         self.titles().abort(&id);
@@ -163,7 +163,7 @@ impl Shard {
             .conversation_deleted(id)
             .await
             .map_err(|error| DeletionError::Plugin(error.to_string()))?;
-        self.services().control.remove_shares_of(self.user().clone(), id.clone()).await?;
+        self.starter().conversation_deleted(id).await?;
         self.store().databases().remove(id).await?;
         Ok(self.store().finish_deletion(id.clone()).await?)
     }

@@ -117,8 +117,8 @@ impl dyn HostShard + '_ {
             .await
             .map_err(|error| HostError::failed(None, error.to_string()))?;
         let admission = match device_record {
-            Some(record) if record.kind == demi_web_api_protocol::devices::DeviceKind::Managed => self
-                .cloud_host()
+            Some(record) if record.kind == demi_web_api_protocol::devices::DeviceKind::Managed => crate::cloud::cloud_of(self)
+                .map_err(|error| HostError::failed(None, error.to_string()))?
                 .operation_admission(&record)
                 .await
                 .map_err(|error| HostError::failed(None, error.to_string()))?,

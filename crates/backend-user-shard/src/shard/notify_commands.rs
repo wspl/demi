@@ -20,6 +20,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::Shard;
+use crate::starter::Notified;
 use crate::conversation::organize::{failed, refused, verb};
 
 /// The longest title, and the longest body, in characters.
@@ -110,44 +111,28 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
     // Counted now, so the agent is told at once; delivery goes on in the
     // background, and a browser its push service no longer knows is
     // dropped then.
-    let in_use = shard.notifications().in_use();
-    let recipients = shard.recipients(&message, &in_use).await.map_err(failed)?;
-    match (recipients.now.len(), recipients.shown) {
-        (0, 0) => {
+    match shard.starter().notify(message).await.map_err(failed)? {
+        Notified::Nowhere => {
             ask_to_turn_on(&shard, &conversation).await?;
             let what = format!("no browser of the user takes the agent's notifications now; {CARD}");
             port.stderr(warning(&call.invocation.path.join(" "), &what)).await?;
-            return Ok(0);
         }
         // The user sees the conversation, on every browser that would
         // notify, so none does.
-        (0, _) => {
-            port.stdout("Not sent: the user has this conversation open.\n").await?;
-            return Ok(0);
-        }
-        (1, _) => port.stdout("Sending to 1 browser.\n").await?,
-        (n, _) => port.stdout(format!("Sending to {n} browsers.\n")).await?,
+        Notified::Shown => port.stdout("Not sent: the user has this conversation open.\n").await?,
+        Notified::Sending(1) => port.stdout("Sending to 1 browser.\n").await?,
+        Notified::Sending(n) => port.stdout(format!("Sending to {n} browsers.\n")).await?,
     }
-    shard.push(message, Some(recipients));
     Ok(0)
 }
 
 async fn status(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
-    let subscriptions = shard
-        .services()
-        .push
-        .subscriptions(shard.user().clone())
-        .await
-        .map_err(failed)?;
-    let agent_notifies = subscriptions
-        .iter()
-        .filter(|subscription| subscription.events.agent_notifies)
-        .count();
+    let reach = shard.starter().reach().await.map_err(failed)?;
     let status = Status {
-        reachable: agent_notifies > 0,
-        browsers: subscriptions.len(),
-        agent_notifies,
+        reachable: reach.agent_notifies > 0,
+        browsers: reach.browsers,
+        agent_notifies: reach.agent_notifies,
     };
     let command = call.invocation.path.join(" ");
     let advice = match (status.browsers, status.agent_notifies) {
@@ -181,8 +166,7 @@ async fn status(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u
 /// while the card goes up finds none, so whether a browser takes them is read
 /// again once it is up, and the card comes down then.
 async fn ask_to_turn_on(shard: &Shard, conversation: &ConversationId) -> Result<(), RpcError> {
-    let control = &shard.services().control;
-    let reaches = || control.agent_reaches(shard.user().clone());
+    let reaches = || shard.starter().agent_reaches();
     if reaches().await.map_err(failed)? {
         return Ok(());
     }

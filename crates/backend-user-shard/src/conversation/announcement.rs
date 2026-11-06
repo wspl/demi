@@ -241,9 +241,7 @@ impl Shard {
             Some(RunnerPlatform::Win32) => format!("{WINDOWS_UTILITIES}. {WINDOWS_SHELLS}"),
             _ => format!("{UTILITIES}."),
         };
-        let limited = |record: &DeviceRecord| {
-            demi_backend_cloud::isolation::network_policy_applies(&self.services().cloud, record.id.as_str())
-        };
+        let limited = |record: &DeviceRecord| self.starter().cloud_network_limited(record);
         if device.as_ref().is_none_or(|record| record.kind == DeviceKind::Managed && limited(record)) {
             utilities = format!("{utilities} {CLOUD_NETWORK_POLICY}");
         }

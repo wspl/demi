@@ -155,7 +155,7 @@ pub trait HostShard {
     fn tasks(&self) -> &TaskTracker;
     /// The shard as the user's Cloud sees it, whose admission an operation
     /// on the Cloud takes.
-    fn cloud_host(&self) -> &dyn cloud::CloudHost;
+    fn cloud_host(&self) -> Option<Rc<dyn cloud::CloudHost>>;
     /// The shard, for a task that outlives the call that starts it.
     fn this(&self) -> Rc<dyn HostShard>;
     /// The placements of the conversation's live subagents, each a Host and

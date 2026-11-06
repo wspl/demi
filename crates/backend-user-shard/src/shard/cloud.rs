@@ -208,8 +208,8 @@ impl Shard {
 }
 
 impl CloudHost for Shard {
-    fn cloud_device(&self) -> LocalBoxFuture<'_, Result<DeviceRecord, StorageError>> {
-        Box::pin(self.cloud_shard().cloud_device())
+    fn cloud_device(&self) -> LocalBoxFuture<'_, Result<DeviceRecord, CloudError>> {
+        Box::pin(async move { Ok(self.cloud_shard().cloud_device().await?) })
     }
 
     fn admit_cloud<'a>(&'a self, device: &'a DeviceRecord) -> LocalBoxFuture<'a, Result<CloudAdmission, CloudError>> {

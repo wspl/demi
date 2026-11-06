@@ -44,9 +44,8 @@ use demi_core_store::sequences;
 use demi_core_host_access::host_commands::{reachable, resolve_host};
 use demi_core_host_access::root_of;
 use demi_plugin_host::Lost;
-use demi_backend_database::server_log::ServerLog;
 use demi_runner_client::{CommandCatalog, DirectAdmission, ForwardEvent, HostLog, JobOrigin, LinkPolicy, PackageEvent};
-use demi_runner_protocol::wire::{HostLogLine, LinkedWorktree};
+use demi_runner_protocol::wire::LinkedWorktree;
 use demi_core_hosts::host_key::conversation_of;
 use demi_core_permissions::Need;
 use demi_command_protocol::ResidentSequence;
@@ -81,31 +80,6 @@ impl ShardPolicy {
     }
 }
 
-/// One Host's runner lines, stored in the backend's log under the Host's ID.
-struct HostLines {
-    log: ServerLog,
-    host: String,
-    /// Weak: the shard owns the connection this store serves.
-    shard: Weak<Shard>,
-}
-
-impl HostLog for HostLines {
-    fn since(&self) -> LocalBoxFuture<'static, Option<u64>> {
-        let log = self.log.clone();
-        let host = self.host.clone();
-        Box::pin(async move { log.host_since(&host).await })
-    }
-
-    fn store(&self, lines: Vec<HostLogLine>, missed: u64) {
-        let Some(shard) = self.shard.upgrade() else {
-            return;
-        };
-        // The Host's lines are its owner's.
-        self.log
-            .store_host(&self.host, shard.user().as_str(), lines, missed);
-    }
-}
-
 /// A demand lease of the conversation's stream gate, which holds it active
 /// as a watched stream does, with its idle watch started, as a Host
 /// admission starts it (`crates/backend-user-shard/src/lifecycle/mod.rs`).
@@ -128,12 +102,7 @@ impl LinkPolicy for ShardPolicy {
     }
 
     fn host_log(&self) -> Option<Rc<dyn HostLog>> {
-        let shard = self.shard.upgrade()?;
-        Some(Rc::new(HostLines {
-            log: shard.services().log.clone(),
-            host: self.device.to_string(),
-            shard: self.shard.clone(),
-        }))
+        self.shard.upgrade()?.starter().host_log(&self.device)
     }
 
     fn admit_call<'a>(&'a self, job: &'a JobOrigin) -> LocalBoxFuture<'a, Result<(), String>> {

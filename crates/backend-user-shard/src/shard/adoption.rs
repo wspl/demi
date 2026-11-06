@@ -579,7 +579,7 @@ impl Shard {
     pub async fn revoke_device(self: &Rc<Self>, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
         let removal = self.store().delete_device(device.clone()).await?;
         // Its token opens nothing from now on.
-        self.services().control.forget_device_owner(device.clone()).await?;
+        self.starter().device_removed(&device).await?;
         self.mark(Part::Devices);
         if !removal.projects.is_empty() {
             self.mark(Part::Projects);

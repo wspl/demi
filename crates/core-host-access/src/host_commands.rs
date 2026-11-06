@@ -321,7 +321,10 @@ async fn devices_named(
     }
     let cloud = match cloud {
         Some(cloud) if cloud.id.as_str() == wanted => Some(cloud),
-        _ if wanted == "Cloud" => Some(shard.cloud_host().cloud_device().await.map_err(failed)?),
+        _ if wanted == "Cloud" => {
+            let cloud_failed = |error: crate::cloud::CloudError| RpcError::Failed(error.to_string());
+            Some(crate::cloud::cloud_of(shard).map_err(cloud_failed)?.cloud_device().await.map_err(cloud_failed)?)
+        }
         _ => None,
     };
     if let Some(cloud) = cloud {

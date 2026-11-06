@@ -12,7 +12,7 @@ use futures_util::future::LocalBoxFuture;
 /// What host access asks of the Cloud.
 pub trait CloudHost {
     /// The Cloud's device, made on its first use.
-    fn cloud_device(&self) -> LocalBoxFuture<'_, Result<DeviceRecord, StorageError>>;
+    fn cloud_device(&self) -> LocalBoxFuture<'_, Result<DeviceRecord, CloudError>>;
 
     /// Takes the Cloud's admission: it wakes a stopped Cloud, joins a boot
     /// under way, or waits for a running reset to finish.
@@ -23,9 +23,17 @@ pub trait CloudHost {
     fn operation_admission<'a>(&'a self, device: &'a DeviceRecord) -> LocalBoxFuture<'a, Result<Admission, StorageError>>;
 }
 
+/// The Cloud of `shard`'s starter.
+pub fn cloud_of(shard: &(impl crate::HostShard + ?Sized)) -> Result<std::rc::Rc<dyn CloudHost>, CloudError> {
+    shard.cloud_host().ok_or(CloudError::Absent)
+}
+
 /// Why the Cloud admits no operation, or why one of its transitions failed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CloudError {
+    /// Whoever runs the core runs no Cloud.
+    #[error("No Cloud runs here")]
+    Absent,
     #[error("Cloud is shutting down")]
     Closed,
     /// Its runtime was lost too often in a short time.
@@ -45,6 +53,7 @@ impl CloudError {
     /// The code and HTTP status an operation refused this way answers with.
     pub fn code(&self) -> (ErrorCode, u16) {
         match self {
+            Self::Absent => (ErrorCode::CloudUnavailable, 503),
             Self::Closed => (ErrorCode::BackendClosing, 503),
             Self::CrashLoop => (ErrorCode::CloudCrashLoop, 503),
             Self::Capacity => (ErrorCode::CloudCapacity, 503),

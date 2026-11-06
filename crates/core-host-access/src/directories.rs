@@ -75,7 +75,7 @@ impl dyn HostShard + '_ {
                 Ok(ConversationTarget::Project { project_id })
             }
             ConversationTarget::Cloud { path: Some(path) } => {
-                let device = self.cloud_host().cloud_device().await?;
+                let device = crate::cloud::cloud_of(self)?.cloud_device().await?;
                 let path = typed_directory(&device, &path)?;
                 Ok(ConversationTarget::Cloud { path: Some(path) })
             }

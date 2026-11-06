@@ -72,7 +72,9 @@ use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationParts, ShardHosts};
 use crate::lifecycle::collection::BlobCollection;
 use crate::lifecycle::conversations::ConversationWatches;
+use crate::server_starter::ServerStarter;
 use crate::services::Services;
+use crate::starter::Starter;
 use demi_core_host_access::access::Conversations;
 use demi_core_host_access::plugin_files::PluginInstalls;
 
@@ -102,6 +104,8 @@ pub struct Shard {
     /// The shard itself, for the tasks its methods start.
     this: Weak<Shard>,
     services: Arc<Services>,
+    /// What whoever runs the core gives it.
+    starter: Rc<dyn Starter>,
     /// The HTTP client of the shard's thread, which the runtimes built here
     /// send with: hyper ties a pooled connection to the runtime that made it.
     http: reqwest::Client,
@@ -216,6 +220,7 @@ impl Shard {
         user: UserId,
         store: CoreStore,
         services: Arc<Services>,
+        starter: Rc<dyn Starter>,
         http: reqwest::Client,
         web: reqwest::Client,
     ) -> Self {
@@ -249,6 +254,7 @@ impl Shard {
             store,
             this: shard,
             services,
+            starter,
             http,
             conversations: Conversations::default(),
             devices,
@@ -333,6 +339,11 @@ impl Shard {
 
     pub fn services(&self) -> &Services {
         &self.services
+    }
+
+    /// What whoever runs the core gives it.
+    pub fn starter(&self) -> &dyn Starter {
+        self.starter.as_ref()
     }
 
     /// The user's core store.
@@ -789,7 +800,7 @@ impl ShardPool {
         // The master's shard holds the Claude Code machine, which every
         // shard and the providers' sign-ins and probes reach through it
         // (`crates/backend-cloud/src/lib.rs`).
-        let machine = ClaudeMachine::new(shards.clone(), shared.control.clone());
+        let machine = ClaudeMachine::new(shards.clone(), shared.vault.clone());
         if !shared.claude_machine.set(machine) {
             tracing::error!(event = "claude_code_machine.set_twice", "the Claude Code machine was set twice; the first is kept");
         }
@@ -919,6 +930,7 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                                 user.clone(),
                                 store,
                                 services.clone(),
+                                Rc::new(ServerStarter::new(user.clone(), services.clone(), shard.clone())),
                                 http.clone(),
                                 web.clone(),
                             )

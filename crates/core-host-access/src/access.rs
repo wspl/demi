@@ -67,7 +67,7 @@ use std::future::Future;
 use std::rc::Rc;
 
 use demi_core_blobs::ObjectError;
-use crate::cloud::{CloudAdmission, CloudError};
+use crate::cloud::{CloudAdmission, CloudError, cloud_of};
 use demi_core_store::StorageError;
 use demi_core_store::conversation_index::{ConversationRecord, ExecutionTarget};
 use demi_core_store::devices::DeviceRecord;
@@ -962,7 +962,7 @@ impl dyn HostShard + '_ {
     /// Takes the Cloud's admission: it wakes a stopped Cloud, joins a boot
     /// under way, or waits for a running reset to finish (`managed`).
     async fn enter_cloud(&self, device: &DeviceRecord) -> Result<CloudAdmission, CloudError> {
-        self.cloud_host().admit_cloud(device).await
+        cloud_of(self)?.admit_cloud(device).await
     }
 
     /// The Host an operation reaches and where its work starts, found
@@ -995,7 +995,7 @@ impl dyn HostShard + '_ {
         let found = match (&named, &target) {
             (Some(host), _) => store.device(host.device.clone()).await?,
             (None, ExecutionTarget::Cloud { .. }) if allocate => {
-                Some(self.cloud_host().cloud_device().await?)
+                Some(cloud_of(self)?.cloud_device().await?)
             }
             (None, ExecutionTarget::Cloud { .. }) => Some(
                 store
