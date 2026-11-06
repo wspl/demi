@@ -12,6 +12,9 @@ doctest = false
 bench = false
 
 [dependencies]
+# The IANA time zones and the locale canonicalization a reported locale is
+# checked against, from ICU4X's compiled data: the same on every machine,
+# without a system time zone database.
 icu_locale = "2"
 icu_time = { version = "2", default-features = false, features = ["compiled_data"] }
 demi-core-hosts = { path = "../core-hosts" }
