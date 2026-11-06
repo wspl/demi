@@ -1,44 +1,37 @@
-//! The user core.
+//! The core: everything Demi does for one principal's agents, on one
+//! thread. The server runs one core per user; a program runs one of its own.
 //!
-//! The crate holds:
+//! A core holds:
 //!
-//! - the shard threads, each user's core with the calls into it, and the
-//!   shared services every core is given;
-//! - the conversations as the agent sees them, their idle watches, and the
-//!   pages' product state and synchronization channels.
+//! - the conversations as the agent sees them, their agent trees, idle
+//!   watches, schedules, forks and lanes;
+//! - the Hosts: the runners connected to it, with their jobs, files,
+//!   transfers and pipes;
+//! - the plugin host and the product port its plugins ask;
+//! - the provider entries, their accounts, model catalogs and media;
+//! - the usage ledger and the search index.
 //!
-//! The core implements what the Cloud, the conversations' host access, the
-//! conversation permissions and the plugin host need of it (`CloudCore`,
-//! `HostCore`, `PermissionCore`, `ProductPort`).
+//! ```text
+//! whoever starts the core: the server, or a program
+//!      |  Core::start(user, store, services, starter, extensions)
+//!      |  calls on the core's thread       owned data in and out
+//!      v
+//! Core ---- Starter ------> what only its starter does: notifications,
+//!   |                       pairing, shares, the Cloud's machine
+//!   |  CoreServices         shared by every core of the process: the
+//!   |                       vault, model catalogs, rotation, plugins
+//!   v
+//! runners, providers, the core store and the conversation stores
+//! ```
+//!
+//! What a core cannot do itself it asks its starter (`Starter`), and what
+//! the starter keeps in it for its own work it finds in the core's
+//! extensions (`Extensions`). The core never reaches past them.
 //!
 //! A user's conversations, devices, projects and attachments belong to that
 //! user alone in both instance modes. An administrator's role gives no access to
 //! another user's conversations or files. Account administration and the shared
 //! instance's usage report are the only records the role reaches.
-//!
-//! ```text
-//! edge: multi-threaded runtime (axum). HTTP routes, session gate, byte paths
-//!   (pipes, transfers, user streams) and the shared services: control records,
-//!   conversation stores, blobs, vault, provider registry, Cloud capacity,
-//!   pending runner claims, login limiter, the registry of sync channels
-//!      |  cores.of(user).call(|core, cancel| ..)   owned data in and out
-//!      |  adopt(socket)    conversation, synchronization and runner sockets
-//!      |  lease and pipe ends back to the edge       transfers, user streams
-//!      |  a mark in the registry        a part a page shows has changed
-//! v shard threads: each a LocalRuntime hosting the cores of its pinned
-//! users. One user's core: conversations (file gates, transfers, idle
-//! watches), agent trees, runner connections, pipe records, the Cloud machine,
-//! titles, forks, the command router, the sync
-//! channels
-//!      |  owned data in and out
-//! v threads: one per open SQLite connection; the blocking pool for disk,
-//! password hashing, and request-body and transcript serialization
-//! ```
-//!
-//! # Where state lives
-//!
-//! Decisions and per-user state live in the core; bytes and cross-user state
-//! live at the edge and in the shared services.
 //!
 //! # No locks in admission logic
 //!
@@ -54,14 +47,14 @@
 //!
 //! # Crossing the boundary
 //!
-//! The boundary is crossed per request, WebSocket upgrade, stream admission or
-//! change mark, never per tool call. What crosses is owned data: `Send` pipe
-//! ends, leases and marks.
+//! The boundary is crossed per request, socket, stream admission or change
+//! mark, never per tool call. What crosses is owned data: `Send` pipe ends,
+//! leases and marks.
 //!
-//! - A transfer or user stream returns a lease with its pipe ends. The edge
-//!   copies bytes while it holds the lease, and dropping it releases the
-//!   admission in the core, which can also end the lease itself, for example
-//!   when the conversation is archived.
+//! - A transfer or user stream returns a lease with its pipe ends. Whoever
+//!   asked copies bytes while it holds the lease, and dropping it releases
+//!   the admission in the core, which can also end the lease itself, for
+//!   example when the conversation is archived.
 //! - A change a page shows crosses as a mark in the registry of open
 //!   synchronization channels, from whoever committed it. The mark adds the part
 //!   to each of the user's channels and wakes their tasks to read it in the
@@ -69,8 +62,8 @@
 //!
 //! # Cancellation
 //!
-//! A core call always runs to completion. When the requester leaves, the edge
-//! cancels the call's token and only waits observe it, such as the wait for the
+//! A call into a core always runs to completion. When the requester leaves,
+//! its token is cancelled and only waits observe it, such as the wait for the
 //! file gate or for a Cloud to wake, never a step after a commit: a target
 //! switch that has won its storage write still restarts the conversation's idle
 //! watch even if the page disconnected.
@@ -78,27 +71,24 @@
 //! Transitions such as a switch and an archive run as spawned core tasks once
 //! they hold the conversation.
 //!
-//! # Threading and placement
+//! # Threading
 //!
 //! Core code uses `Rc`, `RefCell` and local futures, and the traits it calls
 //! through (`Host`, `ShellEnvironment`, `RpcHandler`, `ProviderRuntime`) have no
-//! `Send` bound; shared services are `Send + Sync`.
-//!
-//! A user is the unit of placement at both levels, one worker process in a
-//! multi-worker deployment and one shard thread inside a process. More threads
-//! are therefore configuration, as long as per-user state stays in the core and
-//! cross-user state in shared services.
+//! `Send` bound; the shared services are `Send + Sync`. Code on another
+//! thread reaches a core through `Cores`.
 //!
 //! # Components
 //!
 //! Each component owns its state and `Core` combines them, so no component
-//! holds a reference back to another. The components are the backend libraries
+//! holds a reference back to another. The components are the libraries
 //! beneath, which cannot see `Core`.
 //!
-//! A component whose operations need another's state, such as the Cloud, whose
-//! reset holds the user's conversations, defines the narrow trait of what it
-//! needs (`CloudCore`) and writes its operations as methods of `dyn
-//! CloudCore`. This crate implements each such trait for `Core`.
+//! A component whose operations need another's state, such as host access,
+//! whose operations hold the user's conversations, defines the narrow trait of
+//! what it needs (`HostCore`) and writes its operations as methods of `dyn
+//! HostCore`. This crate implements each such trait for `Core`; the server's
+//! Cloud implements its own (`CloudCore`) over the core's public methods.
 //!
 //! Its own behavior is `impl Core` blocks, one per module. The crate serves no
 //! HTTP.
@@ -171,9 +161,9 @@ use crate::starter::Starter;
 use demi_core_host_access::access::Conversations;
 use demi_core_host_access::plugin_files::PluginInstalls;
 
-/// One user's core: everything the backend decides for that user. Its
-/// components arrive with the conversations, devices and Cloud that need
-/// them.
+/// One principal's core: everything Demi decides for that user's agents.
+/// Its components arrive with the conversations, devices and Hosts that
+/// need them.
 pub struct Core {
     user: UserId,
     /// The user's core store.
