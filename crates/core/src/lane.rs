@@ -45,6 +45,7 @@ pub enum LaneKind {
     FileWatch,
     Signaling,
     UserStream,
+    Starter,
 }
 
 impl LaneKind {
@@ -55,6 +56,7 @@ impl LaneKind {
             Self::FileWatch => "file_watch",
             Self::Signaling => "signaling",
             Self::UserStream => "user_stream",
+            Self::Starter => "starter",
         }
     }
 

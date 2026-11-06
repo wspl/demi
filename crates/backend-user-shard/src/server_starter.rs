@@ -139,6 +139,10 @@ impl Starter for ServerStarter {
         Some(install_commands(backend.url()))
     }
 
+    fn public_url(&self) -> Option<url::Url> {
+        Some(self.services.public_url.get()?.url().clone())
+    }
+
     fn host_log(&self, host: &DeviceId) -> Option<Rc<dyn HostLog>> {
         Some(Rc::new(HostLines {
             log: self.services.log.clone(),

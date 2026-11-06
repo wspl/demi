@@ -11,7 +11,18 @@ test = false
 doctest = false
 bench = false
 
+# The process a program runs its cores in (`src/process/mod.rs`).
+[[bin]]
+name = "demi-core"
+path = "src/main.rs"
+test = false
+
 [dependencies]
+demi-command-protocol = { path = "../command-protocol" }
+demi-provider-claude-code = { path = "../provider-claude-code" }
+demi-provider-relay = { path = "../provider-relay" }
+demi-shared-artifacts = { path = "../shared-artifacts" }
+demi-shared-cli = { path = "../shared-cli" }
 demi-core-hosts = { path = "../core-hosts" }
 demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
 demi-agent-store = { path = "../agent-store" }
@@ -45,9 +56,16 @@ percent-encoding = "2"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+# The program's connection: HTTP/2 over the process's standard input and
+# output, WebSockets by extended CONNECT.
+hyper = { version = "1", features = ["http2", "server"] }
+hyper-util = { version = "0.1", features = ["tokio", "service"] }
+tokio = { workspace = true, features = ["io-std"] }
 tokio-util.workspace = true
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["trace"] }
 tracing.workspace = true
+tracing-subscriber.workspace = true
 typed-path = "0.12"
 uuid = { version = "1", features = ["v4"] }
 url = "2"

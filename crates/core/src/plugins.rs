@@ -288,10 +288,7 @@ impl ProductPort for CorePort {
     }
 
     fn public_url(&self) -> Option<url::Url> {
-        self.services
-            .public_url
-            .get()
-            .map(|backend| backend.url().clone())
+        self.core.upgrade()?.starter().public_url()
     }
 
     fn now(&self) -> Timestamp {

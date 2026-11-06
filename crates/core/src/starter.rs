@@ -1,5 +1,5 @@
 //! What whoever runs a core gives it: a server for each of its users' cores,
-//! a program for its one core.
+//! a program for each core it opens.
 //!
 //! The core decides; the starter delivers what only it can: a Cloud it wakes,
 //! the pairing of a runner, the browsers a notification goes to, and the
@@ -19,6 +19,7 @@ use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use demi_web_api_protocol::push::PushMessage;
 use demi_web_api_protocol::conversations::ConversationShares;
 use futures_util::future::LocalBoxFuture;
+use url::Url;
 
 /// What a notification did as it was sent: counted then, delivered after.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +58,11 @@ pub trait Starter {
     /// The commands that install a runner that connects to the core; none
     /// while nothing serves the installers.
     fn install_commands(&self) -> Option<InstallCommands>;
+
+    /// Where the core's routes are reached from outside: the URL they are
+    /// under `/api` of, which a plugin's OAuth redirect starts with; none
+    /// while it is not known.
+    fn public_url(&self) -> Option<Url>;
 
     /// Where the runner lines of `host` are kept; none to keep none.
     fn host_log(&self, host: &DeviceId) -> Option<Rc<dyn HostLog>>;

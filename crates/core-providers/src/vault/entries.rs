@@ -67,7 +67,7 @@ use demi_core_store::seal::{self, VaultKey};
 pub struct Vault(Arc<Shared>);
 
 /// The cores whose entries a vault keeps, which whoever runs them gives: a
-/// server's users' cores, or a program's one core.
+/// server's users' cores, or the cores a program's process opened.
 pub trait VaultStores: Send + Sync {
     /// The core store of `user`.
     fn store_of<'a>(&'a self, user: &'a UserId) -> BoxFuture<'a, Result<CoreStore, StorageError>>;

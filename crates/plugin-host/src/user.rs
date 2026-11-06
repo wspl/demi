@@ -213,8 +213,8 @@ pub trait ProductPort {
     /// `https` and follows no redirect away from it.
     fn web_client(&self) -> reqwest::Client;
 
-    /// The backend's public URL, which an OAuth redirect URI starts with;
-    /// none before the backend listens.
+    /// Where the core's routes are reached from outside, under `/api`,
+    /// which an OAuth redirect URI starts with; none while it is not known.
     fn public_url(&self) -> Option<Url>;
 
     /// The wall clock.

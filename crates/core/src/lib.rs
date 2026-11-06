@@ -1,5 +1,6 @@
 //! The core: everything Demi does for one principal's agents, on one
-//! thread. The server runs one core per user; a program runs one of its own.
+//! thread. The server runs one core per user; a program's process runs the
+//! cores the program opens.
 //!
 //! A core holds:
 //!

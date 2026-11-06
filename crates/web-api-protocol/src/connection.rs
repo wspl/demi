@@ -45,6 +45,9 @@ pub enum LaneTarget {
     Signaling { device: String },
     /// A plugin's user stream of a conversation.
     UserStream { conversation: String, stream: String },
+    /// What the core asks of the program that opened it
+    /// (`crates/web-api-protocol/src/starter.rs`); only that program opens it.
+    Starter,
 }
 
 /// Why the backend refused a lane's open: the status and the error answer a

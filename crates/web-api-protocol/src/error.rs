@@ -424,6 +424,12 @@ pub enum ErrorCode {
     IdTaken,
     /// The caller has no schedule of that id.
     ScheduleNotFound,
+    /// A process has the core's directory, or a copy of it, open already.
+    CoreOpen,
+    /// The directory holds something other than a core a program created.
+    NotACoreDirectory,
+    /// The core's starter lane is open already.
+    StarterLaneOpen,
 }
 
 serde_plain::derive_display_from_serialize!(ErrorCode);

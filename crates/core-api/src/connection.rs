@@ -484,6 +484,7 @@ impl Connection {
             }
             Ok(LaneTarget::Signaling { .. }) => LaneKind::Signaling,
             Ok(LaneTarget::UserStream { .. }) => LaneKind::UserStream,
+            Ok(LaneTarget::Starter) => LaneKind::Starter,
         };
         let request = request_id::generate();
         let span = request_id::lane_span(
@@ -749,6 +750,19 @@ async fn check_open(state: &Api, caller: &Arc<dyn Caller>, target: LaneTarget) -
             conversation,
             stream,
         } => streams::open(state, &user, &conversation, stream).await,
+        LaneTarget::Starter => {
+            let lane = caller
+                .starter_lane()
+                .ok_or_else(|| ApiError::forbidden("Only the program that opened the core opens its starter lane"))?;
+            let claim = lane.claim().ok_or_else(|| {
+                ApiError::new(
+                    StatusCode::CONFLICT,
+                    ErrorCode::StarterLaneOpen,
+                    "The core's starter lane is open already",
+                )
+            })?;
+            Ok(Opened::new(move |lane, reader| claim.serve(lane, reader)))
+        }
     }
 }
 

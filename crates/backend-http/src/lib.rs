@@ -452,9 +452,9 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/cloud", get(cloud::status))
         .route("/cloud/reset", post(cloud::reset))
         .route("/devices/claim", post(pairing::claim))
+        .merge(demi_core_api::routes().with_state(state.api.clone()))
         // The reads' caching (`revalidate.rs`): the routes' answers only.
         .layer(middleware::from_fn(demi_core_api::revalidate::reads))
-        .merge(demi_core_api::routes().with_state(state.api.clone()))
         .fallback(no_route)
         .method_not_allowed_fallback(no_route)
         // After the fallbacks, so the gate covers them too.

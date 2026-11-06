@@ -21,6 +21,7 @@ use demi_web_api_protocol::state::SyncEvent;
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 
 use crate::error::ApiError;
+use crate::starter_lane::StarterLane;
 use crate::state::StateError;
 
 /// Who calls a core's routes.
@@ -51,6 +52,10 @@ pub trait Caller: Send + Sync + 'static {
     /// The caller's page as its synchronization channel serves it, on the
     /// caller's core.
     fn page(&self, core: &Core) -> Box<dyn CallerPage>;
+
+    /// The starter lane of the caller's core, for the program that opened
+    /// the core; none for any other caller, who may not open it.
+    fn starter_lane(&self) -> Option<Arc<StarterLane>>;
 }
 
 /// How a caller left.
