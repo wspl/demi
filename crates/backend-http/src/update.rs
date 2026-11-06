@@ -22,7 +22,8 @@ use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get};
 use demi_backend_database::update::Update;
-use demi_backend_runners::{native, public_url::PublicUrl};
+use demi_backend_runners::native;
+use demi_core_hosts::public_url::PublicUrl;
 use demi_web_api_protocol::state::UpdateState;
 
 use super::assets;

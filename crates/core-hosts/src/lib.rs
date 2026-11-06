@@ -8,6 +8,7 @@
 //! - The routing of a job's rpc calls to its agent node's commands.
 //! - The command context work carries.
 //! - The file listings and text the product reads from a Host.
+//! - The address runners reach the core at.
 //!
 //! A Host handle a conversation owns is given out only against that
 //! conversation's file-gate lease: `Devices::conversation_host` takes a
@@ -28,4 +29,5 @@ pub mod file_gate;
 pub mod files;
 pub mod host_key;
 pub mod packages;
+pub mod public_url;
 pub mod router;

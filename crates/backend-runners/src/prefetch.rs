@@ -16,7 +16,7 @@ use tokio::sync::watch;
 use demi_runner_client::CommandCatalog;
 
 use crate::native::{NativeCatalog, StoredBytes};
-use crate::public_url::PublicUrl;
+use demi_core_hosts::public_url::PublicUrl;
 use crate::sourcing::Sourcing;
 
 /// The runner release announced as next: its record, where its executables

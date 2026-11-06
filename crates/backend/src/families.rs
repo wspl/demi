@@ -27,7 +27,7 @@ use demi_provider_minimax::{MinimaxConfig, MinimaxProvider, Region};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
 use demi_provider_relay::borrow::{Borrowed, server_name};
 use demi_provider_relay::key::ShareKey;
-use demi_backend_runners::public_url::PublicUrl;
+use demi_core_hosts::public_url::PublicUrl;
 use demi_shared_types::{AudioShape, CacheTtl, ImageShape, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 

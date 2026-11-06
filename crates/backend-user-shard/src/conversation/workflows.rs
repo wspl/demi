@@ -666,7 +666,7 @@ fn workflow_context(
 ) -> Result<Option<u32>, String> {
     let window = selection.model.context_window;
     let tokens = profile.context.and_then(|choice| choice.tokens(window));
-    demi_backend_accounts::subagents::check_context(Some((&selection.model.id, window)), tokens)
+    crate::subagents::check_context(Some((&selection.model.id, window)), tokens)
         .map_err(|refusal| format!("{refusal}; change the profile's context in {path}"))?;
     Ok(tokens)
 }

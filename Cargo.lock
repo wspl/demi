@@ -1873,6 +1873,7 @@ dependencies = [
  "demi-command-protocol",
  "demi-core-blobs",
  "demi-core-host-access",
+ "demi-core-hosts",
  "demi-core-providers",
  "demi-core-store",
  "demi-host-interface",
@@ -2179,6 +2180,8 @@ dependencies = [
  "hex",
  "hmac 0.12.1",
  "http",
+ "icu_locale",
+ "icu_time",
  "jiff",
  "object_store",
  "rand 0.9.5",
@@ -2486,6 +2489,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "url",
 ]
 
 [[package]]

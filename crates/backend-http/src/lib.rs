@@ -234,7 +234,7 @@ impl Edge {
     ) -> io::Result<Listening> {
         let tcp = TcpListener::bind(address).await?.tap_io(listener::without_delay);
         let local_addr = tcp.local_addr()?;
-        let public = demi_backend_runners::public_url::PublicUrl::default();
+        let public = demi_core_hosts::public_url::PublicUrl::default();
         public.listening(public_url, local_addr);
         let routes = Arc::new(std::sync::RwLock::new(update::routes(update, web_directory, public)));
         let closing = CancellationToken::new();

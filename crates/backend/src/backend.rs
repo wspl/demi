@@ -52,7 +52,7 @@ use demi_core_blobs::ObjectError;
 use demi_core_blobs::store as objects;
 use demi_backend_runners::install::{RunnerReleases, read_runner_release};
 use demi_backend_runners::native::NativeCatalog;
-use demi_backend_runners::public_url::PublicUrl;
+use demi_core_hosts::public_url::PublicUrl;
 use demi_runner_protocol::release::{RunnerRelease, UPDATE_RECORD, UpdateRecord};
 use demi_backend_runners::publication::{PublicationError, publish_native};
 use demi_backend_cloud::CloudServices;

@@ -28,7 +28,7 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum_extra::headers::{CacheControl, ETag, HeaderMapExt as _, IfNoneMatch};
-use demi_backend_runners::public_url::PublicUrl;
+use demi_core_hosts::public_url::PublicUrl;
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 use tower::ServiceBuilder;

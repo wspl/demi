@@ -12,6 +12,8 @@ doctest = false
 bench = false
 
 [dependencies]
+icu_locale = "2"
+icu_time = { version = "2", default-features = false, features = ["compiled_data"] }
 demi-core-hosts = { path = "../core-hosts" }
 demi-agent-server = { path = "../agent-server" }
 demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }

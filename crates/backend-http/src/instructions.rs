@@ -5,7 +5,7 @@
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use demi_backend_accounts::instructions::personal_instructions;
+use demi_backend_user_shard::instructions::personal_instructions;
 use axum::Json;
 use demi_web_api_protocol::instructions::{InstructionsAnswer, InstructionsBody};
 

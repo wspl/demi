@@ -47,7 +47,7 @@ use demi_core_hosts::packages::Packages;
 
 use crate::install::read_runner_release;
 use crate::prefetch::NextRelease;
-use crate::public_url::PublicUrl;
+use demi_core_hosts::public_url::PublicUrl;
 use crate::publication::blob;
 use crate::sourcing::{ReleaseArtifact, Sourcing};
 

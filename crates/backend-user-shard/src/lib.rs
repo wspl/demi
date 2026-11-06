@@ -105,11 +105,14 @@
 
 pub mod schedules;
 pub mod conversation;
+pub mod instructions;
 pub mod lifecycle;
 pub mod provider_settings;
 pub mod provider_sharing;
 pub mod services;
+pub mod settings;
 pub mod shard;
+pub mod subagents;
 pub mod sync;
 pub mod tuning;
 pub mod upgrades;

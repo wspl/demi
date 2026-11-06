@@ -47,7 +47,7 @@ use demi_backend_runners::native::{NativeCatalog, ServedPackages};
 use demi_core_hosts::packages::Packages;
 use demi_backend_runners::install::RunnerReleases;
 use demi_backend_runners::prefetch::Prefetches;
-use demi_backend_runners::public_url::PublicUrl;
+use demi_core_hosts::public_url::PublicUrl;
 use demi_runner_protocol::direct::StunUrl;
 use demi_plugin_interface::PluginFactory;
 use demi_provider_common::media_catalog::MediaCatalog;
@@ -63,22 +63,64 @@ const CONTROL_DATABASE: &str = "control.sqlite";
 /// The services that span users, or that are needed before the user is
 /// known. The edge and every shard share them.
 pub struct Services {
-    /// The wall clock the backend reads times from.
-    pub clock: Arc<dyn Clock>,
+    /// What the users' cores share.
+    pub core: Arc<CoreServices>,
     pub control: ControlService,
     /// Each user's core store.
     pub stores: CoreStores,
-    pub blobs: BlobStores,
     pub hasher: PasswordHasher,
     pub sessions: WebSessions,
     pub limiter: LoginLimiter,
     pub email: EmailChanges,
     /// The users' push subscriptions, and the sending to them.
     pub push: Pusher,
-    pub vault: Vault,
     /// The account the master account's entry of its family holds from each
     /// start and from setup, a development backend's only (`crates/xtask/src/dev/mod.rs`).
     pub master_account: Option<SeededAccount>,
+    /// Runners waiting to be paired, which have no user yet.
+    pub claims: PendingClaims,
+    /// The log, which the runners' and the pages' lines are stored in
+    /// (`crates/backend-database/src/server_log/mod.rs`).
+    pub log: ServerLog,
+    /// How the sockets to a page are timed.
+    pub pages: PageTuning,
+    /// The command packages each shard's catalog is built from.
+    pub native: NativeCatalog,
+    /// The machine manager's client, the Cloud capacity across users and
+    /// the Cloud's settings.
+    pub cloud: CloudServices,
+    /// The sessions and media calls other servers borrow this one's entries
+    /// in, by share key, which revoking a key ends.
+    pub lent: crate::provider_sharing::LentSessions,
+    /// The build of the web app the backend serves, if it serves one.
+    pub web_build: Option<String>,
+    /// The runner releases paired devices follow.
+    pub runner_releases: RunnerReleases,
+    /// The runner release an upgrade announced as next, which the
+    /// connected paired devices download ahead (`crates/runner/src/update.rs`).
+    pub prefetches: Prefetches,
+    /// The server's updates, Settings › Updates.
+    pub upgrades: Arc<crate::upgrades::Upgrades>,
+}
+
+impl std::ops::Deref for Services {
+    type Target = CoreServices;
+
+    fn deref(&self) -> &CoreServices {
+        &self.core
+    }
+}
+
+/// The services every core of this process shares: one set for each core
+/// a program runs, one set for all of a server's users' cores.
+pub struct CoreServices {
+    /// Where runners and Cloud guests reach this backend, and where a
+    /// borrowing server reaches an entry this one lends.
+    pub public_url: PublicUrl,
+    /// The wall clock the backend reads times from.
+    pub clock: Arc<dyn Clock>,
+    pub blobs: BlobStores,
+    pub vault: Vault,
     pub provider_registry: Arc<ProviderRegistry>,
     /// The catalog of image and video models (`crates/provider-common/src/media_catalog.rs`).
     pub media: MediaCatalog,
@@ -90,43 +132,18 @@ pub struct Services {
     pub claude_machine: MachineSlot,
     pub operations: Arc<ProviderOperations>,
     pub logins: Arc<LoginFlows>,
-    /// Runners waiting to be paired, which have no user yet.
-    pub claims: PendingClaims,
-    /// The log, which the runners' and the pages' lines are stored in
-    /// (`crates/backend-database/src/server_log/mod.rs`).
-    pub log: ServerLog,
     /// The calls the schedules' URLs took this minute.
     pub hook_limits: crate::schedules::HookLimits,
     pub runners: RunnerTuning,
     pub conversation_tuning: ConversationTuning,
-    /// How the sockets to a page are timed.
-    pub pages: PageTuning,
     /// How a video's job is waited for.
     pub media_tuning: MediaTuning,
-    /// The command packages each shard's catalog is built from.
-    pub native: NativeCatalog,
     /// The same packages as the shards run them, at this backend's address.
     pub packages: Arc<dyn Packages>,
     /// The backend's plugins, checked at startup (`crates/plugin-host/src/lib.rs`).
     pub plugins: Arc<Registry>,
     /// The user streams a page may open.
     pub user_streams: UserStreams,
-    /// The machine manager's client, the Cloud capacity across users and
-    /// the Cloud's settings.
-    pub cloud: CloudServices,
-    /// Where runners and Cloud guests reach this backend, and where a
-    /// borrowing server reaches an entry this one lends.
-    pub public_url: PublicUrl,
-    /// The sessions and media calls other servers borrow this one's entries
-    /// in, by share key, which revoking a key ends.
-    pub lent: crate::provider_sharing::LentSessions,
-    /// The build of the web app the backend serves, if it serves one.
-    pub web_build: Option<String>,
-    /// The runner releases paired devices follow.
-    pub runner_releases: RunnerReleases,
-    /// The runner release an upgrade announced as next, which the
-    /// connected paired devices download ahead (`crates/runner/src/update.rs`).
-    pub prefetches: Prefetches,
     /// The STUN servers pages and runners ask for their public address
     /// (`crates/runner-direct/src/lib.rs`).
     pub stun: Vec<StunUrl>,
@@ -142,8 +159,6 @@ pub struct Services {
     /// operations wait for in the grace after the start
     /// (`crates/runner-client/src/device_jobs.rs`).
     pub returning: Arc<Returning>,
-    /// The server's updates, Settings › Updates.
-    pub upgrades: Arc<crate::upgrades::Upgrades>,
 }
 
 /// What the provider services start with.
@@ -506,8 +521,38 @@ impl Services {
             clock.clone(),
             sync.clone(),
         );
-        Ok(Self {
+        let core = Arc::new(CoreServices {
+            public_url: settings.public_url,
             clock,
+            blobs,
+            vault,
+            provider_registry,
+            media,
+            claude_releases,
+            cli_installs: CliInstalls::default(),
+            claude_machine: providers.claude_machine,
+            operations,
+            logins,
+            hook_limits: crate::schedules::HookLimits::default(),
+            runners: settings.runners,
+            conversation_tuning: settings.conversations,
+            media_tuning: settings.media_tuning,
+            user_streams: UserStreams::new(
+                plugins
+                    .streams()
+                    .map(|stream| (stream.name.as_str(), &stream.operation)),
+                packages.as_ref(),
+            ),
+            packages,
+            plugins: Arc::new(plugins),
+            stun: settings.stun,
+            run: uuid::Uuid::new_v4().to_string(),
+            lifecycle: settings.lifecycle,
+            sync,
+            returning,
+        });
+        Ok(Self {
+            core,
             sessions: WebSessions::new(control.clone()),
             limiter: LoginLimiter::new(),
             email: EmailChanges::new(
@@ -522,42 +567,15 @@ impl Services {
             claims: PendingClaims::new(control.clone(), settings.runners.claims_per_minute),
             control,
             stores,
-            blobs,
-            vault,
             master_account: providers.master_account,
-            provider_registry,
-            media,
-            claude_releases,
-            cli_installs: CliInstalls::default(),
-            claude_machine: providers.claude_machine,
-            operations,
-            logins,
             log: settings.log,
-            hook_limits: crate::schedules::HookLimits::default(),
-            runners: settings.runners,
-            conversation_tuning: settings.conversations,
             pages: settings.pages,
-            media_tuning: settings.media_tuning,
-            user_streams: UserStreams::new(
-                plugins
-                    .streams()
-                    .map(|stream| (stream.name.as_str(), &stream.operation)),
-                packages.as_ref(),
-            ),
             native: settings.native,
-            packages,
-            plugins: Arc::new(plugins),
             cloud: settings.cloud,
-            public_url: settings.public_url,
             lent: Default::default(),
             web_build: settings.web_build,
             runner_releases: settings.runner_releases,
             prefetches: Prefetches::default(),
-            stun: settings.stun,
-            run: uuid::Uuid::new_v4().to_string(),
-            lifecycle: settings.lifecycle,
-            sync,
-            returning,
             upgrades,
         })
     }
