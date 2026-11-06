@@ -224,8 +224,10 @@ server restarts: a command you can no longer read is gone, and a running one
 ended with the server.
 
 The Cloud's files have the same routes as a conversation's
-([Files](#files)), under `/v1/clouds/{cloud}/fs`, starting at the Cloud's
-home. They wake a sleeping Cloud and don't wait for its init script.
+([Files](#files)), under `/v1/clouds/{cloud}/fs`. A relative path starts at
+the Cloud's home, so `notes.txt` and `~/notes.txt` name the same file, but a
+delete and a search's `root` take only an absolute path or one from `~`.
+They wake a sleeping Cloud and don't wait for its init script.
 
 ## Conversations
 
@@ -368,7 +370,8 @@ latest page again.
 ### Files
 
 The conversation's files are on its Cloud. With the paths these take, you
-read what an agent made and put files where it works:
+read what an agent made and put files where it works. A path from `~` is
+under the Host's home, as in a shell:
 
 | Request | What it does |
 | --- | --- |

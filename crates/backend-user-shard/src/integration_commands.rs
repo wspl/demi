@@ -22,6 +22,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use base64::Engine as _;
+use demi_host_interface::Host as _;
 use demi_backend_database::integrations::IntegrationRecord;
 use demi_host_interface::{Ending, OutputRecord, ShellEnvironment, WholeOutput};
 use demi_shared_types::CommandId;
@@ -156,13 +157,8 @@ impl Shard {
             Ok(context) => context,
             Err(error) => return failed(error.to_string()),
         };
-        let cwd = Some(match start.cwd.as_deref() {
-            None | Some("~") => access.home.clone(),
-            Some(cwd) => match cwd.strip_prefix("~/") {
-                Some(rest) => format!("{}/{rest}", access.home.trim_end_matches('/')),
-                None => cwd.to_owned(),
-            },
-        });
+        let paths = access.host.identity().paths;
+        let cwd = Some(start.cwd.as_deref().map_or_else(|| access.home.clone(), |cwd| paths.from_home(&access.home, cwd)));
         let script = match &start.stdin {
             // Its input goes with it, whatever bytes it holds.
             Some(stdin) => format!(

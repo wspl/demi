@@ -608,16 +608,21 @@ impl Shard {
             return Ok((None, CONVERSATION_DIRECTORY.to_owned()));
         };
         let device = target.device().cloned();
-        // The home a `~` reaches there, as a move reads it: a Cloud before
-        // its first start has the one every Cloud has.
-        let home = match &device {
-            Some(device) => self.services().control.device(device.clone()).await?.and_then(|record| match record.kind {
-                DeviceKind::Managed => Some(record.home.unwrap_or_else(|| demi_backend_database::CLOUD_HOME.to_owned())),
-                DeviceKind::User => record.home,
-            }),
+        let record = match &device {
+            Some(device) => self.services().control.device(device.clone()).await?,
             None => None,
         };
-        Ok((device, named_directory(target.path(), home.as_deref())))
+        // The home a `~` reaches there, as a move reads it: a Cloud before
+        // its first start has the one every Cloud has.
+        let home = record.as_ref().and_then(|record| match record.kind {
+            DeviceKind::Managed => Some(record.home.clone().unwrap_or_else(|| demi_backend_database::CLOUD_HOME.to_owned())),
+            DeviceKind::User => record.home.clone(),
+        });
+        let directory = match (&record, home) {
+            (Some(record), Some(home)) => record.platform.paths().written_from_home(&home, target.path()),
+            _ => target.path().to_owned(),
+        };
+        Ok((device.filter(|_| record.is_some()), directory))
     }
 
     /// Moves the integration's conversation `id` to its Cloud `device` before
@@ -1004,19 +1009,6 @@ impl Shard {
             revision: facts.revision,
             last_turn,
         })
-    }
-}
-
-/// `path` as an integration names a directory: `~` and what is under its
-/// Cloud's home `home` written from `~`, any other path as it is.
-fn named_directory(path: &str, home: Option<&str>) -> String {
-    match home.map(|home| home.trim_end_matches('/')) {
-        Some(home) if path == home => "~".to_owned(),
-        Some(home) => match path.strip_prefix(home).and_then(|rest| rest.strip_prefix('/')) {
-            Some(rest) => format!("~/{rest}"),
-            None => path.to_owned(),
-        },
-        None => path.to_owned(),
     }
 }
 
