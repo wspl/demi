@@ -32,8 +32,7 @@ use demi_shared_types::{
     AccountInfo, ContextChoice, FileExtension, ModelSelection, ThinkingForm, WireApi, applied_context_limit, context_word, model_reads_images,
     output::{Cell, Fields, Table, note, warning},
 };
-use demi_web_api_protocol::ids::CredentialId;
-use demi_web_api_protocol::auth::UserDto;
+use demi_web_api_protocol::ids::{CredentialId, UserId};
 use demi_web_api_protocol::settings::{ContextLimitChange, HiddenModel, PreferencesPatch};
 use demi_web_api_protocol::error::problems;
 use demi_web_api_protocol::providers::{
@@ -644,7 +643,7 @@ async fn list(core: Rc<Core>, call: Call<ListArgs>, port: RpcPort) -> Result<u8,
 }
 
 async fn show(core: Rc<Core>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let user = user(&core).await?;
+    let user = core.user().clone();
     let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, &call.args.entry).map_err(failed)?;
     let current = caller_model(&core, &call.invocation);
@@ -654,7 +653,7 @@ async fn show(core: Rc<Core>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8
 
 async fn add(core: Rc<Core>, call: Call<AddArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&core).await?;
+    let user = core.user().clone();
     let api_key = key(args.api_key_stdin, args.api_key)?;
     let label = args.label.map(Trimmed::from);
     let base_url = args.base_url.map(endpoint).transpose()?;
@@ -711,7 +710,7 @@ async fn add(core: Rc<Core>, call: Call<AddArgs>, port: RpcPort) -> Result<u8, R
 
 async fn edit(core: Rc<Core>, call: Call<EditArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&core).await?;
+    let user = core.user().clone();
     let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, &args.entry).map_err(failed)?;
     let id = entry.id.clone();
@@ -834,7 +833,7 @@ fn changed_fields(
 /// in one transaction.
 async fn set_context(core: Rc<Core>, call: Call<ContextArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&core).await?;
+    let user = core.user().clone();
     let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, &args.entry).map_err(failed)?;
     let Some(model) = scope
@@ -879,7 +878,7 @@ async fn set_context(core: Rc<Core>, call: Call<ContextArgs>, port: RpcPort) -> 
     core.store().patch_preferences(move |saved| crate::settings::merge(saved, checked))
         .await
         .map_err(failed)?;
-    services.sync.mark(&user.id, Part::Preferences);
+    services.sync.mark(&user, Part::Preferences);
     let shown = ModelContext {
         entry: entry.label.clone(),
         model: args.model,
@@ -917,7 +916,7 @@ async fn show_in_menu(
     shown_in_menu: bool,
 ) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&core).await?;
+    let user = core.user().clone();
     let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, &args.entry).map_err(failed)?;
     let id = entry.id.clone();
@@ -962,7 +961,7 @@ async fn show_in_menu(
         })
         .await
         .map_err(failed)?;
-    services.sync.mark(&user.id, Part::Preferences);
+    services.sync.mark(&user, Part::Preferences);
     let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, id.as_str()).map_err(failed)?;
     let current = caller_model(&core, &call.invocation);
@@ -972,14 +971,14 @@ async fn show_in_menu(
 
 /// A user who only infers with the entry sees no account, as in Settings.
 async fn list_accounts(core: Rc<Core>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let user = user(&core).await?;
+    let user = core.user().clone();
     let entry = scoped(&core, &user, &call.args.entry).await?;
-    let disclose = Vault::manages(&user.id, &entry);
+    let disclose = Vault::manages(&user, &entry);
     accounts_answer(&core, &port, call.invocation.json, &entry, disclose).await
 }
 
 async fn activate_account(core: Rc<Core>, call: Call<AccountArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let user = user(&core).await?;
+    let user = core.user().clone();
     let entry = managed(&core, &user, &call.args.entry).await?;
     let services = core.services();
     let listed = vault_accounts::list(&services.vault, &entry, true).await.map_err(failed)?;
@@ -995,7 +994,7 @@ async fn activate_account(core: Rc<Core>, call: Call<AccountArgs>, port: RpcPort
 }
 
 async fn order_accounts(core: Rc<Core>, call: Call<AccountOrderArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let user = user(&core).await?;
+    let user = core.user().clone();
     let entry = managed(&core, &user, &call.args.entry).await?;
     let services = core.services();
     let listed = vault_accounts::list(&services.vault, &entry, true).await.map_err(failed)?;
@@ -1015,24 +1014,24 @@ async fn order_accounts(core: Rc<Core>, call: Call<AccountOrderArgs>, port: RpcP
 }
 
 /// The entry `named_as` names among the user's.
-async fn scoped(core: &Core, user: &UserDto, named_as: &str) -> Result<ProviderEntry, RpcError> {
+async fn scoped(core: &Core, user: &UserId, named_as: &str) -> Result<ProviderEntry, RpcError> {
     let entries = entries(core).await.map_err(failed)?;
     let id = named(&entries, named_as).map_err(failed)?.id.clone();
     core
         .services()
-        .scoped_entry(&user.id, id.as_str())
+        .scoped_entry(&user, id.as_str())
         .await
         .map_err(failed)
 }
 
 /// The entry `named_as` names, when the user manages it: changing its
 /// accounts is the configuring user's, as in Settings.
-async fn managed(core: &Core, user: &UserDto, named_as: &str) -> Result<ProviderEntry, RpcError> {
+async fn managed(core: &Core, user: &UserId, named_as: &str) -> Result<ProviderEntry, RpcError> {
     let entries = entries(core).await.map_err(failed)?;
     let id = named(&entries, named_as).map_err(failed)?.id.clone();
     core
         .services()
-        .managed_entry(&user.id, id.as_str())
+        .managed_entry(&user, id.as_str())
         .await
         .map_err(failed)
 }
@@ -1103,12 +1102,12 @@ async fn accounts_answer(
 }
 
 async fn order(core: Rc<Core>, call: Call<OrderArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let user = user(&core).await?;
+    let user = core.user().clone();
     let entries = entries(&core).await.map_err(failed)?;
     let mut ids = Vec::new();
     for name in &call.args.entry {
         let entry = named(&entries, name).map_err(failed)?;
-        if !Vault::manages(&user.id, entry) {
+        if !Vault::manages(&user, entry) {
             return Err(failed(ProviderRefusal::NotConfiguring));
         }
         if !ids.contains(&entry.id) {
@@ -1117,7 +1116,7 @@ async fn order(core: Rc<Core>, call: Call<OrderArgs>, port: RpcPort) -> Result<u
     }
     // The order is of the user's own entries: another's, which a shared
     // instance lends them, keep the order their owner gave them.
-    for entry in entries.iter().filter(|entry| Vault::manages(&user.id, entry)) {
+    for entry in entries.iter().filter(|entry| Vault::manages(&user, entry)) {
         if !ids.contains(&entry.id) {
             ids.push(entry.id.clone());
         }
@@ -1127,7 +1126,7 @@ async fn order(core: Rc<Core>, call: Call<OrderArgs>, port: RpcPort) -> Result<u
 }
 
 async fn remove(core: Rc<Core>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let user = user(&core).await?;
+    let user = core.user().clone();
     let entries = entries(&core).await.map_err(failed)?;
     let id = named(&entries, &call.args.entry).map_err(failed)?.id.clone();
     let removed = core
@@ -1185,7 +1184,7 @@ async fn add_model(
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&core).await?;
+    let user = core.user().clone();
     let scope = core.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, &args.entry).map_err(failed)?;
     wire_fields_for(entry, &args.fields)?;
@@ -1268,7 +1267,7 @@ async fn edit_model(
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&core).await?;
+    let user = core.user().clone();
     let entries = entries(&core).await.map_err(failed)?;
     let entry = named(&entries, &args.entry).map_err(failed)?;
     wire_fields_for(entry, &args.fields)?;
@@ -1314,7 +1313,7 @@ async fn remove_model(
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let args = call.args;
-    let user = user(&core).await?;
+    let user = core.user().clone();
     let entries = entries(&core).await.map_err(failed)?;
     let entry = named(&entries, &args.entry).map_err(failed)?;
     let mut models = owned_list(entry)?;
@@ -1326,12 +1325,6 @@ async fn remove_model(
 
 /// The word that empties a field an option sets.
 const NONE: &str = "none";
-
-/// The user the core serves, with the role that decides whether they
-/// configure the scope's entries.
-async fn user(core: &Core) -> Result<UserDto, RpcError> {
-    core.starter().principal().await.map_err(failed)
-}
 
 /// The model the calling agent runs on, while its session is live.
 fn caller_model(core: &Core, invocation: &RpcInvocation) -> Option<ModelSelection> {
@@ -1450,7 +1443,7 @@ fn listed(entry: &ProviderEntry, models: &[ConfiguredModel], id: &str) -> Result
 /// checked by the page's rules.
 async fn write_list(
     core: &Core,
-    user: &UserDto,
+    user: &UserId,
     entry: &ProviderEntry,
     models: Vec<ConfiguredModel>,
 ) -> Result<(), RpcError> {
@@ -1588,14 +1581,14 @@ async fn model_answer(port: &RpcPort, json_output: bool, model: ConfiguredModel)
 /// The entry as `show` and a change answer it.
 async fn shown(
     core: &Core,
-    user: &UserDto,
+    user: &UserId,
     scope: &Scope,
     entry: &ProviderEntry,
     current: Option<&ModelSelection>,
 ) -> Result<ShownEntry, RpcError> {
     let services = core.services();
     let accounts = match entry.credential {
-        EntryCredential::Subscription { .. } if Vault::manages(&user.id, entry) => services
+        EntryCredential::Subscription { .. } if Vault::manages(&user, entry) => services
             .vault
             .accounts(entry.id.clone())
             .await

@@ -131,7 +131,7 @@ pub(super) async fn order(
     AuthUser(user): AuthUser,
     JsonBody(order): JsonBody<ProviderOrder>,
 ) -> Result<StatusCode, ApiError> {
-    services.order_providers(&user, order.provider_ids).await.map_err(refused)?;
+    services.order_providers(&user.id, order.provider_ids).await.map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -180,7 +180,7 @@ pub(super) async fn create(
     JsonBody(body): JsonBody<CreateProvider>,
 ) -> Result<(StatusCode, Json<ProviderAnswer>), ApiError> {
     let entry = services
-        .create_provider(&user, body)
+        .create_provider(&user.id, body)
         .await
         .map_err(refused)?;
     Ok((
@@ -200,7 +200,7 @@ pub(super) async fn update(
     JsonBody(patch): JsonBody<ProviderPatch>,
 ) -> Result<Json<ProviderAnswer>, ApiError> {
     let updated = services
-        .update_provider(&user, &id, patch)
+        .update_provider(&user.id, &id, patch)
         .await
         .map_err(refused)?;
     Ok(Json(ProviderAnswer {
@@ -217,7 +217,7 @@ pub(super) async fn delete(
     shards
         .of(&user.id.clone())
         .call(move |core, _| async move {
-            core.services().delete_provider(core.starter(), &user, &id).await
+            core.services().delete_provider(core.starter(), &user.id, &id).await
         })
         .await?
         .map_err(refused)?;

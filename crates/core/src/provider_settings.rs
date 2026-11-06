@@ -36,7 +36,6 @@ use demi_provider_common::{ProviderHttp, Secret, SecretError};
 use demi_provider_relay::borrow::{Borrowed, FAMILY as BORROWED, server_name};
 use demi_provider_relay::key::{NotAKey, ShareKey};
 use demi_shared_types::{AudioShape, CacheTtl, MediaKind, MediaShapes, WireApi};
-use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::ids::{DeviceId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{
     ConfiguredModel, ConfiguredModels, CreateProvider, CredentialKind, ModelKind, ModelMatch, ProviderHeader, ProviderPatch,
@@ -229,19 +228,19 @@ impl CoreServices {
     /// the body gives one. What the body leaves out leaves it incomplete.
     pub async fn create_provider(
         &self,
-        user: &UserDto,
+        user: &UserId,
         body: CreateProvider,
     ) -> Result<ProviderEntry, ProviderRefusal> {
         let kind = match &body {
             CreateProvider::Subscription { .. } => CredentialKind::Subscription,
             _ => CredentialKind::ApiKey,
         };
-        self.may_add(&user.id, kind).await?;
+        self.may_add(user, kind).await?;
         let (family, label, config) = match body {
             CreateProvider::Subscription {
                 provider_type,
                 through_device,
-            } => return self.create_subscription(&user.id, provider_type, through_device).await,
+            } => return self.create_subscription(user, provider_type, through_device).await,
             CreateProvider::Vendor {
                 vendor_id,
                 label,
@@ -331,7 +330,7 @@ impl CoreServices {
             .families()
             .get(&family)
             .and_then(|family| family.default_cache_ttl());
-        let owner = user.id.clone();
+        let owner = user.clone();
         let label = match label {
             Ok(given) => given.into_string(),
             Err(default) => {
@@ -381,14 +380,14 @@ impl CoreServices {
     /// starts the entry's provider and catalog afresh.
     pub async fn update_provider(
         &self,
-        user: &UserDto,
+        user: &UserId,
         id: &str,
         patch: ProviderPatch,
     ) -> Result<ProviderEntry, ProviderRefusal> {
-        let entry = self.managed_entry(&user.id, id).await?;
+        let entry = self.managed_entry(user, id).await?;
         let _held = self.hold_entry(&entry)?;
         if entry.family == BORROWED {
-            return self.update_borrowed(&user.id, entry, patch).await;
+            return self.update_borrowed(user, entry, patch).await;
         }
         if patch.share_key.is_some() {
             return Err(ProviderRefusal::NotBorrowed(entry.label.clone()));
@@ -669,8 +668,8 @@ impl CoreServices {
     /// Puts the entries of `user`'s scope in the order `ids` names them,
     /// each once: the order of Settings › Providers, which generated media
     /// try entries in.
-    pub async fn order_providers(&self, user: &UserDto, ids: Vec<ProviderId>) -> Result<(), ProviderRefusal> {
-        if !self.vault.set_order(&user.id, ids).await? {
+    pub async fn order_providers(&self, user: &UserId, ids: Vec<ProviderId>) -> Result<(), ProviderRefusal> {
+        if !self.vault.set_order(user, ids).await? {
             return Err(ProviderRefusal::Order);
         }
         Ok(())
@@ -681,10 +680,10 @@ impl CoreServices {
     pub async fn delete_provider(
         &self,
         starter: &dyn Starter,
-        user: &UserDto,
+        user: &UserId,
         id: &str,
     ) -> Result<ProviderEntry, ProviderRefusal> {
-        let entry = self.managed_entry(&user.id, id).await?;
+        let entry = self.managed_entry(user, id).await?;
         let _held = self.hold_entry(&entry)?;
         self.vault.delete(&entry).await?;
         // What the starter keeps of the entry goes with it, as a server's
