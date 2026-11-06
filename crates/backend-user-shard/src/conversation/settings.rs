@@ -36,7 +36,7 @@ impl Shard {
             .conversation(id.clone())
             .await?
             .ok_or(ChangeRefusal::NotFound)?;
-        if record.archived {
+        if record.archived() {
             return Err(ChangeRefusal::Archived);
         }
         let selection = self

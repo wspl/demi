@@ -908,7 +908,7 @@ impl dyn HostShard + '_ {
     ) -> Result<Selected, HostAccessError> {
         let control = self.control();
         let record = self.owned_conversation(id).await?;
-        if record.archived {
+        if record.archived() {
             return Err(Refusal::Archived.into());
         }
         let target = self.resolve_target(&record).await?;

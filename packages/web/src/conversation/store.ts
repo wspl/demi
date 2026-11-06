@@ -401,6 +401,7 @@ export const useConversations = defineStore('conversations', () => {
       | 'title'
       | 'pinned'
       | 'archived'
+      | 'archivedAt'
       | 'scheduled'
       | 'target'
       | 'worktree'
@@ -418,6 +419,7 @@ export const useConversations = defineStore('conversations', () => {
       title: record.title,
       pinned: record.pinned,
       archived: record.archived,
+      archivedAt: record.archivedAt,
       scheduled: record.scheduled,
       target: record.target,
       projectId:
@@ -698,6 +700,7 @@ export const useConversations = defineStore('conversations', () => {
                 title: conversation.title,
                 pinned: conversation.pinned,
                 archived: conversation.archived,
+                archivedAt: conversation.archivedAt,
                 target: conversation.target,
                 createdAt: conversation.createdAt,
                 updatedAt: conversation.updatedAt,
@@ -855,6 +858,7 @@ export const useConversations = defineStore('conversations', () => {
         }
         const conversation = newConversation({
           ...draft.local.conversation,
+          archivedAt: draft.local.conversation.archivedAt ?? null,
           workspaceId: draft.local.conversation.workspaceId ?? useWorkspaces().current ?? '',
           // A draft is created where the page chose, never in a worktree.
           worktree: null,
@@ -2515,12 +2519,17 @@ export const useConversations = defineStore('conversations', () => {
     shown: boolean,
     action: RefusedAction,
   ): Promise<{ success: boolean; changed: string[] }> {
+    // What the page shows until the answer: an archive's time by its own clock,
+    // and for a draft, which no backend answers for, for good.
+    const shownFields = fields.archived === undefined
+      ? fields
+      : { ...fields, archivedAt: fields.archived ? new Date().toISOString() : null }
     for (const conversation of items.value) {
       if (
         ids.includes(conversation.id) &&
         conversation.persistence !== 'synced'
       ) {
-        Object.assign(conversation, fields)
+        Object.assign(conversation, shownFields)
         conversation.projectId =
           conversation.target.kind === 'project'
             ? conversation.target.projectId
@@ -2546,7 +2555,7 @@ export const useConversations = defineStore('conversations', () => {
     }
     const shownChanges = new Map(shown
       ? ids.map((id) => [id, product.change(`conversation:${id}`, (state) =>
-          withConversation(state, id, (record) => ({ ...record, ...fields })))])
+          withConversation(state, id, (record) => ({ ...record, ...shownFields })))])
       : [])
     const signal = lifetime.signal
     try {
@@ -2751,6 +2760,7 @@ export const useConversations = defineStore('conversations', () => {
       worktree: null,
       pinned: false,
       archived: false,
+      archivedAt: null,
       scheduled: false,
       target: projectId
         ? { kind: 'project', projectId: projectId }

@@ -29,8 +29,8 @@ import type { SettingsArchivedConversation } from './types'
  * ☐  Compare vector databases          [Open] [Restore]   ← under the pointer
  * ```
  *
- * - A row's end shows its project, if it has one, and when it was last
- *   active, to the minute, which Open and Restore take under the pointer or
+ * - A row's end shows its project, if it has one, and when it was
+ *   archived, to the minute, which Open and Restore take under the pointer or
  *   the focus, in the same room. Open shows the conversation to read, with
  *   the bar that offers Restore; Restore brings it back and opens it.
  * - Checking rows turns the title's line into the count and Restore and
@@ -185,7 +185,7 @@ function confirmDelete(): void {
                   <TruncatedText class="min-w-0" :text="conversation.project" />
                   <span aria-hidden="true">·</span>
                 </template>
-                <span class="shrink-0 whitespace-nowrap tabular-nums">{{ formatModified(conversation.updatedAt) }}</span>
+                <span class="shrink-0 whitespace-nowrap tabular-nums">{{ formatModified(conversation.archivedAt) }}</span>
               </span>
             </span>
             <TruncatedText v-else class="min-w-0 flex-1 text-setting text-fg-emphasis" :text="conversationTitle(conversation.title)" />
@@ -199,7 +199,7 @@ function confirmDelete(): void {
                 </template>
               </span>
               <span class="w-44 whitespace-nowrap text-right text-detail tabular-nums text-fg-subtle group-hover:invisible group-focus-within:invisible">
-                {{ formatModified(conversation.updatedAt) }}
+                {{ formatModified(conversation.archivedAt) }}
               </span>
               <span class="invisible absolute right-0 flex gap-1.5 group-hover:visible group-focus-within:visible">
                 <Button size="sm" variant="ghost" @click="emit('open', conversation.id)">{{ t('archived.open') }}</Button>

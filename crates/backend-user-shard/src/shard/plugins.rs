@@ -443,7 +443,7 @@ impl Shard {
     /// conversation is refused, and one with no live tree has nothing to do.
     pub async fn reload_conversation(&self, id: &ConversationId) -> Result<(), ReloadRefusal> {
         let record = self.host_shard().owned_conversation(id).await?;
-        if record.archived {
+        if record.archived() {
             return Err(ReloadRefusal::Archived);
         }
         self.agent()

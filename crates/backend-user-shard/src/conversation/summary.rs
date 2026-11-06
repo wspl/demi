@@ -74,6 +74,7 @@ impl Shard {
             .map(|tree| (tree.is_running(), tree.root().session().phase()));
         let facts = self.summary_facts(&record.id).await;
         let resolved = self.host_shard().resolve_target(&record).await?;
+        let archived = record.archived();
         Ok(ConversationSummary {
             unread: facts.revision > record.read_revision && !self.idle_compactions().keeps_read(&record.id),
             status: status(live, &facts),
@@ -82,7 +83,8 @@ impl Shard {
             id: record.id,
             workspace_id: record.workspace,
             title: record.title,
-            archived: record.archived,
+            archived,
+            archived_at: record.archived_at,
             pinned: record.pinned,
             read_revision: record.read_revision,
             created_at: record.created_at,

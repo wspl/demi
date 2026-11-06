@@ -122,7 +122,7 @@ impl Shard {
         // An archived conversation takes nothing but its restore; the index
         // transaction checks again when it applies the change. A move
         // refuses it itself, so that its log line is written.
-        if record.archived
+        if record.archived()
             && !matches!(
                 change,
                 ConversationChange::Record(RecordChange::Archived(_)) | ConversationChange::Target(_)
@@ -280,7 +280,7 @@ impl Shard {
         cancel: &CancellationToken,
         steps: &mut MoveSteps,
     ) -> Result<Option<Switched>, ChangeRefusal> {
-        if record.archived {
+        if record.archived() {
             return Err(ChangeRefusal::Archived);
         }
         let host = self.host_shard();

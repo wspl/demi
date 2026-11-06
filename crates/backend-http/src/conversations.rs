@@ -436,7 +436,7 @@ pub(super) async fn read(
 /// is not archived, and which the caller's shard serves until it ends.
 pub(super) async fn open_lane(state: &AppState, user: &UserId, id: &str) -> Result<Opened, ApiError> {
     let record = owned(&state.services, user, id).await?;
-    if record.archived {
+    if record.archived() {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
             ErrorCode::ConversationArchived,

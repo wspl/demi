@@ -214,7 +214,7 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
     if recipient.id == here {
         return Err(failed("this is the sending conversation; `demi agent send` reaches its agents"));
     }
-    if recipient.archived {
+    if recipient.archived() {
         return Err(failed(format!("conversation {target} is archived, and only the user restores it")));
     }
     let sending = control
@@ -500,7 +500,7 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
         capped = results.len() >= RESULTS_MAX;
         for found in results {
             if let Some(record) = services.control.conversation(found.conversation_id).await.map_err(failed)?
-                && !record.archived
+                && !record.archived()
             {
                 records.push(record);
             }

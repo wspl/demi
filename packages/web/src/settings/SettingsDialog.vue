@@ -387,7 +387,8 @@ const archived = computed(() =>
     .map((conversation) => ({
       id: conversation.id,
       title: conversation.title,
-      updatedAt: conversation.updatedAt,
+      // A draft a page archived before it recorded the time has none.
+      archivedAt: conversation.archivedAt ?? conversation.updatedAt,
       project: conversation.projectId === null
         ? null
         : resources.projects.find((project) => project.id === conversation.projectId)?.name ?? null,

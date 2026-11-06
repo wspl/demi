@@ -419,11 +419,12 @@ pub async fn search(
             } else {
                 Vec::new()
             };
+            let archived = record.archived();
             Some(SearchResult {
                 conversation_id: record.id,
                 title_ranges,
                 title: record.title,
-                archived: record.archived,
+                archived,
                 last_active_at: record.updated_at,
                 r#match,
             })

@@ -192,6 +192,10 @@ pub struct ConversationSummary {
     #[schemars(with = "Nullable<String>")]
     pub title: Option<String>,
     pub archived: bool,
+    /// When it was archived; null while it is not.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    pub archived_at: Option<Timestamp>,
     pub pinned: bool,
     /// The output revision the user last acknowledged.
     #[garde(range(max = MAX_SAFE_INTEGER))]

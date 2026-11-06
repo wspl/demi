@@ -80,7 +80,7 @@ impl dyn HostShard + '_ {
         id: &ConversationId,
     ) -> Result<FileWatchChannel, HostAccessError> {
         let record = self.owned_conversation(id).await?;
-        if record.archived {
+        if record.archived() {
             return Err(Refusal::Archived.into());
         }
         let open = self

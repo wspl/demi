@@ -18,7 +18,7 @@ type LoadState = 'loading' | 'ready' | 'failed'
 const state = ref<LoadState>('loading')
 const saving = ref(true)
 /** The archived row, which Delete removes until the page reloads. */
-const archivedRows = ref([{ id: 'archived', title: 'Example conversation', updatedAt: '2026-09-02T18:12:00Z', project: null }])
+const archivedRows = ref([{ id: 'archived', title: 'Example conversation', archivedAt: '2026-09-02T18:12:00Z', project: null }])
 const options: readonly SegmentedOption<LoadState>[] = [
   { value: 'loading', label: 'First Load' },
   { value: 'ready', label: 'Cached Content' },

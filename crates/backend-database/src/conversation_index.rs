@@ -39,7 +39,8 @@ pub struct ConversationRecord {
     /// Its title; none while it is the placeholder, which holds no words
     /// and which the page shows in the reader's language.
     pub title: Option<String>,
-    pub archived: bool,
+    /// When it was archived; none while it is not.
+    pub archived_at: Option<Timestamp>,
     pub pinned: bool,
     /// The output revision the user last acknowledged; it only moves
     /// forward.
@@ -75,6 +76,13 @@ pub struct ConversationRecord {
     pub unread_permission_requests: u64,
     /// Whether it has a schedule, which the sidebar marks.
     pub scheduled: bool,
+}
+
+impl ConversationRecord {
+    /// Whether it is archived.
+    pub fn archived(&self) -> bool {
+        self.archived_at.is_some()
+    }
 }
 
 /// A change a user asks of a conversation, which `Shard::transition`
@@ -243,7 +251,7 @@ pub enum Creation {
 /// at one moment, a project's conversations, keeps that order too.
 const CONVERSATION_ORDER: &str = "archived_at DESC, pinned DESC, sort_order, id";
 
-const CONVERSATION_COLUMNS: &str = "id, user_id, workspace_id, title, title_origin, archived_at IS NOT NULL AS archived, pinned, read_revision, target_kind, target_device_id,
+const CONVERSATION_COLUMNS: &str = "id, user_id, workspace_id, title, title_origin, archived_at, pinned, read_revision, target_kind, target_device_id,
      target_path, target_project_id, target_worktree_name, target_worktree_path, context_version, model, workflow_kind,
      workflow_id, workflow_worktree, created_at, updated_at, hosts_revision,
      COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
@@ -871,7 +879,10 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
         )?,
         workspace: decode(TABLE, "workspace_id", WorkspaceId::try_from(row.get::<_, String>("workspace_id")?))?,
         title: title_row(row)?,
-        archived: row.get("archived")?,
+        archived_at: row
+            .get::<_, Option<i64>>("archived_at")?
+            .map(|millisecond| decode(TABLE, "archived_at", Timestamp::from_millisecond(millisecond)))
+            .transpose()?,
         pinned: row.get("pinned")?,
         read_revision: decode(
             TABLE,
