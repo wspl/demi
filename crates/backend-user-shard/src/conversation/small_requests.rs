@@ -58,20 +58,6 @@ impl SmallRequests {
         Ok(small_model(&catalog, &preferences, conversation))
     }
 
-    /// Runs `request` for the conversation `id`, which infers with
-    /// `conversation`, on the small model, and answers the text of its
-    /// response; none when `cancel` stopped it.
-    pub(crate) async fn run(
-        &self,
-        id: &ConversationId,
-        conversation: &ModelSelection,
-        request: SmallRequest,
-        cancel: CancellationToken,
-    ) -> Result<Option<String>, SmallRequestFailure> {
-        let selection = self.resolve(conversation).await?;
-        self.run_on(id, &selection, request, cancel).await
-    }
-
     /// Runs `request` for the conversation `id` on the small model `selection`
     /// that `resolve` answered, and answers the text of its response; none
     /// when `cancel` stopped it.

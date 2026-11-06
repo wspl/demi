@@ -104,8 +104,11 @@ impl Titles {
         let in_flight = self.sides_in_flight.clone();
         tasks.spawn_local(async move {
             let started = std::time::Instant::now();
+            // The small model, once resolved, which the end's log line names.
+            let mut answering = None;
             let titled = async {
-                let answer = small_requests.run(&conversation, &selection, small, cancel.clone()).await?;
+                let model = answering.insert(small_requests.resolve(&selection).await?);
+                let answer = small_requests.run_on(&conversation, model, small, cancel.clone()).await?;
                 Ok::<&'static str, TitleFailure>(match answer.as_deref().and_then(title_from_response) {
                     Some(_) if cancel.is_cancelled() => "aborted",
                     Some(title) => {
@@ -116,7 +119,7 @@ impl Titles {
                 })
             };
             let titled = titled.await;
-            log_title(&conversation, Some(&key.1), &selection, started, &titled);
+            log_title(&conversation, Some(&key.1), answering.as_ref(), started, &titled);
             in_flight.borrow_mut().remove(&key);
         }
         .in_current_span());
@@ -145,8 +148,9 @@ impl Titles {
         // The title logs under what asked for it, such as a socket's send.
         tasks.spawn_local(async move {
             let started = std::time::Instant::now();
-            let titled = generate(&small_requests, &control, &id, &selection, request, &cancel).await;
-            log_title(&id, None, &selection, started, &titled);
+            let mut answering = None;
+            let titled = generate(&small_requests, &control, &id, &selection, request, &cancel, &mut answering).await;
+            log_title(&id, None, answering.as_ref(), started, &titled);
             in_flight.borrow_mut().remove(&id);
             marks.mark(Part::Conversation(id));
         }
@@ -186,11 +190,12 @@ enum TitleFailure {
 }
 
 /// The line that ends a title request: whether it set a title, found no text
-/// to title or an answer to take one from, was stopped, or failed.
+/// to title or an answer to take one from, was stopped, or failed. `small` is
+/// the small model that answered, none before one was resolved.
 fn log_title(
     conversation: &ConversationId,
     side: Option<&NodeId>,
-    selection: &ModelSelection,
+    small: Option<&ModelSelection>,
     started: std::time::Instant,
     titled: &Result<&'static str, TitleFailure>,
 ) {
@@ -200,8 +205,8 @@ fn log_title(
         Ok(outcome) => (*outcome, None),
         Err(failure) => ("failed", Some(failure.to_string())),
     };
-    let provider = selection.provider_id.as_str();
-    let model = selection.model.id.as_str();
+    let provider = small.map(|small| small.provider_id.as_str());
+    let model = small.map(|small| small.model.id.as_str());
     if error.is_some() {
         tracing::warn!(event = "title.ended", %conversation, side, provider, model, ms, outcome, error, "a title request ended");
     } else {
@@ -212,7 +217,7 @@ fn log_title(
 /// Asks the small model for a title of the conversation `id`, which infers
 /// with `selection`, and writes it, unless the request is stopped first.
 /// Answers how it ended: `set`, `empty` for a message or an answer with no
-/// title in it, or `aborted`.
+/// title in it, or `aborted`; `answering` holds the small model once resolved.
 async fn generate(
     small_requests: &SmallRequests,
     control: &ControlService,
@@ -220,13 +225,15 @@ async fn generate(
     selection: &ModelSelection,
     request: TitleRequest,
     cancel: &CancellationToken,
+    answering: &mut Option<ModelSelection>,
 ) -> Result<&'static str, TitleFailure> {
     // A message without text leaves nothing to title.
     let Some(small) = title_request(&request.message) else {
         return Ok("empty");
     };
+    let model = answering.insert(small_requests.resolve(selection).await?);
     let answer = small_requests
-        .run(id, selection, small, cancel.clone())
+        .run_on(id, model, small, cancel.clone())
         .await?;
     let Some(title) = answer.as_deref().and_then(title_from_response) else {
         return Ok("empty");
