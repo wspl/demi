@@ -7,7 +7,7 @@
     "search": "Busca na web",
     "searchDescription": "O modelo busca na web com o Exa, usando sua conta ou chave, ou dentro de um limite compartilhado por todos os usuários.",
     "fetch": "Leitura da web",
-    "fetchDescription": "O modelo lê uma página ou baixa um arquivo a partir do host da conversa."
+    "fetchDescription": "O modelo lê uma página ou baixa um arquivo a partir do dispositivo da conversa."
   },
   "account": {
     "label": "Conta do Exa",

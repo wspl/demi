@@ -57,7 +57,7 @@ export function receiptRow(message: AgentMessage): ReceiptRow {
     }
     // The user's move of the conversation, which the user told the agent of.
     case 'moved':
-      return plain(t('transcript.receipt.moved', { host: event.host, path: homePath(event.path, event.home) }))
+      return plain(t('transcript.receipt.moved', { device: event.device, path: homePath(event.path, event.home) }))
     // Demi's notice that a move the agent asked for failed, and why, as the
     // row's own words.
     case 'move_failed':
@@ -128,9 +128,9 @@ function permissionAction(event: Extract<AgentMessage['event'], { type: 'permiss
   if (event.credential) {
     return useCredentialAction(event.credential)
   }
-  const host = event.pairing ? [pairAction()] : event.host ? [useDeviceAction(event.host)] : []
+  const devices = event.pairing ? [pairAction()] : event.device ? [useDeviceAction(event.device)] : []
   const categories = event.categories ?? []
-  return (categories.length || host.length ? wordedActions(categories, host) : null) ?? event.action
+  return (categories.length || devices.length ? wordedActions(categories, devices) : null) ?? event.action
 }
 
 /**

@@ -1,7 +1,7 @@
 import { h, type Component, type FunctionalComponent } from 'vue'
 import DeviceIcon from './DeviceIcon.vue'
-import { hostIcon } from '../hosts/icons'
-import type { HostKind } from '../hosts/types'
+import { deviceIcon } from '../targets/icons'
+import type { TargetKind } from '../targets/types'
 import type { DeviceMark } from './mark'
 import type { DeviceState } from './state'
 
@@ -22,7 +22,7 @@ export function deviceGlyph(state: DeviceState | null, mark: DeviceMark | null):
   return glyph
 }
 
-/** A host as an icon a row takes by component: the Cloud's glyph, or a device's mark with its state. */
-export function hostGlyph(host: { kind: HostKind; state: DeviceState; mark: DeviceMark | null }): Component {
-  return host.kind === 'cloud' ? hostIcon(host) : deviceGlyph(host.state, host.mark)
+/** A device as an icon a row takes by component: the Cloud's glyph, or a paired device's mark with its state. */
+export function targetGlyph(target: { kind: TargetKind; state: DeviceState; mark: DeviceMark | null }): Component {
+  return target.kind === 'cloud' ? deviceIcon(target) : deviceGlyph(target.state, target.mark)
 }

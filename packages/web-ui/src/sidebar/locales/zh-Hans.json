@@ -79,7 +79,7 @@
   "deleteProject": {
     "title": "删除“{name}”？",
     "archived": "它的 {count} 个对话将被归档。",
-    "files": "{host} 上的文件不会被删除。"
+    "files": "{device} 上的文件不会被删除。"
   },
   "savedScope": {
     "title": "改为每个对话各自一份？",

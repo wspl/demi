@@ -224,7 +224,7 @@ pub(super) async fn get(
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
     // A write whose reply is overdue closes this connection, which ends the
-    // device's read of what it still queues (`crates/runner-host/src/files.rs`).
+    // device's read of what it still queues (`crates/runner-device/src/files.rs`).
     sink.closes_with(peer.control.closer());
     let frames = sink.into_frames().map(Ok::<_, std::convert::Infallible>);
     (
@@ -267,7 +267,7 @@ pub(super) async fn call_output(
 }
 
 /// `GET /api/offers/:id`: a file the backend offers the requesting device's
-/// runner for download, such as an attachment placed on its Host.
+/// runner for download, such as an attachment placed on its device.
 ///
 /// The download starts from the byte a Range request names, so a download that
 /// broke off resumes (`crates/shared-artifacts/src/download.rs`). An offer

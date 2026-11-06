@@ -21,7 +21,7 @@ function sentMediaType(file: File): string {
 
 /**
  * How long an upload may go without a byte moving before it fails, the
- * backend's own stall rule (`crates/backend-host-access/src/access.rs`).
+ * backend's own stall rule (`crates/backend-device-access/src/access.rs`).
  */
 const UPLOAD_STALL_MS = 60_000
 
@@ -188,7 +188,7 @@ export const uploadAttachment: UploadFile = async (file, options) => {
 }
 
 /**
- * Keeps a picture the page shows, a Host image's bytes at the version it
+ * Keeps a picture the page shows, a device image's bytes at the version it
  * shows or a picture of the web the page can read, as a blob of the user's: an
  * upload of its bytes, which sends none the user holds already. A comment and a
  * side question quote it so, and Send to Conversation adds it to another draft.

@@ -1,6 +1,6 @@
 /**
  * iPhone Duo's own body, Apple's USDZ that Xcode installs for the device
- * type's product class (`./fold-scene.ts`), read on the page from the Host
+ * type's product class (`./fold-scene.ts`), read on the page from the runner
  * and kept for the session, never stored.
  *
  * A worker reads it (`./apple-body-worker.ts`), so the page never waits on

@@ -1,4 +1,4 @@
-//! What the backend and a runner both apply to a page's work on a Host's files,
+//! What the backend and a runner both apply to a page's work on a device's files,
 //! so that the relay's routes and a direct channel answer alike
 //! (`crates/runner-protocol/src/direct.rs`):
 //!
@@ -6,7 +6,7 @@
 //! - the paths a delete keeps;
 //! - how a failed file operation reads to the page;
 //! - the page's file watch: its messages, its limits and the subscriptions it
-//!   holds on the Host for them.
+//!   holds on the device for them.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Instant;
@@ -49,9 +49,9 @@ impl DirectoryEntry {
     }
 }
 
-/// Whether deleting `path` would take with it a directory the Host needs:
+/// Whether deleting `path` would take with it a directory the device needs:
 /// a filesystem root, or one of `kept` or a directory holding it. Compared
-/// without case, since a Host's filesystem may ignore it.
+/// without case, since a device's filesystem may ignore it.
 pub fn protected_path<'a>(path: &str, kept: impl IntoIterator<Item = &'a str>) -> bool {
     let top = Utf8TypedPath::derive(&path.to_lowercase()).normalize();
     if top.parent().is_none() {
@@ -65,7 +65,7 @@ pub fn protected_path<'a>(path: &str, kept: impl IntoIterator<Item = &'a str>) -
 }
 
 /// What a file operation's failure is to the page, by the errno-style code
-/// the Host gave: nothing at the path, no permission, or anything else.
+/// the device gave: nothing at the path, no permission, or anything else.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FsFailure {
     NotFound,
@@ -83,7 +83,7 @@ impl FsFailure {
     }
 }
 
-/// What a subscription watches, and so when it changes (`crates/runner-host/src/subscriptions.rs`).
+/// What a subscription watches, and so when it changes (`crates/runner-device/src/subscriptions.rs`).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
@@ -108,7 +108,7 @@ pub enum SubscriptionKind {
 
 /// What a subscription is of: its kind, its absolute path and, for a folder,
 /// the ending of the entry names that count. Subscriptions of one subject
-/// share one on the Host.
+/// share one on the device.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Subject {
     pub kind: SubscriptionKind,
@@ -176,14 +176,14 @@ pub enum RefusedReason {
     Limit,
 }
 
-/// A Host's number as the page reads it, which stays within JavaScript's
+/// A device's number as the page reads it, which stays within JavaScript's
 /// safe range: the schema of a subscription's `since` and of a change's
 /// `at`.
-pub struct HostNumber;
+pub struct DeviceNumber;
 
-impl JsonSchema for HostNumber {
+impl JsonSchema for DeviceNumber {
     fn schema_name() -> std::borrow::Cow<'static, str> {
-        "HostNumber".into()
+        "DeviceNumber".into()
     }
 
     fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -195,27 +195,27 @@ impl JsonSchema for HostNumber {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FileWatchMessage {
-    /// The Host watches the subscription: a change at a number above
+    /// The device watches the subscription: a change at a number above
     /// `since` is reported, numbers of `epoch`.
     Live {
         key: String,
-        #[schemars(with = "HostNumber")]
+        #[schemars(with = "DeviceNumber")]
         since: u64,
         epoch: String,
     },
     /// Subscriptions whose subjects changed, each once, as `[key, at]`, `at`
     /// the number of the latest event that changed it.
     Changed {
-        #[schemars(with = "Vec<(String, HostNumber)>")]
+        #[schemars(with = "Vec<(String, DeviceNumber)>")]
         changes: Vec<(String, u64)>,
     },
-    /// The Host cannot watch the subscription, for this reason; it is over.
+    /// The device cannot watch the subscription, for this reason; it is over.
     Unavailable { key: String, reason: String },
     /// The subscription is past the page's limits; it is not held.
     Refused { key: String, reason: RefusedReason },
     /// A `renew` arrived; the leases of `keys` run again from it.
     Renewed { keys: Vec<String> },
-    /// The Host is out of reach or a stopped Cloud: no subscription is live
+    /// The device is out of reach or a stopped Cloud: no subscription is live
     /// until the next `live`.
     Offline,
     /// Nothing else was sent for 30 seconds: a direct channel's watch is
@@ -244,13 +244,13 @@ impl FileWatchMessage {
     }
 }
 
-/// What the page's subscriptions ask of the Host's, and tell the page, as
+/// What the page's subscriptions ask of the device's, and tell the page, as
 /// [`PageSubscriptions`] works them out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
     /// A message for the page.
     Page(FileWatchMessage),
-    /// The page holds a subject the Host must watch from now on.
+    /// The page holds a subject the device must watch from now on.
     Hold(Subject),
     /// Nothing the page holds needs the subject any more.
     Release(Subject),
@@ -258,9 +258,9 @@ pub enum Effect {
     Renew(Vec<Subject>),
 }
 
-/// Where the Host's subscription of a subject is.
+/// Where the device's subscription of a subject is.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum HostState {
+enum DeviceState {
     Starting,
     Live { since: u64, epoch: String },
 }
@@ -269,7 +269,7 @@ enum HostState {
 /// inside the working tree it anchors.
 #[derive(Debug)]
 struct Held {
-    host: HostState,
+    device: DeviceState,
     keys: BTreeSet<String>,
     /// The working tree's own subscription, held while anything the page
     /// holds lies inside it.
@@ -286,14 +286,14 @@ struct Key {
 
 /// The subscriptions of one page's file watch, as the backend's relay and a
 /// runner's direct `watch` both keep them: the page's keys and their leases, the
-/// limits, and the subjects they hold on the Host, each once however many keys hold it.
+/// limits, and the subjects they hold on the device, each once however many keys hold it.
 /// A subject inside the conversation's working tree also holds the working tree's own
-/// subscription, so that the Host watches it through the tree's one watch
-/// (`crates/runner-host/src/subscriptions.rs`); the page hears of that one only under a
+/// subscription, so that the device watches it through the tree's one watch
+/// (`crates/runner-device/src/subscriptions.rs`); the page hears of that one only under a
 /// key of its own.
 ///
 /// It holds no subscription itself: its owner holds and releases the
-/// Host's as the [`Effect`]s say, and hands it their reports.
+/// device's as the [`Effect`]s say, and hands it their reports.
 #[derive(Debug)]
 pub struct PageSubscriptions {
     root: Option<String>,
@@ -343,7 +343,7 @@ impl PageSubscriptions {
                 if held.subject == subject {
                     held.lease = now + crate::wire::SUBSCRIPTION_LEASE;
                     if let Some(Held {
-                        host: HostState::Live { since, epoch },
+                        device: DeviceState::Live { since, epoch },
                         ..
                     }) = self.subjects.get(&subject)
                     {
@@ -378,13 +378,13 @@ impl PageSubscriptions {
             let held = self.subjects.entry(subject.clone()).or_insert_with(|| {
                 effects.push(Effect::Hold(subject.clone()));
                 Held {
-                    host: HostState::Starting,
+                    device: DeviceState::Starting,
                     keys: BTreeSet::new(),
                     anchor: false,
                 }
             });
             held.keys.insert(key.clone());
-            if let HostState::Live { since, epoch } = &held.host {
+            if let DeviceState::Live { since, epoch } = &held.device {
                 effects.push(Effect::Page(FileWatchMessage::Live {
                     key: key.clone(),
                     since: *since,
@@ -409,7 +409,7 @@ impl PageSubscriptions {
         let held = self.subjects.entry(anchor.clone()).or_insert_with(|| {
             effects.push(Effect::Hold(anchor));
             Held {
-                host: HostState::Starting,
+                device: DeviceState::Starting,
                 keys: BTreeSet::new(),
                 anchor: false,
             }
@@ -461,7 +461,7 @@ impl PageSubscriptions {
     }
 
     /// The page renews `keys` at `now`: those it holds are renewed, which
-    /// the page hears, with their subjects on the Host, the working tree's
+    /// the page hears, with their subjects on the device, the working tree's
     /// own among them while anything inside it is.
     pub fn renew(&mut self, keys: &[String], now: Instant) -> Vec<Effect> {
         let mut renewed = Vec::new();
@@ -503,12 +503,12 @@ impl PageSubscriptions {
         self.unsubscribe(&ended)
     }
 
-    /// The Host watches `subject` from `since`.
+    /// The device watches `subject` from `since`.
     pub fn live(&mut self, subject: &Subject, since: u64, epoch: &str) -> Vec<Effect> {
         let Some(held) = self.subjects.get_mut(subject) else {
             return Vec::new();
         };
-        held.host = HostState::Live {
+        held.device = DeviceState::Live {
             since,
             epoch: epoch.to_owned(),
         };
@@ -524,9 +524,9 @@ impl PageSubscriptions {
             .collect()
     }
 
-    /// The Host cannot watch `subject`: each key of it hears so and is
+    /// The device cannot watch `subject`: each key of it hears so and is
     /// over. When the working tree's own subscription fails, what lies
-    /// inside it is watched alone, as the Host decides, and the tree's is
+    /// inside it is watched alone, as the device decides, and the tree's is
     /// held again once nothing is inside it and something comes.
     pub fn failed(&mut self, subject: &Subject, reason: &str) -> Vec<Effect> {
         let Some(held) = self.subjects.remove(subject) else {
@@ -579,7 +579,7 @@ impl PageSubscriptions {
         vec![Effect::Page(FileWatchMessage::Changed { changes })]
     }
 
-    /// Every subject the page holds on the Host.
+    /// Every subject the page holds on the device.
     pub fn subjects(&self) -> impl Iterator<Item = &Subject> {
         self.subjects.keys()
     }

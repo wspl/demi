@@ -605,7 +605,7 @@ fn named_tags<T: Ord>(text: &str, tag: &str, read: impl Fn(&str) -> Option<T>) -
 }
 
 /// The attachments a text block names: those its text delivers
-/// ([`named_attachments`]) and the copies it keeps of the pictures of the Host
+/// ([`named_attachments`]) and the copies it keeps of the pictures of the device
 /// it shows.
 pub fn block_attachments(text: &TextBlock) -> BTreeSet<AttachmentNumber> {
     let mut named = named_attachments(&text.text);

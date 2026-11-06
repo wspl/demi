@@ -77,7 +77,7 @@ pub enum Error {
     Removed(RecordingId),
     #[error("five recordings are running, so no other can start")]
     TooManyRunning,
-    /// The encoder cannot be had on this Host.
+    /// The encoder cannot be had on this device.
     #[error("{0}")]
     Unavailable(String),
     #[error("{0}")]

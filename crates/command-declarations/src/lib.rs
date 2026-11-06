@@ -8,7 +8,7 @@
 //! declaration. Argument validation is `jsonschema` over the declaration's
 //! schema at both ends, through one check and one wording.
 //!
-//! The crate holds no handlers (`host-interface` pairs declarations with them),
+//! The crate holds no handlers (`device-interface` pairs declarations with them),
 //! reads no stdin and does no other IO.
 //!
 //! # One definition of an input
@@ -39,7 +39,7 @@
 //!
 //! # Declarations and handlers
 //!
-//! Declarations are separate from handlers. The host-interface command set
+//! Declarations are separate from handlers. The device-interface command set
 //! pairs the tree with one handler per `rpc` leaf, and everything that reads
 //! the tree sees declarations only, so a manifest needs no handler and a runner
 //! never holds one.
@@ -58,8 +58,8 @@
 //! # Permissions
 //!
 //! A group may declare permission categories. A leaf names the one it needs as
-//! its `permission`, and the input field that may bring a host into the
-//! conversation as its `bringsHost`. The declaration is all a command does
+//! its `permission`, and the input field that may bring a device into the
+//! conversation as its `bringsDevice`. The declaration is all a command does
 //! about permissions, which the backend's dispatch checks before a handler
 //! runs.
 
@@ -168,8 +168,8 @@ pub struct Group<B = Binding> {
 /// It is what the user decides on, so it never changes meaning while a grant of
 /// it may exist: a group that needs a broader power declares a new category.
 ///
-/// A leaf of a `native` command names none. It runs on the Host, where it can
-/// act only on the Host and never on Demi itself, and its dispatch on the
+/// A leaf of a `native` command names none. It runs on the device, where it can
+/// act only on the device and never on Demi itself, and its dispatch on the
 /// runner has no grants to check.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -220,18 +220,18 @@ pub struct Leaf<B = Binding> {
     /// set, only a call that gives the field needs it, as `--conversation`
     /// does for a history read; without one, every call needs it.
     pub permission_field: Option<String>,
-    /// The string input field that names a host the call may bring into
+    /// The string input field that names a device the call may bring into
     /// the conversation, which the dispatch resolves once and hands to the
     /// handler; only an `rpc` leaf names one.
-    pub brings_host: Option<BringsHost>,
+    pub brings_device: Option<BringsDevice>,
     pub kind: LeafKind<B>,
 }
 
-/// A leaf's input field that names a host the call may bring into the
+/// A leaf's input field that names a device the call may bring into the
 /// conversation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BringsHost {
+pub struct BringsDevice {
     pub field: String,
 }
 
@@ -493,16 +493,16 @@ impl<B> Node<B> {
             }
             Self::Leaf(leaf) => {
                 leaf.validate()?;
-                if let Some(BringsHost { field, .. }) = &leaf.brings_host {
+                if let Some(BringsDevice { field, .. }) = &leaf.brings_device {
                     if matches!(leaf.kind, LeafKind::Native(_)) {
                         return Err(invalid(format!(
-                            "native command {} names a bringsHost field; only an rpc command can",
+                            "native command {} names a bringsDevice field; only an rpc command can",
                             leaf.name
                         )));
                     }
                     if leaf.property_type(field) != Some("string") {
                         return Err(invalid(format!(
-                            "command {} names {field} as bringsHost, which is no string field of its input",
+                            "command {} names {field} as bringsDevice, which is no string field of its input",
                             leaf.name
                         )));
                     }
@@ -525,9 +525,9 @@ impl<B> Node<B> {
                     }
                 }
                 // A request asks the user for one thing.
-                if leaf.brings_host.is_some() {
+                if leaf.brings_device.is_some() {
                     return Err(invalid(format!(
-                        "command {} names a permission and a bringsHost field; a command needs one of the two",
+                        "command {} names a permission and a bringsDevice field; a command needs one of the two",
                         leaf.name
                     )));
                 }
@@ -585,7 +585,7 @@ impl Node<NativeOperation> {
                 media: leaf.media,
                 permission: leaf.permission.clone(),
                 permission_field: leaf.permission_field.clone(),
-                brings_host: leaf.brings_host.clone(),
+                brings_device: leaf.brings_device.clone(),
                 kind: match &leaf.kind {
                     LeafKind::Rpc => LeafKind::Rpc,
                     LeafKind::Native(operation) => LeafKind::Native(Binding {
@@ -925,7 +925,7 @@ struct RawLeaf<B> {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
-    brings_host: Option<BringsHost>,
+    brings_device: Option<BringsDevice>,
     kind: RawKind,
     #[serde(
         default,
@@ -968,7 +968,7 @@ impl<B> TryFrom<RawLeaf<B>> for Leaf<B> {
             media: raw.media,
             permission: raw.permission,
             permission_field: raw.permission_field,
-            brings_host: raw.brings_host,
+            brings_device: raw.brings_device,
             kind,
         })
     }
@@ -996,7 +996,7 @@ impl<B> From<Leaf<B>> for RawLeaf<B> {
             media: leaf.media,
             permission: leaf.permission,
             permission_field: leaf.permission_field,
-            brings_host: leaf.brings_host,
+            brings_device: leaf.brings_device,
             kind,
             binding,
         }

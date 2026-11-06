@@ -42,7 +42,7 @@
   "failures": {
     "control": "O simulador não conseguiu fazer isso",
     "save": "Não foi possível salvar o arquivo",
-    "hostFilesUnreachable": "Os arquivos do dispositivo não estão acessíveis agora."
+    "deviceFilesUnreachable": "Os arquivos do dispositivo não estão acessíveis agora."
   },
   "reasons": {
     "invalid_input": "O simulador não aceita isso.",
@@ -68,13 +68,13 @@
     "conversation_not_found": "Esta conversa não existe mais.",
     "conversation_archived": "Esta conversa está arquivada.",
     "conversation_busy": "A conversa está ocupada. Tente novamente em instantes.",
-    "host_stopped": "O dispositivo está parado.",
+    "device_stopped": "O dispositivo está parado.",
     "device_offline": "O dispositivo está offline.",
     "cloud_unavailable": "A nuvem não está disponível agora.",
     "cloud_resetting": "A nuvem está sendo redefinida.",
     "cloud_capacity": "A nuvem está sem espaço agora.",
     "cloud_crash_loop": "A nuvem continua parando.",
-    "host_operation_failed": "O dispositivo não conseguiu fazer isso.",
+    "device_operation_failed": "O dispositivo não conseguiu fazer isso.",
     "unknown_plugin_method": "Esta página está desatualizada. Recarregue-a.",
     "plugin_disabled": "Os simuladores estão desativados."
   },

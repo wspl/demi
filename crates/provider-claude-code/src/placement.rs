@@ -34,7 +34,7 @@
 //!   registry's own provider --as Any-->       provider + placement = runtime
 //!   Placement::start <------ a run needs a process
 //!     wake or admit the machine, ensure the CLI, hand over an earlier sign-in
-//!     spawn request built by the provider; Host process interface starts it
+//!     spawn request built by the provider; device process interface starts it
 //! ```
 //!
 //! The backend holds the machine's admission only while the process starts.
@@ -50,7 +50,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use demi_host_interface::{HostError, Process, SpawnRequest};
+use demi_device_interface::{DeviceError, Process, SpawnRequest};
 use demi_shared_types::DownloadProgress;
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use tokio_util::sync::CancellationToken;
@@ -131,7 +131,7 @@ pub struct Handover {
 }
 
 /// Why a CLI process could not be started: the machine could not be reached,
-/// Demi's CLI could not be installed there, or the Host refused the start.
+/// Demi's CLI could not be installed there, or the device refused the start.
 ///
 /// The message says why, with the version when an install failed, and is the
 /// request's failure as it is.
@@ -186,7 +186,7 @@ pub trait Placement {
     ///    and the process's own directory under it.
     /// 2. `start` says what to start at the site it found.
     /// 3. The placement writes its files into the process's directory and
-    ///    starts its request on the machine's Host.
+    ///    starts its request on the machine's device.
     ///
     /// It reports each stage it reaches to `stages`. Dropping the future gives
     /// the start up, and removes what it made.
@@ -233,7 +233,7 @@ pub struct StartSteps {
     /// bytes they hold.
     pub files: Duration,
     pub file_bytes: u64,
-    /// Starting the process on the machine's Host.
+    /// Starting the process on the machine's device.
     pub spawn: Duration,
 }
 
@@ -242,7 +242,7 @@ pub struct StartSteps {
 /// directory.
 pub trait ConfigDir {
     /// The file `name` the process wrote into its configuration directory.
-    fn read<'a>(&'a self, name: &'a str) -> LocalBoxFuture<'a, Result<Bytes, HostError>>;
+    fn read<'a>(&'a self, name: &'a str) -> LocalBoxFuture<'a, Result<Bytes, DeviceError>>;
 
     /// Removes what the process made once it has ended. One whose handle is
     /// dropped instead is removed the same way, by the placement, without
@@ -258,7 +258,7 @@ pub trait ConfigDir {
     /// (`crates/provider-claude-code/src/account.rs`). Dropping the future
     /// before the directory is replaced gives the adoption up, and the
     /// sign-in's directory goes. An account's process has nothing to adopt.
-    fn adopt<'a>(self: Box<Self>, account: &'a str) -> LocalBoxFuture<'a, Result<(), HostError>>;
+    fn adopt<'a>(self: Box<Self>, account: &'a str) -> LocalBoxFuture<'a, Result<(), DeviceError>>;
 }
 
 /// The work a sign-in or a usage probe does on its machine: given the

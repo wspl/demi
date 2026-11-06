@@ -1,11 +1,11 @@
 //! A tab's icon: what its page names, or its site's `/favicon.ico`, drawn 32
-//! pixels square on the Host each time the main frame stops loading, as a web
+//! pixels square on the device each time the main frame stops loading, as a web
 //! browser's tab shows the site's icon.
 //!
 //! Each change counts as a change of what the browser shows, so the tab list
 //! carries it.
 //!
-//! The browser loads the icon for the Host, outside the page's document, as a
+//! The browser loads the icon for the device, outside the page's document, as a
 //! web browser's own icon request is. An icon the page's document loaded would
 //! show among the page's resources, in its asset inventory and its resource
 //! timing, though the page never asked for it.
@@ -38,8 +38,8 @@ use crate::traced::SpawnTraced as _;
 /// not answer for its icon leaves the tab without one.
 const DRAW_TIME: Duration = Duration::from_secs(10);
 
-/// The largest icon file the Host draws; a larger one leaves the tab without
-/// an icon: a page names the file, and the Host holds it whole in memory.
+/// The largest icon file the device draws; a larger one leaves the tab without
+/// an icon: a page names the file, and the device holds it whole in memory.
 const ICON_BYTES: usize = 1024 * 1024;
 
 /// The largest picture a raster icon may decode to, and the memory decoding
@@ -179,7 +179,7 @@ fn raster(bytes: &[u8]) -> Option<RgbaImage> {
 }
 
 /// An SVG document drawn at the icon's size. It draws nothing from outside
-/// the document: no file of the Host's, no font.
+/// the document: no file of the device's, no font.
 fn vector(bytes: &[u8]) -> Option<RgbaImage> {
     let mut options = usvg::Options::default();
     options.image_href_resolver.resolve_string = Box::new(|_, _| None);

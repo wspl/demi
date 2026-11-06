@@ -14,7 +14,7 @@ import type { SidebarConversation } from './types'
 import ConversationDot from './ConversationDot.vue'
 import DeviceMark from './DeviceMark.vue'
 import { t as scheduleText } from '../schedules/locales/text'
-import { t as hostText } from '../hosts/locales/text'
+import { t as deviceText } from '../targets/locales/text'
 import { conversationTitle } from '../agent/conversation-title'
 
 const props = defineProps<{
@@ -176,17 +176,17 @@ const rowClass = computed(() => [
       <!-- The worktree's mark says it works in a linked worktree of its project, which its tip names; a mark only. -->
       <Tooltip
         v-if="conversation.worktree"
-        :content="hostText('directory.worktree', { name: conversation.worktree })"
+        :content="deviceText('directory.worktree', { name: conversation.worktree })"
         tag="span"
         class="flex h-6 w-3.5 shrink-0 items-center justify-center text-fg-muted phone:size-8"
       >
         <WorktreeIcon
           role="img"
-          :aria-label="hostText('directory.worktree', { name: conversation.worktree })"
+          :aria-label="deviceText('directory.worktree', { name: conversation.worktree })"
           :size="phone ? ICON_PX.in32 : ICON_PX.in24"
         />
       </Tooltip>
-      <DeviceMark v-if="conversation.device" :host="conversation.device" />
+      <DeviceMark v-if="conversation.device" :device="conversation.device" />
     </span>
     <!-- While renaming the field has the whole row: no actions, no pin glyph over it. The actions
          stand where the pin is, and left of the alarm clock and the device's mark when the row is not pinned. -->

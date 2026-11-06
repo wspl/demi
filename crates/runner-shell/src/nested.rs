@@ -1,4 +1,4 @@
-//! `sh` and `bash`: a new shell of the job's own, on every Host.
+//! `sh` and `bash`: a new shell of the job's own, on every device.
 //!
 //! A job that runs `sh -c …` or `bash x.sh`, or a script whose first line
 //! names one, would otherwise start the system's program: dash, macOS's

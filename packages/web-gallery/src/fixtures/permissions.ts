@@ -9,7 +9,7 @@ export const manageSkills: PermissionCategoryView = {
   id: 'skills.manage',
   action: 'manage skills',
   description:
-    'Manage Skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Your skills reach every conversation, and the skills that are on are installed on every Host your conversations use.',
+    'Manage Skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Your skills reach every conversation, and the skills that are on are installed on every device your conversations use.',
 }
 
 /** A category the user's command set no longer declares: the page knows its id alone. */
@@ -33,7 +33,7 @@ export function deviceRequest(): PermissionRequestView {
     kind: 'permission',
     id: 'pr-device',
     categories: [],
-    command: 'demi host shell --host build-box "df -h /srv"',
+    command: 'demi device shell --device build-box "df -h /srv"',
     subagent: null,
     device: { id: 'device-build-box', name: 'build-box' },
   }

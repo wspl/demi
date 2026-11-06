@@ -10,24 +10,24 @@
  * - A source given an upload rate takes uploads at that rate, each landing as a
  *   file of its size; without one it takes no uploads.
  * - Directories are made and entries deleted at once.
- * - A search finds what the Host's would: the files whose name or text holds
+ * - A search finds what the device's would: the files whose name or text holds
  *   the text, letter case aside, each with its first line that does. The
  *   tree holds no ignore files, so files that `.gitignore` leaves out are
  *   none.
  *
  * The source keeps what it read as the product's does (`keptSource`), with the
- * subscriptions a simulated Host's watch answers (`SimulatedWatch`):
+ * subscriptions a simulated device's watch answers (`SimulatedWatch`):
  *
- * - Each read carries the simulated Host's number, so a file shown again shows
+ * - Each read carries the simulated device's number, so a file shown again shows
  *   at once without a read.
  * - A change made with `change` is reported, so the views that show it read it
  *   again.
- * - A watch that is unavailable says so for each subscription, as a Host that
+ * - A watch that is unavailable says so for each subscription, as a device that
  *   cannot watch does.
  */
 import { previewMediaType, TEXT_FILE_BYTES } from '@demicodes/protocol'
 import { baseName, delay } from '@demicodes/utils'
-import { HostFiles } from './file-cache'
+import { DeviceFiles } from './file-cache'
 import { keptSource, type FileReads } from './kept-source'
 import {
   FileBrowserError,
@@ -39,7 +39,7 @@ import {
   type FileContents,
   type FileSearchRange,
 } from './types'
-import { joinPath, normalizePath, parentPath, resolveHostPath } from './paths'
+import { joinPath, normalizePath, parentPath, resolveDevicePath } from './paths'
 import { WatchChannel, type OpenWatchLink, type ReadAt, type Subject, type WatchLinkHandlers } from './watch-channel'
 
 export interface MemoryFile {
@@ -69,7 +69,7 @@ export interface MemoryLink {
 
 export type MemoryNode = MemoryFile | MemoryDirectory | MemoryLink
 
-/** The most UTF-16 code units a result shows of its line, and of them before its first match, as the Host's. */
+/** The most UTF-16 code units a result shows of its line, and of them before its first match, as the device's. */
 const LINE_UNITS = 240
 const LEAD_UNITS = 40
 
@@ -78,7 +78,7 @@ function rangesIn(text: string, expression: RegExp): FileSearchRange[] {
   return [...text.matchAll(expression)].map((match) => ({ start: match.index, end: match.index + match[0].length }))
 }
 
-/** The first line of `content` that holds what `expression` finds, as the Host's search shows it; none when none does. */
+/** The first line of `content` that holds what `expression` finds, as the device's search shows it; none when none does. */
 function firstLine(content: string, expression: RegExp): { number: number, text: string, matches: FileSearchRange[] } | null {
   // A lone CR ends a line too, as the editor that opens it counts lines.
   const lines = content.split(/\r\n|\r|\n/)
@@ -112,7 +112,7 @@ export interface MemoryFileSourceOptions {
   platform: FileBrowserPlatform
   home: string
   root: MemoryDirectory
-  /** Milliseconds each read takes; a real host is never instant. */
+  /** Milliseconds each read takes; a real device is never instant. */
   latencyMs?: number
   /** Every read rejects with this: the whole device is unreachable. */
   offline?: boolean
@@ -120,13 +120,13 @@ export interface MemoryFileSourceOptions {
   uploadRate?: number
   /**
    * The simulated watch of the tree: `live`, the default, answers each
-   * subscription and reports each `change`; `unavailable` is a Host that
+   * subscription and reports each `change`; `unavailable` is a device that
    * cannot watch, whose views say they show files as last read.
    */
   watch?: 'live' | 'unavailable'
 }
 
-/** What a simulated Host says when it cannot watch its files. */
+/** What a simulated device says when it cannot watch its files. */
 export const UNWATCHED_REASON = 'The file system reports no changes.'
 
 /** Whether `path` is `ancestor` or lies below it. */
@@ -136,15 +136,15 @@ function within(path: string, ancestor: string): boolean {
 }
 
 /**
- * A Host's file watch as a page sees it, simulated over a memory tree, for
- * gallery specimens and tests (`crates/runner-host/src/subscriptions.rs`).
+ * A Device's file watch as a page sees it, simulated over a memory tree, for
+ * gallery specimens and tests (`crates/runner-device/src/subscriptions.rs`).
  *
  * - It counts its changes with one number and answers each subscription `live`
  *   from the number now, or `unavailable`.
  * - It reports a `change` to each subscription it concerns with the change's
  *   number, and acknowledges each renew.
  *
- * A read takes `readAt()` before it reads, as the Host's does.
+ * A read takes `readAt()` before it reads, as the device's does.
  */
 export class SimulatedWatch {
   private number = 0
@@ -257,7 +257,7 @@ export interface MemoryFileSource extends FileBrowserSource {
    * would, making it if missing; a live watch reports it.
    */
   change(path: string, content: string): void
-  /** The next read of `path` fails with `failure`, as a Host's might for a moment. */
+  /** The next read of `path` fails with `failure`, as a device's might for a moment. */
   failNext(path: string, failure: FileBrowserFailure): void
 }
 
@@ -293,12 +293,12 @@ export function assetFile(url: string, size: number, modifiedAt: string): Memory
   return { kind: 'file', size, modifiedAt, url }
 }
 
-/** A memory tree's reads and writes, each answering as a Host's would, and what changes the tree. */
-interface MemoryHost {
+/** A memory tree's reads and writes, each answering as a device's would, and what changes the tree. */
+interface MemoryDevice {
   reads: FileReads
   /** The directory at `path`, made down from the root with each one that is missing. */
   makeDirectories(path: string): MemoryDirectory
-  /** Paths whose next read fails, as a Host's might for a moment. */
+  /** Paths whose next read fails, as a device's might for a moment. */
   failing: Map<string, FileBrowserFailure>
 }
 
@@ -308,14 +308,14 @@ interface MemoryHost {
  * without one.
  */
 export function memoryFileReads(options: MemoryFileSourceOptions, watch?: SimulatedWatch): FileReads {
-  return memoryHost(options, watch).reads
+  return memoryDevice(options, watch).reads
 }
 
-function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): MemoryHost {
+function memoryDevice(options: MemoryFileSourceOptions, watch?: SimulatedWatch): MemoryDevice {
   const { root, latencyMs = 0, uploadRate } = options
   const failing = new Map<string, FileBrowserFailure>()
 
-  /** What is at `path`, every link on the way followed, as a Host's path lookup does; null for nothing there, or a loop of links. */
+  /** What is at `path`, every link on the way followed, as a device's path lookup does; null for nothing there, or a loop of links. */
   function lookup(path: string): MemoryFile | MemoryDirectory | null {
     const found = follow(path)
     return found === 'missing' || found === 'loop' ? null : found
@@ -339,7 +339,7 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
         if (hops > MAX_LINK_HOPS)
           return 'loop'
         // The rest of the path goes on from the target, looked up from the root.
-        segments = [...normalizePath(resolveHostPath(at, child.target)).split('/').filter(Boolean), ...rest]
+        segments = [...normalizePath(resolveDevicePath(at, child.target)).split('/').filter(Boolean), ...rest]
         node = root
         at = '/'
         continue
@@ -363,7 +363,7 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
     }
   }
 
-  /** The simulated Host's number before a read. */
+  /** The simulated device's number before a read. */
   const readAt = () => watch?.readAt() ?? null
 
   function fileAt(path: string, at: ReadAt | null): MemoryFile {
@@ -383,7 +383,7 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
       at = joinPath(at, segment)
       const child: MemoryNode | undefined = node.children[segment]
       if (child?.kind === 'link') {
-        // A link to a folder is the folder, as a Host's path is.
+        // A link to a folder is the folder, as a device's path is.
         const target = lookup(at)
         if (target?.kind !== 'directory')
           throw new FileBrowserError('other', `${at} is not a folder.`)
@@ -410,7 +410,7 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
     return async (path, file, { replace, signal, progress }) => {
       if (options.offline)
         throw new FileBrowserError('offline')
-      // The write makes the folders above it, as a Host's does.
+      // The write makes the folders above it, as a device's does.
       const parent = makeDirectories(parentPath(path))
       // A directory that cannot be listed cannot be written to either.
       if (parent.failure)
@@ -478,7 +478,7 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
       const version = node.modifiedAt
       if (node.url !== undefined && node.content === undefined)
         throw new FileBrowserError('binary', 'The file is not UTF-8 text', { version, readAt: at })
-      // The text route's limit, as a Host's text route answers a larger file.
+      // The text route's limit, as a device's text route answers a larger file.
       if (node.size > TEXT_FILE_BYTES)
         throw new FileBrowserError('too-large', undefined, { version, readAt: at })
       return held === version
@@ -542,10 +542,10 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
       const start = lookup(directory)
       if (!start || start.kind !== 'directory')
         throw new FileBrowserError('not-found', `No such directory: ${normalizePath(directory)}`)
-      // The text as it is, letter case aside, as the Host finds it.
+      // The text as it is, letter case aside, as the device finds it.
       const expression = new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
       let files = 0
-      // A link is not followed, and `.git` is left out, as the Host's walk does.
+      // A link is not followed, and `.git` is left out, as the device's walk does.
       const walk = function* (folder: MemoryDirectory, at: string): Generator<[string, MemoryFile]> {
         for (const [name, child] of Object.entries(folder.children)) {
           const path = at === '' ? name : `${at}/${name}`
@@ -557,7 +557,7 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
       }
       for (const [path, file] of walk(start, '')) {
         const name = rangesIn(baseName(path), expression)
-        // The text of a file Files would not show whole is not searched, as on the Host.
+        // The text of a file Files would not show whole is not searched, as on the device.
         const line = file.content === undefined || file.size > TEXT_FILE_BYTES ? null : firstLine(file.content, expression)
         if (name.length === 0 && line === null)
           continue
@@ -576,10 +576,10 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
 
 export function createMemoryFileSource(options: MemoryFileSourceOptions): MemoryFileSource {
   const { root } = options
-  const host = new SimulatedWatch(options.watch)
-  const { reads, makeDirectories, failing } = memoryHost(options, host)
-  const files = new HostFiles()
-  const source = keptSource(reads, { files, watch: new WatchChannel(files, host.open, 'simulated file watch') })
+  const device = new SimulatedWatch(options.watch)
+  const { reads, makeDirectories, failing } = memoryDevice(options, device)
+  const files = new DeviceFiles()
+  const source = keptSource(reads, { files, watch: new WatchChannel(files, device.open, 'simulated file watch') })
   const { contents, read } = source
   if (!contents || !read)
     throw new Error('A memory source reads its files and serves their bytes.')
@@ -592,7 +592,7 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): Memory
       const parent = makeDirectories(parentPath(target))
       const entry = parent.children[baseName(target)] === undefined
       parent.children[baseName(target)] = textFile(content, new Date().toISOString())
-      host.change(target, { entry })
+      device.change(target, { entry })
     },
     failNext(path: string, failure: FileBrowserFailure) {
       failing.set(normalizePath(path), failure)

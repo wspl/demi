@@ -26,7 +26,7 @@
 //! values.
 //!
 //! On Windows the `usr\bin` of Git for Windows, where the utilities Demi does
-//! not run itself are, is in `PATH`, at its end where the Host's has none
+//! not run itself are, is in `PATH`, at its end where the device's has none
 //! (`git.rs`).
 //!
 //! On macOS the `LANG` Terminal sets and no profile does is completed

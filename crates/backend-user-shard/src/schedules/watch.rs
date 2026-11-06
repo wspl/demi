@@ -1,7 +1,7 @@
 //! Change watches.
 //!
-//! Every interval, the watch's command runs on the conversation's Host in its
-//! directory, as the agent's shell would run it, through the conversation's host
+//! Every interval, the watch's command runs on the conversation's device in its
+//! directory, as the agent's shell would run it, through the conversation's device
 //! access.
 //!
 //! The SHA-256 of its whole standard output and its exit status are compared
@@ -18,10 +18,10 @@ use std::time::Duration;
 
 use demi_backend_database::schedules::{RunCause, StoredSchedule, WatchOutput};
 use demi_backend_page_sync::Part;
-use demi_runner_client::{ContextSource, EnvironmentOptions, RemoteHost, RemoteShellEnvironment};
+use demi_runner_client::{ContextSource, EnvironmentOptions, RemoteDevice, RemoteShellEnvironment};
 use demi_command_protocol::{CommandCaller, CommandContext, Viewable};
-use demi_host_interface::{
-    CommandRecord, Ending, ExecRequest, HostError, JobCaller, Numbers, OutputRecord, PageFeed, ShellEnvironment,
+use demi_device_interface::{
+    CommandRecord, Ending, ExecRequest, DeviceError, JobCaller, Numbers, OutputRecord, PageFeed, ShellEnvironment,
 };
 use demi_shared_types::{NodeId, Sequence, StreamKind, Timestamp};
 use demi_web_api_protocol::schedules::{RunNote, RunState, Trigger};
@@ -62,17 +62,17 @@ impl PageFeed for NoPage {
 struct Count(Cell<u64>);
 
 impl Numbers for Count {
-    fn next(&self, _: Sequence) -> LocalBoxFuture<'_, Result<u64, HostError>> {
+    fn next(&self, _: Sequence) -> LocalBoxFuture<'_, Result<u64, DeviceError>> {
         self.0.set(self.0.get() + 1);
         let next = self.0.get();
         Box::pin(async move { Ok(next) })
     }
 }
 
-/// Runs `script` in `cwd` on `host` as the agent's shell would, and answers
+/// Runs `script` in `cwd` on `device` as the agent's shell would, and answers
 /// its output, or why there is none.
 async fn run_command(
-    host: RemoteHost,
+    device: RemoteDevice,
     cwd: Option<String>,
     context: CommandContext,
     script: String,
@@ -83,7 +83,7 @@ async fn run_command(
         Box::pin(async move { Ok(context) })
     });
     let environment = RemoteShellEnvironment::new(EnvironmentOptions::new(
-        host,
+        device,
         source,
         Rc::new(NoPage(watch::Sender::new(false))),
         Rc::new(Count::default()),
@@ -133,7 +133,7 @@ async fn run_command(
                                     stdout = last_bytes(&stdout, CUT_BYTES);
                                 }
                             }
-                            // Past the 16 MB the Host keeps, the middle is
+                            // Past the 16 MB the device keeps, the middle is
                             // left out: its length stands for it.
                             OutputRecord::LeftOut(bytes) => digest.update(format!("\0left out {bytes}\0")),
                             OutputRecord::Output(..) => {}
@@ -288,7 +288,7 @@ impl Shard {
         Ok(())
     }
 
-    /// Runs the watch's command on the conversation's Host as the agent's
+    /// Runs the watch's command on the conversation's device as the agent's
     /// shell would, or answers why it cannot.
     async fn run_watch_command(&self, schedule: &StoredSchedule, script: String, stop: &CancellationToken) -> Checked {
         let control = &self.services().control;
@@ -308,9 +308,9 @@ impl Shard {
             Err(error) => return failed(&error),
         };
         let cancel = CancellationToken::new();
-        self.host_shard()
-            .with_host(&schedule.conversation, None, &cancel, async |host| {
-                run_command(host.host.clone(), None, context, script, stop).await
+        self.device_shard()
+            .with_device(&schedule.conversation, None, &cancel, async |device| {
+                run_command(device.device.clone(), None, context, script, stop).await
             })
             .await
             .unwrap_or_else(|error| failed(&error))

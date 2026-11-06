@@ -57,11 +57,11 @@ export function blockMessageFiles(conversation: MessageFiles | undefined, direct
 }
 
 /**
- * The directories the conversation's agents work in on its Host, each once:
+ * The directories the conversation's agents work in on its device, each once:
  * the main agent's `root` first, then each running subagent's on the
  * conversation's path, in the order they were spawned (by number, as a
  * round's start is not the agent's). The Files tab's directory menu lists
- * them; a subagent on another Host is not among them.
+ * them; a subagent on another device is not among them.
  */
 export function agentDirectories(root: string, agents: readonly SubagentRecord[]): string[] {
   const children = agents

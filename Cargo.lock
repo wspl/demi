@@ -1746,8 +1746,8 @@ dependencies = [
  "demi-agent-tools",
  "demi-agent-transcript",
  "demi-conversation-lane-protocol",
- "demi-host-interface",
- "demi-host-paths",
+ "demi-device-interface",
+ "demi-device-paths",
  "demi-provider-common",
  "demi-provider-openai-api",
  "demi-shared-gates",
@@ -1774,7 +1774,7 @@ dependencies = [
  "demi-agent-transcript",
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
- "demi-host-interface",
+ "demi-device-interface",
  "demi-provider-claude-code",
  "demi-provider-common",
  "demi-shared-gates",
@@ -1799,8 +1799,8 @@ dependencies = [
  "bytes",
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
- "demi-host-interface",
- "demi-host-paths",
+ "demi-device-interface",
+ "demi-device-paths",
  "demi-provider-common",
  "demi-shared-types",
  "futures-util",
@@ -1822,7 +1822,7 @@ dependencies = [
  "demi-agent-transcript",
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
- "demi-host-interface",
+ "demi-device-interface",
  "demi-provider-common",
  "demi-shared-types",
  "futures-util",
@@ -1866,7 +1866,7 @@ dependencies = [
  "demi-backend-blobs",
  "demi-backend-cloud",
  "demi-backend-database",
- "demi-backend-host-access",
+ "demi-backend-device-access",
  "demi-backend-http",
  "demi-backend-providers",
  "demi-backend-runners",
@@ -1874,7 +1874,7 @@ dependencies = [
  "demi-command-declarations",
  "demi-command-package-browser-protocol",
  "demi-command-protocol",
- "demi-host-interface",
+ "demi-device-interface",
  "demi-machine-manager-protocol",
  "demi-plugin-audio",
  "demi-plugin-browser",
@@ -1985,7 +1985,7 @@ dependencies = [
  "demi-backend-page-sync",
  "demi-backend-providers",
  "demi-backend-runners",
- "demi-host-interface",
+ "demi-device-interface",
  "demi-machine-manager-protocol",
  "demi-provider-registry",
  "demi-runner-client",
@@ -2010,8 +2010,8 @@ dependencies = [
  "demi-agent-store",
  "demi-backend-database",
  "demi-conversation-lane-protocol",
- "demi-host-interface",
- "demi-host-paths",
+ "demi-device-interface",
+ "demi-device-paths",
  "demi-machine-manager-protocol",
  "demi-plugin-host",
  "demi-plugin-interface",
@@ -2045,7 +2045,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-backend-host-access"
+name = "demi-backend-device-access"
 version = "0.1.65"
 dependencies = [
  "bytes",
@@ -2057,8 +2057,8 @@ dependencies = [
  "demi-backend-runners",
  "demi-command-declarations",
  "demi-command-protocol",
- "demi-host-interface",
- "demi-host-paths",
+ "demi-device-interface",
+ "demi-device-paths",
  "demi-plugin-interface",
  "demi-runner-client",
  "demi-runner-protocol",
@@ -2094,7 +2094,7 @@ dependencies = [
  "demi-backend-blobs",
  "demi-backend-cloud",
  "demi-backend-database",
- "demi-backend-host-access",
+ "demi-backend-device-access",
  "demi-backend-page-sync",
  "demi-backend-permissions",
  "demi-backend-providers",
@@ -2102,7 +2102,7 @@ dependencies = [
  "demi-backend-user-shard",
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
- "demi-host-interface",
+ "demi-device-interface",
  "demi-plugin-host",
  "demi-plugin-interface",
  "demi-provider-common",
@@ -2167,7 +2167,7 @@ dependencies = [
  "demi-backend-database",
  "demi-backend-page-sync",
  "demi-command-declarations",
- "demi-host-interface",
+ "demi-device-interface",
  "demi-shared-types",
  "demi-web-api-protocol",
  "futures-util",
@@ -2213,7 +2213,7 @@ dependencies = [
  "demi-backend-database",
  "demi-backend-page-sync",
  "demi-command-protocol",
- "demi-host-interface",
+ "demi-device-interface",
  "demi-runner-client",
  "demi-runner-protocol",
  "demi-shared-artifacts",
@@ -2254,7 +2254,7 @@ dependencies = [
  "demi-backend-blobs",
  "demi-backend-cloud",
  "demi-backend-database",
- "demi-backend-host-access",
+ "demi-backend-device-access",
  "demi-backend-idle-watch",
  "demi-backend-page-sync",
  "demi-backend-permissions",
@@ -2264,8 +2264,8 @@ dependencies = [
  "demi-command-package-claude-code-protocol",
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
- "demi-host-interface",
- "demi-host-paths",
+ "demi-device-interface",
+ "demi-device-paths",
  "demi-machine-manager-protocol",
  "demi-plugin-host",
  "demi-plugin-interface",
@@ -2521,6 +2521,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-device-interface"
+version = "0.1.65"
+dependencies = [
+ "bytes",
+ "demi-command-declarations",
+ "demi-command-protocol",
+ "demi-device-paths",
+ "demi-shared-types",
+ "futures-util",
+ "garde",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "demi-device-paths"
+version = "0.1.65"
+dependencies = [
+ "serde",
+ "typed-path",
+]
+
+[[package]]
 name = "demi-fetch"
 version = "0.1.65"
 dependencies = [
@@ -2569,34 +2597,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
-]
-
-[[package]]
-name = "demi-host-interface"
-version = "0.1.65"
-dependencies = [
- "bytes",
- "demi-command-declarations",
- "demi-command-protocol",
- "demi-host-paths",
- "demi-shared-types",
- "futures-util",
- "garde",
- "schemars",
- "serde",
- "serde_json",
- "serde_with",
- "thiserror 2.0.20",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "demi-host-paths"
-version = "0.1.65"
-dependencies = [
- "serde",
- "typed-path",
 ]
 
 [[package]]
@@ -2746,7 +2746,7 @@ dependencies = [
 name = "demi-plugin-audio"
 version = "0.1.65"
 dependencies = [
- "demi-host-interface",
+ "demi-device-interface",
  "demi-plugin-interface",
  "demi-plugin-media",
  "demi-shared-types",
@@ -2762,7 +2762,7 @@ version = "0.1.65"
 dependencies = [
  "demi-command-declarations",
  "demi-command-package-browser-protocol",
- "demi-host-interface",
+ "demi-device-interface",
  "demi-plugin-interface",
  "demi-web-api-protocol",
  "futures-util",
@@ -2787,7 +2787,7 @@ version = "0.1.65"
 dependencies = [
  "demi-command-declarations",
  "demi-command-package-file-protocol",
- "demi-host-interface",
+ "demi-device-interface",
  "demi-plugin-interface",
 ]
 
@@ -2805,8 +2805,8 @@ version = "0.1.65"
 dependencies = [
  "base64 0.22.1",
  "demi-command-declarations",
- "demi-host-interface",
- "demi-host-paths",
+ "demi-device-interface",
+ "demi-device-paths",
  "demi-plugin-interface",
  "demi-provider-common",
  "demi-shared-types",
@@ -2829,7 +2829,7 @@ dependencies = [
 name = "demi-plugin-image"
 version = "0.1.65"
 dependencies = [
- "demi-host-interface",
+ "demi-device-interface",
  "demi-plugin-interface",
  "demi-plugin-media",
  "demi-shared-types",
@@ -2846,8 +2846,8 @@ name = "demi-plugin-interface"
 version = "0.1.65"
 dependencies = [
  "demi-command-declarations",
- "demi-host-interface",
- "demi-host-paths",
+ "demi-device-interface",
+ "demi-device-paths",
  "demi-shared-types",
  "demi-web-api-protocol",
  "futures-util",
@@ -2864,7 +2864,7 @@ dependencies = [
 name = "demi-plugin-media"
 version = "0.1.65"
 dependencies = [
- "demi-host-interface",
+ "demi-device-interface",
  "demi-plugin-interface",
  "demi-shared-types",
  "image",
@@ -2880,7 +2880,7 @@ version = "0.1.65"
 dependencies = [
  "demi-command-declarations",
  "demi-command-package-mobile-protocol",
- "demi-host-interface",
+ "demi-device-interface",
  "demi-live-view-protocol",
  "demi-plugin-interface",
  "demi-web-api-protocol",
@@ -2896,8 +2896,8 @@ dependencies = [
 name = "demi-plugin-skills"
 version = "0.1.65"
 dependencies = [
- "demi-host-interface",
- "demi-host-paths",
+ "demi-device-interface",
+ "demi-device-paths",
  "demi-plugin-interface",
  "demi-shared-types",
  "demi-web-api-protocol",
@@ -2918,7 +2918,7 @@ dependencies = [
 name = "demi-plugin-video"
 version = "0.1.65"
 dependencies = [
- "demi-host-interface",
+ "demi-device-interface",
  "demi-plugin-interface",
  "demi-plugin-media",
  "demi-shared-types",
@@ -2935,7 +2935,7 @@ dependencies = [
  "base64 0.22.1",
  "demi-command-declarations",
  "demi-command-package-fetch-protocol",
- "demi-host-interface",
+ "demi-device-interface",
  "demi-plugin-interface",
  "eventsource-stream",
  "futures-util",
@@ -2953,7 +2953,7 @@ dependencies = [
  "demi-command-declarations",
  "demi-command-package-browser-protocol",
  "demi-command-protocol",
- "demi-host-interface",
+ "demi-device-interface",
  "demi-plugin-interface",
  "demi-shared-types",
  "entities",
@@ -3001,7 +3001,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "demi-command-package-claude-code-protocol",
- "demi-host-interface",
+ "demi-device-interface",
  "demi-provider-common",
  "demi-shared-artifacts",
  "demi-shared-types",
@@ -3216,8 +3216,8 @@ dependencies = [
  "demi-command-protocol",
  "demi-command-sdk",
  "demi-runner-command-packages",
+ "demi-runner-device",
  "demi-runner-direct",
- "demi-runner-host",
  "demi-runner-jobs",
  "demi-runner-process",
  "demi-runner-protocol",
@@ -3258,8 +3258,8 @@ dependencies = [
  "bytes",
  "demi-command-declarations",
  "demi-command-protocol",
- "demi-host-interface",
- "demi-host-paths",
+ "demi-device-interface",
+ "demi-device-paths",
  "demi-runner-protocol",
  "demi-shared-gates",
  "demi-shared-types",
@@ -3295,27 +3295,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-runner-direct"
-version = "0.1.65"
-dependencies = [
- "bytes",
- "demi-live-view-protocol",
- "demi-runner-protocol",
- "futures-util",
- "garde",
- "if-addrs",
- "serde",
- "serde_json",
- "str0m",
- "thiserror 2.0.20",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "demi-runner-host"
+name = "demi-runner-device"
 version = "0.1.65"
 dependencies = [
  "bytes",
@@ -3338,6 +3318,26 @@ dependencies = [
  "rustix",
  "serde_json",
  "sha2 0.10.9",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "demi-runner-direct"
+version = "0.1.65"
+dependencies = [
+ "bytes",
+ "demi-live-view-protocol",
+ "demi-runner-protocol",
+ "futures-util",
+ "garde",
+ "if-addrs",
+ "serde",
+ "serde_json",
+ "str0m",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -3406,7 +3406,7 @@ dependencies = [
  "bytes",
  "demi-command-declarations",
  "demi-command-protocol",
- "demi-host-paths",
+ "demi-device-paths",
  "demi-shared-types",
  "garde",
  "jiff",

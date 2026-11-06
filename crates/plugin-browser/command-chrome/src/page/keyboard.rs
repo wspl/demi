@@ -25,7 +25,7 @@ pub(crate) struct Key {
     modifier: i64,
 }
 
-/// A modifier's CDP bit on the Host executing the command.
+/// A modifier's CDP bit on the device executing the command.
 fn modifier_bit(modifier: Modifier) -> i64 {
     match modifier {
         Modifier::Alt => 1,
@@ -42,7 +42,7 @@ pub(crate) fn modifier(name: &str) -> Option<i64> {
     name.parse().ok().map(modifier_bit)
 }
 
-/// Combine schema-validated browser pointer modifiers using the Host's key mapping.
+/// Combine schema-validated browser pointer modifiers using the device's key mapping.
 pub(crate) fn modifiers(modifiers: Option<&[Modifier]>) -> i64 {
     modifiers
         .into_iter()
@@ -111,7 +111,7 @@ impl Key {
         event.key = Some(key.into());
         event.code = Some(self.code.clone());
         event.windows_virtual_key_code = Some(self.virtual_code);
-        // The vendored table contains Windows virtual codes, not Host-native
+        // The vendored table contains Windows virtual codes, not device-native
         // scan codes. Let Chrome derive its native code (on macOS 91 means "8",
         // not Meta, and supplying it can start unintended native key repeats).
         event.modifiers = Some(modifiers);
@@ -122,7 +122,7 @@ impl Key {
             event.unmodified_text = self.text.clone();
         }
         if down {
-            event.commands = editing_commands(HOST_MAC, &self.code, modifiers);
+            event.commands = editing_commands(DEVICE_MAC, &self.code, modifiers);
         }
         event
     }
@@ -132,12 +132,12 @@ const ALT: i64 = 1;
 const CONTROL: i64 = 2;
 const META: i64 = 4;
 const SHIFT: i64 = 8;
-const HOST_MAC: bool = cfg!(target_os = "macos");
+const DEVICE_MAC: bool = cfg!(target_os = "macos");
 
-/// Editing shortcuts on a macOS Host also carry Blink editing commands: CDP
+/// Editing shortcuts on a macOS device also carry Blink editing commands: CDP
 /// key events never reach the Cocoa menus that run them there.
-fn editing_commands(host_mac: bool, code: &str, modifiers: i64) -> Option<Vec<String>> {
-    if !host_mac || modifiers & (META | CONTROL | ALT) != META {
+fn editing_commands(device_mac: bool, code: &str, modifiers: i64) -> Option<Vec<String>> {
+    if !device_mac || modifiers & (META | CONTROL | ALT) != META {
         return None;
     }
     let command = match (code, modifiers & SHIFT != 0) {
@@ -165,19 +165,19 @@ pub struct ViewerKey<'a> {
     pub alt_graph: bool,
 }
 
-/// The key event the Host receives for a viewer's key.
+/// The key event the device receives for a viewer's key.
 pub fn viewer_key(key: &ViewerKey<'_>, mac_viewer: bool) -> DispatchKeyEventParams {
-    viewer_key_on(key, mac_viewer, HOST_MAC)
+    viewer_key_on(key, mac_viewer, DEVICE_MAC)
 }
 
-fn viewer_key_on(key: &ViewerKey<'_>, mac_viewer: bool, host_mac: bool) -> DispatchKeyEventParams {
+fn viewer_key_on(key: &ViewerKey<'_>, mac_viewer: bool, device_mac: bool) -> DispatchKeyEventParams {
     let mut name = key.key;
     let mut code = key.code.to_owned();
     let mut key_code = i64::from(key.key_code);
     let mut modifiers = key.modifiers;
     let mut commands = None;
     // A Mac viewer's shortcuts, as a Linux or Windows page expects them.
-    if mac_viewer && !host_mac {
+    if mac_viewer && !device_mac {
         let shift = modifiers & SHIFT;
         let meta_key = matches!(key.code, "MetaLeft" | "MetaRight");
         if modifiers & META != 0 {
@@ -247,30 +247,30 @@ fn viewer_key_on(key: &ViewerKey<'_>, mac_viewer: bool, host_mac: bool) -> Dispa
         event.unmodified_text = Some(text.into());
     }
     event.auto_repeat = Some(key.repeat);
-    event.commands = commands.or_else(|| editing_commands(host_mac, &code, modifiers));
+    event.commands = commands.or_else(|| editing_commands(device_mac, &code, modifiers));
     event
 }
 
-/// Command-click from a Mac viewer is Control-click on a Linux or Windows Host.
+/// Command-click from a Mac viewer is Control-click on a Linux or Windows device.
 pub fn click_modifiers(modifiers: i64, mac_viewer: bool) -> i64 {
-    click_modifiers_on(modifiers, mac_viewer, HOST_MAC)
+    click_modifiers_on(modifiers, mac_viewer, DEVICE_MAC)
 }
 
-fn click_modifiers_on(modifiers: i64, mac_viewer: bool, host_mac: bool) -> i64 {
-    if mac_viewer && !host_mac && modifiers & META != 0 {
+fn click_modifiers_on(modifiers: i64, mac_viewer: bool, device_mac: bool) -> i64 {
+    if mac_viewer && !device_mac && modifiers & META != 0 {
         (modifiers & !META) | CONTROL
     } else {
         modifiers
     }
 }
 
-/// The Host's paste shortcut, down then up.
+/// The device's paste shortcut, down then up.
 pub fn paste_shortcut() -> [DispatchKeyEventParams; 2] {
-    paste_shortcut_on(HOST_MAC)
+    paste_shortcut_on(DEVICE_MAC)
 }
 
-fn paste_shortcut_on(host_mac: bool) -> [DispatchKeyEventParams; 2] {
-    let modifiers = if host_mac { META } else { CONTROL };
+fn paste_shortcut_on(device_mac: bool) -> [DispatchKeyEventParams; 2] {
+    let modifiers = if device_mac { META } else { CONTROL };
     let event = |kind| {
         let mut event = DispatchKeyEventParams::new(kind);
         event.key = Some("v".into());
@@ -280,7 +280,7 @@ fn paste_shortcut_on(host_mac: bool) -> [DispatchKeyEventParams; 2] {
         event
     };
     let mut down = event(DispatchKeyEventType::RawKeyDown);
-    down.commands = editing_commands(host_mac, "KeyV", modifiers);
+    down.commands = editing_commands(device_mac, "KeyV", modifiers);
     [down, event(DispatchKeyEventType::KeyUp)]
 }
 

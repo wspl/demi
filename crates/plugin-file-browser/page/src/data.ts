@@ -1,9 +1,9 @@
 import { ref } from 'vue'
 import { z } from 'zod'
-import { definePlace, isAbsoluteHostPath, joinPath, type IntentPayloads } from '@demicodes/plugin-sdk'
+import { definePlace, isAbsoluteDevicePath, joinPath, type IntentPayloads } from '@demicodes/plugin-sdk'
 
 /**
- * What the File view shows: one file of the conversation's Host, by its
+ * What the File view shows: one file of the conversation's device, by its
  * absolute path, and the directory it was opened for. The files it showed
  * before are the web browser's history, through the page's address
  * (`filePlace`).
@@ -45,11 +45,11 @@ export type FileData = z.infer<typeof fileDataSchema>
 
 /**
  * The file the view shows for `path`, read from `root`, the directory it was
- * opened for: a full path as its Host writes it, a Windows one such as
+ * opened for: a full path as its device writes it, a Windows one such as
  * `C:\Users\alex\chart.png` included, is that file.
  */
 export function shownPath(root: string, path: string): string {
-  return isAbsoluteHostPath(path) ? path : joinPath(root, path)
+  return isAbsoluteDevicePath(path) ? path : joinPath(root, path)
 }
 
 /**

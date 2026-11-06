@@ -162,7 +162,7 @@ pub struct PipeFailure(Arc<str>);
 impl PipeFailure {
     /// Why the pipe failed, without the words that say a pipe failed: what a
     /// runner's end is answered, which its command reports as its own error
-    /// (`crates/host-interface/src/rpc.rs`).
+    /// (`crates/device-interface/src/rpc.rs`).
     pub fn reason(&self) -> &str {
         &self.0
     }

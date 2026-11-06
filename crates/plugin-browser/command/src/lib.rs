@@ -10,7 +10,7 @@
 //!
 //! ```text
 //! Agent shell call
-//!    -> Brush on the Host -> declared-command dispatcher (runner)
+//!    -> Brush on the device -> declared-command dispatcher (runner)
 //!         -> this resident: one conversation browser per conversation
 //!              -> Chrome for Testing over CDP
 //!    <- stdout, stderr, exit status -> shell result and media handling
@@ -21,13 +21,13 @@
 //! - The conversation and the invoking agent come from the command context,
 //!   which a script cannot change. A command has no `--conversation`,
 //!   `--session`, `--profile` or `--cdp-url`.
-//! - A conversation has one environment per Host where its shell runs, and a
-//!   command never reaches the one on another Host (its handle is
-//!   `tab_not_found` there). The resident does not know which role its Host
+//! - A conversation has one environment per device where its shell runs, and a
+//!   command never reaches the one on another device (its handle is
+//!   `tab_not_found` there). The resident does not know which role its device
 //!   plays; the conversation release reaches every device the conversation
 //!   used.
 //! - Isolation between conversations is a product rule, not a security boundary
-//!   against a shell on the Host.
+//!   against a shell on the device.
 //! - Refused: discovering a Chrome on `PATH`, attaching to a user's browser, a
 //!   batch language or REPL of its own (Bash composes the commands), and a
 //!   second shell or model-tool loop.
@@ -36,7 +36,7 @@
 //!
 //! # Boundaries
 //!
-//! The package is a program of its own: it hosts no runner connection, defines
+//! The package is a program of its own: it devices no runner connection, defines
 //! no part of the agent's command tree, stores no conversation, and is never
 //! linked into the runner.
 //!

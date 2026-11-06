@@ -135,7 +135,7 @@ async fn revalidated_shared_page(path: PathBuf, policy: String, request: Request
 ///
 /// The page may load the build's own scripts, styles and fonts, and
 /// connections, images and videos only from the share's routes at `public`, the
-/// backend's public URL its link names, never from what a request's `Host`
+/// backend's public URL its link names, never from what a request's `Device`
 /// says. Without a public URL, which the backend sets as it starts listening,
 /// the page reaches nothing.
 ///

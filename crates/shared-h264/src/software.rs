@@ -1,4 +1,4 @@
-//! OpenH264, Cisco's build, in software: the encoder of a Host without
+//! OpenH264, Cisco's build, in software: the encoder of a device without
 //! hardware's, and the one the tests use.
 
 use openh264::{
@@ -15,7 +15,7 @@ use crate::{Error, Picture, PixelFormat, Raw, Rate, Result, Settings};
 /// whole screen moving costs about 12 KiB a picture at a phone's size.
 const QUANTIZER: i32 = 18;
 
-/// OpenH264 in software, whatever the Host's hardware: for a Host without
+/// OpenH264 in software, whatever the device's hardware: for a device without
 /// an encoder of its own, and for tests that must code the same everywhere.
 pub fn software(settings: Settings, load: &Load) -> Result<Software> {
     Software::start(settings, load)

@@ -24,7 +24,7 @@ use crate::skill::{self, Parsed, SkipProblem};
 pub(crate) const FETCH_MAX_BYTES: usize = 64 * 1024 * 1024;
 
 /// The most bytes the files of one source's skills hold together: they are held
-/// in memory and written to the Host's disk.
+/// in memory and written to the device's disk.
 pub(crate) const FILES_MAX_BYTES: usize = 16 * 1024 * 1024;
 
 /// What gix-pack names the progress of the pack bytes it reads.

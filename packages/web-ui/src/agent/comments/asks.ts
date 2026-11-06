@@ -131,7 +131,7 @@ export interface CardTurn {
    */
   status: string | null
   answer: string
-  /** The pictures of the Host the answer shows, with their copies once it is complete. */
+  /** The pictures of the device the answer shows, with their copies once it is complete. */
   pictures?: readonly ReplyPicture[]
   streaming: boolean
   /** The user stopped the turn: the answer is what it wrote before. */

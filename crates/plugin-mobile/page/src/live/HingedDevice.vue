@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { Button, LiveActivityOverlay, observeSettledSize, touchInput, wheelInput, type HostDownload } from '@demicodes/plugin-sdk'
+import { Button, LiveActivityOverlay, observeSettledSize, touchInput, wheelInput, type DeviceDownload } from '@demicodes/plugin-sdk'
 import { quartersBetween, type DeviceSession } from './session'
 import type { LiveFold } from '../generated/plugin'
 import DeviceKeys from './DeviceKeys.vue'
@@ -37,13 +37,13 @@ const props = defineProps<{
   shown: boolean
   /** Where the page reads the file of the device's 3D body; none without one. */
   bodyUrl: string | null
-  /** What the Host downloads of the plugin's packages now. */
-  downloads: readonly HostDownload[]
+  /** What the runner downloads of the plugin's packages now. */
+  downloads: readonly DeviceDownload[]
 }>()
 
 /** The smoothing time of the spring the model follows the hinge's angle on, Device Hub's: about the time it takes to cover most of the way. */
 const MODEL_SMOOTHING = 0.25
-/** How long after the view's last move of the hinge the device's reports of the angle take over again: longer than their way back from the Host. */
+/** How long after the view's last move of the hinge the device's reports of the angle take over again: longer than their way back from the runner. */
 const ECHO_MS = 1000
 /** How near its angle, in degrees, the model is when it gets there. */
 const MODEL_ARRIVED = 0.05

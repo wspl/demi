@@ -15,9 +15,9 @@ use std::{
 
 use demi_runner_command_packages::{ProgramsKept, ResidentHandle};
 use demi_runner_direct::{Addresses, Direct};
-use demi_runner_host::{
+use demi_runner_device::{
     files,
-    host::HostServer,
+    device::DeviceServer,
     volumes::Volumes,
 };
 use demi_runner_jobs::{
@@ -49,8 +49,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::{Transport, kept::Kept};
 use crate::{
-    direct::HostOperations,
-    host_log::{self, HostLogFollower},
+    direct::DeviceOperations,
+    device_log::{self, DeviceLogFollower},
     management::{Management, Phase, Revocation},
     state::{RunnerConfig, RunnerState},
     update,
@@ -84,7 +84,7 @@ pub struct Registered {
     pub residents: ResidentHandle,
     /// What the artifact cache holds, which each connection reports
     /// (`crates/runner-command-packages/src/cache.rs`).
-    pub cached: watch::Receiver<Vec<wire::HostArtifact>>,
+    pub cached: watch::Receiver<Vec<wire::DeviceArtifact>>,
     /// What the artifact cache is downloading.
     pub downloading: watch::Receiver<Vec<demi_runner_command_packages::cache::Downloading>>,
     pub dispatcher: Arc<Dispatcher>,
@@ -92,7 +92,7 @@ pub struct Registered {
     pub index: watch::Sender<Arc<ContextIndex>>,
     pub paths: ContextPaths,
     pub pipes: PipeClient,
-    pub log: HostLogFollower,
+    pub log: DeviceLogFollower,
     /// The job root (`crates/runner-jobs/src/job_directories.rs`).
     pub jobs: PathBuf,
     /// Where each conversation has its scratch directory.
@@ -166,16 +166,16 @@ struct Owner<'r> {
     live: Live,
     /// This connection's queue of job and process output.
     output: mpsc::UnboundedSender<wire::Frame>,
-    /// This connection's queue of the Host's log lines.
+    /// This connection's queue of the device's log lines.
     log: mpsc::Sender<wire::Frame>,
-    /// The task that sends the Host's log lines, once the backend asked.
+    /// The task that sends the device's log lines, once the backend asked.
     following: Option<tokio::task::AbortHandle>,
     work: JoinSet<Work>,
-    host: HostServer,
+    device: DeviceServer,
     streams: ResidentStreams,
     volumes: Volumes,
     /// What the artifact cache holds.
-    cached: watch::Receiver<Vec<wire::HostArtifact>>,
+    cached: watch::Receiver<Vec<wire::DeviceArtifact>>,
     /// What the artifact cache is downloading.
     downloading: watch::Receiver<Vec<demi_runner_command_packages::cache::Downloading>>,
     /// Whether this connection asked the backend to revoke the device.
@@ -211,7 +211,7 @@ pub async fn serve(
         control: transport.control.clone(),
         closed: transport.cancellation(),
     };
-    let host = HostServer::new(
+    let device = DeviceServer::new(
         transport.output.clone(),
         registered.cwd.clone(),
         registered.pipes.clone(),
@@ -227,11 +227,11 @@ pub async fn serve(
     );
     let (listed, forwards) = crate::forward::forward_list();
     let inbound = crate::pairs::InboundPipes::default();
-    let operations = HostOperations {
+    let operations = DeviceOperations {
         forwards,
         pipes: inbound.clone(),
         home: registered.runner.identity.home_dir.clone(),
-        watches: host.watches().clone(),
+        watches: device.watches().clone(),
         streams: streams.opener(),
         control: tokio::runtime::Handle::current(),
         backend: transport.control.clone(),
@@ -266,7 +266,7 @@ pub async fn serve(
         following: None,
         work: JoinSet::new(),
         prefetching: None,
-        host,
+        device,
         streams,
         volumes: Volumes::new(
             registered.volumes.clone(),
@@ -386,7 +386,7 @@ impl Owner<'_> {
         self.live
             .control
             .send(frame)
-            .map_err(|_| io::Error::other("host connection closed"))
+            .map_err(|_| io::Error::other("device connection closed"))
     }
 
     /// The backend took this connection: the jobs' messages and their
@@ -400,7 +400,7 @@ impl Owner<'_> {
         for announcement in announcements {
             self.output
                 .send(announcement)
-                .map_err(|_| io::Error::other("host connection closed"))?;
+                .map_err(|_| io::Error::other("device connection closed"))?;
         }
         Ok(())
     }
@@ -499,7 +499,7 @@ impl Owner<'_> {
                 });
                 management.set_phase(Phase::Online);
                 self.online().await?;
-                // A Host paired again may hold artifacts from before.
+                // A device paired again may hold artifacts from before.
                 self.report_installed().await?;
                 self.report_downloading()?;
             }
@@ -545,7 +545,7 @@ impl Owner<'_> {
         Ok(None)
     }
 
-    /// Puts the program of each of the backend's `packages` for this Host in
+    /// Puts the program of each of the backend's `packages` for this device in
     /// the artifact cache, in the background, so that no command or view
     /// waits for its download; a connection that ends stops it, and the next
     /// one sends the packages again.
@@ -565,7 +565,7 @@ impl Owner<'_> {
 
     /// Downloads runner release `release`, whose executable `expected`
     /// describes, into the installation while the runner serves, and tells
-    /// the backend how it went; the Host log keeps a failure (`crates/runner/src/update.rs`). A connection that ends stops the download, whose
+    /// the backend how it went; the device log keeps a failure (`crates/runner/src/update.rs`). A connection that ends stops the download, whose
     /// bytes the next download resumes from.
     fn prefetch(
         &mut self,
@@ -806,10 +806,10 @@ impl Owner<'_> {
                 });
             }
             Inbound::Sync { id } => self.volumes.sync(id)?,
-            message if message.fs_request_id().is_some() => self.host.handle_filesystem(message)?,
-            message if message.git_request_id().is_some() => self.host.handle_git(message)?,
+            message if message.fs_request_id().is_some() => self.device.handle_filesystem(message)?,
+            message if message.git_request_id().is_some() => self.device.handle_git(message)?,
             Inbound::FsSubscribe { .. } | Inbound::FsUnsubscribe { .. } | Inbound::FsRenew { .. } => {
-                self.host.handle_watch(message)?
+                self.device.handle_watch(message)?
             }
             Inbound::ResidentOpen { .. } => self.streams.handle_open(message)?,
             Inbound::ResidentClose { ref stream_id } => self.streams.handle_close(stream_id),
@@ -1126,7 +1126,7 @@ impl Owner<'_> {
         self.pairing = None;
         self.device_requests = None;
         self.direct.close_all();
-        tokio::join!(self.host.close(), self.streams.close(), self.volumes.close());
+        tokio::join!(self.device.close(), self.streams.close(), self.volumes.close());
         // State writes finish, since a claimed token must not be lost, and a
         // manifest install is kept, since jobs wait for it; the other work
         // sees the connection closed and ends at once.
@@ -1140,19 +1140,19 @@ impl Owner<'_> {
     }
 }
 
-/// Sends the Host's log lines after `since`, then each new line, in frames of
+/// Sends the device's log lines after `since`, then each new line, in frames of
 /// at most [`wire::LOG_FRAME_BYTES`], until the connection ends. The lines wait
-/// in the Host's files while the frames wait for room in the queue, which the
+/// in the device's files while the frames wait for room in the queue, which the
 /// connection writes after everything else. The follow logs its start and its
 /// end, with what it sent.
 async fn follow_log(
-    follower: HostLogFollower,
+    follower: DeviceLogFollower,
     queue: mpsc::Sender<wire::Frame>,
     closed: CancellationToken,
     since: Option<u64>,
 ) {
     let started = std::time::Instant::now();
-    tracing::info!(event = "log.follow_started", since, "the backend follows the Host's log");
+    tracing::info!(event = "log.follow_started", since, "the backend follows the device's log");
     let mut sent = FollowSent::default();
     let ended = send_log(follower, queue, closed, since, &mut sent).await;
     tracing::info!(
@@ -1162,7 +1162,7 @@ async fn follow_log(
         lines = sent.lines,
         missed = sent.missed,
         ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-        "the backend's follow of the Host's log ended"
+        "the backend's follow of the device's log ended"
     );
 }
 
@@ -1176,7 +1176,7 @@ struct FollowSent {
 
 /// The follow's loop; answers how it ended.
 async fn send_log(
-    mut follower: HostLogFollower,
+    mut follower: DeviceLogFollower,
     queue: mpsc::Sender<wire::Frame>,
     closed: CancellationToken,
     since: Option<u64>,
@@ -1187,7 +1187,7 @@ async fn send_log(
         let page = match follower.read_after(cursor).await {
             Ok(page) => page,
             Err(error) => {
-                tracing::warn!(event = "log.read_failed", error = &error as &dyn std::error::Error, "the Host's log could not be read");
+                tracing::warn!(event = "log.read_failed", error = &error as &dyn std::error::Error, "the device's log could not be read");
                 return "read_failed";
             }
         };
@@ -1198,10 +1198,10 @@ async fn send_log(
             }
         }
         cursor = page.lines.last().map(|line| line.seq).or(cursor);
-        let frames = match host_log::frames(page) {
+        let frames = match device_log::frames(page) {
             Ok(frames) => frames,
             Err(error) => {
-                tracing::warn!(event = "log.frame_failed", error = &error as &dyn std::error::Error, "a frame of the Host's log could not be made");
+                tracing::warn!(event = "log.frame_failed", error = &error as &dyn std::error::Error, "a frame of the device's log could not be made");
                 return "frame_failed";
             }
         };

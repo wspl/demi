@@ -5,7 +5,7 @@
 //!
 //! - the drafts of the user's conversations and the messages they keep saved for
 //!   later;
-//! - the plugins' values and Host directories;
+//! - the plugins' values and device directories;
 //! - the files of the media jobs no call collected yet.
 //!
 //! In each of the user's conversation databases:

@@ -1,10 +1,10 @@
-//! A project's workflows on the conversation's Host.
+//! A project's workflows on the conversation's device.
 //!
 //! A workflow is a `.demi/workflows/*.yaml` file of the nearest directory that
 //! has it, from the conversation's working directory up to the root of its git
 //! repository. It is:
 //!
-//! - read through the conversation's host access, or through device access for a
+//! - read through the conversation's device access, or through device access for a
 //!   new conversation before its first message;
 //! - parsed with the one parser (`crates/agent-tools/src/workflow.rs`).
 //!
@@ -19,8 +19,8 @@
 //!   workflow applies only when the user picks it in a conversation's Workflow
 //!   menu, or allows an agent of that conversation to pick it (`demi agent
 //!   workflows use`), never because a repository holds it.
-//! - A spawn takes the workflow as its file is then, without asking the Host, so
-//!   a slow or stopped Host never holds a spawn; only a directory's first read
+//! - A spawn takes the workflow as its file is then, without asking the device, so
+//!   a slow or stopped device never holds a spawn; only a directory's first read
 //!   holds them, briefly.
 //! - A chosen workflow that no longer reads is shown as unavailable with why,
 //!   and spawns fail with that reason until the user picks another, rather than
@@ -31,16 +31,16 @@ use demi_agent_tools::{
     WORKFLOW_FILE_MAX_BYTES, WORKFLOWS_DIRECTORY, Workflow, WorkflowChild, WorkflowListing,
     WorkflowProfile, parse_workflow, workflow_id,
 };
-use demi_backend_host_access::plugin_files::ReadFilesError;
-use demi_backend_host_access::transition::ChangeRefusal;
+use demi_backend_device_access::plugin_files::ReadFilesError;
+use demi_backend_device_access::transition::ChangeRefusal;
 use std::rc::Rc;
 use std::future::Future;
 
-use demi_backend_host_access::plugin_files::look_files;
-use demi_host_interface::{Host as _, HostError};
-use demi_host_paths::HostPaths;
-use demi_host_interface::project;
-use demi_host_interface::{EntryKind, HostFile, HostRead};
+use demi_backend_device_access::plugin_files::look_files;
+use demi_device_interface::{Device as _, DeviceError};
+use demi_device_paths::DevicePaths;
+use demi_device_interface::project;
+use demi_device_interface::{EntryKind, DeviceFile, DeviceRead};
 use demi_shared_types::{ModelSelection, ReadAt, THINKING_OFF, UnavailableSetting, WorkflowChoice};
 use demi_web_api_protocol::conversations::{ConversationPatch, FieldResult, ModelSettings};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
@@ -57,7 +57,7 @@ pub(crate) struct ProjectWorkflows {
     /// The `.demi/workflows` directory they are in, or would be; none when
     /// no directory searched has a `.demi` that holds one.
     pub(crate) directory: Option<String>,
-    /// Why that directory cannot be used, as the Host could not read it; none
+    /// Why that directory cannot be used, as the device could not read it; none
     /// while it can.
     pub(crate) unavailable: Option<String>,
     /// Each file, by id.
@@ -76,7 +76,7 @@ pub(crate) struct WorkflowFile {
 }
 
 /// The directory a search was asked about is not there, or is no
-/// directory, as the Host said.
+/// directory, as the device said.
 #[derive(Debug)]
 pub(crate) struct NoDirectory;
 
@@ -148,22 +148,22 @@ impl WorkflowFile {
     }
 }
 
-/// The text of a workflow file the Host answered, read with a limit one
+/// The text of a workflow file the device answered, read with a limit one
 /// byte past [`WORKFLOW_FILE_MAX_BYTES`]: a file larger than that, by the
-/// size the Host gave or by the bytes it sent, is refused.
-pub(crate) fn workflow_text(answer: HostFile) -> Result<String, String> {
+/// size the device gave or by the bytes it sent, is refused.
+pub(crate) fn workflow_text(answer: DeviceFile) -> Result<String, String> {
     match answer {
-        HostFile::File { size, bytes }
+        DeviceFile::File { size, bytes }
             if size > WORKFLOW_FILE_MAX_BYTES || bytes.as_bytes().len() as u64 > WORKFLOW_FILE_MAX_BYTES =>
         {
             Err("the file is larger than 1 MiB".to_owned())
         }
-        HostFile::File { bytes, .. } => {
+        DeviceFile::File { bytes, .. } => {
             String::from_utf8(bytes.as_bytes().to_vec()).map_err(|_| "the file is not UTF-8 text".to_owned())
         }
-        HostFile::Unreadable { message } => Err(format!("the Host cannot read it: {message}")),
-        HostFile::Directory { .. } => Err("it is a directory".to_owned()),
-        HostFile::Missing | HostFile::Other => Err("there is no such file".to_owned()),
+        DeviceFile::Unreadable { message } => Err(format!("the device cannot read it: {message}")),
+        DeviceFile::Directory { .. } => Err("it is a directory".to_owned()),
+        DeviceFile::Missing | DeviceFile::Other => Err("there is no such file".to_owned()),
     }
 }
 
@@ -173,7 +173,7 @@ pub(crate) fn workflow_text(answer: HostFile) -> Result<String, String> {
 /// `.demi/workflows` in every directory from `cwd` up to the repository's root,
 /// and one more reads the nearest workflows directory's files.
 ///
-/// A `.demi` the Host cannot read makes that directory's workflows unavailable
+/// A `.demi` the device cannot read makes that directory's workflows unavailable
 /// rather than looked past.
 ///
 /// It watches only what its answer depends on, so that the files a home folder
@@ -184,27 +184,27 @@ pub(crate) fn workflow_text(answer: HostFile) -> Result<String, String> {
 ///   did not find, its `.demi`, or its `.demi/workflows`;
 /// - in the workflows directory, the `.yaml` entries and their contents.
 pub(crate) async fn search_workflows<E, Fut>(
-    paths: HostPaths,
+    paths: DevicePaths,
     cwd: &str,
-    read: impl Fn(Vec<HostRead>) -> Fut,
+    read: impl Fn(Vec<DeviceRead>) -> Fut,
 ) -> Result<Result<ProjectWorkflows, NoDirectory>, E>
 where
-    Fut: Future<Output = Result<(Vec<HostFile>, ReadAt), E>>,
+    Fut: Future<Output = Result<(Vec<DeviceFile>, ReadAt), E>>,
 {
     let ancestors = paths.ancestors(cwd);
     let [demi, workflows] = WORKFLOWS_DIRECTORY;
     let dot_demi = |directory: &str| paths.join(directory, demi);
     let workflows_of = |directory: &str| paths.join(&dot_demi(directory), workflows);
-    let mut reads = vec![HostRead::new(cwd.to_owned(), 0)];
+    let mut reads = vec![DeviceRead::new(cwd.to_owned(), 0)];
     reads.extend(project::root_reads(paths, &ancestors));
     for directory in &ancestors {
         for path in [dot_demi(directory), workflows_of(directory)] {
-            reads.push(HostRead::new(path, 0));
+            reads.push(DeviceRead::new(path, 0));
         }
     }
     let (found, _) = read(reads).await?;
     let (itself, found) = found.split_at(1);
-    if !matches!(itself[0], HostFile::Directory { .. }) {
+    if !matches!(itself[0], DeviceFile::Directory { .. }) {
         return Ok(Err(NoDirectory));
     }
     let (git, kept) = found.split_at(ancestors.len());
@@ -219,23 +219,23 @@ where
     for (directory, answers) in searched.iter().zip(kept.chunks(2)) {
         let unusable = |reason: String| (workflows_of(directory), Err(reason));
         match (&answers[0], &answers[1]) {
-            (HostFile::Missing | HostFile::File { .. } | HostFile::Other, _) => {
+            (DeviceFile::Missing | DeviceFile::File { .. } | DeviceFile::Other, _) => {
                 watch.push(file(dot_demi(directory)));
                 continue;
             }
-            (HostFile::Unreadable { message }, _) => {
+            (DeviceFile::Unreadable { message }, _) => {
                 watch.push(file(dot_demi(directory)));
-                nearest = Some(unusable(format!("the Host cannot read {}: {message}", dot_demi(directory))));
+                nearest = Some(unusable(format!("the device cannot read {}: {message}", dot_demi(directory))));
             }
-            (HostFile::Directory { .. }, HostFile::Missing | HostFile::File { .. } | HostFile::Other) => {
+            (DeviceFile::Directory { .. }, DeviceFile::Missing | DeviceFile::File { .. } | DeviceFile::Other) => {
                 watch.push(file(workflows_of(directory)));
                 continue;
             }
-            (HostFile::Directory { .. }, HostFile::Unreadable { message }) => {
+            (DeviceFile::Directory { .. }, DeviceFile::Unreadable { message }) => {
                 watch.push(file(workflows_of(directory)));
-                nearest = Some(unusable(format!("the Host cannot read {}: {message}", workflows_of(directory))));
+                nearest = Some(unusable(format!("the device cannot read {}: {message}", workflows_of(directory))));
             }
-            (HostFile::Directory { .. }, HostFile::Directory { entries }) => {
+            (DeviceFile::Directory { .. }, DeviceFile::Directory { entries }) => {
                 watch.push(WatchSubject {
                     kind: WatchKind::FolderDetails,
                     path: workflows_of(directory),
@@ -274,10 +274,10 @@ where
         })
         .collect();
     named.sort();
-    let reads: Vec<HostRead> = named
+    let reads: Vec<DeviceRead> = named
         .iter()
         // One byte past the largest file read, to tell a larger one.
-        .map(|(_, path)| HostRead::new(path.clone(), WORKFLOW_FILE_MAX_BYTES + 1))
+        .map(|(_, path)| DeviceRead::new(path.clone(), WORKFLOW_FILE_MAX_BYTES + 1))
         .collect();
     let mut answers = if reads.is_empty() {
         Vec::new()
@@ -288,7 +288,7 @@ where
     let files = named
         .into_iter()
         .map(|(id, path)| {
-            let read = workflow_text(answers.next().unwrap_or(HostFile::Missing))
+            let read = workflow_text(answers.next().unwrap_or(DeviceFile::Missing))
                 .and_then(|text| parse_workflow(&text).map_err(|error| error.to_string()));
             WorkflowFile { id, path, read }
         })
@@ -308,12 +308,12 @@ pub enum DeviceWorkflowsRefusal {
     Offline,
     /// The directory is not there.
     NoDirectory,
-    Host(HostError),
+    Device(DeviceError),
     Storage(demi_backend_database::StorageError),
 }
 
 /// The workflows of `directory`, the conversation `id`'s, read now through
-/// its host access in the form that never wakes its Host. A directory that
+/// its device access in the form that never wakes its device. A directory that
 /// is gone has none, and is watched for coming back.
 pub(crate) async fn search_conversation_workflows(
     shard: &Shard,
@@ -322,14 +322,14 @@ pub(crate) async fn search_conversation_workflows(
     directory: &str,
 ) -> Result<ProjectWorkflows, ReadFilesError> {
     let paths = shard
-        .host_paths(id)
+        .primary_device_paths(id)
         .await
         .map_err(|error| ReadFilesError::Access(error.into()))?;
-    let host = shard.host_shard();
+    let access = shard.device_shard();
     let cancel = CancellationToken::new();
     let cancel = &cancel;
     let found = search_workflows(paths, directory, |reads| async move {
-        host.read_files_on(id, Some(device), &reads, cancel).await
+        access.read_files_on(id, Some(device), &reads, cancel).await
     })
     .await?;
     Ok(found.unwrap_or_else(|NoDirectory| ProjectWorkflows {
@@ -347,7 +347,7 @@ pub(crate) async fn search_conversation_workflows(
 impl Shard {
     /// The workflows the shard holds for the conversation `id`'s project, or
     /// with `worktree` for the linked worktree it works in; why none are,
-    /// while it holds none, as on a Host that has not run since.
+    /// while it holds none, as on a device that has not run since.
     pub(crate) async fn project_workflows(&self, id: &ConversationId, worktree: bool) -> Result<Rc<ProjectWorkflows>, String> {
         match self.kept_workflows(id, worktree).await.map_err(|error| error.to_string())? {
             KeptWorkflows::Found(found) => Ok(found),
@@ -379,7 +379,7 @@ impl Shard {
     ) -> Result<KeptWorkflowList, DeviceWorkflowsRefusal> {
         let control = &self.services().control;
         let stored = control
-            .host_workflows(device.clone(), directory.to_owned())
+            .device_workflows(device.clone(), directory.to_owned())
             .await
             .map_err(DeviceWorkflowsRefusal::Storage)?;
         if let Some(stored) = stored {
@@ -388,16 +388,16 @@ impl Shard {
                 read_at: stored.read_at,
             });
         }
-        let host = self.devices().device_access(device).await.ok_or(DeviceWorkflowsRefusal::Offline)?;
-        let paths = host.identity().paths;
-        let host = &host;
-        let found = search_workflows(paths, directory, |reads| async move { look_files(host, &reads).await })
+        let remote = self.devices().device_access(device).await.ok_or(DeviceWorkflowsRefusal::Offline)?;
+        let paths = remote.identity().paths;
+        let remote = &remote;
+        let found = search_workflows(paths, directory, |reads| async move { look_files(remote, &reads).await })
             .await
-            .map_err(DeviceWorkflowsRefusal::Host)?
+            .map_err(DeviceWorkflowsRefusal::Device)?
             .map_err(|NoDirectory| DeviceWorkflowsRefusal::NoDirectory)?;
         let list = found.menu();
         control
-            .keep_host_workflows(device.clone(), directory.to_owned(), list.clone())
+            .keep_device_workflows(device.clone(), directory.to_owned(), list.clone())
             .await
             .map_err(DeviceWorkflowsRefusal::Storage)?;
         Ok(KeptWorkflowList::Read {
@@ -637,24 +637,24 @@ impl Shard {
     }
 
     /// The text of the file `path`, read against `directory`, on the
-    /// conversation `id`'s Host.
+    /// conversation `id`'s device.
     pub(crate) async fn workflow_file_text(
         &self,
         id: &ConversationId,
         directory: &str,
         path: &str,
     ) -> Result<String, String> {
-        let paths = self.host_paths(id).await.map_err(|error| error.to_string())?;
-        // The Host reads the path against the directory as a shell there
+        let paths = self.primary_device_paths(id).await.map_err(|error| error.to_string())?;
+        // The device reads the path against the directory as a shell there
         // does, following links before `..`.
-        let read = HostRead::new(paths.beside(directory, path), WORKFLOW_FILE_MAX_BYTES + 1);
+        let read = DeviceRead::new(paths.beside(directory, path), WORKFLOW_FILE_MAX_BYTES + 1);
         let (mut found, _) = self
-            .host_shard()
+            .device_shard()
             .read_files(id, std::slice::from_ref(&read), &CancellationToken::new())
             .await
             .map_err(|error| error.to_string())?;
         match found.pop() {
-            Some(HostFile::Missing | HostFile::Other) | None => Err(format!("no file {path}")),
+            Some(DeviceFile::Missing | DeviceFile::Other) | None => Err(format!("no file {path}")),
             Some(answer) => workflow_text(answer).map_err(|reason| format!("{path}: {reason}")),
         }
     }

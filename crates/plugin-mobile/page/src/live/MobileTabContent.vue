@@ -50,11 +50,11 @@ watch(recording, (now, was) => {
   }
 })
 /**
- * The device's model as its driver reads it: the Host's once it said, the
+ * The device's model as its driver reads it: the runner's once it said, the
  * tab's until then; none when the driver knows none.
  */
 const model = computed(() => device.model)
-/** The controls of the device's platform, the tab's until the Host says: Back on Android alone. */
+/** The controls of the device's platform, the tab's until the runner says: Back on Android alone. */
 const controls = computed(() => deviceControls(device.platform ?? props.data.platform, device.fold?.kind ?? null))
 /**
  * A device on a hinge shows in 3D with its bar, where the browser draws
@@ -65,20 +65,20 @@ const HingedDevice = defineAsyncComponent(() => import('./HingedDevice.vue'))
 const hinged = ref<{ posture(to: number): void } | null>(null)
 const hinge = computed(() => device.fold?.kind === 'hinge' && drawsWebgl() ? device.fold : null)
 
-/** Where the page reads the device's 3D body: the file on the Host, through its files. */
+/** Where the page reads the device's 3D body: the file on the runner's device, through its files. */
 const bodyUrl = computed(() => {
   const body = hinge.value?.body
   return body ? files(props.conversation).tree?.source.contents?.url(body) ?? null : null
 })
 
-/** The file a control left on the Host goes to the user's computer, as a download does. */
+/** The file a control left on the runner's device goes to the user's computer, as a download does. */
 function save(path: string | null): void {
   if (!path) {
     return
   }
   const contents = files(props.conversation).tree?.source.contents
   if (!contents) {
-    errors.report(t('failures.save'), new Error(t('failures.hostFilesUnreachable')))
+    errors.report(t('failures.save'), new Error(t('failures.deviceFilesUnreachable')))
     return
   }
   downloadUrl(contents.url(path, { download: true }))

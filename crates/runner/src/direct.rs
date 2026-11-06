@@ -3,7 +3,7 @@
 //! channels the backend introduces and authorizes.
 //!
 //! The runner carries out each channel's operation as it carries out the
-//! backend's request for the same thing (`demi_runner_host`), with the same
+//! backend's request for the same thing (`demi_runner_device`), with the same
 //! functions, limits, atomic writes and file watches. It opens a `stream` as a
 //! `resident_open`, with a `user` caller in the conversation the header names.
 //!
@@ -32,7 +32,7 @@ use demi_runner_direct::{
     Answer, ByteStream, FileRange, FileText, Listing, Operations, Scope, StreamActivity,
     StreamRequest, WatchStream,
 };
-use demi_runner_host::{
+use demi_runner_device::{
     files::{open_read, write_file},
     fs,
     search::Search,
@@ -58,10 +58,10 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 /// it without end.
 const STREAM_OUTPUT: usize = 4;
 
-/// The Host operations and resident streams of one backend connection, which
+/// The device operations and resident streams of one backend connection, which
 /// its peers' channels carry out. `Send` and `Sync`: the peers run on a
 /// thread of their own.
-pub struct HostOperations {
+pub struct DeviceOperations {
     pub home: String,
     pub watches: Watches,
     pub streams: StreamOpener,
@@ -133,13 +133,13 @@ impl Drop for ReportedStream {
     }
 }
 
-impl Operations for HostOperations {
+impl Operations for DeviceOperations {
     fn read(&self, scope: Scope, path: String, offset: u64, length: Option<u64>) -> Answer<FileRange> {
         let cancel = self.closed.clone();
         Box::pin(async move {
             let target = resolve(&scope.cwd, &path);
             // Taken before the read, as every read of what a subscription covers.
-            let read_at = demi_runner_host::numbers::read_at();
+            let read_at = demi_runner_device::numbers::read_at();
             let read = open_read(target, offset, length, None, &cancel)
                 .await
                 .map_err(|error| match error.kind() {
@@ -191,8 +191,8 @@ impl Operations for HostOperations {
     fn text(&self, scope: Scope, path: String, held: Option<String>) -> Answer<FileText> {
         let cancel = self.closed.clone();
         Box::pin(async move {
-            // Before anything is read (`crates/runner-host/src/subscriptions.rs`).
-            let read_at = demi_runner_host::numbers::read_at();
+            // Before anything is read (`crates/runner-device/src/subscriptions.rs`).
+            let read_at = demi_runner_device::numbers::read_at();
             let target = resolve(&scope.cwd, &path);
             // One byte more than the limit, so a file past it is refused
             // once that byte arrives.
@@ -236,8 +236,8 @@ impl Operations for HostOperations {
         let cancel = self.closed.clone();
         let home = self.home.clone();
         Box::pin(async move {
-            // Before anything is read (`crates/runner-host/src/subscriptions.rs`).
-            let read_at = demi_runner_host::numbers::read_at();
+            // Before anything is read (`crates/runner-device/src/subscriptions.rs`).
+            let read_at = demi_runner_device::numbers::read_at();
             let path = path.unwrap_or_else(|| scope.cwd.clone());
             let request = Inbound::FsReaddir {
                 id: String::new(),
@@ -431,14 +431,14 @@ impl Operations for HostOperations {
         Box::pin(async move {
             let (address, ended) = target.ok_or_else(|| {
                 ChannelError::new(
-                    ChannelErrorCode::HostOperationFailed,
+                    ChannelErrorCode::DeviceOperationFailed,
                     404,
-                    "This Host connects no such forward",
+                    "This device connects no such forward",
                 )
             })?;
             let tcp = demi_runner_direct::connect_target(&address, &ended)
                 .await
-                .map_err(|error| ChannelError::new(ChannelErrorCode::HostOperationFailed, 502, error.to_string()))?;
+                .map_err(|error| ChannelError::new(ChannelErrorCode::DeviceOperationFailed, 502, error.to_string()))?;
             Ok(demi_runner_direct::Forwarded { tcp, ended })
         })
     }
@@ -508,7 +508,7 @@ impl PageWatchTask {
                     };
                     match report {
                         Report::Live { id, since } => match held.subject(&id) {
-                            Some(subject) => page.live(&subject, since, demi_runner_host::numbers::epoch()),
+                            Some(subject) => page.live(&subject, since, demi_runner_device::numbers::epoch()),
                             None => Vec::new(),
                         },
                         Report::Failed { id, reason } => match held.forget(&id) {
@@ -609,7 +609,7 @@ fn failed(error: io::Error) -> ChannelError {
         FsFailure::NotFound => ChannelError::new(ChannelErrorCode::FsError, 404, error.to_string()),
         FsFailure::Forbidden => ChannelError::new(ChannelErrorCode::FsError, 403, error.to_string()),
         FsFailure::Failed => {
-            ChannelError::new(ChannelErrorCode::HostOperationFailed, 500, error.to_string())
+            ChannelError::new(ChannelErrorCode::DeviceOperationFailed, 500, error.to_string())
         }
     }
 }

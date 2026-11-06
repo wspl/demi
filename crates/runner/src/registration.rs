@@ -12,10 +12,10 @@
 //! # Reconnecting
 //!
 //! - A lost connection is retried after 250 ms, doubling up to 10 s.
-//! - A connection that went online starts that over when it ends, so a Host
+//! - A connection that went online starts that over when it ends, so a device
 //!   that was online for hours reconnects at once after a drop rather than
 //!   after the wait an earlier outage grew to.
-//! - The Host log keeps one line per distinct failure while it repeats, and one
+//! - The device log keeps one line per distinct failure while it repeats, and one
 //!   again after a connection that went online, so each drop leaves its reason
 //!   before the next *online* line.
 
@@ -24,7 +24,7 @@ use crate::connection::{self, Connected, End, Kept, Registered, Transport};
 use demi_runner_protocol::console::HANDED_OVER;
 use crate::update::{Installed, Managed, Successor};
 use crate::{
-    host_log::HostLogFollower,
+    device_log::DeviceLogFollower,
     management::{Endpoint, Management, Phase, Revocation},
     state::{ActiveRunner, RunnerConfig, RunnerState},
 };
@@ -57,8 +57,8 @@ pub struct Options {
     pub directory: PathBuf,
     /// The artifact cache (`crates/runner-command-packages/src/cache.rs`).
     pub artifacts: PathBuf,
-    /// The Host's log, which `main` opened (`crates/runner/src/host_log.rs`).
-    pub log: HostLogFollower,
+    /// The device's log, which `main` opened (`crates/runner/src/device_log.rs`).
+    pub log: DeviceLogFollower,
     /// The job root, where each shell job keeps its output under its
     /// conversation (`crates/runner-jobs/src/job_directories.rs`).
     pub jobs: PathBuf,
@@ -200,7 +200,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     tracing::info!(event = "runner.started", version = runner.version.as_str(), pid = std::process::id(), "the runner started");
     let started = std::time::Instant::now();
     // A Cloud image preinstalls the command artifacts there. The runner
-    // looks on every Host, and a paired device has nothing there; Cloud
+    // looks on every device, and a paired device has nothing there; Cloud
     // images are Linux only, so a Windows runner does not look.
     let image = cfg!(unix).then(|| PathBuf::from(ARTIFACTS_PATH));
     // A resident finds the installation, as a job does, by DEMI_HOME and
@@ -365,7 +365,7 @@ async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Endin
         let attempt_ms = began.elapsed().as_millis() as u64;
         // A connection that went online starts the retries over: its failure
         // is a new one, logged and retried after the first delay, however
-        // long ago the last failure was (`crates/runner/src/host_log.rs`).
+        // long ago the last failure was (`crates/runner/src/device_log.rs`).
         let was_online = management.phase() == Phase::Online;
         if was_online {
             failure = None;

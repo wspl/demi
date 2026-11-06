@@ -42,7 +42,7 @@ function webLink(url: string, attributes = ''): string {
 }
 
 /**
- * A link that opens a Host file through the `file` intent, at its line when it
+ * A link that opens a device file through the `file` intent, at its line when it
  * names one.
  */
 function fileLink({ path, line }: MessageFileTarget, attributes = ''): string {
@@ -70,7 +70,7 @@ function conversationLink(id: string, attributes = ''): string {
 
 /**
  * The place of the icon a message's link wears before its text, which the
- * page fills (`StreamedMarkdown`): a Host file's icon
+ * page fills (`StreamedMarkdown`): a device file's icon
  * (`data-file-icon`, by the file's name), the commit icon (`data-commit-icon`),
  * the conversation icon (`data-conversation-icon`) or a web page's link icon
  * (`data-link-icon`).
@@ -79,7 +79,7 @@ function linkIcon(attribute: string): string {
   return `<span class="message-link-icon" ${attribute} aria-hidden="true"></span>`
 }
 
-/** The icon of a Host file named `name`. */
+/** The icon of a device file named `name`. */
 function fileIcon(name: string): string {
   return linkIcon(`data-file-icon="${escapeHtml(name)}"`)
 }
@@ -337,8 +337,8 @@ function attachmentBlock(id: string, raw: string): string {
 
 /**
  * What an image of a message shows as: its URL; the copy the reply keeps of
- * the Host file it names; a placeholder while the copy is being made; or a
- * link to the Host file's path, with why it is not shown when the backend
+ * the device file it names; a placeholder while the copy is being made; or a
+ * link to the device file's path, with why it is not shown when the backend
  * could not copy it. Null shows its alt text.
  */
 type PictureSource =
@@ -368,9 +368,9 @@ function copiedPicture(copy: PictureCopy): PictureSource {
 
 /**
  * What the image `target` shows as. A reply keeps a copy of each picture of
- * the Host it shows, found by the target alone: the page's knowledge of the
- * Host's directories does not decide whether a copy shows, so a copy shows
- * where the home is not known, as on a shared page. A Host picture with no
+ * the device it shows, found by the target alone: the page's knowledge of the
+ * device's directories does not decide whether a copy shows, so a copy shows
+ * where the home is not known, as on a shared page. A device picture with no
  * copy kept is one still arriving, a placeholder, or one the reply kept no
  * answer for, such as a reply written before copies were kept, a link.
  */
@@ -396,8 +396,8 @@ function failureWords(reason: PictureFailure): string {
       return t('markdown.pictureTooLarge', { size: formatBytes(reason.size) })
     case 'not_an_image':
       return t('markdown.pictureNotAnImage', { type: reason.mediaType })
-    case 'host_unavailable':
-      return t('markdown.pictureHostUnavailable')
+    case 'device_unavailable':
+      return t('markdown.pictureDeviceUnavailable')
     case 'unreadable':
       return t('markdown.pictureUnreadable')
   }
@@ -405,7 +405,7 @@ function failureWords(reason: PictureFailure): string {
 
 /**
  * A picture the backend could not copy, or kept no copy of: the link to its
- * Host file as the reply wrote the path, and why when it is known. Inside a
+ * device file as the reply wrote the path, and why when it is known. Inside a
  * link, the words alone.
  */
 function pictureLink(target: string, reason: PictureFailure | null): string {
@@ -420,7 +420,7 @@ function pictureLink(target: string, reason: PictureFailure | null): string {
 /**
  * An agent's message: read-only task boxes, HTML shown as text but for a
  * line break, highlighted code, and links and images that reach the web or
- * the conversation's Host.
+ * the conversation's device.
  */
 const messageRenderer: RendererObject = {
   checkbox({ checked }) {
@@ -432,7 +432,7 @@ const messageRenderer: RendererObject = {
   code({ text, lang }) {
     return codeBlockHtml(text, lang ?? '')
   },
-  // Inline code that names a file the Host has, as the backend found when
+  // Inline code that names a file the device has, as the backend found when
   // the reply ended, opens it, as a link of words with the file's icon.
   codespan(token) {
     const { text } = token
@@ -488,7 +488,7 @@ const messageRenderer: RendererObject = {
   },
   image(token) {
     const source = pictureSource(token.href)
-    // A target that loads nothing is words; a Host picture whose copy is
+    // A target that loads nothing is words; a device picture whose copy is
     // being made keeps its place with its alt text in a box.
     if (source === null)
       return escapeHtml(token.text)
@@ -826,7 +826,7 @@ export function messageMedia(src: string, files: MessageFiles | undefined, pictu
 
 /**
  * `messageMedia` of the pictures a message's text names, read already, with
- * the copies `pictures` keeps of those of the Host when the text is a reply's;
+ * the copies `pictures` keeps of those of the device when the text is a reply's;
  * absent, the text is the user's.
  */
 export function referencedMedia(
@@ -841,7 +841,7 @@ export function referencedMedia(
       return medium ? [medium] : []
     }
     const name = reference.text || 'image'
-    // A picture of the Host a reply shows is the copy the reply keeps of it,
+    // A picture of the device a reply shows is the copy the reply keeps of it,
     // found by its target alone, as the page shows it.
     const copy = pictures?.get(pictureKey(reference.href))
     if (copy !== undefined) {
@@ -852,8 +852,8 @@ export function referencedMedia(
     const image = messageImage(reference.href, files)
     if (image && 'url' in image)
       return [{ kind: 'image', src: image.url, name }]
-    // Without copies the text is the user's, whose Host image is its file,
-    // which the viewer shows at the version the page keeps. A reply's Host
+    // Without copies the text is the user's, whose device image is its file,
+    // which the viewer shows at the version the page keeps. A reply's device
     // picture the backend kept no copy of shows as a link, which is no medium.
     if (image && pictures === undefined)
       return files?.contents ? [{ kind: 'image', file: { path: image.path, contents: files.contents }, name }] : []

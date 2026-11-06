@@ -4,13 +4,13 @@ import { t } from './locales/text'
 import type { OverlayStore } from '../overlay/overlayStore'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import type { Action } from '../ui/operations'
-import { projectTarget } from './project-hosts'
+import { projectTarget } from './project-devices'
 
 /**
  * The question before a project is deleted: the title names it.
  *
  * The body says that its conversations are archived (a sentence a project without
- * one leaves out) and that its files on its host stay. Delete is the danger button
+ * one leaves out) and that its files on its device stay. Delete is the danger button
  * and shows the deletion while it runs, as the project's row does.
  */
 defineProps<{
@@ -22,8 +22,8 @@ defineProps<{
   name: string
   /** How many of its conversations the deletion archives. */
   count: number
-  /** The name of the host its files are on. */
-  host: string
+  /** The name of the device its files are on. */
+  device: string
   onDelete?: Action
 }>()
 
@@ -46,7 +46,7 @@ const emit = defineEmits<{
       {{ t('deleteProject.archived', { count }, count) }}
     </p>
     <p>
-      {{ t('deleteProject.files', { host }) }}
+      {{ t('deleteProject.files', { device }) }}
     </p>
   </ConfirmDialog>
 </template>

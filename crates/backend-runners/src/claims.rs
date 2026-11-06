@@ -6,7 +6,7 @@
 //! into the user's shard. Each user may try ten codes a minute.
 //!
 //! An agent pairs a computer it reaches without the user typing the code (`demi
-//! host pair`): the code is proof enough, since it reaches only the runner's
+//! device pair`): the code is proof enough, since it reaches only the runner's
 //! output and its log, which only an account that runs commands on that
 //! computer reads, so an agent holding it already controls the computer.
 
@@ -98,7 +98,7 @@ impl PendingClaims {
     /// Pairs the runner waiting under `code`, spelled as a person types it,
     /// with `user`: the device is made, its token goes to that runner alone,
     /// and the answer is the device once the runner's socket is bound in the
-    /// user's shard. Add Device's `POST /devices/claim` and `demi host pair`
+    /// user's shard. Add Device's `POST /devices/claim` and `demi device pair`
     /// both claim this way.
     pub async fn claim(
         &self,

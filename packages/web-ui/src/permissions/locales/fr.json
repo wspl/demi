@@ -22,9 +22,7 @@
   "device": {
     "title": "Autoriser cette conversation à utiliser « {name} » ?",
     "description": "Ses agents peuvent exécuter des commandes en votre nom sur « {name} » jusqu’à ce que vous le détachiez.",
-    "use": "utiliser « {name} »"
-  },
-  "host": {
+    "use": "utiliser « {name} »",
     "pair": "jumeler un ordinateur et y accéder"
   },
   "categories": {
@@ -32,7 +30,7 @@
       "action": "utiliser vos identifiants",
       "description": "Permet aux agents de cette conversation de lister, lire, enregistrer, remplacer et supprimer vos identifiants enregistrés, et de vous en demander de nouveaux."
     },
-    "host_use": {
+    "device_use": {
       "action": "utiliser vos appareils",
       "description": "Permet aux agents de cette conversation d’exécuter des commandes en votre nom sur n’importe lequel de vos appareils et dans le cloud, de déplacer cette conversation vers l’un d’eux, de jumeler un ordinateur à votre compte, et d’ajouter ou de supprimer des redirections de port, qui subsistent après cette conversation."
     },

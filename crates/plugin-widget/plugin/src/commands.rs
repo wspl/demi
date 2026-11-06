@@ -3,7 +3,7 @@
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::PACKAGE;
-use demi_host_interface::{GroupBuilder, LeafBuilder};
+use demi_device_interface::{GroupBuilder, LeafBuilder};
 use demi_plugin_interface::{CommandPlugin, Commands, Placement, PortHandled};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -21,7 +21,7 @@ const GUIDE_SUMMARY: &str = "How to make a widget: the theme its page is drawn i
 
 const PAGE: &str = "The page, a whole HTML document of at most 1 MiB; - or none reads it from stdin.";
 
-const CREATE_SUCCESS: &str = "the widget's ID and frame, such as `w1  height 330px`, and two screenshots of it, light and dark, shown to you with the result; without the Host's browser, a line on stderr that the screenshots were skipped and how to install it";
+const CREATE_SUCCESS: &str = "the widget's ID and frame, such as `w1  height 330px`, and two screenshots of it, light and dark, shown to you with the result; without the device's browser, a line on stderr that the screenshots were skipped and how to install it";
 
 const CREATE_FAILURE: &str = "a page that is not HTML, or a frame its demi-frame meta tag declares that cannot be read, named on stderr with exit status 1";
 

@@ -1,4 +1,4 @@
-import { HostFiles, type Answered } from '@demicodes/web-ui/files/file-cache'
+import { DeviceFiles, type Answered } from '@demicodes/web-ui/files/file-cache'
 import { errorMessage } from '@demicodes/web-ui/infra/errors'
 import { keptSource, type ContentReads, type FileReads } from '@demicodes/web-ui/files/kept-source'
 import type { ReadAt, WatchChannel } from '@demicodes/web-ui/files/watch-channel'
@@ -50,14 +50,14 @@ const fileHeadersSchema = z.object({
 })
 
 /**
- * `X-Demi-Read-At: <epoch>.<number>`, the Host's number before it read.
+ * `X-Demi-Read-At: <epoch>.<number>`, the device's number before it read.
  */
 const readAtSchema = z.string().regex(/^.+\.\d+$/).transform((value): ReadAt => {
   const dot = value.lastIndexOf('.')
   return { epoch: value.slice(0, dot), number: Number(value.slice(dot + 1)) }
 })
 
-/** The Host's number an answer carries; null for one that names none, which is never current. */
+/** The Device's number an answer carries; null for one that names none, which is never current. */
 export function readAtOf(headers: Headers): ReadAt | null {
   const value = headers.get('x-demi-read-at')
   if (value === null)
@@ -89,25 +89,25 @@ function failureKind(error: ApiError): FileBrowserFailure['kind'] {
 
 /**
  * What the file views say of a failure, after their own line such as
- * “Could not read this file.” (the gallery's Writing page): the Host's own
- * reason when the Host refused or failed the operation, as the runner worded
+ * “Could not read this file.” (the gallery's Writing page): the device's own
+ * reason when the device refused or failed the operation, as the runner worded
  * it; else the page's sentence for what happened, never the backend's
  * message, which names its internals, such as a Cloud runner's reconnect
  * timeout.
  */
 function failureSentence(error: ApiError, kind: FileBrowserFailure['kind']): SentenceText {
   switch (error.code) {
-    case 'host_stopped':
+    case 'device_stopped':
     case 'cloud_resetting':
     case 'cloud_capacity':
     case 'cloud_crash_loop':
     case 'cloud_unavailable':
     case 'conversation_archived':
       return errorMessage(error)
-    // The Host's refusal comes with its runner's own words.
+    // The Device's refusal comes with its runner's own words.
     case 'fs_error':
     case 'fs_not_found':
-    case 'host_operation_failed':
+    case 'device_operation_failed':
     case 'changes_failed':
       if (error.message !== '') {
         return error.message
@@ -138,7 +138,7 @@ function failureSentence(error: ApiError, kind: FileBrowserFailure['kind']): Sen
 
 /**
  * An API failure as the file views read it, in the page's words, with the
- * file's version and the Host's number a refusal that is the Host's answer
+ * file's version and the device's number a refusal that is the device's answer
  * carries; anything else as it is.
  */
 export function fileBrowserError(error: unknown): unknown {
@@ -223,7 +223,7 @@ export interface FileRoutes {
 }
 
 /**
- * A conversation's Host file routes: its directory listing, file text and raw
+ * A conversation's device file routes: its directory listing, file text and raw
  * bytes, uploads and deletes.
  */
 export function conversationFileRoutes(conversationId: string): Required<FileRoutes> {
@@ -240,15 +240,15 @@ export function conversationFileRoutes(conversationId: string): Required<FileRou
   }
 }
 
-/** What the page keeps of each Host's files, by its device: every conversation on a Host shares it. */
-const hosts = new Map<string, HostFiles>()
+/** What the page keeps of each device's files, by its device: every conversation on a device shares it. */
+const devices = new Map<string, DeviceFiles>()
 
-/** The kept files of the Host of `deviceId`, made on first use for the page's lifetime. */
-export function hostFiles(deviceId: string): HostFiles {
-  let files = hosts.get(deviceId)
+/** The kept files of the device of `deviceId`, made on first use for the page's lifetime. */
+export function deviceFiles(deviceId: string): DeviceFiles {
+  let files = devices.get(deviceId)
   if (!files) {
-    files = new HostFiles()
-    hosts.set(deviceId, files)
+    files = new DeviceFiles()
+    devices.set(deviceId, files)
   }
   return files
 }
@@ -281,12 +281,12 @@ function linkBreak(leadsTo: LinkTarget): Pick<FileBrowserLink, 'broken'> {
   }
 }
 
-/** A listing's reader: the entries of a directory with the Host's number. */
+/** A listing's reader: the entries of a directory with the device's number. */
 type ListOne = (path: string) => Promise<Answered<FileBrowserEntry[]>>
 
 /**
  * Lists the directories asked for in one turn of the event loop as one request
- * to `endpoint`, as a path's deep ancestors are asked for together: a Host far
+ * to `endpoint`, as a path's deep ancestors are asked for together: a device far
  * away is then waited for once, not once for each level. One directory is
  * listed by `listOne`, as it would be alone, and each answers or fails as it
  * would have alone.
@@ -501,7 +501,7 @@ export interface FileSourceOptions {
    * what it keeps: a conversation's, or a device's for its folder dialog.
    * A route has one watch, so a source is made once per route.
    */
-  watch?: (files: HostFiles) => WatchChannel | null
+  watch?: (files: DeviceFiles) => WatchChannel | null
   /** Its views show sizes and times, as the folder dialogs do, which its listings then follow. */
   details?: boolean
   /** Stands other reads in for the requests, as a conversation's direct channel does. */
@@ -510,7 +510,7 @@ export interface FileSourceOptions {
 
 /**
  * The shared file browser handles paths and selection; this adapter handles
- * HTTP, over the kept files of the device's Host, which the route's watch
+ * HTTP, over the kept files of the device's Device, which the route's watch
  * keeps current.
  */
 export function fileSource(
@@ -524,7 +524,7 @@ export function fileSource(
     return cached
   }
   // Without a device nothing is listed, so nothing is kept.
-  const files = hostFiles(device?.id ?? '')
+  const files = deviceFiles(device?.id ?? '')
   const source = keptSource(through(fileReads(endpoints, device)), {
     files,
     watch: device ? watch?.(files) ?? null : null,

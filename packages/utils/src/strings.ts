@@ -58,7 +58,7 @@ export function countUnlessOne(count: number, singular: string, plural?: string)
 /**
  * `template` with each `{name}` among `values` replaced by its value, as a
  * catalogue's text is filled where no catalogue runs, such as in a service
- * worker: `fillText('Reach {host}?', { host: 'build-box' })` is `Reach
+ * worker: `fillText('Reach {device}?', { device: 'build-box' })` is `Reach
  * build-box?`. A name `values` lacks stays as it is.
  */
 export function fillText(template: string, values: Readonly<Record<string, string>>): string {

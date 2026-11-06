@@ -1,13 +1,13 @@
-//! What a complete reply says of the Host's files it names, kept with the
+//! What a complete reply says of the device's files it names, kept with the
 //! reply.
 //!
 //! When a node's text becomes complete, two questions are asked of the
-//! product, and each answer is kept with the block, so a page asks no Host:
+//! product, and each answer is kept with the block, so a page asks no device:
 //!
 //! - Which of its inline code spans that read as a path, such as
 //!   `docs/guide.md` or `src/app.rs:42`, are files: asked once, all in one
 //!   question, and kept as the block's `codeFiles`, which a page shows as
-//!   links. Nothing watches those paths afterwards: what the Host could not
+//!   links. Nothing watches those paths afterwards: what the device could not
 //!   say then stays code.
 //! - Its images that name a file, such as `![chart](out/chart.png)`: each is
 //!   copied into the conversation's attachments, in the background, and the
@@ -23,11 +23,11 @@
 //! ```text
 //! text complete ──▶ code spans that read as paths ──▶ product: which are
 //!               │                                     files, looked at
-//!               │                                     without waking the Host
+//!               │                                     without waking the device
 //!               │   ◀── block keeps `codeFiles` ◀─────┘
 //!               │
 //!               └─▶ block names its pictures `copying` as it completes
-//!                   └▶ product: copy each, in turn, from the Host the
+//!                   └▶ product: copy each, in turn, from the device the
 //!                      agent ran on
 //!                   ◀── each settles `copied` or `failed` ◀─┘
 //! ```
@@ -41,7 +41,7 @@ use std::{
 
 use comrak::{Arena, nodes::NodeValue, parse_document};
 use demi_agent_session::{AgentSession, SessionEvent, Subscription};
-use demi_agent_tools::HostResolver;
+use demi_agent_tools::DeviceResolver;
 use demi_agent_transcript::{has_scheme, markdown_options, picture_path};
 use demi_conversation_lane_protocol::TranscriptPatch;
 use demi_shared_types::{Block, BlockId, CodeFile, NodeId, PictureCopy, PictureFailure, TextBlock};
@@ -53,16 +53,16 @@ use super::NodeRuntime;
 
 /// The most paths one reply asks about.
 ///
-/// Bounded because each path costs a round trip to a Host and a reply may name
+/// Bounded because each path costs a round trip to a device and a reply may name
 /// any number of them.
 pub const CODE_PATHS_MAX: usize = 200;
 
 /// What the product says of the paths a reply names.
 pub trait ReplyFiles {
     /// Which of `paths`, each as a reply wrote it and read against `cwd`, are
-    /// regular files on the conversation `root`'s primary Host, by the path as
-    /// written, each with the path the Host names it by. It looks without
-    /// waking the Host; none when the Host could not say, as a stopped Cloud
+    /// regular files on the conversation `root`'s primary device, by the path as
+    /// written, each with the path the device names it by. It looks without
+    /// waking the device; none when the device could not say, as a stopped Cloud
     /// cannot.
     fn files<'a>(
         &'a self,
@@ -72,10 +72,10 @@ pub trait ReplyFiles {
     ) -> LocalBoxFuture<'a, Option<HashMap<String, String>>>;
 
     /// Copies the file at `path`, as `picture_path` names it and read against
-    /// `cwd`, from the Host `device` of the conversation `root` into its
+    /// `cwd`, from the device `device` of the conversation `root` into its
     /// attachments, as the reply of `node` shows it, and answers the
     /// attachment's number, such as `a3`; or why it could not be copied. The
-    /// Host is looked at without waking it, and only while it is `device`.
+    /// device is looked at without waking it, and only while it is `device`.
     fn copy_picture<'a>(
         &'a self,
         root: &'a NodeId,
@@ -214,7 +214,7 @@ struct Asked {
 /// completes which of its code spans name files and what became of the
 /// pictures it shows. Dropping the answer stops the following and every
 /// question still out.
-pub(super) fn follow<H: HostResolver>(
+pub(super) fn follow<H: DeviceResolver>(
     session: &AgentSession,
     runtime: Weak<NodeRuntime<H>>,
     files: Rc<dyn ReplyFiles>,
@@ -279,7 +279,7 @@ pub(crate) struct Following {
 /// it. A text whose spans name no path keeps nothing: it has no question,
 /// and a change of the transcript for it would only cost its pages a
 /// revision.
-async fn ask<H: HostResolver>(
+async fn ask<H: DeviceResolver>(
     text: TextBlock,
     session: demi_agent_session::WeakSession,
     runtime: Weak<NodeRuntime<H>>,
@@ -294,7 +294,7 @@ async fn ask<H: HostResolver>(
             return;
         };
         let cwd = match runtime.conversation_placement().await {
-            // The paths a child names on another Host than the conversation's
+            // The paths a child names on another device than the conversation's
             // are not the files the conversation's panels show.
             Ok(now) => match runtime.placement_at(&now) {
                 placement if placement.device == now.device => placement.directory,
@@ -334,14 +334,14 @@ fn keep(session: &demi_agent_session::WeakSession, id: &BlockId, files: Vec<Code
     }
 }
 
-/// Copies the pictures of the Host `text` shows that are still being copied,
+/// Copies the pictures of the device `text` shows that are still being copied,
 /// one after another, and settles each in the block as its copy is in.
 ///
 /// The transcript named the pictures as being copied when it completed the
 /// text, so a page that sees the complete text never takes a picture for one
-/// that was never asked for. The copies are of the Host the node works on
+/// that was never asked for. The copies are of the device the node works on
 /// when the copying starts, read against its working directory then.
-async fn copy<H: HostResolver>(
+async fn copy<H: DeviceResolver>(
     text: TextBlock,
     session: demi_agent_session::WeakSession,
     runtime: Weak<NodeRuntime<H>>,
@@ -376,7 +376,7 @@ async fn copy<H: HostResolver>(
                 "a reply's pictures were not copied"
             );
             for (target, _) in &named {
-                settle(target, PictureCopy::Failed { reason: PictureFailure::HostUnavailable });
+                settle(target, PictureCopy::Failed { reason: PictureFailure::DeviceUnavailable });
             }
             return;
         }

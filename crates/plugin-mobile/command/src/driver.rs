@@ -1,6 +1,6 @@
 //! One driver per platform, behind one interface.
 //!
-//! The interface covers the Host's simulators, boot, shutdown and erase, and
+//! The interface covers the device's simulators, boot, shutdown and erase, and
 //! for an open device its frames as H.264, its input, its UI tree, its
 //! screen's size and orientation, the apps installed and launched on it, and
 //! its log, which each driver follows into the device's [`Log`] while it is
@@ -41,7 +41,7 @@ pub enum DriverError {
 
 pub type Result<T> = std::result::Result<T, DriverError>;
 
-/// A simulator of the Host, as its platform's tools name it.
+/// A simulator of the device, as its platform's tools name it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Simulator {
     /// The `simctl` id or AVD name.
@@ -384,7 +384,7 @@ pub trait Booting: Send + Sync {
 /// A platform's simulators.
 pub trait Driver: Send + Sync + 'static {
     fn platform(&self) -> MobilePlatform;
-    /// Why this Host cannot run the platform's simulators, or none.
+    /// Why this device cannot run the platform's simulators, or none.
     fn unavailable(&self) -> Option<String>;
     fn list(&self) -> BoxFuture<'_, Result<Vec<Simulator>>>;
     /// Boots a shut-down simulator without a window, telling `booting` as
@@ -446,7 +446,7 @@ pub trait Device: Send + Sync + 'static {
     /// app in front refused it, the screen unchanged.
     fn orient(&self, orientation: Orientation) -> BoxFuture<'_, Result<()>>;
     /// The file of a hinged foldable's 3D body that Xcode installs, a USDZ
-    /// on this Host, which the view draws the device as; none where it
+    /// on this device, which the view draws the simulator as; none where it
     /// installs none.
     fn body(&self) -> Option<String> {
         None
@@ -517,7 +517,7 @@ pub trait Device: Send + Sync + 'static {
     }
 }
 
-/// A platform this Host cannot run, which says why (`crates/plugin-mobile/command/src/lib.rs`).
+/// A platform this device cannot run, which says why (`crates/plugin-mobile/command/src/lib.rs`).
 pub struct Absent {
     pub platform: MobilePlatform,
     pub reason: String,

@@ -46,8 +46,11 @@ use super::columns::{json, to_json};
 use super::contents::{self, Hash, LEVEL};
 
 /// The format of the blocks records hold (`blocks.body: transcript block
-/// format 19` in the schema). A release reads each format it knows:
+/// format 20` in the schema). A release reads each format it knows:
 ///
+/// - format 19 is format 20 that calls a device a host: in an agent message's
+///   event, in a move's refusal code, in an error's code, in a reply picture's
+///   failure and in a file reference's address ([`devices_named`]);
 /// - format 18 is format 19 with each comment's words as its `text`, where
 ///   format 19 holds its content ([`comments_contented`]);
 /// - format 17 is format 18 with entries that name no owner, all the Claude
@@ -55,7 +58,7 @@ use super::contents::{self, Hash, LEVEL};
 ///   ([`entries_owned`]);
 /// - format 16 is format 17 without the times a block's parts started and
 ///   ended, which read as null ([`times_unkept`]).
-pub(crate) const FORMAT: i64 = 19;
+pub(crate) const FORMAT: i64 = 20;
 
 /// A value of at least this many bytes is a content. A shorter one costs
 /// less inline than its marker and the lookup of its bytes.
@@ -371,6 +374,9 @@ impl<'c> Codec<'c> {
         if stored.format <= 18 {
             comments_contented(&mut value);
         }
+        if stored.format <= 19 {
+            devices_named(&mut value);
+        }
         Ok(value)
     }
 
@@ -393,6 +399,84 @@ fn times_unkept(block: &mut Value) {
         for field in unkept {
             fields.insert((*field).to_owned(), Value::Null);
         }
+    }
+}
+
+/// A block of format 19 as format 20 reads it.
+///
+/// - An `agent_message` block's `permission` or `moved` event names its
+///   device as `device`, and a `move_failed` event's refusal code says
+///   `device` where it said `host`.
+/// - An `error` block's code says `device` where it said `host`.
+/// - A reference to a file on a device, `file:///<path>?host=<name>&…`,
+///   names the device as `device`.
+/// - A reply picture that could not be copied since its device was away
+///   says `device_unavailable`.
+fn devices_named(block: &mut Value) {
+    references_named(block);
+    let renamed = |code: &mut Value| {
+        if let Value::String(text) = code
+            && let Some(rest) = text.strip_prefix("host_")
+        {
+            *text = format!("device_{rest}");
+        }
+    };
+    match block.get("type").and_then(Value::as_str) {
+        Some("agent_message") => {
+            let Some(Value::Object(event)) = block.pointer_mut("/message/event") else {
+                return;
+            };
+            match event.get("type").and_then(Value::as_str) {
+                Some("permission" | "moved") => {
+                    if let Some(host) = event.remove("host") {
+                        event.insert("device".to_owned(), host);
+                    }
+                }
+                Some("move_failed") => {
+                    if let Some(code) = event.get_mut("code") {
+                        renamed(code);
+                    }
+                }
+                _ => {}
+            }
+        }
+        Some("error") => {
+            if let Some(code) = block.get_mut("code") {
+                renamed(code);
+            }
+        }
+        Some("text") => {
+            let Some(Value::Array(pictures)) = block.get_mut("pictures") else {
+                return;
+            };
+            for picture in pictures {
+                if let Some(Value::String(kind)) = picture.pointer_mut("/copy/reason/kind")
+                    && kind == "host_unavailable"
+                {
+                    *kind = "device_unavailable".to_owned();
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Each file reference in `value`, at any depth, with its device named
+/// `device`.
+fn references_named(value: &mut Value) {
+    match value {
+        Value::Object(fields) => {
+            if fields.get("type").and_then(Value::as_str) == Some("reference")
+                && let Some(Value::String(reference)) = fields.get_mut("reference")
+                && reference.starts_with("file:")
+                && let Some(at) = reference.find("?host=")
+            {
+                reference.replace_range(at..at + "?host=".len(), "?device=");
+            }
+            fields.values_mut().for_each(references_named);
+        }
+        Value::Array(items) => items.iter_mut().for_each(references_named),
+        _ => {}
     }
 }
 

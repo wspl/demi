@@ -9,7 +9,7 @@
 //!   asked the same way;
 //! - the user's move of the conversation, which the user tells the root of;
 //! - Demi's notice that a move the agent asked for failed
-//!   (`crates/backend-host-access/src/transition.rs`).
+//!   (`crates/backend-device-access/src/transition.rs`).
 //!
 //! It is structured input, neither a human message nor the receiving agent's
 //! output. The supervisor supplies the sender from the invoking node, so a
@@ -139,11 +139,11 @@ pub enum AgentMessageEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(skip)]
         credential: Option<String>,
-        /// The host the request asked to reach, by the name it went by;
+        /// The device the request asked to reach, by the name it went by;
         /// none for a request of categories alone or a pairing.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(skip)]
-        host: Option<String>,
+        device: Option<String>,
         /// The request asked to pair a computer and reach it.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         #[garde(skip)]
@@ -152,13 +152,13 @@ pub enum AgentMessageEvent {
     /// The user's move of the conversation, which the user told the root
     /// of; the receipt row names where it now runs.
     Moved {
-        /// The Host it runs on now, by the name the user knows it by.
+        /// The device it runs on now, by the name the user knows it by.
         #[garde(length(min = 1))]
-        host: String,
+        device: String,
         /// The directory its work starts in there.
         #[garde(length(min = 1))]
         path: String,
-        /// The Host's home directory as its runner reported it, under which
+        /// The device's home directory as its runner reported it, under which
         /// the receipt shortens the path to `~`; none before it reported one.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(skip)]
@@ -166,7 +166,7 @@ pub enum AgentMessageEvent {
     },
     /// Demi's notice that a move the recipient asked for failed, which left
     /// the conversation where it was; the receipt row says `reason` after
-    /// *Move failed* (`crates/backend-host-access/src/transition.rs`).
+    /// *Move failed* (`crates/backend-device-access/src/transition.rs`).
     MoveFailed {
         /// Why, as the message's text says it: `the project no longer exists`.
         #[garde(length(min = 1))]

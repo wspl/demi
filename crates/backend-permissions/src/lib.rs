@@ -18,8 +18,8 @@
 //! the agent runtime's alike, so the check belongs to none of them. What it
 //! needs of its user's shard it reaches through [`PermissionShard`].
 //!
-//! Demi has no general permission system. An agent runs commands on its Host,
-//! edits files and opens pages without asking, because the user chose the Host
+//! Demi has no general permission system. An agent runs commands on its device,
+//! edits files and opens pages without asking, because the user chose the device
 //! and the directory. It asks only before acting on Demi itself, on what the
 //! user owns beyond the conversation. Each such power is one broad category,
 //! which the user judges once for a conversation and which covers every object
@@ -72,7 +72,7 @@
 //!   for the commands that come later.
 //!
 //! The crate decides whether a call is dispatched, and the shard dispatches it.
-//! The crate runs no handler, knows no plugin, reaches no Host and sees no
+//! The crate runs no handler, knows no plugin, reaches no device and sees no
 //! agent session and no `Shard`.
 
 use std::cell::RefCell;
@@ -90,7 +90,7 @@ use demi_backend_database::permissions::{
 };
 use demi_backend_page_sync::{Part, Revisions, UserMarks};
 use demi_command_declarations::Category;
-use demi_host_interface::{PortError, RpcError, RpcInvocation, RpcPort};
+use demi_device_interface::{PortError, RpcError, RpcInvocation, RpcPort};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, PermissionOutcome};
 use demi_web_api_protocol::credentials::{CredentialField, Keep, RequestedValues};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
@@ -842,7 +842,7 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
     let Some(decision) = request.decision else {
         return;
     };
-    let (action, categories, host) = match &request.ask {
+    let (action, categories, device_name) = match &request.ask {
         StoredAsk::Permission(category) => (category_action(&*shard, category).await, vec![category.clone()], None),
         StoredAsk::Device(device) => {
             // A name not read now names the device by its id, as a removed one.
@@ -864,7 +864,7 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
             action: action.clone(),
             categories: categories.clone(),
             credential: None,
-            host: host.clone(),
+            device: device_name.clone(),
             pairing: false,
         },
         origin: None,

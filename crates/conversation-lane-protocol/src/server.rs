@@ -19,7 +19,7 @@ use crate::{AgentEntry, CacheChart, ClientFrameKind, Followed, TranscriptPatch, 
 pub type Failures = BTreeMap<BlockId, ProviderFailureFacts>;
 
 /// An attachment of the conversation as a reply shows it
-/// (`crates/backend-host-access/src/attachment_commands.rs`): what its card
+/// (`crates/backend-device-access/src/attachment_commands.rs`): what its card
 /// or its picture needs before its bytes. It never changes.
 ///
 /// A frame or a page that carries blocks carries the attachments their texts
@@ -56,7 +56,7 @@ pub struct ConversationAttachment {
     pub blob: BlobRef,
     /// The file the agent uploaded it from, which a card of a file that is no
     /// image or video opens in the Files panel in the copy's place while the
-    /// conversation's Host is that device, online, and has the file;
+    /// conversation's device is that device, online, and has the file;
     /// absent for a file the user sent, for an upload stored before uploads
     /// kept it, and on a share.
     #[serde(
@@ -86,13 +86,13 @@ pub struct ReplyBlockFacts {
     pub facts: serde_json::Value,
 }
 
-/// The file of a Host an attachment was uploaded from.
+/// The file of a device an attachment was uploaded from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AttachmentSourceDto {
     /// The device whose runner ran the upload.
-    pub host: DeviceId,
-    /// The file's full path, as that Host writes it, such as
+    pub device: DeviceId,
+    /// The file's full path, as that device writes it, such as
     /// `/Users/alex/shop/chart.png` or `C:\Users\alex\shop\chart.png`.
     pub path: String,
 }
@@ -553,7 +553,7 @@ serde_plain::derive_display_from_serialize!(JobPhase);
 serde_plain::derive_fromstr_from_deserialize!(JobPhase);
 
 /// Where a command is, with the pages' view of it: running, and whether a
-/// stop waits for its runner's word or its start for its Host, exited with its code, stopped, or lost
+/// stop waits for its runner's word or its start for its device, exited with its code, stopped, or lost
 /// with why.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
@@ -572,7 +572,7 @@ pub enum ShellStatus {
         #[garde(skip)]
         stopping: bool,
         /// The name of the paired device whose runner its start waits for
-        /// (`crates/backend-host-access/src/access.rs`): the pages show
+        /// (`crates/backend-device-access/src/access.rs`): the pages show
         /// *Waiting for MacBook Pro*. Present only then.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(skip)]

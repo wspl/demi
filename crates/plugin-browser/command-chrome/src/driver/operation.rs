@@ -113,7 +113,7 @@ pub enum BrowserError {
     #[error("{0}")]
     CaptureStopped(String),
     /// Chrome for Testing or the Chrome runtime could not be installed, or
-    /// the Host lacks them.
+    /// the device lacks them.
     #[error("{0}")]
     Installation(String),
     #[error("{source}")]

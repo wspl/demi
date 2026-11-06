@@ -33,8 +33,8 @@ import { usePluginSettings } from '../settings/plugins'
  * - Its calls, over the plugin call routes. These calls and the states' reads
  *   wait in the HTTP client while the backend cannot be reached.
  * - Its user streams.
- * - What a conversation's primary Host holds of its packages, from that
- *   device's in the product state, and whether that Host is a Cloud that does
+ * - What a conversation's primary device holds of its packages, from that
+ *   device's in the product state, and whether that device is a Cloud that does
  *   not run, from the Cloud's state there.
  * - The shell's own services: the conversations' files, intents and panels, and
  *   the settings dialog.
@@ -79,8 +79,8 @@ export function productPageHost(): PageHost {
   const workspaces = useWorkspaces()
   const conversations = useConversations()
   const states = usePluginStates()
-  /** `conversation`'s primary Host and `plugin`'s packages, once the product state names both. */
-  function primaryHost(plugin: string, conversation: string) {
+  /** `conversation`'s primary device and `plugin`'s packages, once the product state names both. */
+  function primaryDevice(plugin: string, conversation: string) {
     const state = product.snapshot
     const listed = conversations.items.find((entry) => entry.id === conversation && entry.persistence === 'synced')
     if (!state || !listed) {
@@ -132,14 +132,14 @@ export function productPageHost(): PageHost {
       return directStream(() => directRoute(conversation), name, userStreamOf(conversation, name))
     },
     installed(plugin, conversation) {
-      const host = primaryHost(plugin, conversation)
+      const host = primaryDevice(plugin, conversation)
       return host ? packageInstalled(product.snapshot, host.deviceId, host.packages) : []
     },
     downloading(plugin, conversation) {
-      const host = primaryHost(plugin, conversation)
+      const host = primaryDevice(plugin, conversation)
       return host ? packageDownloading(product.snapshot, host.deviceId, host.packages) : []
     },
-    hostStarting(conversation) {
+    deviceStarting(conversation) {
       const state = product.snapshot
       const listed = conversations.items.find((entry) => entry.id === conversation)
       return !!state && !!listed && executionFor(listed).kind === 'cloud' && state.cloud !== undefined && state.cloud.state !== 'running'

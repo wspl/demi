@@ -130,7 +130,7 @@ pub trait Capture: Send + 'static {
 /// Why a capture did not start.
 #[derive(Debug)]
 pub enum StartError {
-    /// This Host cannot capture the source, for this reason; waiting
+    /// This device cannot capture the source, for this reason; waiting
     /// changes nothing.
     Unavailable(String),
     /// Captures stopped for this reason until a viewer asks again, which
@@ -160,7 +160,7 @@ pub trait Source: Send + 'static {
     /// hear with each generation, such as a browser tab's viewport.
     type Layout: Clone + PartialEq + Send + Sync + 'static;
 
-    /// Names the source in the Host's log.
+    /// Names the source in the device's log.
     fn name(&self) -> String;
     /// Cancelled once the source is gone; the stream ends with it.
     fn ended(&self) -> CancellationToken;
@@ -204,7 +204,7 @@ pub enum Event<L> {
         sequence: u32,
     },
     Frame(EncodedFrame),
-    /// This Host cannot capture, for this reason.
+    /// This device cannot capture, for this reason.
     Unavailable(String),
     /// The capture failed for this reason; the stream tries again.
     Failed(String),
@@ -573,7 +573,7 @@ async fn run<S: Source>(
                 }
                 // The source changed meanwhile, which wakes the loop.
                 Ok(None) => {}
-                // Waiting changes nothing on a Host that cannot capture.
+                // Waiting changes nothing on a device that cannot capture.
                 Err(StartError::Unavailable(reason)) => {
                     for viewer in viewers.values() {
                         let _behind = viewer.events.try_send(Event::Unavailable(reason.clone()));

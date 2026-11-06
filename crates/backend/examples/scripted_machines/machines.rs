@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::runner::{RunnerProcess, RunnerProcessOptions, runner_binary};
-use demi_host_interface::SpawnEnv;
+use demi_device_interface::SpawnEnv;
 use demi_machine_manager_protocol::{
     BaseVersion, Enforces, GenerationId, Isolation, MachineCall, MachineImageState, MachineResponse, Offer, RuntimeOffer,
     RuntimeState, WIRE_VERSION, decode_request, encode_line,

@@ -31,9 +31,9 @@ pub const MAX_REDIRECTS: usize = 10;
 /// whole in memory, and a server may send without end.
 pub const MAX_TEXT_BYTES: u64 = 10 * 1024 * 1024;
 /// The largest body saved as a file, bounded for the same reason and by the
-/// Host's disk.
+/// device's disk.
 pub const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
-/// How long a fetched page is kept on the Host, in seconds.
+/// How long a fetched page is kept on the device, in seconds.
 pub const CACHE_SECONDS: u64 = 15 * 60;
 
 /// Why an invocation could not be decoded.
@@ -47,7 +47,7 @@ pub enum OperationError {
     Invalid(#[from] DecodeError),
 }
 
-/// `fetch.get`: reads a URL from the Host and prints one part of it.
+/// `fetch.get`: reads a URL from the device and prints one part of it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct FetchArgs {
@@ -146,7 +146,7 @@ pub struct FetchedPage {
     pub next: Option<String>,
 }
 
-/// A body that is no text, saved on the Host.
+/// A body that is no text, saved on the device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FetchedFile {

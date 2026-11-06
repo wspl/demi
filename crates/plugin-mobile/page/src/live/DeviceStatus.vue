@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RegionStatus, type HostDownload } from '@demicodes/plugin-sdk'
+import { RegionStatus, type DeviceDownload } from '@demicodes/plugin-sdk'
 import { deviceStatus, type ShownPictures } from './status'
 import { t } from '../locales/text'
 
@@ -11,7 +11,7 @@ import { t } from '../locales/text'
  */
 const props = defineProps<{
   session: ShownPictures
-  downloads: readonly HostDownload[]
+  downloads: readonly DeviceDownload[]
   /** Whether the view says the wait on the device's screen itself. */
   waitOnScreen: boolean
 }>()

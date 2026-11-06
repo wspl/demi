@@ -1,6 +1,6 @@
 /**
  * A plugin's user stream as a page holds it: bytes both ways between the page and
- * the plugin's package on the conversation's Host, over a lane of the page connection,
+ * the plugin's package on the conversation's device, over a lane of the page connection,
  * the direct channel or a gallery's fixture.
  *
  * What the bytes mean is the plugin's own protocol.
@@ -15,7 +15,7 @@ export interface UserStream {
   /**
    * Whether anyone watches the stream now, as the user stream's own layer says
    * it beside the plugin's bytes (`StreamWatched`): a stream starts watched,
-   * and one kept open unwatched keeps no conversation, Host or Cloud active.
+   * and one kept open unwatched keeps no conversation, device or Cloud active.
    */
   watched(watched: boolean): void
   close(): void

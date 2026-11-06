@@ -3,8 +3,8 @@
 //! conversation's user, and holds no browser logic.
 //!
 //! The tab list is the plugin's conversation state: what the browser package
-//! last reported, which the backend keeps, so reading it asks no Host and
-//! works while the Host is away. Closing, moving and stopping a tab operate the browser without
+//! last reported, which the backend keeps, so reading it asks no device and
+//! works while the device is away. Closing, moving and stopping a tab operate the browser without
 //! waking it; opening a tab is work the user starts. Opening and closing
 //! browser tabs for panel tabs is the panel's work ([`crate::panel`]), through
 //! the same operations.
@@ -18,7 +18,7 @@
 //!   no `stop`.
 //! - A method that does not wake a stopped Cloud is admitted as a user stream
 //!   is and ends as one does (`conversation_busy` when streams end).
-//! - The reasons the methods, stream and host access can give are one closed
+//! - The reasons the methods, stream and device access can give are one closed
 //!   set ([`PanelReason`]) that the page must cover whole, so a reason without
 //!   a sentence is a build error, never a fallback.
 
@@ -140,7 +140,7 @@ pub(crate) fn page() -> Page {
 
 /// The conversation state: the browser's tabs as its package last reported
 /// them, which the backend keeps; none while it never reported or its browser
-/// does not run. It asks no Host.
+/// does not run. It asks no device.
 pub(crate) async fn tabs(port: &PluginPort) -> Result<Value, PluginError> {
     to_value(reported(port).await?.unwrap_or(BrowserTabs { tabs: Vec::new() }))
 }
@@ -161,7 +161,7 @@ async fn reported(port: &PluginPort) -> Result<Option<BrowserTabs>, PluginError>
 }
 
 /// Keeps `tabs` as what the package on `device` reported, at `revision`;
-/// answers whether `device` is the conversation's primary Host, whose tabs
+/// answers whether `device` is the conversation's primary device, whose tabs
 /// its panel shows.
 pub(crate) async fn keep(
     port: &PluginPort,
@@ -219,7 +219,7 @@ pub(crate) async fn navigate(
 
 /// Answers the page call `method` with `params`, which its schema checked,
 /// for `conversation`. A method that opens, closes or moves a tab changes
-/// the list the Host tells the plugin of: the held list and the pages' copies
+/// the list the device tells the plugin of: the held list and the pages' copies
 /// follow that notice (`Work::sync`), never the call.
 pub(crate) async fn call(
     method: &str,
@@ -318,7 +318,7 @@ async fn run<T: DeserializeOwned, I: Serialize>(
 
 /// What a user's navigation of one tab answers: the number of the last tab
 /// list before it started, or its refusal; a stopped Cloud is refused as
-/// `host_stopped`, never woken.
+/// `device_stopped`, never woken.
 fn moved(navigated: Result<NavigationResult, PortFailure>) -> Result<TabMoved, PluginError> {
     let navigated = navigated.map_err(refused)?;
     let list = navigated.list.ok_or_else(|| {
@@ -341,8 +341,8 @@ fn refusal(reason: PanelReason, message: String) -> PluginError {
 fn stopped(failure: &PortFailure) -> bool {
     matches!(
         failure,
-        PortFailure::Refused(PortRefusal::Host {
-            code: ErrorCode::HostStopped,
+        PortFailure::Refused(PortRefusal::Device {
+            code: ErrorCode::DeviceStopped,
             ..
         })
     )
@@ -363,8 +363,8 @@ fn browser_failure(failure: &PortFailure) -> Option<FailureDocument> {
 }
 
 /// A failed call as the page sees it: the browser's refusal under its own
-/// code; a browser whose resident did not start on the Host as
-/// `browser_unavailable`, with the runner's words; or the host access's
+/// code; a browser whose resident did not start on the device as
+/// `browser_unavailable`, with the runner's words; or the device access's
 /// refusal, which passes on.
 fn refused(failure: PortFailure) -> PluginError {
     if let Some(document) = browser_failure(&failure) {

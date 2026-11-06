@@ -17,7 +17,7 @@
 use std::rc::Rc;
 
 use demi_backend_database::usage::UsageWritten;
-use demi_backend_host_access::root_of;
+use demi_backend_device_access::root_of;
 use demi_backend_page_sync::Part;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::RecvError;

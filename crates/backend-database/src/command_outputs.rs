@@ -12,7 +12,7 @@
 //! A row is written once when its command ends, or copied into a Fork's
 //! destination, and never changes.
 
-use demi_host_interface::{CommandMedium, Missing};
+use demi_device_interface::{CommandMedium, Missing};
 use demi_shared_types::{BlobRef, Block, CommandEnd, CommandId, Timestamp, ToolView};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};

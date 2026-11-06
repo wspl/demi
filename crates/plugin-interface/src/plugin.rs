@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use demi_command_declarations::Node;
-use demi_host_interface::{
+use demi_device_interface::{
     CommandSet, GroupBuilder, RegisterError, RpcError, RpcHandler, RpcInvocation, RpcPort,
 };
 use futures_util::future::LocalBoxFuture;

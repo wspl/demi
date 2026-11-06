@@ -33,7 +33,7 @@
 //!
 //! These builtins, `timeout` and `nohup` are the job's on Windows too, never a
 //! program of the same name there (`timeout.exe` waits for a key press, Git's
-//! `kill.exe` knows no task id, and a Host without Git has no `nohup`).
+//! `kill.exe` knows no task id, and a device without Git has no `nohup`).
 //!
 //! - Windows has no signals, so `kill` and `timeout` end what they would signal
 //!   and report 128 plus the Linux number, which a script tests as on Linux.

@@ -124,7 +124,7 @@ pub(super) enum FromShell {
     },
     /// What the job left running has ended.
     Released,
-    /// A line for the Host's log (`demi_command_sdk::log_lines_to`).
+    /// A line for the device's log (`demi_command_sdk::log_lines_to`).
     Log { line: String },
     /// Signal background task `task`, which this shell's job's `kill` names
     /// and another job started: the runner asks every other shell.

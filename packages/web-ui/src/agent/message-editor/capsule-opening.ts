@@ -4,8 +4,8 @@ import { useMessageFiles } from '../../markdown/message-files'
 /**
  * What a click on an attached file's capsule in the conversation does, for a
  * file that is no picture or video, which the page's viewer shows instead: a
- * file on the conversation's Host opens through the `file` intent, where a
- * plugin opens it. `path` is where the file is, none for a file the Host does
+ * file on the conversation's device opens through the `file` intent, where a
+ * plugin opens it. `path` is where the file is, none for a file the device does
  * not hold; a composer opens nothing.
  */
 export function useCapsuleOpening(editable: () => boolean, path: () => string | null | undefined): {

@@ -18,7 +18,7 @@ import CodeBlockCopy from '../markdown/CodeBlockCopy.vue'
 const props = defineProps<{
   text: string
   place: DocumentPlace
-  /** The Host's files, which the document's images show as the Host has them now. */
+  /** The Device's files, which the document's images show as the device has them now. */
   contents?: FileContents
   /** Counts the times the document was read again; each time, the images that did not load try again. */
   reloads?: number
@@ -74,7 +74,7 @@ function follow(event: MouseEvent): void {
 const { onError: onImageError, reload } = useDocumentImages({
   root: () => root.value,
   html: () => html.value,
-  hostFiles: () => rendered.value.hostFiles,
+  deviceFiles: () => rendered.value.deviceFiles,
   contents: () => props.contents,
 })
 watch(() => props.reloads, reload)

@@ -11,7 +11,7 @@ import { heldAccount, holds, setOwner } from './account-owner'
  * - IndexedDB `demi-offline`: the offline copy, the conversations, their nodes
  *   and blocks (`./offline`).
  * - IndexedDB `demi-drafts`: the drafts, by account (`../conversation/drafts`).
- * - IndexedDB `demi-plugin-cache`: what the plugins kept of the account's Hosts.
+ * - IndexedDB `demi-plugin-cache`: what the plugins kept of the account's devices.
  * - `localStorage`: the folded projects (`demi.preferences.<account>`), a
  *   draft's last words (`demi.draft.<account>.<conversation>`), and the
  *   devices' measured paths and last directories (`demi.deviceMeasured.*`,

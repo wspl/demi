@@ -15,7 +15,7 @@ use demi_backend_database::devices::{DeviceChange, DeviceRecord};
 use demi_web_api_protocol::text::Trimmed;
 use demi_backend_runners::claims::ClaimRefusal;
 use demi_backend_runners::files::browse_directory;
-use demi_host_interface::{HostError, HostErrorKind, MkdirOptions};
+use demi_device_interface::{DeviceError, DeviceErrorKind, MkdirOptions};
 use demi_web_api_protocol::devices::{
     ChangeDevice, Claim, DeviceAnswer, DeviceKind,
     Devices, RevokedDevice,
@@ -127,7 +127,7 @@ pub(super) async fn revoke(
 }
 
 /// A directory of a paired device, its home when the query names none,
-/// with the Host's number before it listed, as the folder dialog's watch
+/// with the device's number before it listed, as the folder dialog's watch
 /// compares it.
 pub(super) async fn browse(
     State(state): State<AppState>,
@@ -141,7 +141,7 @@ pub(super) async fn browse(
         .shards
         .of(&user.id)
         .call(move |shard, _| async move {
-            let host = shard
+            let remote = shard
                 .devices()
                 .device_access(&device.id)
                 .await
@@ -150,7 +150,7 @@ pub(super) async fn browse(
             let path = requested
                 .or_else(|| home.clone())
                 .ok_or_else(|| ApiError::invalid_query("Missing path query parameter"))?;
-            let (entries, read_at) = browse_directory(&host, &path)
+            let (entries, read_at) = browse_directory(&remote, &path)
                 .await
                 .map_err(device_fs_error)?;
             let directory = Directory {
@@ -195,7 +195,7 @@ pub(super) async fn workflows(
                         ErrorCode::FsNotFound,
                         "No such directory on the device",
                     ),
-                    DeviceWorkflowsRefusal::Host(error) => device_fs_error(error),
+                    DeviceWorkflowsRefusal::Device(error) => device_fs_error(error),
                     DeviceWorkflowsRefusal::Storage(error) => ApiError::from(error),
                 })
         })
@@ -216,13 +216,13 @@ pub(super) async fn make_directory(
         .shards
         .of(&user.id)
         .call(move |shard, _| async move {
-            let host = shard
+            let device = shard
                 .devices()
                 .device_access(&device.id)
                 .await
                 .ok_or_else(ApiError::device_offline)?;
             let recursive = MkdirOptions { recursive: true };
-            demi_host_interface::HostFs::mkdir(&host, &path, recursive)
+            demi_device_interface::DeviceFs::mkdir(&device, &path, recursive)
                 .await
                 .map_err(device_fs_error)?;
             Ok::<_, ApiError>(CreatedDirectory { path })
@@ -245,10 +245,10 @@ pub(super) async fn owned_device(
         .device(id)
         .await?
         .ok_or_else(device_not_found)?;
-    if !device.is_host_of(user) || kind.is_some_and(|kind| kind != device.kind) {
+    if !device.is_device_of(user) || kind.is_some_and(|kind| kind != device.kind) {
         return Err(device_not_found());
     }
-    tracing::Span::current().record("host_id", tracing::field::display(&device.id));
+    tracing::Span::current().record("device_id", tracing::field::display(&device.id));
     Ok(device)
 }
 
@@ -262,9 +262,9 @@ fn device_not_found() -> ApiError {
 
 /// A device route's filesystem failure: nothing at the path answers 404,
 /// anything else the device refused 400.
-fn device_fs_error(error: HostError) -> ApiError {
+fn device_fs_error(error: DeviceError) -> ApiError {
     match error.kind {
-        HostErrorKind::Offline => ApiError::device_offline(),
+        DeviceErrorKind::Offline => ApiError::device_offline(),
         _ if error.code() == Some("ENOENT") => {
             let gone = ApiError::new(StatusCode::NOT_FOUND, ErrorCode::FsError, error.message);
             // Nothing there is an answer, read at a number like any other.

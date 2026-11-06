@@ -270,7 +270,7 @@ export function useGalleryWork(
   const host = galleryPageHost({ browser: browserPlugin(browser, plugin), mobile: mobile.plugin, widget: galleryWidgets }, {
     files,
     enabled,
-    hostStarting: () => browser.hostStarting.value,
+    deviceStarting: () => browser.deviceStarting.value,
     intents: {
       open: (_conversation, request) => openIn(request),
       canOpen: (intent) => intentKind(shown, enabled, intent) !== null,
@@ -289,7 +289,7 @@ export function useGalleryWork(
   /**
    * Turns `plugin` on or off while the panel is open, as the user does in
    * Settings: turned off, the backend closes its kinds' tabs in the panel and
-   * releases what its packages hold on the Host, such as the browser, and the
+   * releases what its packages hold on the device, such as the browser, and the
    * shell disposes its stores; the other plugins' tabs and stores stay.
    */
   function setEnabled(pluginId: string, on: boolean) {
@@ -301,7 +301,7 @@ export function useGalleryWork(
     const owned = new Set(shown.find((page) => page.plugin === pluginId)?.kinds?.map((kind) => kind.kind) ?? [])
     for (const tab of tabs.tabs.value.filter((entry) => owned.has(entry.kind))) {
       if (tab.kind === 'mobile') {
-        // Its package closes the simulator, as the release of the plugin's Host resources does.
+        // Its package closes the simulator, as the release of the plugin's device resources does.
         mobile.removed(tab)
       }
       backend.apply({ type: 'remove', id: tab.id })

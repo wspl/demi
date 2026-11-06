@@ -13,7 +13,7 @@
 //! - The browser's toolbar and address-bar WebUI are disabled: they are not
 //!   agent pages and must not consume renderers.
 //! - Time zone, languages and color scheme are the user's, taken from the
-//!   starting invocation's command context, not the Host's, which differs
+//!   starting invocation's command context, not the device's, which differs
 //!   between devices. They apply to the whole browser as it starts, so every
 //!   page, worker and request has them from its first byte, and a running
 //!   browser keeps them.
@@ -53,7 +53,7 @@ pub struct Runtime {
 }
 
 /// The variable Chrome does not inherit with the runtime: it names more of
-/// the Host's GIO modules, which `GIO_MODULE_DIR` does not replace.
+/// the device's GIO modules, which `GIO_MODULE_DIR` does not replace.
 const GIO_EXTRA_MODULES: &str = "GIO_EXTRA_MODULES";
 
 impl Runtime {
@@ -70,8 +70,8 @@ impl Runtime {
     }
 
     /// Chrome's environment with the runtime: its libraries before the
-    /// Host's, its fonts, and neither the Host's crypto policy nor its GIO
-    /// modules, which are built for the Host's newer libraries.
+    /// device's, its fonts, and neither the device's crypto policy nor its GIO
+    /// modules, which are built for the device's newer libraries.
     pub fn environment(&self) -> Vec<(String, String)> {
         let path = |path: &Path| path.to_string_lossy().into_owned();
         vec![
@@ -92,7 +92,7 @@ impl Runtime {
 /// They are chromiumoxide's defaults without `enable-automation` and `lang`,
 /// headless without hidden scrollbars, in the user's color scheme.
 ///
-/// With the runtime, a desktop Host's audio plugins would load beside its older
+/// With the runtime, a desktop device's audio plugins would load beside its older
 /// libraries, and the live view carries no sound: Chrome has no audio output.
 fn switches(
     version: &str,
@@ -159,7 +159,7 @@ fn switches(
 /// Blink's settings for every page and worker, which Chrome takes from its last
 /// `blink-settings` switch only.
 ///
-/// - The preferred color scheme is the user's, whatever the Host's appearance.
+/// - The preferred color scheme is the user's, whatever the device's appearance.
 ///   `prefers-color-scheme` follows it, and Chrome paints an empty page in it,
 ///   `#121212` in the dark one (measured with the pinned Chrome on a dark Mac
 ///   told to be light, and the other way round).
@@ -186,7 +186,7 @@ fn major(version: &str) -> &str {
     version.split('.').next().unwrap_or(version)
 }
 
-/// The standard user agent of Chrome on the Host's platform, without the
+/// The standard user agent of Chrome on the device's platform, without the
 /// headless token; Chrome reports only the major version and a fixed platform.
 fn desktop_user_agent(version: &str) -> String {
     let platform = if cfg!(target_os = "macos") {
@@ -207,7 +207,7 @@ fn desktop_user_agent(version: &str) -> String {
 ///
 /// The extension dials `capture` and encodes with the live protocol's codec.
 ///
-/// With `runtime`, which a Linux Host starts Chrome with, Chrome finds the
+/// With `runtime`, which a Linux device starts Chrome with, Chrome finds the
 /// runtime through its own environment and runs without its sandbox. The
 /// sandbox needs user namespaces, which Ubuntu restricts, and Chrome refuses it
 /// as root.
@@ -317,7 +317,7 @@ pub fn drawing(
 /// Chrome's environment: the time zone every renderer uses, on Linux the
 /// locale that sets a page's default formats, and the runtime's variables.
 /// They are Chrome's alone: set for the runner, the runtime's libraries
-/// would load into the Host's own programs.
+/// would load into the device's own programs.
 fn environment(locale: &CommandLocale, runtime: Option<&Runtime>) -> Vec<(String, String)> {
     let mut environment = vec![("TZ".to_owned(), locale.time_zone.clone())];
     if let Some(runtime) = runtime {
@@ -327,7 +327,7 @@ fn environment(locale: &CommandLocale, runtime: Option<&Runtime>) -> Vec<(String
         && let Some(language) = locale.languages.first()
     {
         let system_locale = format!("{}.UTF-8", language.replace('-', "_"));
-        // An inherited LC_ALL or LANGUAGE overrides LANG on paired Linux Hosts.
+        // An inherited LC_ALL or LANGUAGE overrides LANG on paired Linux devices.
         environment.push(("LANG".to_owned(), system_locale.clone()));
         environment.push(("LC_ALL".to_owned(), system_locale));
         environment.push(("LANGUAGE".to_owned(), locale.languages.join(":")));

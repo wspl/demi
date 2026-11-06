@@ -380,10 +380,10 @@ export class Conversation {
   }
 
   /**
-   * The user moved the conversation to `host`, where its work starts in
+   * The user moved the conversation to `device`, where its work starts in
    * `path`: the agent hears of it, and the transcript says where it runs now.
    */
-  moved(host: string, path: string, home: string): void {
+  moved(device: string, path: string, home: string): void {
     const at = this.now()
     this.append({
       type: 'agent_message',
@@ -391,7 +391,7 @@ export class Conversation {
       turnId: this.id('turn'),
       createdAt: at,
       model: MODEL,
-      message: { id: `moved:${this.serial}`, recipientId: this.state.id, timestamp: at, content: '', event: { type: 'moved', host, path, home } },
+      message: { id: `moved:${this.serial}`, recipientId: this.state.id, timestamp: at, content: '', event: { type: 'moved', device, path, home } },
     } as Block)
     this.state.cwd = path
   }

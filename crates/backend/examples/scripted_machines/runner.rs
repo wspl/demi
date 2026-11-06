@@ -8,7 +8,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use demi_command_protocol::testing::{BUILD_PROGRAMS, built_program};
-use demi_host_interface::SpawnEnv;
+use demi_device_interface::SpawnEnv;
 use tokio::process::Child;
 
 /// The `demi-runner` the workspace built beside this example.

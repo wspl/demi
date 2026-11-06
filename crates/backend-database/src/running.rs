@@ -1,7 +1,7 @@
 //! The records of commands that run.
 //!
 //! - The conversation's `running_commands` row of each, written when its job
-//!   starts, or as not yet sent while its start waits for its Host, and deleted in
+//!   starts, or as not yet sent while its start waits for its device, and deleted in
 //!   the transaction that writes its `command_outputs` row.
 //! - The control database's `running_jobs` index of their jobs by device, written
 //!   before each job starts and deleted with its command's end.
@@ -11,7 +11,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use demi_host_interface::{Seen, UnsentStart};
+use demi_device_interface::{Seen, UnsentStart};
 use demi_shared_types::{CommandId, NodeId, Timestamp, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -49,8 +49,8 @@ pub struct RunningCommand {
     /// How far each node that looked at it has seen its output, which a
     /// look or a report moves.
     pub places: BTreeMap<NodeId, Seen>,
-    /// What it starts once its Host is back, while its start waits for it
-    /// and was never sent (`crates/backend-host-access/src/access.rs`).
+    /// What it starts once its device is back, while its start waits for it
+    /// and was never sent (`crates/backend-device-access/src/access.rs`).
     pub unsent: Option<UnsentStart>,
 }
 
@@ -242,7 +242,7 @@ pub struct RecordedJob {
 impl ControlService {
     /// Records that the job `job` of a command of `conversation` runs on
     /// `device`, before it starts, or, while it is not `sent`, that it waits
-    /// to start there (`crates/backend-host-access/src/access.rs`).
+    /// to start there (`crates/backend-device-access/src/access.rs`).
     pub async fn record_running_job(
         &self,
         job: String,

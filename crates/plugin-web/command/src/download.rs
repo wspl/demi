@@ -1,5 +1,5 @@
-//! The HTTP fetch from the Host: the URL asked for Markdown first,
-//! redirects followed to any host, the Host's proxies and trust store, no
+//! The HTTP fetch from the device: the URL asked for Markdown first,
+//! redirects followed to any host, the device's proxies and trust store, no
 //! cookie or credential, and the body read up to its limit as text or as a
 //! file's bytes.
 
@@ -235,7 +235,7 @@ pub async fn download(
 
 /// The client of one fetch: at most [`MAX_REDIRECTS`] redirects, to any
 /// host; no cookie store; the proxies the calling environment names, or
-/// else the Host's own, which reqwest reads from the process's environment
+/// else the device's own, which reqwest reads from the process's environment
 /// and the system's settings.
 fn client(env: &BTreeMap<String, String>) -> Result<Client, DownloadError> {
     let variable = |name: &str| {

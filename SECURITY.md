@@ -27,7 +27,7 @@ We aim to acknowledge reports promptly and coordinate a fix and disclosure.
 ## Data handling notes for operators
 
 Demi is a hosted product. The backend keeps the product's records, and each
-conversation's work runs on a Host: the user's Cloud or a device the user
+conversation's work runs on a device: the user's Cloud or a device the user
 paired.
 
 Operators handling sensitive prompts should know where data rests:
@@ -39,8 +39,8 @@ Operators handling sensitive prompts should know where data rests:
   - The backend stores session and device tokens as SHA-256 digests.
   - The backend seals provider credentials with keys derived from the instance
     secret (`crates/backend/src/config/secret.rs`).
-- **Hosts.**
-  - A job's full output stays in files on its Host, and the backend receives
+- **Devices.**
+  - A job's full output stays in files on its device, and the backend receives
     bounded views (pipes and output: `crates/runner-jobs/src/tasks.rs`).
   - Each runner keeps its own and its residents' diagnostics in files in its
     data directory until the backend has them, and the backend keeps them in

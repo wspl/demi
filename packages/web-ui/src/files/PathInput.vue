@@ -14,7 +14,7 @@ import { usePathCompletion, type PathCompletionKind } from './path-completion'
 import type { FileBrowserEntry, FileBrowserSource } from './types'
 
 /**
- * A text field for a Host path that offers the entries of the directory the caret
+ * A text field for a device path that offers the entries of the directory the caret
  * stands in (`usePathCompletion`): a menu under the field, as wide as it, best
  * matches first with the matched letters marked.
  *

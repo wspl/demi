@@ -1,8 +1,8 @@
 //! The one tool, `shell`.
 //!
-//! It reaches its node's Host through the product's resolver, a child's own
+//! It reaches its node's device through the product's resolver, a child's own
 //! and the conversation's current one for the root, and runs in the node's
-//! shell environment for that Host, which the product
+//! shell environment for that device, which the product
 //! makes. A tool never reaches into its session: it returns its outcome, and a
 //! call that leaves its command running asks the session to watch it, so the
 //! command reports to the node.
@@ -96,8 +96,8 @@ use demi_agent_session::{
     ToolOutcome,
 };
 use demi_agent_store::{AgentTreeStore, Placement, RunningCommand};
-use demi_host_interface::{
-    CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, HostErrorKind, JobCaller, Numbers,
+use demi_device_interface::{
+    CommandSet, CommandState, CommandStatus, ExecRequest, Device, DeviceError, DeviceErrorKind, JobCaller, Numbers,
     PageFeed, ShellEnvironment, ShellError, TakenUp,
 };
 use demi_command_protocol::Viewable;
@@ -116,7 +116,7 @@ pub use result::{
     Look, Moved, interrupted_look, look_text, report_media, report_output, whole_look_text, whole_status,
 };
 pub use product::{
-    ChosenWorkflow, ContextAnswer, ContextSource, ConversationProfiles, EFFORT_OFF, HostResolver,
+    ChosenWorkflow, ContextAnswer, ContextSource, ConversationProfiles, EFFORT_OFF, DeviceResolver,
     ListedWorkflow, WorkflowChild, WorkflowListing,
     ModelChoice, ModelEdit, NewProfileDraft, NodeContext, Profile, ProfileEdit, ProfileModel,
     SubagentSettings, SubagentSource, TIER_DEFAULT, Toolset, ToolsetSource, Unavailable, runs_on,
@@ -138,12 +138,12 @@ pub const PAGE_CHARS: usize = 12_000;
 pub struct StoreNumbers(pub Rc<dyn AgentTreeStore>);
 
 impl Numbers for StoreNumbers {
-    fn next(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, HostError>> {
+    fn next(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, DeviceError>> {
         Box::pin(async move {
             self.0
                 .next_number(sequence)
                 .await
-                .map_err(|error| HostError::failed(None, error.to_string()))
+                .map_err(|error| DeviceError::failed(None, error.to_string()))
         })
     }
 }
@@ -169,21 +169,21 @@ pub struct EnvironmentScope<'a> {
 }
 
 /// Where a node's shell environments come from. The product makes the
-/// environment of one node on one of its Hosts, such as runner-client's over
-/// the Host's runner; the agent never knows which shell engine runs.
+/// environment of one node on one of its devices, such as runner-client's over
+/// the device's runner; the agent never knows which shell engine runs.
 pub trait ShellEnvironmentFactory<H> {
     fn create<'a>(
         &'a self,
         scope: EnvironmentScope<'a>,
-        host: Rc<H>,
-    ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>>;
+        device: Rc<H>,
+    ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, DeviceError>>;
 }
 
 /// A node's own placement as its `shell` calls read it when each starts
 /// (`crates/agent-server/src/node/mod.rs`): `demi agent cwd` changes it while
 /// a call of the node runs, from the next start on.
 pub trait OwnPlacement {
-    /// A child's own Host and working directory; none for the root, whose
+    /// A child's own device and working directory; none for the root, whose
     /// jobs start where the conversation works.
     fn own_placement(&self) -> Option<Placement>;
 }
@@ -199,7 +199,7 @@ impl OwnPlacement for Option<Placement> {
 const SHELL: &str = "shell";
 
 /// What the `shell` tool does, as the model is told.
-const SHELL_DESCRIPTION: &str = "Run a shell script on the conversation's Host. The call returns the output when the script ends; a command that moves to the background wakes you when it ends. background: true starts a command you do not wait for, such as a long build: the call returns at once, and its end wakes you. service: true runs a command until it is stopped, such as a server: the call returns once its output is quiet for 2 s, and only its exit wakes you. Calls in one response run in parallel.";
+const SHELL_DESCRIPTION: &str = "Run a shell script on the conversation's device. The call returns the output when the script ends; a command that moves to the background wakes you when it ends. background: true starts a command you do not wait for, such as a long build: the call returns at once, and its end wakes you. service: true runs a command until it is stopped, such as a server: the call returns once its output is quiet for 2 s, and only its exit wakes you. Calls in one response run in parallel.";
 
 /// The definitions the model receives, made once: the `shell` tool alone.
 pub fn definitions() -> Arc<[ToolDefinition]> {
@@ -233,11 +233,11 @@ pub const CALL_WINDOW_MS: u32 = 600_000;
 const ARRIVAL_WINDOW: u32 = 10_000;
 
 /// A node's access to its shell environments: the resolver that names the
-/// current Host, the product's factory, the environments made so far, and
+/// current device, the product's factory, the environments made so far, and
 /// the node they belong to.
-pub struct ShellAccess<'a, H: HostResolver> {
-    pub hosts: &'a H,
-    pub shells: &'a dyn ShellEnvironmentFactory<H::Host>,
+pub struct ShellAccess<'a, H: DeviceResolver> {
+    pub devices: &'a H,
+    pub shells: &'a dyn ShellEnvironmentFactory<H::Device>,
     pub environments: &'a Environments,
     pub node: &'a NodeId,
     /// The conversation's root node.
@@ -261,16 +261,16 @@ pub struct ShellAccess<'a, H: HostResolver> {
 
 // Every field is a reference or a number, so a step's tasks each hold a
 // copy; derived, the copy would ask the same of the resolver `H`.
-impl<H: HostResolver> Clone for ShellAccess<'_, H> {
+impl<H: DeviceResolver> Clone for ShellAccess<'_, H> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<H: HostResolver> Copy for ShellAccess<'_, H> {}
+impl<H: DeviceResolver> Copy for ShellAccess<'_, H> {}
 
-impl<'a, H: HostResolver> ShellAccess<'a, H> {
-    /// The environment for the node's Host now, which `handle` must belong
+impl<'a, H: DeviceResolver> ShellAccess<'a, H> {
+    /// The environment for the node's device now, which `handle` must belong
     /// to: a child's own `placement`'s, the conversation's for the root.
     async fn environment(
         &self,
@@ -280,8 +280,8 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         self.environment_on(handle, placement, false).await
     }
 
-    /// The environment for the node's Host now, which `adopting` reaches
-    /// without admitting it ([`HostResolver::adopted_host`]).
+    /// The environment for the node's device now, which `adopting` reaches
+    /// without admitting it ([`DeviceResolver::adopted_device`]).
     async fn environment_on(
         &self,
         handle: Handle<'_>,
@@ -293,10 +293,10 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             root: self.root,
             placement,
         };
-        let host = if adopting {
-            self.hosts.adopted_host(context).await
+        let device = if adopting {
+            self.devices.adopted_device(context).await
         } else {
-            self.hosts.host(context).await
+            self.devices.device(context).await
         }
         .map_err(|error| CallError::Failed(error.to_string()))?;
         let commands = self.commands.borrow().clone();
@@ -308,15 +308,15 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             feed: self.feed,
             numbers: self.numbers,
         };
-        let key = host.key();
+        let key = device.key();
         self.environments
-            .resolve(key, handle, self.shells.create(scope, host))
+            .resolve(key, handle, self.shells.create(scope, device))
             .await
             .map_err(CallError::Failed)
     }
 
     /// Where a child's next job runs: its own placement. None for the
-    /// root, whose jobs start where the conversation's Host starts its work.
+    /// root, whose jobs start where the conversation's device starts its work.
     fn placement_now(&self) -> Option<Placement> {
         self.placement.own_placement()
     }
@@ -327,7 +327,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// A step is `shell` calls, which start together, each a job of its own, or
     /// a call of a tool the node does not have, which completes as `Tool not
     /// found`. A refused input completes its call as an error that names the
-    /// offending field; a failure of the Host or its environment completes it
+    /// offending field; a failure of the device or its environment completes it
     /// as `Tool failed: <message>`.
     pub fn invoke_step(self, calls: Vec<ToolInvocation>) -> StepOutcomes<'a> {
         let calls: FuturesUnordered<_> = calls
@@ -412,10 +412,10 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         };
         let command = match environment.start(request, stop).await {
             Ok(command) => command,
-            // A Host that is offline to the environment runs nothing now:
+            // A device that is offline to the environment runs nothing now:
             // the call's result is its offline error as it is, worded for
-            // the model (`crates/backend-host-access/src/access.rs`).
-            Err(ShellError::Host(error)) if error.kind == HostErrorKind::Offline => {
+            // the model (`crates/backend-device-access/src/access.rs`).
+            Err(ShellError::Device(error)) if error.kind == DeviceErrorKind::Offline => {
                 ended(None, "failed_to_start", None, None);
                 return Ok(ToolOutcome::error(error.message));
             }
@@ -490,7 +490,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
 
     /// Takes up `running`, a command the node ran that the conversation records
     /// running and that started `ran` ago, in the node's environment for its
-    /// Host now
+    /// device now
     /// (`crates/runner-client/src/device_jobs.rs`).
     pub async fn adopt(&self, running: &RunningCommand, ran: Duration) -> Result<(), CallError> {
         let placement = self.placement_now();
@@ -513,7 +513,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         Ok(())
     }
 
-    /// Stops a running command of the current Host, as a page's stop does:
+    /// Stops a running command of the current device, as a page's stop does:
     /// its end's report says the user stopped it.
     pub async fn abort(&self, command: &CommandId) -> Result<(), CallError> {
         let placement = self.placement_now();
@@ -687,7 +687,7 @@ fn outcome(ran: Result<ToolOutcome, CallError>) -> Result<ToolOutcome, ToolFailu
 /// Why a call did not produce a result of its tool.
 #[derive(Debug)]
 pub enum CallError {
-    /// The Host or its environment failed.
+    /// The device or its environment failed.
     Failed(String),
 }
 

@@ -1,7 +1,7 @@
 /**
- * An artifact a Host's runner holds in its cache (`crates/runner-command-packages/src/cache.rs`): the package, the artifact's line and its version.
+ * An artifact a device's runner holds in its cache (`crates/runner-command-packages/src/cache.rs`): the package, the artifact's line and its version.
  */
-export interface HostArtifact {
+export interface DeviceArtifact {
   package: string
   /** The artifact's line, such as `program` or `Chrome for Testing`. */
   name: string
@@ -9,10 +9,10 @@ export interface HostArtifact {
 }
 
 /**
- * An artifact a Host's runner downloads into its cache now: what it is, as a
- * {@link HostArtifact} says, and how many of its `size` bytes arrived.
+ * An artifact a device's runner downloads into its cache now: what it is, as a
+ * {@link DeviceArtifact} says, and how many of its `size` bytes arrived.
  */
-export interface HostDownload extends HostArtifact, DownloadProgress {}
+export interface DeviceDownload extends DeviceArtifact, DownloadProgress {}
 
 /** How far a download came: `received` of its `size` bytes. */
 export interface DownloadProgress {
@@ -20,35 +20,35 @@ export interface DownloadProgress {
   size: number
 }
 
-/** A Host as what it holds is read: its id, what its runner's cache holds and what it downloads. */
-export interface HoldingHost {
+/** A Device as what it holds is read: its id, what its runner's cache holds and what it downloads. */
+export interface HoldingDevice {
   id: string
-  installed: readonly HostArtifact[]
-  downloading: readonly HostDownload[]
+  installed: readonly DeviceArtifact[]
+  downloading: readonly DeviceDownload[]
 }
 
-/** What `host`, one of `hosts`, holds of `packages`; nothing for a Host not among them. */
-export function hostInstalled(
-  hosts: readonly HoldingHost[],
-  host: string,
+/** What `device`, one of `devices`, holds of `packages`; nothing for a device not among them. */
+export function deviceInstalled(
+  devices: readonly HoldingDevice[],
+  device: string,
   packages: readonly string[],
-): HostArtifact[] {
-  const installed = hosts.find((entry) => entry.id === host)?.installed ?? []
+): DeviceArtifact[] {
+  const installed = devices.find((entry) => entry.id === device)?.installed ?? []
   return installed.filter((artifact) => packages.includes(artifact.package))
 }
 
-/** What `host`, one of `hosts`, downloads of `packages` now; nothing for a Host not among them. */
-export function hostDownloading(
-  hosts: readonly HoldingHost[],
-  host: string,
+/** What `device`, one of `devices`, downloads of `packages` now; nothing for a device not among them. */
+export function deviceDownloading(
+  devices: readonly HoldingDevice[],
+  device: string,
   packages: readonly string[],
-): HostDownload[] {
-  const downloading = hosts.find((entry) => entry.id === host)?.downloading ?? []
+): DeviceDownload[] {
+  const downloading = devices.find((entry) => entry.id === device)?.downloading ?? []
   return downloading.filter((download) => packages.includes(download.package))
 }
 
 /** How far `downloads` came together; null while there is none. */
-export function downloadProgress(downloads: readonly HostDownload[]): DownloadProgress | null {
+export function downloadProgress(downloads: readonly DeviceDownload[]): DownloadProgress | null {
   if (downloads.length === 0) {
     return null
   }

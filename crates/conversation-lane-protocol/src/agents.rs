@@ -135,12 +135,12 @@ pub struct Subagent {
     #[garde(skip)]
     pub ended_at: Option<Timestamp>,
     /// Its working directory, where its `shell` calls start, on its own
-    /// Host (`crates/agent-server/src/node/mod.rs`).
+    /// device (`crates/agent-server/src/node/mod.rs`).
     #[garde(length(min = 1))]
     pub cwd: String,
-    /// The device of its Host when that is not the conversation's, which a
+    /// The device of its device when that is not the conversation's, which a
     /// move of the conversation leaves it on; null when it works on the
-    /// conversation's Host.
+    /// conversation's device.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     #[garde(skip)]

@@ -1,5 +1,5 @@
 //! Each agent node's commands, for the rpc calls its jobs make
-//! (`crates/host-interface/src/rpc.rs`).
+//! (`crates/device-interface/src/rpc.rs`).
 //!
 //! A node registers its command set while one of its shell environments lives,
 //! and replaces it when its commands change, as a plugin turned on or off
@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
 use demi_runner_client::{CommandSelection, JobOrigin};
-use demi_host_interface::CommandSet;
+use demi_device_interface::CommandSet;
 use demi_web_api_protocol::ids::ConversationId;
 
 /// The registered nodes of one user's shard.
@@ -112,7 +112,7 @@ impl CommandRouter {
     }
 
     /// The manifest of `node`'s commands, provided it is registered for
-    /// `conversation`: what a job the node starts on another Host runs with.
+    /// `conversation`: what a job the node starts on another device runs with.
     pub fn selection_of(
         &self,
         node: &str,

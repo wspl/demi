@@ -62,7 +62,7 @@
   "permissions": {
     "skills_manage": {
       "action": "gérer les compétences",
-      "description": "Permet aux agents de cette conversation d’ajouter, de mettre à jour et de supprimer des sources de compétences, et d’activer ou de désactiver des compétences. Les compétences globales atteignent toutes les conversations et celles d’un espace de travail les conversations de cet espace, et les compétences activées sont installées sur les hôtes qu’utilisent ces conversations."
+      "description": "Permet aux agents de cette conversation d’ajouter, de mettre à jour et de supprimer des sources de compétences, et d’activer ou de désactiver des compétences. Les compétences globales atteignent toutes les conversations et celles d’un espace de travail les conversations de cet espace, et les compétences activées sont installées sur les appareils qu’utilisent ces conversations."
     }
   },
   "problems": {

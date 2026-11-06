@@ -1,5 +1,5 @@
 // Paths a message writes as link and image targets.
-import { expandHome, resolveHostPath } from '../files/paths'
+import { expandHome, resolveDevicePath } from '../files/paths'
 import type { MessageFileTarget, MessageFiles } from './types'
 
 const LINE_RANGE_SUFFIX_RE = /:\d+(?:-\d+)?$/
@@ -66,15 +66,15 @@ export function linkedCommit(target: string): LinkedCommit | null {
 }
 
 /**
- * The Host folder a commit link names, resolved as a relative link's path
- * is: against the working directory, `~/` from the Host's home; null for a
+ * The Device folder a commit link names, resolved as a relative link's path
+ * is: against the working directory, `~/` from the device's home; null for a
  * `~/` folder while the home is unknown.
  */
 export function commitFolder(folder: string, places: MessagePlaces): string | null {
   const named = places.home ? expandHome(folder, places.home) : folder
   if (named.startsWith('~/') || named === '~')
     return null
-  return resolveHostPath(places.cwd, normalizeFilePath(named))
+  return resolveDevicePath(places.cwd, normalizeFilePath(named))
 }
 
 /**
@@ -90,18 +90,18 @@ export function decodedTarget(value: string): string {
 }
 
 /**
- * Where a message's paths start: the working directory, and the Host's home for
+ * Where a message's paths start: the working directory, and the device's home for
  * `~/`, while it is known.
  */
 export type MessagePlaces = Pick<MessageFiles, 'cwd' | 'home'>
 
 /**
- * The Host path a message's link or image target names, its query and
- * fragment dropped, `~/` read from the Host's home as the File view's field
+ * The Device path a message's link or image target names, its query and
+ * fragment dropped, `~/` read from the device's home as the File view's field
  * reads it, and a relative one resolved against the working directory; null
  * for a target that names no file, or names the home while it is unknown.
  */
-export function messageHostPath(target: string, places: MessagePlaces): string | null {
+export function messageDevicePath(target: string, places: MessagePlaces): string | null {
   if (!isLikelyFilePath(target))
     return null
   const path = decodedTarget(normalizeFilePath(target.split(/[?#]/)[0] ?? ''))
@@ -111,7 +111,7 @@ export function messageHostPath(target: string, places: MessagePlaces): string |
   // Without the home, a `~/` path names nothing it could be read as.
   if (named.startsWith('~/'))
     return null
-  return resolveHostPath(places.cwd, named)
+  return resolveDevicePath(places.cwd, named)
 }
 
 /**
@@ -137,11 +137,11 @@ export function targetLine(target: string): number | null {
 }
 
 /**
- * The Host file a link's target names, resolved from `places`, with its line;
+ * The Device file a link's target names, resolved from `places`, with its line;
  * null for a target that names none.
  */
 export function messageFileTarget(target: string, places: MessagePlaces): MessageFileTarget | null {
-  const path = messageHostPath(target, places)
+  const path = messageDevicePath(target, places)
   return path === null ? null : { path, line: targetLine(target) }
 }
 
@@ -178,8 +178,8 @@ export function isLikelyFilePath(rawPath: string): boolean {
 
 /**
  * Where an image a message names loads from: a web image or a `data:` URL
- * from its `url`, a Host image from the file at `path`, in the version the
- * page keeps of it (`useHostImagesAt`). Null for a target that loads nothing,
+ * from its `url`, a device image from the file at `path`, in the version the
+ * page keeps of it (`useDeviceImagesAt`). Null for a target that loads nothing,
  * which shows its alt text. A click on it shows it large in the media viewer.
  */
 export function messageImage(target: string, files: MessageFiles | undefined): { url: string } | { path: string } | null {
@@ -187,6 +187,6 @@ export function messageImage(target: string, files: MessageFiles | undefined): {
     return { url: target }
   if (!files)
     return null
-  const path = messageHostPath(target, files)
+  const path = messageDevicePath(target, files)
   return path === null ? null : { path }
 }

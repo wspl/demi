@@ -62,7 +62,7 @@ struct TestRuntime {
     together: Vec<&'static str>,
     /// The commands the node's calls left running.
     commands: Rc<TestCommands>,
-    /// Whether the node is a child, whose turn a Host's absence does not
+    /// Whether the node is a child, whose turn a device's absence does not
     /// leave unfinished.
     child: bool,
 }
@@ -663,7 +663,7 @@ fn running(count: u32) -> ReportEvent {
 /// Why a test command was lost.
 fn lost() -> ReportEvent {
     ReportEvent::Lost {
-        reason: "the Host's runner started anew".to_owned(),
+        reason: "the device's runner started anew".to_owned(),
     }
 }
 

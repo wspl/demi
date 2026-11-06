@@ -1,6 +1,6 @@
 /**
- * A live browser view without a Host: the gallery
- * draws a page, encodes it as the Host's capture would, and speaks the live
+ * A live browser view without a device: the gallery
+ * draws a page, encodes it as the device's capture would, and speaks the live
  * protocol, so the view's pictures, input, controls and dialogs show here.
  */
 import { LIVE_CAPTURE_STOPPED, LIVE_CAPTURE_UNAVAILABLE } from '@demicodes/plugin-browser/generated/plugin'
@@ -20,7 +20,7 @@ import { encodeControl, encodeVideo } from '@demicodes/web-ui/live/frames'
 import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
 import { CONTROL, META } from '@demicodes/web-ui/live/input'
 import { BrowserTabsError, type BrowserTabList, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
-import type { HostDownload } from '@demicodes/web-ui/devices/installed'
+import type { DeviceDownload } from '@demicodes/web-ui/devices/installed'
 import type { PanelReason } from '@demicodes/plugin-browser/generated/plugin'
 import { PROJECT_ROOT } from './project'
 
@@ -73,7 +73,7 @@ const INVOICE = { x: 184, y: 98, width: 200, height: 18, url: 'https://example.t
 
 /** The titles the drawn pages give themselves once loaded, as a page's `<title>` does; another keeps its host. */
 const PAGE_TITLES: ReadonlyMap<string, string> = new Map([[INVOICE.url, 'Invoice 4711 — Example']])
-/** The drawn page's link that downloads a file, which the gallery's project holds where the Host would save it. */
+/** The drawn page's link that downloads a file, which the gallery's project holds where the device would save it. */
 const DOWNLOAD = { x: 184, y: 118, width: 140, height: 18, url: 'https://example.test/guide.pdf' }
 const DOWNLOADED: Pick<LiveDownload, 'name' | 'total' | 'path'> = {
   name: 'guide.pdf',
@@ -103,26 +103,26 @@ function overText(x: number, y: number): boolean {
   return (x >= 24 && x <= 110 && y >= 28 && y <= 54) || (x >= 24 && x <= 290 && y >= 62 && y <= 82)
 }
 
-/** H.264 encodes only even sides: an odd one loses its last row or column, as the Host's capture cuts it. */
+/** H.264 encodes only even sides: an odd one loses its last row or column, as the device's capture cuts it. */
 function even(length: number): number {
   return Math.max(2, length - (length % 2))
 }
 
-/** How long the gallery's conversation browser takes over a request, as a Host takes a moment. */
+/** How long the gallery's conversation browser takes over a request, as a device takes a moment. */
 const REQUEST_DELAY_MS = 900
 /**
  * How long after its answer the browser starts loading the page a request
- * asked for, as a far Host's tab list reaches the page after its answer.
+ * asked for, as a far device's tab list reaches the page after its answer.
  */
 const LOAD_START_MS = 700
-/** How long a page the gallery's browser loads takes, as a slow page on a far Host does: long enough to stop it. */
+/** How long a page the gallery's browser loads takes, as a slow page on a far device does: long enough to stop it. */
 const LOAD_MS = 5000
 /** How long a stopped Cloud takes to start, as a Cloud wakes. */
 const CLOUD_START_MS = 2500
-/** How long the browser takes to start on a Host where it does not run, as Chrome starts. */
+/** How long the browser takes to start on a device where it does not run, as Chrome starts. */
 const BROWSER_START_MS = 1500
-/** Chrome as the Host downloads it, of a typical size. */
-const CHROME_DOWNLOAD: HostDownload = {
+/** Chrome as the device downloads it, of a typical size. */
+const CHROME_DOWNLOAD: DeviceDownload = {
   package: 'demi.browser',
   name: 'chrome',
   version: '140.0.7339.80',
@@ -137,7 +137,7 @@ const DOWNLOAD_STEP_BYTES = 681_574
 const siteIcons = new Map<string, string>()
 
 /**
- * A site's icon as the Host draws it, 32 pixels square: the first letter of
+ * A site's icon as the device draws it, 32 pixels square: the first letter of
  * its host on a color of its own. `plain.test` has none, so its tabs show
  * the generic mark, as a site without an icon does.
  */
@@ -199,11 +199,11 @@ function galleryTabs(): LiveTab[] {
   ]
 }
 
-/** The downloads the user started in each tab, as the Host follows them: a view that ends leaves them. */
+/** The downloads the user started in each tab, as the device follows them: a view that ends leaves them. */
 interface GalleryDownloads {
   /** The downloads in `tab`, the newest last. */
   of(tab: string): LiveDownload[]
-  /** The user's download in `tab`: it comes in for a moment, then the Host holds it under its name. */
+  /** The user's download in `tab`: it comes in for a moment, then the device holds it under its name. */
   start(tab: string): void
 }
 
@@ -235,24 +235,24 @@ class GalleryBrowserView {
   private pressed = false
   private overText = false
   private status = 'open'
-  /** Whether the Host stopped capturing until the viewer asks again, as after a failed recreation of its extension. */
+  /** Whether the device stopped capturing until the viewer asks again, as after a failed recreation of its extension. */
   private stopped = false
 
   constructor(
     private readonly handlers: UserStreamHandlers,
     /** The browser's tabs, shared with its tab requests. */
     private readonly tabs: LiveTab[],
-    /** The number of the browser's latest tab list, as the Host numbers them. */
+    /** The number of the browser's latest tab list, as the device numbers them. */
     private readonly list: () => number,
-    /** Whether the Host can capture its tabs; one that cannot says so for each tab watched, as an Apple M4's Linux VM does. */
+    /** Whether the device can capture its tabs; one that cannot says so for each tab watched, as an Apple M4's Linux VM does. */
     private readonly capture: boolean,
     /** The watched page opens a tab, as a `target=_blank` link does. */
     private readonly pageOpens: (opener: string, url: string) => void,
-    /** The browser's downloads, which outlive any view, as the Host follows them. */
+    /** The browser's downloads, which outlive any view, as the device follows them. */
     private readonly downloads: GalleryDownloads,
-    /** Whether the Host holds back what its browser is doing, so the page has not read it yet. */
+    /** Whether the device holds back what its browser is doing, so the page has not read it yet. */
     private readonly unread: () => boolean,
-    /** The viewer asked to capture again, which the Host does for every view. */
+    /** The viewer asked to capture again, which the device does for every view. */
     private readonly recaptured: () => void,
     /** The page drawn in place of the gallery's own, when one is given. */
     private readonly page: GalleryPage | null,
@@ -271,13 +271,13 @@ class GalleryBrowserView {
     this.restart()
   }
 
-  /** The Host recreated its capture extension: the pictures come back. */
+  /** The device recreated its capture extension: the pictures come back. */
   resumeCapture(): void {
     this.stopped = false
     this.restart()
   }
 
-  /** Something the Host could not do for this viewer, as the module tells it. */
+  /** Something the device could not do for this viewer, as the module tells it. */
   notice(code: string, text: string): void {
     this.send({ type: 'notice', code, message: text })
   }
@@ -291,7 +291,7 @@ class GalleryBrowserView {
       this.watched = null
       this.restart()
     }
-    // A browser with no tabs does not run, as the Host's retires with its last tab.
+    // A browser with no tabs does not run, as the device's retires with its last tab.
     this.send({ type: 'state', running: this.tabs.length > 0, list: this.list(), tabs: this.tabs, watched: this.watched })
   }
 
@@ -421,7 +421,7 @@ class GalleryBrowserView {
         if ((value.modifiers & (CONTROL | META)) !== 0 && !value.altGraph && value.key.toLowerCase() === 'a') {
           this.selection = 'all'
         } else if ((value.modifiers & (CONTROL | META)) !== 0 && ['c', 'x'].includes(value.key.toLowerCase())) {
-          // The page copies or cuts what is selected, and the Host hands it to the viewer's clipboard.
+          // The page copies or cuts what is selected, and the device hands it to the viewer's clipboard.
           if (this.selection === 'all') {
             this.send({ type: 'clipboard', text: this.typed })
             if (value.key.toLowerCase() === 'x') {
@@ -463,7 +463,7 @@ class GalleryBrowserView {
     if (!tab) {
       return
     }
-    // The page's own pixels, as the Host captures them; an odd side loses its last row or column.
+    // The page's own pixels, as the device captures them; an odd side loses its last row or column.
     const size = {
       width: even(Math.ceil(tab.viewport.width * tab.viewport.devicePixelRatio)),
       height: even(Math.ceil(tab.viewport.height * tab.viewport.devicePixelRatio)),
@@ -483,7 +483,7 @@ class GalleryBrowserView {
       this.notice(LIVE_CAPTURE_STOPPED, 'the capture extension could not be recreated')
       return
     }
-    // A real Host can report controls before its encoder starts a generation.
+    // A real device can report controls before its encoder starts a generation.
     this.send({
       type: 'stream',
       tab: tab.id,
@@ -538,7 +538,7 @@ class GalleryBrowserView {
     const viewport = tab.viewport
     const ratio = viewport.devicePixelRatio
     context.setTransform(ratio, 0, 0, ratio, 0, 0)
-    // The Host's Chrome runs in the user's scheme, here the gallery's: it
+    // The device's Chrome runs in the user's scheme, here the gallery's: it
     // paints an empty page #121212 in the dark one, and a page of its own,
     // which declares no scheme, on white.
     const dark = document.documentElement.getAttribute('data-theme') === 'dark'
@@ -613,15 +613,15 @@ class GalleryBrowserView {
 }
 
 /**
- * The gallery's conversation browser, as the Host runs it: its tabs and the
+ * The gallery's conversation browser, as the device runs it: its tabs and the
  * operations the plugin runs on them, and the live view's stream over the same
- * tabs, without a Host.
+ * tabs, without a device.
  *
- * - Operations take a moment, as a Host does, and a page it loads takes a while
+ * - Operations take a moment, as a device does, and a page it loads takes a while
  *   longer, so the page's loading shows.
  * - It starts with the agent's and the user's tab unless a specimen supplies
  *   its own list, such as an empty one for a panel whose strip starts empty.
- * - Without `capture`, the Host cannot capture its tabs, so a view shows no
+ * - Without `capture`, the device cannot capture its tabs, so a view shows no
  *   picture and says why.
  * - With `page`, its tabs show that page in place of the gallery's own.
  */
@@ -632,7 +632,7 @@ export interface GalleryBrowser {
   newTab(): Promise<BrowserTab>
   /** Closes the tab; a tab the browser does not have is closed already. */
   close(tab: string): Promise<void>
-  /** Answers the number of the last tab list before the request started, as a user's navigation on the Host does. */
+  /** Answers the number of the last tab list before the request started, as a user's navigation on the device does. */
   navigate(tab: string, url: string): Promise<number>
   history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<number>
   /** Stops loading the tab's page; answers as `navigate` does. */
@@ -649,15 +649,15 @@ export interface GalleryBrowser {
   show(tab: string): void
   /** The agent makes a tab and opens `url` in it, as `demi browser tab new` and `open` do, and shows it with `show`, as `--show` does. */
   agentOpens(url: string, options: { show: boolean }): void
-  /** The Host fails what a viewer asked, such as its input, and tells every view, as the module's notice does. */
+  /** The device fails what a viewer asked, such as its input, and tells every view, as the module's notice does. */
   fail(reason: PanelReason, message: string): void
-  /** Even recreating the capture extension fails on the Host: every view loses its pictures and says so, until Retry. */
+  /** Even recreating the capture extension fails on the device: every view loses its pictures and says so, until Retry. */
   stopCapture(): void
   stream: OpenUserStream
-  /** Whether the Host is a Cloud that is starting, as the product state says while it wakes. */
-  hostStarting: ShallowRef<boolean>
-  /** What the Host downloads of the browser's packages, as the product state says while Chrome downloads. */
-  downloading: ShallowRef<readonly HostDownload[]>
+  /** Whether the device is a Cloud that is starting, as the product state says while it wakes. */
+  deviceStarting: ShallowRef<boolean>
+  /** What the device downloads of the browser's packages, as the product state says while Chrome downloads. */
+  downloading: ShallowRef<readonly DeviceDownload[]>
   /** The Cloud stops, as an idle Cloud does, and its browser ends with it; the next tab opened or shown starts it again. */
   stopCloud(): void
   /** What a held opening waits for, and nothing once `finish` let it go on. */
@@ -677,9 +677,9 @@ export interface GalleryBrowser {
  * - Connecting… while the page has read neither the plugin's tab list nor a
  *   view's state.
  * - Starting Cloud… on a Cloud that starts.
- * - Downloading the browser… with how far it came, on a Host without Chrome:
+ * - Downloading the browser… with how far it came, on a device without Chrome:
  *   the download runs to its end, and the browser then starts.
- * - Starting the browser… on a Host whose browser has no tabs yet.
+ * - Starting the browser… on a device whose browser has no tabs yet.
  * - Opening the page….
  */
 export function galleryBrowser(
@@ -692,7 +692,7 @@ export function galleryBrowser(
   // The next tab's number, as the conversation gives them: never one given before.
   let next = Math.max(0, ...tabs.map((tab) => Number(tab.id.slice(1)))) + 1
 
-  /** Answers after a Host's moment; the timer ends by itself within 900 ms. */
+  /** Answers after a device's moment; the timer ends by itself within 900 ms. */
   function later<T>(answer: () => T): Promise<T> {
     return new Promise((resolve, reject) => {
       setTimeout(() => {
@@ -705,7 +705,7 @@ export function galleryBrowser(
     })
   }
 
-  /** How many times the agent showed each tab, as the Host's tab registry counts them. */
+  /** How many times the agent showed each tab, as the device's tab registry counts them. */
   const shows = new Map<string, number>()
 
   function info(tab: LiveTab): BrowserTab {
@@ -724,7 +724,7 @@ export function galleryBrowser(
 
   const listed = shallowRef<BrowserTabList>({ tabs: tabs.map(info) })
 
-  /** Each change of the tabs is a new tab list, numbered as the Host numbers them. */
+  /** Each change of the tabs is a new tab list, numbered as the device numbers them. */
   let lists = 0
 
   function changed(): void {
@@ -799,10 +799,10 @@ export function galleryBrowser(
     }
   }
 
-  /** The tabs closed on purpose, as the Host's tab list names them. */
+  /** The tabs closed on purpose, as the device's tab list names them. */
   const closedOnPurpose = new Set<string>()
 
-  /** The downloads the user started in each tab, kept while views come and go, as the Host keeps them. */
+  /** The downloads the user started in each tab, kept while views come and go, as the device keeps them. */
   const downloaded = new Map<string, LiveDownload[]>()
   const downloads: GalleryDownloads = {
     of: (tab) => [...(downloaded.get(tab) ?? [])],
@@ -822,9 +822,9 @@ export function galleryBrowser(
     },
   }
 
-  /** Whether the Host stopped capturing, as after a failed recreation of its extension, until a viewer's Retry. */
+  /** Whether the device stopped capturing, as after a failed recreation of its extension, until a viewer's Retry. */
   let captureStopped = false
-  /** A viewer's Retry: the Host recreates its extension, and every view's pictures come back. */
+  /** A viewer's Retry: the device recreates its extension, and every view's pictures come back. */
   function recaptured(): void {
     captureStopped = false
     for (const view of views) {
@@ -845,7 +845,7 @@ export function galleryBrowser(
       page,
     )
     views.add(browser)
-    // A Host that stopped capturing says so to a view that opens meanwhile.
+    // A device that stopped capturing says so to a view that opens meanwhile.
     if (captureStopped) {
       browser.stopCapture()
     }
@@ -873,8 +873,8 @@ export function galleryBrowser(
   /** How the next open fails, once `failNextOpen` said so. */
   let failOpen: BrowserTabsError | null = null
 
-  const hostStarting = shallowRef(holding === 'cloud')
-  const downloading = shallowRef<readonly HostDownload[]>([])
+  const deviceStarting = shallowRef(holding === 'cloud')
+  const downloading = shallowRef<readonly DeviceDownload[]>([])
   const held = shallowRef<StartingPhase | null>(holding)
   /** The openings `held` keeps, until `finish`. */
   const waiting: Array<() => void> = []
@@ -909,16 +909,16 @@ export function galleryBrowser(
   /**
    * What an opening waits for before the browser opens its tab: a held
    * phase until `finish`, a stopped Cloud while it starts, and a browser
-   * with no tabs while it starts, each as the Host takes it.
+   * with no tabs while it starts, each as the device takes it.
    */
   async function started(): Promise<void> {
     if (held.value !== null) {
       await new Promise<void>((resolve) => waiting.push(resolve))
     }
     if (cloudStopped) {
-      hostStarting.value = true
+      deviceStarting.value = true
       await wait(CLOUD_START_MS)
-      hostStarting.value = false
+      deviceStarting.value = false
       cloudStopped = false
     }
     if (tabs.length === 0) {
@@ -952,7 +952,7 @@ export function galleryBrowser(
     load(tab, url)
   }
 
-  /** The browser makes an empty tab, after a Host's moment; fails once `failNextOpen` said so. */
+  /** The browser makes an empty tab, after a device's moment; fails once `failNextOpen` said so. */
   function made(): Promise<BrowserTab> {
     const url = 'about:blank'
     return later(() => {
@@ -986,7 +986,7 @@ export function galleryBrowser(
     close: (id) => later(() => remove(id)),
     navigate: (id, url) => later(() => {
       const tab = found(id)
-      // The Host's own refusal of an address no browser tab opens for the agent or the user.
+      // The device's own refusal of an address no browser tab opens for the agent or the user.
       if (!['http:', 'https:', 'file:'].includes(URL.parse(url)?.protocol ?? '') && url !== 'about:blank') {
         throw BrowserTabsError.of('invalid_input')
       }
@@ -1006,7 +1006,7 @@ export function galleryBrowser(
       const history = historyOf(tab)
       const index = history.index + (action === 'back' ? -1 : 1)
       const url = history.entries[index]
-      // The Host's own refusal at either end of the history.
+      // The device's own refusal at either end of the history.
       if (url === undefined) {
         throw BrowserTabsError.of('history_boundary')
       }
@@ -1016,7 +1016,7 @@ export function galleryBrowser(
     }),
     stop: (id) => later(() => {
       const tab = found(id)
-      // The list the Host read before it stopped the page; it reads the list again after.
+      // The list the device read before it stopped the page; it reads the list again after.
       const before = lists
       clearTimeout(loads.get(id))
       loads.delete(id)
@@ -1064,7 +1064,7 @@ export function galleryBrowser(
       }
     },
     stream,
-    hostStarting,
+    deviceStarting,
     stopCloud: () => {
       cloudStopped = true
       end()
@@ -1073,7 +1073,7 @@ export function galleryBrowser(
     downloading,
     finish: () => {
       held.value = null
-      hostStarting.value = false
+      deviceStarting.value = false
       if (download !== null) {
         clearInterval(download)
         download = null
@@ -1089,7 +1089,7 @@ export function galleryBrowser(
     },
     hold: (phase) => {
       held.value = phase
-      hostStarting.value = phase === 'cloud'
+      deviceStarting.value = phase === 'cloud'
       if (phase === 'download') {
         startDownload()
       }

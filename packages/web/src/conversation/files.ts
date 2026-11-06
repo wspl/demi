@@ -11,17 +11,17 @@ import type { CommitHistorySource } from '@demicodes/web-ui/files/history'
 import type { ConversationFileService } from '@demicodes/web-ui/plugins/page'
 import type { FileBrowserSource } from '@demicodes/web-ui/files/types'
 import { t as shared } from '@demicodes/web-ui/locales/text'
-import { conversationFileRoutes, fileSource, hostFiles } from '../api/files'
+import { conversationFileRoutes, fileSource, deviceFiles } from '../api/files'
 import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
 import { historyReads, readEditCopies, readRepositories, workingTreeReads } from './changes'
-import { ConversationWatch, type FollowHost } from './file-watch'
+import { ConversationWatch, type FollowDevice } from './file-watch'
 import { directRoute } from '../direct'
 import { directFileReads, directWatchLink } from '../direct/operations'
 import { agentDirectories } from '@demicodes/web-ui/agent/working-directory'
 import { useConversations } from './store'
 
-/** Nothing to choose from, when the Host cannot list the repositories: the view reads the directory as before. */
+/** Nothing to choose from, when the device cannot list the repositories: the view reads the directory as before. */
 const NO_REPOSITORIES: FoundRepositories = { inRepository: false, repositories: [] }
 
 /** Each conversation's service, made once for the page's lifetime. */
@@ -31,8 +31,8 @@ const services = new Map<string, ConversationFileService>()
 const watches = new Map<string, ConversationWatch>()
 
 /**
- * The file watch of a conversation's Host, on the relay or its direct
- * channel: what the conversation's views keep of its Host's files is subscribed
+ * The file watch of a conversation's device, on the relay or its direct
+ * channel: what the conversation's views keep of its device's files is subscribed
  * on it. Each of its watches opens while its device is online, and at once when
  * the device comes online, as a stopped Cloud that started.
  */
@@ -51,7 +51,7 @@ export function conversationWatch(conversationId: string): ConversationWatch {
 }
 
 /** Follows a device's state from the synchronization channel, the Cloud's included, for the page's lifetime. */
-export const followDevice: FollowHost = (deviceId, cameOnline) => {
+export const followDevice: FollowDevice = (deviceId, cameOnline) => {
   const resources = useResources()
   const online = () => resources.deviceById(deviceId)?.state === 'online'
   effectScope(true).run(() => {
@@ -64,12 +64,12 @@ export const followDevice: FollowHost = (deviceId, cameOnline) => {
 }
 
 /**
- * The files of a Host the conversation reaches, as its attachment picker
- * lists them, with sizes and times: its primary Host's on the
- * conversation's own watch, an attached host's on the conversation's watch
- * with each subscription naming the host.
+ * The files of a device the conversation reaches, as its attachment picker
+ * lists them, with sizes and times: its primary device's on the
+ * conversation's own watch, an attached device's on the conversation's watch
+ * with each subscription naming the device.
  */
-export function conversationHostSource(
+export function conversationDeviceSource(
   conversationId: string,
   deviceId: string,
   primary: boolean,
@@ -77,7 +77,7 @@ export function conversationHostSource(
   const resources = useResources()
   const watcher = conversationWatch(conversationId)
   return fileSource({
-    directory: `/conversations/${encodeURIComponent(conversationId)}/hosts/${encodeURIComponent(deviceId)}/fs`,
+    directory: `/conversations/${encodeURIComponent(conversationId)}/devices/${encodeURIComponent(deviceId)}/fs`,
   }, resources.deviceById(deviceId), {
     details: true,
     watch: (files) => primary ? watcher.channel(deviceId, files) : watcher.attached(deviceId, files),
@@ -87,11 +87,11 @@ export function conversationHostSource(
 /**
  * A conversation's files (`packages/web-ui/src/files/file-cache.ts`):
  *
- * - The Host's tree and contents while its device and directory are known.
+ * - The Device's tree and contents while its device and directory are known.
  * - The working tree's changes.
  * - A request's changes, from the transcripts the page holds.
  *
- * What it reads it keeps with the Host's other files, each entry subscribed on
+ * What it reads it keeps with the device's other files, each entry subscribed on
  * the conversation's file watch while it is kept, and a change of one on screen
  * reads it again.
  */
@@ -109,7 +109,7 @@ export function conversationFiles(conversationId: string): ConversationFileServi
     return target ? resources.deviceById(target.deviceId) : null
   })
   const watcher = conversationWatch(conversationId)
-  // For the page's lifetime: while the Host is online, the watch moves
+  // For the page's lifetime: while the device is online, the watch moves
   // whenever the path to its device changes (`packages/web/src/direct/index.ts`).
   effectScope(true).run(() => {
     watch(() => device.value?.state === 'online' ? device.value.id : null, (online, _previous, onCleanup) => {
@@ -120,17 +120,17 @@ export function conversationFiles(conversationId: string): ConversationFileServi
     }, { immediate: true })
   })
   // The tree and the working tree's place, from plain values and the
-  // source the device's files keep: a product state that leaves the Host
+  // source the device's files keep: a product state that leaves the device
   // and the directory as they are, as each frame of a turn does, keeps them
   // as they are, so the views that show them have nothing to render, and the
   // change set is not shown again, which would read a list that is not current anew.
   const deviceId = computed(() => device.value?.id ?? null)
   const root = computed(() => execution.value?.path ?? null)
   const source = computed(() => {
-    const host = device.value
-    return host
-      ? fileSource(conversationFileRoutes(conversationId), host, {
-          watch: (files) => watcher.channel(host.id, files),
+    const current = device.value
+    return current
+      ? fileSource(conversationFileRoutes(conversationId), current, {
+          watch: (files) => watcher.channel(current.id, files),
           through: (reads) => directFileReads(() => directRoute(conversationId), reads),
         })
       : null
@@ -153,19 +153,19 @@ export function conversationFiles(conversationId: string): ConversationFileServi
   // One change set per working tree the views show: the conversation's, and each directory a child works in.
   const trees = new Map<string, ReturnType<typeof keptChangeSet>>()
   function treeChanges(directory: string | undefined) {
-    const host = deviceId.value
+    const device = deviceId.value
     const conversationRoot = root.value
-    if (!conversationRoot || host === null) {
+    if (!conversationRoot || device === null) {
       return null
     }
     const tree = directory ?? conversationRoot
-    const key = `${host}\0${tree}`
+    const key = `${device}\0${tree}`
     let set = trees.get(key)
     if (!set) {
-      const files = hostFiles(host)
+      const files = deviceFiles(device)
       set = keptChangeSet(workingTreeReads(conversationId, tree === conversationRoot ? undefined : tree), tree, {
         files,
-        watch: watcher.channel(host, files),
+        watch: watcher.channel(device, files),
       })
       trees.set(key, set)
     }
@@ -174,19 +174,19 @@ export function conversationFiles(conversationId: string): ConversationFileServi
   // One history per working tree the views show, as for its changes.
   const histories = new Map<string, CommitHistorySource>()
   function treeHistory(directory: string | undefined): CommitHistorySource | null {
-    const host = deviceId.value
+    const device = deviceId.value
     const conversationRoot = root.value
-    if (!conversationRoot || host === null) {
+    if (!conversationRoot || device === null) {
       return null
     }
     const tree = directory ?? conversationRoot
-    const key = `${host}\0${tree}`
+    const key = `${device}\0${tree}`
     let history = histories.get(key)
     if (!history) {
-      const files = hostFiles(host)
+      const files = deviceFiles(device)
       history = keptHistory(historyReads(conversationId, tree === conversationRoot ? undefined : tree), tree, {
         files,
-        watch: watcher.channel(host, files),
+        watch: watcher.channel(device, files),
       })
       histories.set(key, history)
     }
@@ -194,7 +194,7 @@ export function conversationFiles(conversationId: string): ConversationFileServi
   }
 
   // Where the agents changed files: the same folders keep their list, so a
-  // file changed in a folder known already asks the Host nothing.
+  // file changed in a folder known already asks the device nothing.
   const places = computed<ChangedPlaces | null>((previous) => {
     const own = root.value
     const next = own && conversation.value ? changedPlaces(conversation.value, own) : null
@@ -206,13 +206,13 @@ export function conversationFiles(conversationId: string): ConversationFileServi
       return next
     return previous.latest === next.latest ? previous : { directories: previous.directories, latest: next.latest }
   })
-  // The views on screen that show the repositories: the Host is asked only
+  // The views on screen that show the repositories: the device is asked only
   // while one does, and the transcripts are read for it only then.
   const repositoryViewers = shallowRef(0)
-  // What the Host found, for the Host and directory it was asked of, and the
+  // What the device found, for the device and directory it was asked of, and the
   // folders it was asked about, which only grow: a folder the page no longer
   // holds the transcript of keeps the repository found there.
-  const found = shallowRef<{ tree: string; asked: ReadonlySet<string>; answer: FoundRepositories; fromHost: boolean } | null>(null)
+  const found = shallowRef<{ tree: string; asked: ReadonlySet<string>; answer: FoundRepositories; fromDevice: boolean } | null>(null)
   let followingRepositories = false
   function followRepositories(): void {
     if (followingRepositories)
@@ -221,10 +221,10 @@ export function conversationFiles(conversationId: string): ConversationFileServi
     effectScope(true).run(() => {
       const asking = computed((previous?: { tree: string; online: boolean; directories: readonly string[] } | null) => {
         const own = root.value
-        const host = device.value
-        if (repositoryViewers.value === 0 || !own || !host)
+        const current = device.value
+        if (repositoryViewers.value === 0 || !own || !current)
           return null
-        const next = { tree: `${host.id}\0${own}`, online: host.state === 'online', directories: places.value?.directories ?? [] }
+        const next = { tree: `${current.id}\0${own}`, online: current.state === 'online', directories: places.value?.directories ?? [] }
         const same = previous && previous.tree === next.tree && previous.online === next.online && previous.directories === next.directories
         return same ? previous : next
       })
@@ -234,22 +234,22 @@ export function conversationFiles(conversationId: string): ConversationFileServi
         const known = found.value?.tree === asked.tree ? found.value : null
         if (!known)
           found.value = null
-        // An offline Host lists nothing new: the view reads the directory as it did before there was a choice.
+        // An offline device lists nothing new: the view reads the directory as it did before there was a choice.
         if (!asked.online) {
-          found.value = known ?? { tree: asked.tree, asked: new Set(), answer: NO_REPOSITORIES, fromHost: false }
+          found.value = known ?? { tree: asked.tree, asked: new Set(), answer: NO_REPOSITORIES, fromDevice: false }
           return
         }
-        if (known?.fromHost && asked.directories.every((directory) => known.asked.has(directory)))
+        if (known?.fromDevice && asked.directories.every((directory) => known.asked.has(directory)))
           return
         const folders = new Set([...(known?.asked ?? []), ...asked.directories])
         const stop = new AbortController()
         onCleanup(() => stop.abort())
         readRepositories(conversationId, [...folders], stop.signal).then(
-          (answer) => (found.value = { tree: asked.tree, asked: folders, answer, fromHost: true }),
+          (answer) => (found.value = { tree: asked.tree, asked: folders, answer, fromDevice: true }),
           (error: unknown) => {
             if (stop.signal.aborted)
               return
-            found.value ??= { tree: asked.tree, asked: new Set(), answer: NO_REPOSITORIES, fromHost: false }
+            found.value ??= { tree: asked.tree, asked: new Set(), answer: NO_REPOSITORIES, fromDevice: false }
             pageLog.warn('repositories.read_failed', { conversation: conversationId, ...errorFields(error) })
           },
         )
@@ -302,7 +302,7 @@ export function conversationFiles(conversationId: string): ConversationFileServi
       return conversation ? findRequest(conversation, node, request) : null
     },
     showChanges(directory) {
-      // The list shows for the calling component while it lives, for the Host and working tree it has now.
+      // The list shows for the calling component while it lives, for the device and working tree it has now.
       const scope = effectScope()
       const onScreen = useOnScreen()
       scope.run(() => {
@@ -311,7 +311,7 @@ export function conversationFiles(conversationId: string): ConversationFileServi
           return shown === null ? null : treeChanges(shown)
         }, (set, _previous, onCleanup) => {
           const showing = set?.show()
-          // The list follows the Host only while the component is on screen.
+          // The list follows the device only while the component is on screen.
           const following = watch(onScreen, (shown) => (shown ? showing?.back() : showing?.away()), { immediate: true })
           onCleanup(() => {
             following()

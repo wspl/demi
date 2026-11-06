@@ -12,7 +12,7 @@ doctest = false
 bench = false
 
 [dependencies]
-demi-host-interface = { path = "../../host-interface" }
+demi-device-interface = { path = "../../device-interface" }
 demi-plugin-interface = { path = "../../plugin-interface" }
 demi-plugin-media = { path = "../../plugin-media" }
 demi-shared-types = { path = "../../shared-types", features = ["whole-image"] }

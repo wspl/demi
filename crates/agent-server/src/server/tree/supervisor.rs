@@ -99,7 +99,7 @@ use demi_agent_session::{
 };
 use demi_agent_store::{ClosePhase, Kind, NodeClose, NodeRecord, Placement, Reprofile};
 use demi_agent_transcript::last_failure;
-use demi_agent_tools::{HostResolver, SubagentSource};
+use demi_agent_tools::{DeviceResolver, SubagentSource};
 use demi_conversation_lane_protocol::{
     JobModel, JobPhase, TranscriptPatch,
 };
@@ -111,8 +111,8 @@ use demi_shared_types::{
     ToolCallStatus, TurnId, UserContentBlock,
     output::{self, Fields, Table, seconds},
 };
-use demi_host_interface::ShellEnvironment;
-use demi_host_paths::relative_to;
+use demi_device_interface::ShellEnvironment;
+use demi_device_paths::relative_to;
 use futures_util::future::{LocalBoxFuture, join_all};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -139,7 +139,7 @@ const RESULT_MAX_BYTES: usize = 32 * 1024;
 /// context window.
 const SHOW_RECENT_TOOLS: usize = 8;
 /// Why the root's directory does not change (`crates/agent-server/src/node/mod.rs`).
-const ROOT_CWD: &str = "The main agent works in the conversation's directory; move the conversation with `demi host move` to work elsewhere.";
+const ROOT_CWD: &str = "The main agent works in the conversation's directory; move the conversation with `demi device move` to work elsewhere.";
 /// Why a side question starts no subagent, sends no message and keeps its
 /// directory.
 const SIDE_SPAWNS: &str = "a side question cannot start subagents";
@@ -159,7 +159,7 @@ pub(crate) struct Summary {
 }
 
 /// A live child: its node, and what its supervision keeps about it.
-pub(crate) struct Child<H: HostResolver> {
+pub(crate) struct Child<H: DeviceResolver> {
     node: Rc<Node<H>>,
     /// What its round runs on, resolved when the round started.
     runs_on: JobModel,
@@ -178,7 +178,7 @@ pub(crate) struct Child<H: HostResolver> {
     supervision: RefCell<Option<AbortOnDropHandle<()>>>,
 }
 
-impl<H: HostResolver> Child<H> {
+impl<H: DeviceResolver> Child<H> {
     pub(crate) fn node(&self) -> &Rc<Node<H>> {
         &self.node
     }
@@ -227,7 +227,7 @@ pub(crate) enum Stop {
     /// The child's parent aborts it, or closes and takes its children with
     /// it: the parent knows, so no notice reaches it.
     Parent,
-    /// The user stops it from the page, or Demi's transition of a Host does
+    /// The user stops it from the page, or Demi's transition of a device does
     /// as the user's Stop would: its parent is told once, as of any end.
     User,
 }
@@ -273,7 +273,7 @@ enum Decision {
     Stop,
 }
 
-impl<H: HostResolver> Tree<H> {
+impl<H: DeviceResolver> Tree<H> {
     pub(crate) fn child(&self, id: &NodeId) -> Option<Rc<Child<H>>> {
         self.children.borrow().get(id).cloned()
     }
@@ -789,7 +789,7 @@ impl<H: HostResolver> Tree<H> {
             server: Rc::downgrade(server),
             runtime,
             providers: deps.providers.clone(),
-            hosts: deps.hosts.clone(),
+            devices: deps.devices.clone(),
             instructions,
             guide: deps.guide.clone(),
             preamble: Some(preamble),
@@ -913,7 +913,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// The conversation works elsewhere now: each child's entry shows
-    /// whether it works on another Host than the conversation's, which its
+    /// whether it works on another device than the conversation's, which its
     /// record and the new placement give (`crates/agent-server/src/node/mod.rs`).
     pub(crate) async fn placement_changed(&self) {
         self.placement().await;
@@ -943,7 +943,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// The working directory of the live agent `caller`: a child's own, on
-    /// its own Host, the conversation's for the root.
+    /// its own device, the conversation's for the root.
     pub(crate) async fn directory_of(&self, caller: &NodeId) -> Result<String, String> {
         let node = self
             .live_agent(caller)
@@ -954,9 +954,9 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Moves the live child `caller` to `dir`, read against its directory on
-    /// its own Host, from its next `shell` call on, and tells the pages.
+    /// its own device, from its next `shell` call on, and tells the pages.
     ///
-    /// The root works in the conversation's directory. A directory its Host
+    /// The root works in the conversation's directory. A directory its device
     /// does not have changes nothing (`crates/agent-server/src/node/mod.rs`).
     /// Answers the new directory.
     pub(crate) async fn change_cwd(&self, caller: &NodeId, dir: &str) -> Result<String, String> {
@@ -1782,14 +1782,14 @@ impl<H: HostResolver> Tree<H> {
                     parent: Some(number),
                     description: record.description.clone(),
                     profile: record.profile.clone(),
-                    place: Some(place(placement, record.own_placement(), self.host_elsewhere(&record, placement).await.as_deref())),
+                    place: Some(place(placement, record.own_placement(), self.device_elsewhere(&record, placement).await.as_deref())),
                     id: record.id,
                 });
             }
             Ok(match child {
                 Some((child, parent)) => {
                     let record = child.node.record();
-                    let host = self.host_elsewhere(&record, placement).await;
+                    let device = self.device_elsewhere(&record, placement).await;
                     ListNode {
                         id,
                         number,
@@ -1800,8 +1800,8 @@ impl<H: HostResolver> Tree<H> {
                         phase: Some(JobPhase::Running),
                         started_at: Some(record.started_at),
                         closed_at: None,
-                        place: Some(place(placement, record.own_placement(), host.as_deref())),
-                        live: Some(self.snapshot(&child, parent, now, host)),
+                        place: Some(place(placement, record.own_placement(), device.as_deref())),
+                        live: Some(self.snapshot(&child, parent, now, device)),
                         children,
                     }
                 }
@@ -1835,8 +1835,8 @@ impl<H: HostResolver> Tree<H> {
             let Some(parent) = self.node(&child.parent()) else {
                 return Ok(None);
             };
-            let host = self.host_elsewhere(&child.node.record(), &placement).await;
-            let snapshot = self.snapshot(&child, parent.record().number, now, host);
+            let device = self.device_elsewhere(&child.node.record(), &placement).await;
+            let snapshot = self.snapshot(&child, parent.record().number, now, device);
             let read = self.read_of(child.id(), snapshot.id).await?;
             let text = show_text(&snapshot, &read);
             return Ok(Some((ShownAgent::Live(snapshot), text)));
@@ -1844,7 +1844,7 @@ impl<H: HostResolver> Tree<H> {
         let Some((record, parent)) = self.stored_child(number).await? else {
             return Ok(None);
         };
-        let host = self.host_elsewhere(&record, &placement).await;
+        let device = self.device_elsewhere(&record, &placement).await;
         let cwd = record.own_placement().directory.clone();
         let Some(close) = record.closed else {
             return Ok(None);
@@ -1864,7 +1864,7 @@ impl<H: HostResolver> Tree<H> {
             closed_at: close.at,
             failure,
             cwd,
-            host,
+            device,
         };
         let read = self.read_of(&record_id, archived.id).await?;
         let text = archived_text(&archived, &read);
@@ -1950,11 +1950,11 @@ impl<H: HostResolver> Tree<H> {
 /// A start's place among the user's live subagents, from the check
 /// of the live limit until its child is in the directory or the start
 /// fails ([`Tree::reserve_live`]).
-struct LiveSlot<H: HostResolver> {
+struct LiveSlot<H: DeviceResolver> {
     tree: Rc<Tree<H>>,
 }
 
-impl<H: HostResolver> Drop for LiveSlot<H> {
+impl<H: DeviceResolver> Drop for LiveSlot<H> {
     fn drop(&mut self) {
         let admitted = &self.tree.admitted;
         admitted.set(admitted.get() - 1);
@@ -1964,7 +1964,7 @@ impl<H: HostResolver> Drop for LiveSlot<H> {
 /// A start under way past its owner's check: while it lasts, the owner is
 /// not quiescent. It ends with a change of the tree, so the owner's
 /// supervision looks again.
-struct Starting<H: HostResolver> {
+struct Starting<H: DeviceResolver> {
     tree: Rc<Tree<H>>,
     owner: NodeId,
 }
@@ -1972,23 +1972,23 @@ struct Starting<H: HostResolver> {
 /// A closed child's completion on its way to its parent, which keeps the
 /// tree working (`Tree::is_running`) until it is dropped, the close done or
 /// cancelled.
-struct Delivering<'a, H: HostResolver>(&'a Tree<H>);
+struct Delivering<'a, H: DeviceResolver>(&'a Tree<H>);
 
-impl<'a, H: HostResolver> Delivering<'a, H> {
+impl<'a, H: DeviceResolver> Delivering<'a, H> {
     fn start(tree: &'a Tree<H>) -> Self {
         tree.delivering.set(tree.delivering.get() + 1);
         Self(tree)
     }
 }
 
-impl<H: HostResolver> Drop for Delivering<'_, H> {
+impl<H: DeviceResolver> Drop for Delivering<'_, H> {
     fn drop(&mut self) {
         self.0.delivering.set(self.0.delivering.get() - 1);
         self.0.bump();
     }
 }
 
-impl<H: HostResolver> Starting<H> {
+impl<H: DeviceResolver> Starting<H> {
     fn new(tree: &Rc<Tree<H>>, owner: &NodeId) -> Self {
         *tree.starting.borrow_mut().entry(owner.clone()).or_default() += 1;
         Self {
@@ -1998,7 +1998,7 @@ impl<H: HostResolver> Starting<H> {
     }
 }
 
-impl<H: HostResolver> Drop for Starting<H> {
+impl<H: DeviceResolver> Drop for Starting<H> {
     fn drop(&mut self) {
         {
             let mut starting = self.tree.starting.borrow_mut();
@@ -2019,7 +2019,7 @@ impl<H: HostResolver> Drop for Starting<H> {
 /// It waits for any change of its session's status, of the tree's children, or
 /// of its failure, and closes the child once [`Tree::decide`] says so. It holds
 /// neither the tree nor the child while it waits.
-async fn supervision<H: HostResolver>(tree: Weak<Tree<H>>, child: Weak<Child<H>>) {
+async fn supervision<H: DeviceResolver>(tree: Weak<Tree<H>>, child: Weak<Child<H>>) {
     let (mut status, mut changes, wake) = {
         let (Some(live_tree), Some(live_child)) = (tree.upgrade(), child.upgrade()) else {
             return;
@@ -2409,12 +2409,12 @@ pub(crate) struct AgentSnapshot {
     /// How long the current execution state has lasted.
     execution_for_ms: u64,
     tools: Vec<ToolSnapshot>,
-    /// Its working directory on its Host.
+    /// Its working directory on its device.
     cwd: String,
-    /// The name of its Host when that is not the conversation's; absent when
+    /// The name of its device when that is not the conversation's; absent when
     /// it is.
     #[serde(skip_serializing_if = "Option::is_none")]
-    host: Option<String>,
+    device: Option<String>,
 }
 
 /// `demi agent show --json`'s agent: a live child's snapshot, or what an
@@ -2441,12 +2441,12 @@ pub(crate) struct ArchivedSnapshot {
     closed_at: Timestamp,
     #[serde(skip_serializing_if = "Option::is_none")]
     failure: Option<String>,
-    /// Its working directory on its Host as it closed.
+    /// Its working directory on its device as it closed.
     cwd: String,
-    /// The name of its Host when that is not the conversation's; absent when
+    /// The name of its device when that is not the conversation's; absent when
     /// it is.
     #[serde(skip_serializing_if = "Option::is_none")]
-    host: Option<String>,
+    device: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
@@ -2460,7 +2460,7 @@ struct ToolSnapshot {
     ended_at: Option<Timestamp>,
 }
 
-impl<H: HostResolver> Tree<H> {
+impl<H: DeviceResolver> Tree<H> {
     /// `child`'s snapshot; `parent` is its parent's number. An idle child
     /// whose own children still run waits, as one whose commands do.
     /// It works where `placement`, the conversation's now, puts it.
@@ -2469,30 +2469,30 @@ impl<H: HostResolver> Tree<H> {
         child: &Child<H>,
         parent: u64,
         now: i64,
-        host: Option<String>,
+        device: Option<String>,
     ) -> AgentSnapshot {
         let execution = match child.node.session().execution() {
             Execution::Idle if !self.children_of(child.id()).is_empty() => Execution::Waiting,
             execution => execution,
         };
-        snapshot(child, parent, now, execution, host)
+        snapshot(child, parent, now, execution, device)
     }
 
-    /// The name of the Host of `record`, a child, when that is not the
+    /// The name of the device of `record`, a child, when that is not the
     /// conversation's, which works at `placement`; none when it is.
-    async fn host_elsewhere(&self, record: &NodeRecord, placement: &Placement) -> Option<String> {
+    async fn device_elsewhere(&self, record: &NodeRecord, placement: &Placement) -> Option<String> {
         let device = record.elsewhere(Some(placement))?;
-        Some(self.root.host_name(device).await.unwrap_or_else(|| device.to_owned()))
+        Some(self.root.device_name(device).await.unwrap_or_else(|| device.to_owned()))
     }
 }
 
 /// `child`'s snapshot in `execution`; `parent` is its parent's number.
-fn snapshot<H: HostResolver>(
+fn snapshot<H: DeviceResolver>(
     child: &Child<H>,
     parent: u64,
     now: i64,
     execution: Execution,
-    host: Option<String>,
+    device: Option<String>,
 ) -> AgentSnapshot {
     let record = child.node.record();
     let telemetry = child.telemetry.borrow();
@@ -2531,7 +2531,7 @@ fn snapshot<H: HostResolver>(
             })
             .collect(),
         cwd: record.own_placement().directory.clone(),
-        host,
+        device,
     }
 }
 
@@ -2559,7 +2559,7 @@ fn show_text(snapshot: &AgentSnapshot, more: &str) -> String {
         .field("Profile", snapshot.profile.as_deref())
         .field("Description", snapshot.description.as_str())
         .field("Directory", snapshot.cwd.as_str())
-        .field("Host", snapshot.host.as_deref())
+        .field("Device", snapshot.device.as_deref())
         .field("Started", snapshot.started_at)
         .field("Elapsed (s)", seconds(snapshot.elapsed_ms))
         .field("Execution", snapshot.execution.as_str())
@@ -2591,7 +2591,7 @@ fn archived_text(archived: &ArchivedSnapshot, more: &str) -> String {
         .field("Profile", archived.profile.as_deref())
         .field("Description", archived.description.as_str())
         .field("Directory", archived.cwd.as_str())
-        .field("Host", archived.host.as_deref())
+        .field("Device", archived.device.as_deref())
         .field("Started", archived.started_at)
         .field("Closed", archived.closed_at);
     if let Some(failure) = &archived.failure {
@@ -2602,12 +2602,12 @@ fn archived_text(archived: &ArchivedSnapshot, more: &str) -> String {
 }
 
 /// A child's working directory as `list` names it while the conversation
-/// works at `placement`: on another Host, whole with `host`, that Host's
+/// works at `placement`: on another device, whole with `device`, that device's
 /// name; on the conversation's, relative to the conversation's directory
 /// when inside it, `.` for that directory itself, else whole.
-fn place(placement: &Placement, own: &Placement, host: Option<&str>) -> String {
-    match host {
-        Some(host) => format!("{} on {host}", own.directory),
+fn place(placement: &Placement, own: &Placement, device: Option<&str>) -> String {
+    match device {
+        Some(device) => format!("{} on {device}", own.directory),
         None => relative_to(&placement.directory, &own.directory).unwrap_or_else(|| own.directory.clone()),
     }
 }

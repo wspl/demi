@@ -15,7 +15,7 @@ bench = false
 demi-command-package-browser-protocol = { path = "../../plugin-browser/protocol" }
 demi-command-protocol = { path = "../../command-protocol" }
 demi-command-declarations = { path = "../../command-declarations" }
-demi-host-interface = { path = "../../host-interface" }
+demi-device-interface = { path = "../../device-interface" }
 demi-plugin-interface = { path = "../../plugin-interface" }
 demi-shared-types = { path = "../../shared-types" }
 # The named character references a page's title reads (`src/page.rs`).

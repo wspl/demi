@@ -43,7 +43,7 @@
       "allowed": "你已允许此对话执行以下操作：{action}",
       "denied": "你已拒绝此对话执行以下操作：{action}",
       "reached": "另一个对话联系了此对话，已允许它执行以下操作：{action}",
-      "moved": "你已将此对话移到 {host} · {path}",
+      "moved": "你已将此对话移到 {device} · {path}",
       "moveFailed": "移动失败：{reason}",
       "fromMain": "来自{agent}的消息",
       "mainAgent": "主智能体",
@@ -67,7 +67,7 @@
       "failed": "失败",
       "stopped": "已停止",
       "stopping": "正在停止…",
-      "waiting": "正在等待 {host}",
+      "waiting": "正在等待 {device}",
       "lost": "已丢失",
       "exitCode": "退出代码 {code}"
     },
@@ -75,7 +75,7 @@
       "lost": "已丢失",
       "lostWhy": "已丢失：{reason}",
       "stopping": "正在停止…",
-      "waiting": "正在等待 {host}",
+      "waiting": "正在等待 {device}",
       "running": "已运行 {span}",
       "exited": "{span} 后退出",
       "exitedZero": "{span} 后退出，退出代码 0",
@@ -238,7 +238,7 @@
     "tabsOpen": "标签页，已打开 {count} 个",
     "closePanel": "关闭面板",
     "options": "{title}，对话选项",
-    "hostState": "{name} {state}",
+    "deviceState": "{name} {state}",
     "renameTitle": "重命名对话",
     "titleLabel": "对话标题",
     "runsOn": "运行于",
@@ -281,9 +281,9 @@
     "lastTurnRate": "上一轮速度：{rate} token/秒"
   },
   "notices": {
-    "hostOffline": "{name} 已离线。",
-    "moveHost": "移到其他主机…",
-    "hostOfflineLastSeen": "{name} 已离线，上次在线 {time}。",
+    "deviceOffline": "{name} 已离线。",
+    "moveDevice": "移到其他设备…",
+    "deviceOfflineLastSeen": "{name} 已离线，上次在线 {time}。",
     "pluginsChanged": "插件已更改"
   },
   "composer": {
@@ -435,7 +435,7 @@
     "nothingOpen": "没有打开的内容",
     "noFiles": "没有文件或更改",
     "reading": "正在读取 {name}",
-    "hostOffline": "{name} 已离线。",
-    "hostOfflineDetail": "它重新连接后，文件、更改和浏览器会再次显示。"
+    "deviceOffline": "{name} 已离线。",
+    "deviceOfflineDetail": "它重新连接后，文件、更改和浏览器会再次显示。"
   }
 }

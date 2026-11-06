@@ -15,7 +15,7 @@ const props = defineProps<{
   content: string
   /** The files its inline code names, as the backend keeps them with the reply. */
   codeFiles?: readonly CodeFile[]
-  /** The pictures of the Host it shows, with their copies, as the backend keeps them with the reply. */
+  /** The pictures of the device it shows, with their copies, as the backend keeps them with the reply. */
   pictures?: readonly ReplyPicture[]
 }>()
 

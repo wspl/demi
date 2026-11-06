@@ -3,7 +3,7 @@
     "turnStopped": "Le tour s’est arrêté sur une erreur.",
     "saveCredential": "Enregistrer l’identifiant « {name} » ?"
   },
-  "hosts": {
+  "devices": {
     "unavailableDevice": "Appareil indisponible"
   },
   "failures": {

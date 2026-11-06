@@ -1,8 +1,8 @@
 #![cfg_attr(windows, feature(windows_process_extensions_inherit_handles))]
-//! The runner: the execution host's program.
+//! The runner: the execution device's program.
 //!
 //! The runner turns a device into an execution target. It registers with the
-//! backend, performs Host filesystem and process operations, and owns shell
+//! backend, performs device filesystem and process operations, and owns shell
 //! jobs. Under a root command's name it is the command alias that forwards one
 //! command line to it.
 //!
@@ -12,7 +12,7 @@
 //! - the installation (state, lock, pairing, removal, updates, starting with
 //!   the computer);
 //! - the backend connection;
-//! - the Host log.
+//! - the device log.
 //!
 //! # Threads
 //!
@@ -25,7 +25,7 @@
 //!   drives pipes and streams; only waits on the network, never blocks
 //!       |                      |                       |
 //!   blocking threads       jobs' shell processes    peers thread
-//!   (runner-host: files,   (runner-shell: one per   (runner-direct)
+//!   (runner-device: files,   (runner-shell: one per   (runner-direct)
 //!   git, hashing; a few    job, a thread per
 //!   at a time)             interpreter unit)
 //! ```
@@ -56,7 +56,7 @@
 //!
 //! - Work that lasts as long as its caller wants is paced by its own
 //!   backpressure.
-//! - Bounded Host work waits for a slot.
+//! - Bounded device work waits for a slot.
 //! - A process that runs out of open files waits for one (`command-sdk`'s
 //!   `descriptors`).
 //!
@@ -88,9 +88,9 @@
 //! nothing below the executable depends on it.
 //!
 //! ```text
-//! demi-runner (connection, registration, Host log, composition)
+//! demi-runner (connection, registration, device log, composition)
 //!   |-- runner-jobs --> runner-command-packages --> runner-process
-//!   |-- runner-host --------------------------------> runner-process
+//!   |-- runner-device --------------------------------> runner-process
 //!   |-- runner-shell -------------------------------> runner-process
 //!   `-- runner-direct
 //! ```
@@ -107,7 +107,7 @@ mod device_requests;
 mod forward;
 #[cfg(windows)]
 mod git;
-mod host_log;
+mod device_log;
 mod management;
 mod pairs;
 mod registration;
@@ -487,7 +487,7 @@ async fn runner(cli: Cli) -> io::Result<u8> {
     if log {
         console::to_log(&directory)?;
     }
-    let own: BTreeMap<String, String> = demi_runner_shell::host_environment().collect();
+    let own: BTreeMap<String, String> = demi_runner_shell::device_environment().collect();
     // A paired device's is the user's login environment, whoever started
     // the runner; a managed guest's is its image's
     // (`crates/machine-manager/src/storage/mod.rs`), and one that
@@ -571,7 +571,7 @@ async fn runner(cli: Cli) -> io::Result<u8> {
         None => directory.join("scratch"),
     };
     let scratch_root = scratch.to_string_lossy().into_owned();
-    // The home as its Host names it, so the backend tells a directory that
+    // The home as its device names it, so the backend tells a directory that
     // is the home from another (`crates/backend-database/src/selection.rs`); one that cannot be resolved is reported as it is set.
     let canonical_home = dunce::canonicalize(&home).unwrap_or_else(|_| home.clone());
     let identity = identity(canonical_home.to_string_lossy().into_owned(), scratch_root)?;
@@ -606,7 +606,7 @@ async fn runner(cli: Cli) -> io::Result<u8> {
         autostart_unavailable: None,
     };
     // A managed guest's state is temporary; its log and its job output stay
-    // on the system layer, which a stop keeps (`crates/runner/src/host_log.rs`, `crates/runner-jobs/src/job_directories.rs`).
+    // on the system layer, which a stop keeps (`crates/runner/src/device_log.rs`, `crates/runner-jobs/src/job_directories.rs`).
     let (log_directory, jobs) = if boot.is_some() {
         (
             PathBuf::from("/var/log/demi"),
@@ -618,10 +618,10 @@ async fn runner(cli: Cli) -> io::Result<u8> {
     // The records of the jobs' shells lie beside the job root, which a Cloud
     // keeps on its system layer too.
     let shell = Arc::new(RemoteShell::new(executable.clone(), jobs.with_file_name("shells")));
-    let (log, layer) = host_log::open(log_directory).await?;
+    let (log, layer) = device_log::open(log_directory).await?;
     tracing_subscriber::registry()
         .with(layer.with_filter(LevelFilter::INFO))
-        .with(host_log::Console.with_filter(LevelFilter::WARN))
+        .with(device_log::Console.with_filter(LevelFilter::WARN))
         .init();
     // Kept until the runner ends: it says when this thread did not run.
     let _control_watch = demi_runner_process::steps::watch_control_loop();
@@ -854,7 +854,7 @@ async fn uninstalled(directory: &Path, revocation: &Revocation) -> io::Result<u8
     Ok(0)
 }
 
-/// The Host's operating system as the hello names it (`crates/runner/src/connection/mod.rs`). A release the system does not tell leaves
+/// The device's operating system as the hello names it (`crates/runner/src/connection/mod.rs`). A release the system does not tell leaves
 /// its name alone.
 fn operating_system() -> wire::OperatingSystem {
     use sysinfo::System;
@@ -889,7 +889,7 @@ fn operating_system() -> wire::OperatingSystem {
     }
 }
 
-/// The Host's physical memory in bytes, which the hello reports
+/// The device's physical memory in bytes, which the hello reports
 /// (`crates/provider-claude-code/src/idle.rs`).
 fn memory() -> u64 {
     use sysinfo::{MemoryRefreshKind, RefreshKind, System};
@@ -916,7 +916,7 @@ fn kernel() -> Option<wire::Kernel> {
     None
 }
 
-fn identity(home_dir: String, scratch_root: String) -> io::Result<wire::HostIdentity> {
+fn identity(home_dir: String, scratch_root: String) -> io::Result<wire::DeviceIdentity> {
     let hostname = hostname::get()?
         .into_string()
         .map_err(|_| io::Error::other("the hostname is not UTF-8"))?;
@@ -928,7 +928,7 @@ fn identity(home_dir: String, scratch_root: String) -> io::Result<wire::HostIden
     // Windows has no numeric user and group for the runner to report.
     #[cfg(windows)]
     let (uid, gid) = (0, 0);
-    Ok(wire::HostIdentity {
+    Ok(wire::DeviceIdentity {
         uid,
         gid,
         hostname,
@@ -984,7 +984,7 @@ fn main() {
         // A command alias serves one invocation
         // and has no log of its own; the runner it calls logs.
         tracing_subscriber::registry()
-            .with(host_log::Console.with_filter(LevelFilter::WARN))
+            .with(device_log::Console.with_filter(LevelFilter::WARN))
             .init();
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -999,7 +999,7 @@ fn main() {
         // The reader of a command's output went away, as `head` does once it
         // has read its lines: the command ends as a program that writes into
         // a closed pipe ends in a shell, with 141 and nothing on stderr
-        // (`crates/host-interface/src/rpc.rs`).
+        // (`crates/device-interface/src/rpc.rs`).
         Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => 141,
         Err(error) => {
             console::line(format_args!("demi-runner: {error}"));

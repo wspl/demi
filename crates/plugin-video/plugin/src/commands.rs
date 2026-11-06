@@ -1,7 +1,7 @@
 //! The `demi video` group, whose leaves the plugin answers itself with
 //! the request's whole port.
 
-use demi_host_interface::{GroupBuilder, LeafBuilder};
+use demi_device_interface::{GroupBuilder, LeafBuilder};
 use demi_plugin_interface::{CommandPlugin, Placement, PortHandled, VideoResolution};
 use demi_plugin_media::ModelsOutput;
 use schemars::JsonSchema;
@@ -23,7 +23,7 @@ const MODELS_SUMMARY: &str = "List the video models the user's provider entries 
 const PROMPT: &str = "What the video shows and how it moves; - reads it from stdin.";
 const MODEL: &str = "The video model, required: one `demi video models` lists.";
 const PROVIDER: &str = "The entry to make it through, by its name in Settings or its id, when the user asked for one; without it, the first that can make the model now, subscriptions before API keys, each in the order of Settings > Providers.";
-const IMAGE: &str = "The first frame: a PNG, JPEG or WebP file of this Host of at most 16 MiB, relative to the current directory or absolute.";
+const IMAGE: &str = "The first frame: a PNG, JPEG or WebP file of this device of at most 16 MiB, relative to the current directory or absolute.";
 const LAST_FRAME: &str = "The last frame, which needs --image; a file as --image takes.";
 const REFERENCE: &str = "An image the video keeps to, such as a character or a product; repeat it for several. A file as --image takes.";
 const DURATION: &str = "The length in seconds; the shortest the model takes without it.";
@@ -35,7 +35,7 @@ const SEED: &str = "A seed, for the models that take one.";
 const SHOWN: &str = "The model to show; without it, every model is listed.";
 const EDIT_PROMPT: &str = "What to change, such as `Make the boat red. Keep everything else the same.`; - reads it from stdin.";
 const EXTEND_PROMPT: &str = "How the video goes on; - reads it from stdin.";
-const VIDEO: &str = "The video to change: an MP4 file of this Host of at most 64 MiB, relative to the current directory or absolute.";
+const VIDEO: &str = "The video to change: an MP4 file of this device of at most 64 MiB, relative to the current directory or absolute.";
 const CHANGE_REFERENCE: &str = "An image the result keeps to, such as a character entering the scene; repeat it for several. A file as an image a video takes: a PNG, JPEG or WebP file of at most 16 MiB.";
 
 const CHANGE_SUCCESS: &str = "the MP4's bytes on stdout; on stderr what generate's says, the result's line naming the job it continued, such as `13 s 640×360 MP4 with sound from gemini-omni-1.1-flash (Google), extending its job v1_ChdFeGFtcGxl, $0.45`, and a warning when the vendor no longer kept that job and the file was sent instead";

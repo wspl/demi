@@ -1,5 +1,5 @@
 /**
- * The last part of a Host's path, in either platform's syntax: `/` and `\`
+ * The last part of a device's path, in either platform's syntax: `/` and `\`
  * both separate, and separators at the end are ignored, so `C:\src\app\`
  * and `/src/app/` both end in `app`. A root has the empty name.
  */

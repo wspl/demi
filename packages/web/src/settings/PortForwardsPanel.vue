@@ -25,7 +25,7 @@ watch(
 <template>
   <SettingsPortForwards
     :forwards="settings.forwards"
-    :hosts="settings.hosts"
+    :devices="settings.devices"
     :shown="shown"
     :load="product.listLoad('port_forwards')"
     :overlay-store="appOverlayStore"

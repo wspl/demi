@@ -256,10 +256,10 @@ function copy(event: ClipboardEvent): void {
  */
 function dragStart(event: DragEvent): void {
   const transfer = event.dataTransfer
-  const host = event.target instanceof Element ? event.target.closest('[data-attachment]') : null
+  const device = event.target instanceof Element ? event.target.closest('[data-attachment]') : null
   let content: Slice | null = null
-  if (host && root.value?.contains(host)) {
-    const pos = positionAttribute(host)
+  if (device && root.value?.contains(device)) {
+    const pos = positionAttribute(device)
     content = doc.value.slice(pos, pos + 1)
   } else {
     const range = ownSelection()

@@ -1,9 +1,9 @@
-import type { MoveLock } from '@demicodes/web-ui/hosts/move-question'
-import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { MoveLock } from '@demicodes/web-ui/targets/move-question'
+import type { DeviceOption, MenuDevice } from '@demicodes/web-ui/targets/types'
 import type { Conversation, Device } from '../state/types'
 import { useProduct } from '../state/product'
 import { directPath, lastDirectPath } from '../direct'
-import { cloudDeviceIn, deviceMarkOf, hostKindOf, hostLabel } from '../state/hosts'
+import { cloudDeviceIn, deviceMarkOf, targetKindOf, deviceLabel } from '../state/devices'
 
 /** Resolve display metadata from the canonical target and account snapshot. */
 export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>) {
@@ -20,17 +20,17 @@ export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>)
         ?? cloudDeviceIn(snapshot?.devices)?.id
         ?? null)
   const device = snapshot?.devices?.find((device) => device.id === deviceId)
-  const kind = target.kind === 'cloud' ? ('cloud' as const) : hostKindOf(device)
+  const kind = target.kind === 'cloud' ? ('cloud' as const) : targetKindOf(device)
   return {
     deviceId,
     kind,
-    name: hostLabel(kind, device),
+    name: deviceLabel(kind, device),
     /** Where the work runs: the backend's resolved directory, for every kind of target. */
     path: conversation.cwd,
     /** The directory the reader chose; null while the Cloud runs in its own session directory. */
     directory: target.kind === 'device' ? target.path : (project?.path ?? null),
     projectName: project?.name ?? null,
-    /** Whether the Host's runner serves it: a paired device's, or a running Cloud's. */
+    /** Whether the device's runner serves it: a paired device's, or a running Cloud's. */
     state: device?.state ?? ('offline' as const),
     /** How much of its next runner the device has downloaded, while that download moves. */
     downloadPercent: device?.downloadPercent ?? null,
@@ -54,8 +54,8 @@ export function moveLock(
   return pendingChanges.includes(conversation.id) ? 'moving' : undefined
 }
 
-/** The Host a conversation runs on, as Run On checks it. */
-export function primaryHostOf(execution: ReturnType<typeof executionFor>): HostMenuHost {
+/** The Device a conversation runs on, as Run On checks it. */
+export function primaryDeviceOf(execution: ReturnType<typeof executionFor>): MenuDevice {
   return {
     id: execution.deviceId ?? 'cloud',
     name: execution.name,
@@ -71,7 +71,7 @@ export function primaryHostOf(execution: ReturnType<typeof executionFor>): HostM
  * page reaches it by, none for one it has not used this session, and the
  * path this browser found last time.
  */
-export function hostDeviceOptions(devices: readonly Device[]): HostDeviceOption[] {
+export function deviceOptions(devices: readonly Device[]): DeviceOption[] {
   return devices.map((device) => ({
     id: device.id,
     name: device.name,

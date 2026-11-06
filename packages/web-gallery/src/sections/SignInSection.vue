@@ -21,7 +21,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Sign in',
-    'Email and password. The host reports busy, a wrong-credentials error, a lockout and whether the session ended. A wrong password gives the focus back to the password, its text selected, and the line under the fields keeps its height, so nothing moves. A lockout counts down to its end with Sign In off. No registration; a forgotten password goes to the administrator, as the line under Sign In says.'
+    'Email and password. The device reports busy, a wrong-credentials error, a lockout and whether the session ended. A wrong password gives the focus back to the password, its text selected, and the line under the fields keeps its height, so nothing moves. A lockout counts down to its end with Sign In off. No registration; a forgotten password goes to the administrator, as the line under Sign In says.'
   ],
   [
     'Passkeys',
@@ -212,7 +212,7 @@ function createAccount(name: string, address: string) {
     <GallerySection
       v-if="view === 'signin'"
       title="Sign In"
-      note="Switch the host-reported state, and whether passkeys are offered. The prototype accepts any password except wrong; five failures lock the form. Sign In with Passkey shows the passkey sign-in running, then what the product would do."
+      note="Switch the device-reported state, and whether passkeys are offered. The prototype accepts any password except wrong; five failures lock the form. Sign In with Passkey shows the passkey sign-in running, then what the product would do."
     >
       <div class="mb-3 flex flex-wrap gap-3">
         <Segmented v-model="state" :options="states" />
@@ -237,7 +237,7 @@ function createAccount(name: string, address: string) {
     <GallerySection
       v-else-if="view === 'setup'"
       title="Setup"
-      note="Switch the state. Too short and differing passwords come from what is typed; the others the host reports. Set Up Already is what a visitor sees when another created the master account first. Create Account goes on to the optional Add a Passkey step."
+      note="Switch the state. Too short and differing passwords come from what is typed; the others the device reports. Set Up Already is what a visitor sees when another created the master account first. Create Account goes on to the optional Add a Passkey step."
     >
       <div class="mb-3">
         <Segmented

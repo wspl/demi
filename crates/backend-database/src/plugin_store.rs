@@ -8,7 +8,7 @@ use demi_plugin_host::store::{
     OAuthClient, PanelOutcome, PluginReport, PluginStore, PluginValue, SealedSecret, SecretRow, StoreError, Stored,
     ValueWrite, Written,
 };
-use demi_plugin_interface::{HostDirectory, WorkspaceName};
+use demi_plugin_interface::{DeviceDirectory, WorkspaceName};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
 use demi_web_api_protocol::panel::{PanelChange, WorkPanel};
 use futures_util::FutureExt;
@@ -17,7 +17,7 @@ use serde_json::Value;
 use crate::control::ControlService;
 
 /// The control store's own failure, which the plugin host passed on, or
-/// corrupt data the host found: a sealed secret that does not open, the one
+/// corrupt data the device found: a sealed secret that does not open, the one
 /// failure it raises itself.
 impl From<StoreError> for crate::StorageError {
     fn from(error: StoreError) -> Self {
@@ -72,11 +72,11 @@ impl PluginStore for ControlService {
         .boxed_local()
     }
 
-    fn directories(&self, user: UserId) -> Stored<'_, BTreeMap<String, Vec<HostDirectory>>> {
+    fn directories(&self, user: UserId) -> Stored<'_, BTreeMap<String, Vec<DeviceDirectory>>> {
         async move { self.plugin_directories(user).await.map_err(StoreError::new) }.boxed_local()
     }
 
-    fn set_directories(&self, user: UserId, plugin: String, directories: Vec<HostDirectory>) -> Stored<'_, ()> {
+    fn set_directories(&self, user: UserId, plugin: String, directories: Vec<DeviceDirectory>) -> Stored<'_, ()> {
         async move {
             self.set_plugin_directories(user, plugin, directories)
                 .await

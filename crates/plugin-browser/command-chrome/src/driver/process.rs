@@ -6,7 +6,7 @@
 //! environment. Helpers such as Crashpad can detach into another session, so
 //! retirement finds them by the marker as well as the group. The marker is read
 //! only from processes inside the Chrome installation, never from every process
-//! on the Host.
+//! on the device.
 //!
 //! A failed launch, an owner's cancellation and a failed graceful close use the
 //! same termination path.

@@ -32,7 +32,7 @@
 //!   switch, so a child whose provider failed can be moved on while subagents
 //!   are off.
 //! - The limits are the user's across all their conversations, because they
-//!   bound what the user runs at once (tokens, the Hosts' load), not what one
+//!   bound what the user runs at once (tokens, the devices' load), not what one
 //!   conversation does. A tree with a live subagent is never evicted, so every
 //!   live one is counted. A limit lowered below what is live ends nothing.
 //! - The switch stops the user's profiles only: a workflow chosen for the
@@ -51,7 +51,7 @@
 use std::{num::NonZeroU32, rc::Rc};
 
 use demi_agent_tools::{
-    ChosenWorkflow, ConversationProfiles, EFFORT_OFF, HostResolver, NewProfileDraft, Profile,
+    ChosenWorkflow, ConversationProfiles, EFFORT_OFF, DeviceResolver, NewProfileDraft, Profile,
     ProfileEdit, SubagentSettings, Unavailable, WorkflowChild, WorkflowListing,
 };
 use demi_shared_types::{
@@ -177,7 +177,7 @@ fn effort_word(effort: &str) -> String {
     if effort == THINKING_OFF { EFFORT_OFF } else { effort }.to_owned()
 }
 
-impl<H: HostResolver> Tree<H> {
+impl<H: DeviceResolver> Tree<H> {
     /// What a spawn by `owner` with the profile `name` makes its child of; for
     /// a resume, what the child the resume moves to the profile is made of.
     ///
@@ -474,7 +474,7 @@ impl Deleted {
     }
 }
 
-impl<H: HostResolver> Tree<H> {
+impl<H: DeviceResolver> Tree<H> {
     /// `demi agent profiles show`: the user's profile `name`, enabled or
     /// not, checked now.
     pub(crate) async fn profile(&self, name: &str) -> Result<ProfileAnswer, String> {
@@ -605,7 +605,7 @@ fn workflow_answer(workflow: &ChosenWorkflow, child: &WorkflowChild) -> ProfileA
 }
 
 /// `profile` as `show` gives it, checked now.
-async fn answer<H: HostResolver>(server: &AgentServer<H>, profile: &Profile) -> ProfileAnswer {
+async fn answer<H: DeviceResolver>(server: &AgentServer<H>, profile: &Profile) -> ProfileAnswer {
     let selection = match &profile.model {
         Some(model) => Some(server.deps.providers.profile_selection(model).await),
         None => None,
@@ -731,7 +731,7 @@ impl ProfileListing {
 /// What a spawn with the user's `profile` makes its child of, its model
 /// checked now, the parent's from `parents` for a profile without one; or why
 /// it cannot, with what an omitted `--profile` does where it does anything.
-async fn user_setup<H: HostResolver>(
+async fn user_setup<H: DeviceResolver>(
     server: &AgentServer<H>,
     profile: &Profile,
     omitting: Option<&str>,
@@ -810,7 +810,7 @@ fn users_off(workflow: &ChosenWorkflow) -> String {
 }
 
 /// The user's subagent settings now.
-async fn read<H: HostResolver>(server: &AgentServer<H>) -> Result<SubagentSettings, String> {
+async fn read<H: DeviceResolver>(server: &AgentServer<H>) -> Result<SubagentSettings, String> {
     server
         .deps
         .subagents
@@ -820,7 +820,7 @@ async fn read<H: HostResolver>(server: &AgentServer<H>) -> Result<SubagentSettin
 }
 
 /// An enabled profile as `demi agent profiles list` lists it, checked now.
-async fn listed<H: HostResolver>(server: &Rc<AgentServer<H>>, profile: &Profile) -> ListedProfile {
+async fn listed<H: DeviceResolver>(server: &Rc<AgentServer<H>>, profile: &Profile) -> ListedProfile {
     let missing = match &profile.model {
         Some(model) => server.deps.providers.profile_selection(model).await.err(),
         None => None,

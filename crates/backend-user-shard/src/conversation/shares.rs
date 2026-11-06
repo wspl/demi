@@ -5,7 +5,7 @@
 //! conversation's summary, which lists its shares.
 //!
 //! A share's reader reads what its list holds, by the share's record, which the
-//! edge found by the token. A read reaches the list alone: no Host, no live
+//! edge found by the token. A read reaches the list alone: no device, no live
 //! session.
 
 use base64::Engine as _;

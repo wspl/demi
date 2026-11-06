@@ -20,11 +20,11 @@ import type { FileBrowserSource, FileSearchRange } from './types'
 
 /**
  * Search in Files: a field that floats over Files and finds the files under
- * `root` on the source's Host whose name or text holds what it holds, letter
+ * `root` on the source's device whose name or text holds what it holds, letter
  * case aside, as the conversations' search finds conversations
- * (`crates/runner-host/src/search.rs`).
+ * (`crates/runner-device/src/search.rs`).
  *
- * - Once typing pauses, the files found list under the field as the Host
+ * - Once typing pauses, the files found list under the field as the device
  *   finds them: those whose name holds the text first, the text marked in the
  *   name, then those whose text holds it, with the first line that does under
  *   the name, marked there. Each kind is in the tree's order.

@@ -16,7 +16,7 @@ use demi_agent_store::SideOf;
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_database::side_questions;
-use demi_backend_host_access::root_of;
+use demi_backend_device_access::root_of;
 use demi_conversation_lane_protocol::ClientContent;
 use demi_shared_types::{NodeId, UserContentBlock, markdown_quote};
 use demi_web_api_protocol::ids::ConversationId;

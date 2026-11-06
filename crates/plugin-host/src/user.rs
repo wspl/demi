@@ -12,13 +12,13 @@
 //!   a plugin that keeps something of a conversation on or off, through an
 //!   instance made for it alone.
 //! - The context sources among them.
-//! - The Host directories of the plugins on.
+//! - The device directories of the plugins on.
 //! - The answers to their port operations.
 //!
 //! The plugin host answers values, directories, changes, secrets, outbound
 //! requests and sign-ins itself. What reaches the user's blobs, a
-//! conversation's Hosts or the user's provider entries goes to the product,
-//! which owns the blob namespace, the conversation's host access and the
+//! conversation's devices or the user's provider entries goes to the product,
+//! which owns the blob namespace, the conversation's device access and the
 //! providers. The product also owns the sealing of a secret, the client an
 //! outbound request is sent with, the public URL and the time.
 
@@ -31,14 +31,14 @@ use crate::store::StoreError;
 use crate::store::PanelOutcome;
 use crate::store::{PluginChanges, PluginStore, ValueWrite, Written};
 use demi_command_declarations::NativeOperation;
-use demi_host_interface::{CommandSet, GroupBuilder, JobCaller, PortError, RpcPort};
+use demi_device_interface::{CommandSet, GroupBuilder, JobCaller, PortError, RpcPort};
 use demi_plugin_interface::{
     AskedVideo, AudioAsk, AudioVoices, Feature, ImageAsk, MadeAudio, MadeImage, MediaListing, MediaRefusal, VideoAsk,
-    VideoStep, CallKind, DirectoryPath, HostDirectory, Plugin, PluginError, PluginId, PluginPort,
+    VideoStep, CallKind, DirectoryPath, DeviceDirectory, Plugin, PluginError, PluginId, PluginPort,
     PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal, Reply, Request, Scope, StoredReport,
     StoredValue, Workspaces, DeviceName, GitTree,
 };
-use demi_host_interface::{HostFile, HostRead};
+use demi_device_interface::{DeviceFile, DeviceRead};
 use demi_shared_types::{B64Bytes, BlobRef, MediaKind, NodeId, Timestamp, TurnId};
 use demi_web_api_protocol::conversations::PluginRevision;
 use demi_web_api_protocol::error::ErrorCode;
@@ -98,10 +98,10 @@ impl MediaCall {
 }
 
 /// What the product does for the plugins' port: the operations that reach
-/// a conversation's Hosts through its host access, and the user's blobs.
+/// a conversation's devices through its device access, and the user's blobs.
 /// The user's shard implements it.
 pub trait ProductPort {
-    /// Runs `operation` once on the conversation's primary Host for the user,
+    /// Runs `operation` once on the conversation's primary device for the user,
     /// waking it or not as `kind` says, and answers its JSON result.
     fn package_call<'a>(
         &'a self,
@@ -113,16 +113,16 @@ pub trait ProductPort {
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Value, PortFailure>>;
 
-    /// Reads `reads` where `on` says in the form that never wakes the Host;
+    /// Reads `reads` where `on` says in the form that never wakes the device;
     /// [`PortRefusal::NotRunning`] when it is not running, or, on the
-    /// primary Host of a device, when it is no longer that device's.
-    fn read_host_files<'a>(
+    /// primary device of a device, when it is no longer that device's.
+    fn read_device_files<'a>(
         &'a self,
         conversation: &'a ConversationId,
         on: &'a ReadOn,
-        reads: Vec<HostRead>,
+        reads: Vec<DeviceRead>,
         cancel: &'a CancellationToken,
-    ) -> LocalBoxFuture<'a, Result<Vec<HostFile>, PortFailure>>;
+    ) -> LocalBoxFuture<'a, Result<Vec<DeviceFile>, PortFailure>>;
 
     /// The models of `kind` of the user's provider entries, each with the
     /// entries that offer it.
@@ -230,13 +230,13 @@ pub trait ProductPort {
 /// Where a request's reads of files go (`crates/plugin-interface/src/lib.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadOn {
-    /// The conversation's primary Host.
+    /// The conversation's primary device.
     Primary,
-    /// The primary Host, while it is this device's, as a project search
+    /// The primary device, while it is this device's, as a project search
     /// asked of it.
     PrimaryOf(DeviceId),
-    /// A command's job: the Host it runs on, the conversation's primary
-    /// Host or an attached one, with a relative path read against the
+    /// A command's job: the device it runs on, the conversation's primary
+    /// device or an attached one, with a relative path read against the
     /// job's directory.
     Job { device: DeviceId, directory: String },
 }
@@ -319,7 +319,7 @@ pub enum SwitchError {
 /// What follows from a plugin turned on or off that the product does.
 #[derive(Debug)]
 pub struct Switched {
-    /// The packages whose residents every connected Host stops, which ends
+    /// The packages whose residents every connected device stops, which ends
     /// what they hold for every conversation: those of a plugin turned off
     /// that no plugin still on binds.
     pub released: Vec<String>,
@@ -369,9 +369,9 @@ pub(crate) struct Shared {
     /// what a direct channel's introduction told of the user's streams out
     /// of date (`crates/runner-direct/src/lib.rs`).
     switched: RefCell<CancellationToken>,
-    /// Each plugin's Host directories for the user, by its index, once
+    /// Each plugin's device directories for the user, by its index, once
     /// read: every change goes through this shard.
-    directories: RefCell<Option<Vec<Vec<HostDirectory>>>>,
+    directories: RefCell<Option<Vec<Vec<DeviceDirectory>>>>,
     /// How many times each plugin's conversation state changed since the
     /// shard started, by the plugin's index and the conversation; a pair
     /// without an entry has changed none.
@@ -393,22 +393,22 @@ impl Shared {
     }
 
     /// [`Shared::request`], whose reads of the conversation's files are
-    /// bound to the primary Host of `host` when one is named.
+    /// bound to the primary device of `device` when one is named.
     pub(crate) async fn request_on(
         self: &Rc<Self>,
         plugin: usize,
         request: Request,
         conversation: Option<ConversationId>,
-        host: Option<DeviceId>,
+        device: Option<DeviceId>,
         rpc: Option<RpcPort>,
         cancel: CancellationToken,
     ) -> Result<Reply, PluginError> {
-        let (caller, read_on, call) = match (&request, host) {
+        let (caller, read_on, call) = match (&request, device) {
             (Request::Command { invocation, .. }, _) => {
                 let caller = invocation.caller.clone();
-                // A Host name that is no device's reads nowhere; the read
-                // answers that the Host is not running.
-                let read_on = match DeviceId::try_from(invocation.host.as_str()) {
+                // A device name that is no device's reads nowhere; the read
+                // answers that the device is not running.
+                let read_on = match DeviceId::try_from(invocation.device.as_str()) {
                     Ok(device) => ReadOn::Job { device, directory: invocation.cwd.clone() },
                     Err(_) => ReadOn::Primary,
                 };
@@ -534,8 +534,8 @@ impl Shared {
         self.registry.plugins[plugin].id().as_str().to_owned()
     }
 
-    /// The Host the conversation works on, from the records: none for a
-    /// Cloud conversation whose Cloud was never made. It asks no Host.
+    /// The device the conversation works on, from the records: none for a
+    /// Cloud conversation whose Cloud was never made. It asks no device.
     async fn primary_device(&self, conversation: &ConversationId) -> Result<Option<DeviceId>, PortFailure> {
         self.store.primary_device(conversation.clone()).await.map_err(storage)
     }
@@ -585,7 +585,7 @@ impl Shared {
 
     /// Tells the plugin that owns the kind of the tab the user removed, if the
     /// user has it on, after the change is answered: the page never waits for
-    /// the plugin's work, which may wake a Host.
+    /// the plugin's work, which may wake a device.
     ///
     /// A tab the user created is none of the plugin's business: the user
     /// creates tabs of the kinds no plugin owns, such as a file's, and the
@@ -646,13 +646,13 @@ impl Shared {
         });
     }
 
-    /// Each plugin's Host directories, by its index.
-    async fn directories(&self) -> Result<Vec<Vec<HostDirectory>>, StoreError> {
+    /// Each plugin's device directories, by its index.
+    async fn directories(&self) -> Result<Vec<Vec<DeviceDirectory>>, StoreError> {
         if let Some(directories) = &*self.directories.borrow() {
             return Ok(directories.clone());
         }
         let mut stored = self.store.directories(self.user.clone()).await?;
-        let directories: Vec<Vec<HostDirectory>> = self
+        let directories: Vec<Vec<DeviceDirectory>> = self
             .registry
             .plugins
             .iter()
@@ -662,14 +662,14 @@ impl Shared {
         Ok(directories)
     }
 
-    /// Replaces plugin `plugin`'s Host directories and answers each one's
-    /// path on every Host.
+    /// Replaces plugin `plugin`'s device directories and answers each one's
+    /// path on every device.
     async fn set_directories(
         &self,
         plugin: usize,
-        directories: Vec<HostDirectory>,
+        directories: Vec<DeviceDirectory>,
     ) -> Result<Vec<DirectoryPath>, PortFailure> {
-        HostDirectory::check_set(&directories).map_err(PortError::Failed)?;
+        DeviceDirectory::check_set(&directories).map_err(PortError::Failed)?;
         let mut current = self.directories().await.map_err(storage)?;
         self.store
             .set_directories(
@@ -697,7 +697,7 @@ impl Shared {
 #[derive(Clone)]
 pub struct UserPlugins(Rc<Shared>);
 
-/// What a package lost on a Host (`crates/command-protocol/src/messages.rs`).
+/// What a package lost on a device (`crates/command-protocol/src/messages.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lost<'a> {
     /// The state of one package, whose resident ended unsaid.
@@ -851,10 +851,10 @@ impl UserPlugins {
         Ok(true)
     }
 
-    /// The packages whose residents a Host is to hold none of: those of every
+    /// The packages whose residents a device is to hold none of: those of every
     /// plugin the user has off that no plugin on binds. The runner stops them
     /// when it connects, as turning their plugin off stops them on a connected
-    /// one. A list of what is off, not of what is on, since a Host also runs
+    /// one. A list of what is off, not of what is on, since a device also runs
     /// packages no plugin binds.
     pub async fn stopped_packages(&self) -> Result<Vec<String>, StoreError> {
         let current = self.enabled().await?;
@@ -1006,7 +1006,7 @@ impl UserPlugins {
     }
 
     /// Asks `plugin`, which declares a project search, to search
-    /// `directory`, the conversation's project directory on the primary Host
+    /// `directory`, the conversation's project directory on the primary device
     /// of `device`, which its reads are bound to: what it found and what
     /// tells of a change to it; none while the user has it off.
     pub async fn project_search(
@@ -1015,7 +1015,7 @@ impl UserPlugins {
         conversation: &ConversationId,
         device: &DeviceId,
         directory: String,
-        paths: demi_host_paths::HostPaths,
+        paths: demi_device_paths::DevicePaths,
         cancel: CancellationToken,
     ) -> Result<Option<(Value, Vec<WatchSubject>)>, PluginError> {
         let Some((index, _)) = self.0.registry.plugin(plugin.as_str()) else {
@@ -1043,10 +1043,10 @@ impl UserPlugins {
         }
     }
 
-    /// Every plugin's Host directories for the user, which host access
-    /// installs before a job: a plugin the user has off has none, so a Host
+    /// Every plugin's device directories for the user, which device access
+    /// installs before a job: a plugin the user has off has none, so a device
     /// loses its directories at its next installation.
-    pub async fn directories(&self) -> Result<Vec<(PluginId, Vec<HostDirectory>)>, StoreError> {
+    pub async fn directories(&self) -> Result<Vec<(PluginId, Vec<DeviceDirectory>)>, StoreError> {
         let enabled = self.enabled().await?;
         let directories = self.0.directories().await?;
         Ok(self
@@ -1159,7 +1159,7 @@ impl UserPlugins {
     }
 
     /// The command package `package` said `message` about `conversation`
-    /// from a resident on one of its Hosts: each plugin that binds it and
+    /// from a resident on one of its devices: each plugin that binds it and
     /// that the user has on receives it, in the order the messages came
     /// (`crates/plugin-interface/src/request.rs`).
     pub async fn package_message(
@@ -1180,7 +1180,7 @@ impl UserPlugins {
         }
     }
 
-    /// What `lost` names was kept on a Host of each of `conversations` and
+    /// What `lost` names was kept on a device of each of `conversations` and
     /// ended without its package saying so.
     ///
     /// Each plugin that binds such a package, that the user has on and that has
@@ -1543,8 +1543,8 @@ pub struct ContextAsk {
     pub node: NodeId,
     /// The node's working directory.
     pub cwd: String,
-    /// How the node's Host writes its paths.
-    pub paths: demi_host_paths::HostPaths,
+    /// How the node's device writes its paths.
+    pub paths: demi_device_paths::DevicePaths,
     /// The node's current input turn.
     pub turn: TurnId,
     /// The text of the source's own blocks the model receives, oldest
@@ -1674,9 +1674,9 @@ impl RequestPort {
             PortMessage::SetDirectories { directories } => PortAnswer::Directories {
                 paths: shared.set_directories(self.plugin, directories).await?,
             },
-            PortMessage::ReadHostFiles { reads } => PortAnswer::HostFiles {
+            PortMessage::ReadDeviceFiles { reads } => PortAnswer::DeviceFiles {
                 files: product
-                    .read_host_files(self.conversation()?, &self.read_on, reads, &self.cancel)
+                    .read_device_files(self.conversation()?, &self.read_on, reads, &self.cancel)
                     .await?,
             },
             PortMessage::Changed { scope } => {

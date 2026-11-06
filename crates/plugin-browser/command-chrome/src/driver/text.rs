@@ -786,11 +786,11 @@ pub fn install_progress(browser: &str, progress: ArtifactProgress) -> String {
     progress.line(&plain(browser))
 }
 
-/// What a command that needs Chrome says on a Host without `browser`, whose
+/// What a command that needs Chrome says on a device without `browser`, whose
 /// archive is `size` bytes: that installing it is the next step.
 pub fn not_installed(browser: &str, size: u64) -> String {
     format!(
-        "{} is not installed on this Host yet. Install it with `demi browser install` ({} MB), then run this command again.",
+        "{} is not installed on this device yet. Install it with `demi browser install` ({} MB), then run this command again.",
         plain(browser),
         megabytes(size)
     )

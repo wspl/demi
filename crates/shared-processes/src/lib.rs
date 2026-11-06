@@ -1,4 +1,4 @@
-//! The host's processes: what `/proc` shows of them, and the signals that
+//! The device's processes: what `/proc` shows of them, and the signals that
 //! reach them, for the programs that run a server as root.
 //!
 //! A container may run root without `CAP_KILL`, and then the kernel refuses
@@ -115,7 +115,7 @@ pub fn group(pid: i32) -> Option<i32> {
     stat(pid)?.get(2)?.parse().ok()
 }
 
-/// When the process started, in clock ticks since the host booted: with the
+/// When the process started, in clock ticks since the device booted: with the
 /// boot's id, what tells it from a later process with its id.
 pub fn started(pid: i32) -> Option<u64> {
     stat(pid)?.get(19)?.parse().ok()
@@ -145,7 +145,7 @@ pub fn runs_from(pid: i32, directory: &Path) -> bool {
     std::fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(|program| program.starts_with(directory))
 }
 
-/// The id of the host's current boot.
+/// The id of the device's current boot.
 pub fn boot() -> io::Result<String> {
     Ok(fs_err::read_to_string("/proc/sys/kernel/random/boot_id")?.trim().to_owned())
 }

@@ -2,7 +2,7 @@
 //!
 //! The runner starts the executable, speaks HTTP/2 to it over its standard
 //! input and output, relays its numbers and messages streams, drains its
-//! standard error into the Host log, and reaps it. One owner task holds the
+//! standard error into the device log, and reaps it. One owner task holds the
 //! process from its start to its end and returns how it ended, with the end of
 //! its standard error.
 
@@ -382,7 +382,7 @@ fn exited(status: std::io::Result<std::process::ExitStatus>) -> ExitReason {
     }
 }
 
-/// A resident's standard error, which goes two ways (`crates/command-protocol/src/lib.rs`): each line to the Host's log as it arrives, and
+/// A resident's standard error, which goes two ways (`crates/command-protocol/src/lib.rs`): each line to the device's log as it arrives, and
 /// the end kept to accompany the resident's failure.
 struct Stderr {
     pipe: Option<ChildStderr>,

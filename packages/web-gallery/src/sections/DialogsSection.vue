@@ -33,8 +33,8 @@ import ConfirmDialog from '@demicodes/web-ui/ui/ConfirmDialog.vue'
 import ConversationDeleteDialog from '@demicodes/web-ui/sidebar/ConversationDeleteDialog.vue'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import type { DeviceInstallCommands } from '@demicodes/web-ui/devices/installation'
-import ProjectDialog from '@demicodes/web-ui/hosts/ProjectDialog.vue'
-import type { ProjectDevice, ProjectDraft, ProjectHostChoice } from '@demicodes/web-ui/hosts/project'
+import ProjectDialog from '@demicodes/web-ui/targets/ProjectDialog.vue'
+import type { ProjectDevice, ProjectDraft, ProjectDeviceChoice } from '@demicodes/web-ui/targets/project'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
 import CloudResetDialog from '@demicodes/web-ui/cloud/CloudResetDialog.vue'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
@@ -45,7 +45,7 @@ import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { mockModelMatches, mockVendors, searchMockModels } from '../fixtures/settings'
 import { demoInstallCommands, developmentInstallCommands } from '../fixtures/device-installation'
-import { createGalleryFileHosts } from '../fixtures/files'
+import { createGalleryFileDevices } from '../fixtures/files'
 import { useGalleryView } from '../gallery-views'
 import { productWould } from '../product-would'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
@@ -63,7 +63,7 @@ import { fixtureMessageSearch, fixtureSearch, retryingConversationMessages, sear
  * - Cancel, Close and Done close the dialog, and its frame's Open brings it
  *   back.
  * - A step inside the dialog moves it.
- * - A step the product takes with a Host or another page says so in a neutral
+ * - A step the product takes with a device or another page says so in a neutral
  *   toast, and the dialog closes where the product's would.
  */
 const { view } = useGalleryView()
@@ -352,9 +352,9 @@ const pairingPhases: { variant: string; phase: PairingPhase; installCommands?: D
 ]
 /** Each pairing specimen's phase: Next and Back move it, as the product's do; Open puts it back. */
 const pairingShown = ref(pairingPhases.map((item) => item.phase))
-const hosts = createGalleryFileHosts()
+const fileDevices = createGalleryFileDevices()
 const devices: ProjectDevice[] = shownAmong([
-  { id: hosts[0]!.id, name: hosts[0]!.label, state: 'online', mark: hosts[0]!.mark ?? null },
+  { id: fileDevices[0]!.id, name: fileDevices[0]!.label, state: 'online', mark: fileDevices[0]!.mark ?? null },
   { id: 'build-01', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu },
 ])
 /**
@@ -366,7 +366,7 @@ function newProjectTitle(draft: ProjectDraft): HeadlineText {
   if (draft.kind === 'cloud') {
     return `Create the Cloud Project ${draft.name} and Open a New Conversation in It`
   }
-  const projects = hosts.find((host) => host.id === draft.deviceId)?.places.find((group) => group.label === 'Recent')?.places ?? []
+  const projects = fileDevices.find((device) => device.id === draft.deviceId)?.places.find((group) => group.label === 'Recent')?.places ?? []
   const existing = projects.find((place) => place.path === draft.path.replace(/\/+$/, ''))
   return existing
     ? `Open the Project at ${existing.path} and a New Conversation in It`
@@ -374,22 +374,22 @@ function newProjectTitle(draft: ProjectDraft): HeadlineText {
 }
 
 function sourceFor(deviceId: string) {
-  return (hosts.find((host) => host.id === deviceId) ?? hosts[0]!).source
+  return (fileDevices.find((device) => device.id === deviceId) ?? fileDevices[0]!).source
 }
 function placesFor(deviceId: string) {
-  return (hosts.find((host) => host.id === deviceId) ?? hosts[0]!).places
+  return (fileDevices.find((device) => device.id === deviceId) ?? fileDevices[0]!).places
 }
 const projectForms: {
   variant: string
   devices: ProjectDevice[]
-  lastHost?: ProjectHostChoice
+  lastDevice?: ProjectDeviceChoice
   load: 'loading' | 'ready'
 }[] = [
   { variant: 'first time: Cloud', devices, load: 'ready' },
   {
     variant: 'last chose a device',
     devices,
-    lastHost: { kind: 'device', deviceId: hosts[0]!.id },
+    lastDevice: { kind: 'device', deviceId: fileDevices[0]!.id },
     load: 'ready',
   },
   { variant: 'devices loading', devices: [], load: 'loading' },
@@ -398,10 +398,10 @@ const projectForms: {
  * Each project form's remembered choice, as the product's preference keeps it:
  * a card or a device chosen in one is where its next Open starts.
  */
-const projectLastHosts = ref(projectForms.map((form) => form.lastHost))
+const projectLastDevices = ref(projectForms.map((form) => form.lastDevice))
 /** The device each file browser shows; choosing another in its address bar hands over that device's files. */
-const folderHostId = ref(hosts[0]!.id)
-const fileHostId = ref(hosts[0]!.id)
+const folderDeviceId = ref(fileDevices[0]!.id)
+const fileDeviceId = ref(fileDevices[0]!.id)
 const resetPhases: {
   variant: string
   phase: CloudState['phase']
@@ -429,7 +429,7 @@ const resetPhases: {
     <p class="max-w-3xl text-[13px] leading-5 text-fg-muted">
       Every dialog the product opens, pinned on each phase it has. Each answers
       as the product’s does: Cancel, Close and Done close it and Open brings it
-      back, and a step the product takes with a Host or another page says so in
+      back, and a step the product takes with a device or another page says so in
       a toast. The Settings page shows where each one opens from, and the
       Errors page shows their failed phases.
     </p>
@@ -715,7 +715,7 @@ const resetPhases: {
                 @close="close"
                 @next="pairingShown[index] = { kind: 'code' }"
                 @back="pairingShown[index] = { kind: 'setup' }"
-                @submit="(code) => productWould(`Pair the Device with Code ${code}`)"
+                @submit="(code) => productWould(`Pair the device with Code ${code}`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
@@ -735,7 +735,7 @@ const resetPhases: {
                 :projects="item.projects"
                 :home="item.home"
                 @close="close"
-                @revoke="finishSlowly(close, `Revoke the Device ${item.device}`)"
+                @revoke="finishSlowly(close, `Revoke the device ${item.device}`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
@@ -800,13 +800,13 @@ const resetPhases: {
                 :is-open="open"
                 :overlay-store="appOverlayStore"
                 :devices="form.devices"
-                :last-host="projectLastHosts[index]"
+                :last-device="projectLastDevices[index]"
                 :load="form.load"
                 :source-for="sourceFor"
                 :places-for="placesFor"
                 @close="close"
                 @create="(draft) => finishSlowly(close, newProjectTitle(draft))"
-                @choose="(choice) => (projectLastHosts[index] = choice)"
+                @choose="(choice) => (projectLastDevices[index] = choice)"
                 @connect-device="productWould('Add Device')"
                 @retry="productWould('Load the Devices Again')"
               />
@@ -819,13 +819,13 @@ const resetPhases: {
           <GallerySpecimen wide variant="select folder">
             <GalleryDialogFrame v-slot="{ open, close }">
               <FileBrowserDialog
-                v-model:host-id="folderHostId"
+                v-model:device-id="folderDeviceId"
                 :is-open="open"
                 :overlay-store="appOverlayStore"
                 mode="directory"
-                :source="sourceFor(folderHostId)"
-                :places="placesFor(folderHostId)"
-                :hosts="hosts"
+                :source="sourceFor(folderDeviceId)"
+                :places="placesFor(folderDeviceId)"
+                :devices="fileDevices"
                 @close="close"
                 @select="(path) => finish(close, `Use ${path} as the Project’s Folder`)"
               />
@@ -834,13 +834,13 @@ const resetPhases: {
           <GallerySpecimen wide variant="open file">
             <GalleryDialogFrame v-slot="{ open, close }">
               <FileBrowserDialog
-                v-model:host-id="fileHostId"
+                v-model:device-id="fileDeviceId"
                 :is-open="open"
                 :overlay-store="appOverlayStore"
                 mode="file"
-                :source="sourceFor(fileHostId)"
-                :places="placesFor(fileHostId)"
-                :hosts="hosts"
+                :source="sourceFor(fileDeviceId)"
+                :places="placesFor(fileDeviceId)"
+                :devices="fileDevices"
                 @close="close"
                 @select="(path) => finish(close, `Attach ${path} to the Message`)"
               />

@@ -19,17 +19,17 @@ import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules
 import { savedParts, type SavedRow } from '@demicodes/web-ui/agent/saved'
 import type { DraftFile } from '../api/generated/web-api'
 import { turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
-import { executionFor, hostDeviceOptions, moveLock, primaryHostOf } from '../targets/execution'
-import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
-import type { HostChoice } from '@demicodes/web-ui/hosts/types'
+import { executionFor, deviceOptions, moveLock, primaryDeviceOf } from '../targets/execution'
+import type { OfflineDevice } from '@demicodes/web-ui/agent/offline-device'
+import type { DeviceChoice } from '@demicodes/web-ui/targets/types'
 import type { MessageFileTarget } from '@demicodes/web-ui/markdown/types'
 import { useConversations } from './store'
 import { useHeldList, useProduct } from '../state/product'
 import { useResources } from '../state/resources'
-import { hostKindOf } from '../state/hosts'
+import { targetKindOf } from '../state/devices'
 import { usePreferences } from '../state/preferences'
 import { placesFor } from '../devices/files'
-import { conversationHostSource } from './files'
+import { conversationDeviceSource } from './files'
 import { claimStoredFile, uploadAttachment } from '../api/uploads'
 import type { Conversation, ProductAttachment } from '../state/types'
 import { cliPackageOf } from '../state/catalog'
@@ -41,12 +41,12 @@ import { t } from './locales/text'
 
 const props = defineProps<{
   conversation: Conversation
-  /** Shows a Host file in the work panel; absent while no plugin shows files. */
+  /** Shows a device file in the work panel; absent while no plugin shows files. */
   openFile?: (target: MessageFileTarget) => void
 }>()
 const emit = defineEmits<{
-  /** A Host the offline primary Host's card chose to move the conversation to. */
-  moveHost: [host: HostChoice]
+  /** A Device the offline primary device's card chose to move the conversation to. */
+  moveDevice: [device: DeviceChoice]
 }>()
 const store = useConversations()
 const resources = useResources()
@@ -208,12 +208,12 @@ const hold = computed(() =>
     : null,
 )
 /**
- * The primary Host when it is a paired device whose runner is not
- * connected, with what its card's Move to Another Host… lists once the
- * conversation's work is idle; a Host chosen there is the header's to move
+ * The primary device when it is a paired device whose runner is not
+ * connected, with what its card's Move to Another Device… lists once the
+ * conversation's work is idle; a device chosen there is the header's to move
  * the conversation to.
  */
-const offlineHost = keptComputed<OfflineHost | null>(() => {
+const offlineDevice = keptComputed<OfflineDevice | null>(() => {
   const primary = execution.value
   if (primary.kind !== 'device' || primary.state !== 'offline') {
     return null
@@ -225,16 +225,16 @@ const offlineHost = keptComputed<OfflineHost | null>(() => {
         name: primary.name,
         seen: device.seen,
         start,
-        primaryHost: primaryHostOf(primary),
-        devices: hostDeviceOptions(resources.devices),
+        primaryDevice: primaryDeviceOf(primary),
+        devices: deviceOptions(resources.devices),
         chooseDirectory: props.conversation.target.kind === 'project',
         locked: moveLock(props.conversation, store.pendingChanges),
       }
     : null
 })
-const remoteHosts = keptComputed(() => {
+const remoteDevices = keptComputed(() => {
   const primary = execution.value
-  const hosts = [
+  const devices = [
     ...(primary.deviceId
       ? [
           {
@@ -244,36 +244,36 @@ const remoteHosts = keptComputed(() => {
           },
         ]
       : []),
-    ...(props.conversation.attachedHosts.shown.value ?? [])
-      .filter((host) =>
-        resources.deviceById(host.deviceId) !== null,
+    ...(props.conversation.attachedDevices.shown.value ?? [])
+      .filter((device) =>
+        resources.deviceById(device.deviceId) !== null,
       )
-      .map((host) => ({
-        id: host.deviceId,
-        label: host.name,
-        state: resources.deviceById(host.deviceId)?.state ?? 'offline',
+      .map((attached) => ({
+        id: attached.deviceId,
+        label: attached.name,
+        state: resources.deviceById(attached.deviceId)?.state ?? 'offline',
       })),
   ]
-  return hosts.map((host) => {
-    const device = resources.deviceById(host.id)
+  return devices.map((each) => {
+    const device = resources.deviceById(each.id)
     const cwd =
-      host.id === primary.deviceId
+      each.id === primary.deviceId
         ? primary.path
-        : props.conversation.attachedHosts.shown.value?.find(
-            (attached) => attached.deviceId === host.id,
+        : props.conversation.attachedDevices.shown.value?.find(
+            (attached) => attached.deviceId === each.id,
           )?.cwd
     return {
-      ...host,
-      canWake: hostKindOf(device) === 'cloud',
-      kind: hostKindOf(device),
-      source: conversationHostSource(props.conversation.id, host.id, host.id === primary.deviceId),
+      ...each,
+      canWake: targetKindOf(device) === 'cloud',
+      kind: targetKindOf(device),
+      source: conversationDeviceSource(props.conversation.id, each.id, each.id === primary.deviceId),
       places: placesFor(device, resources.projects),
       cwd: cwd ?? undefined,
     }
   })
 })
 const remotePicker = ref<InstanceType<typeof RemoteFilePicker>>()
-function attachRemote(file: { deviceId: string; host: string; path: string }) {
+function attachRemote(file: { deviceId: string; device: string; path: string }) {
   const item = { ...composerRemoteAttachment(file), deviceId: file.deviceId }
   props.conversation.files.push(item)
   composer.value?.insertCapsules([composerCapsule(item)])
@@ -308,11 +308,11 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :cost="cost"
       :cost-profiles="costProfiles"
       @refresh-limits="card.refreshLimits(conversation.model.providerId, conversation.contextUsage?.account ?? null)"
-      :remote-files="remoteHosts.length > 0"
+      :remote-files="remoteDevices.length > 0"
       :archived="conversation.archived"
       :hold="hold"
-      :offline-host="offlineHost"
-      @move-host="emit('moveHost', $event)"
+      :offline-device="offlineDevice"
+      @move-device="emit('moveDevice', $event)"
       :draft-shown="conversation.draftShown"
       :plugins-changed="conversation.pluginsChanged"
       :reloading="store.pendingChanges.includes(conversation.id)"
@@ -350,7 +350,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
     <RemoteFilePicker
       ref="remotePicker"
       :overlay-store="appOverlayStore"
-      :hosts="remoteHosts"
+      :devices="remoteDevices"
       @select="attachRemote"
     />
   </div>

@@ -28,9 +28,9 @@
 //! ```
 //!
 //! The release's files are the programs of every target the release has, so a
-//! server that installed or updated to it needs nothing more to give any Host
-//! its programs: the backend copies each into its store the first time a Host
-//! needs it. They stay compressed, as the Hosts download them: the server runs
+//! server that installed or updated to it needs nothing more to give any device
+//! its programs: the backend copies each into its store the first time a device
+//! needs it. They stay compressed, as the devices download them: the server runs
 //! none of them, and compressed they take about a quarter of the disk.
 //!
 //! What reads the root:

@@ -59,8 +59,8 @@ use demi_agent_transcript::RandomIds;
 use demi_agent_store::media::BlobStore;
 use demi_backend_database::search::TranscriptChange;
 use demi_backend_database::tree::SqliteTreeStore;
-use demi_backend_host_access::shells::ShardShellEnvironments;
-use demi_backend_host_access::{HostShard, conversation_of};
+use demi_backend_device_access::shells::ShardShellEnvironments;
+use demi_backend_device_access::{DeviceShard, conversation_of};
 use demi_backend_page_sync::Part;
 use demi_shared_types::NodeId;
 use demi_web_api_protocol::ids::UserId;
@@ -72,7 +72,7 @@ pub use self::fork::{ForkRefusal, recover_forks};
 pub use self::idle_compaction::arm_idle_compactions;
 pub use self::restart_resume::resume_after_restart;
 pub use self::announcement::AgentsError;
-pub(crate) use self::product::ShardHosts;
+pub(crate) use self::product::ShardDevices;
 pub(crate) use self::providers::{lent_limits, lent_runtime};
 use self::product::{
     ExecutionContext, HARNESS_GUIDE, INSTRUCTIONS, PluginContext, ShardAgents, ShardReplyFiles, ShardSubagents, ShardToolsets,
@@ -88,7 +88,7 @@ use crate::shard::Shard;
 /// suggested replies requests, small requests that infer with the same
 /// providers.
 pub(crate) struct ConversationParts {
-    pub agent: Rc<AgentServer<ShardHosts>>,
+    pub agent: Rc<AgentServer<ShardDevices>>,
     pub titles: Titles,
     pub suggested_replies: SuggestedReplies,
 }
@@ -98,7 +98,7 @@ pub(crate) struct ConversationParts {
 /// The agent server's trees keep their state in the conversations' databases.
 /// Their sessions infer with the user's providers under the user's rate limit,
 /// as the title requests do, and their nodes' shells run on the conversations'
-/// Hosts through the shard's host access.
+/// devices through the shard's device access.
 pub(crate) fn conversation_parts(
     shard: Weak<Shard>,
     user: UserId,
@@ -157,7 +157,7 @@ pub(crate) fn conversation_parts(
         marks.clone(),
         services.conversation_tuning.titles,
     );
-    let hosts: Weak<dyn HostShard> = shard.clone();
+    let devices: Weak<dyn DeviceShard> = shard.clone();
     let agent = AgentServer::new(ServerDeps {
         toolsets: Rc::new(ShardToolsets {
             shard: shard.clone(),
@@ -167,13 +167,13 @@ pub(crate) fn conversation_parts(
         }),
         instructions: Rc::from(INSTRUCTIONS),
         guide: Rc::from(HARNESS_GUIDE),
-        hosts: Rc::new(ShardHosts {
+        devices: Rc::new(ShardDevices {
             shard: shard.clone(),
         }),
         context: context_sources(&shard, &services),
         providers,
         shells: Rc::new(ShardShellEnvironments::new(
-            hosts,
+            devices,
             services.native.catalog(&services.public_url),
         )),
         stores,

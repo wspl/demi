@@ -79,7 +79,7 @@
   "deleteProject": {
     "title": "Excluir “{name}”?",
     "archived": "A conversa dele será arquivada. | As {count} conversas dele serão arquivadas.",
-    "files": "Os arquivos em {host} não são excluídos."
+    "files": "Os arquivos em {device} não são excluídos."
   },
   "savedScope": {
     "title": "Guardar as mensagens salvas por conversa?",

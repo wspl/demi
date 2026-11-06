@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// Every reason the page's tab methods, its tab list, its tabs' failures
 /// and its view's notices give: the browser's own codes, the view's capture
-/// codes, the conversation's host access's refusals and the plugin call
+/// codes, the conversation's device access's refusals and the plugin call
 /// route's own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -52,18 +52,18 @@ pub enum PanelReason {
     CaptureUnavailable,
     CaptureFailed,
     CaptureStopped,
-    // The conversation's host access (`crates/backend-host-access/src/access.rs`).
+    // The conversation's device access (`crates/backend-device-access/src/access.rs`).
     ConversationNotFound,
     ConversationArchived,
     ConversationBusy,
-    HostStopped,
+    DeviceStopped,
     DeviceOffline,
     DeviceNotFound,
     CloudUnavailable,
     CloudResetting,
     CloudCapacity,
     CloudCrashLoop,
-    HostOperationFailed,
+    DeviceOperationFailed,
     // The plugin call route's own.
     UnknownPluginMethod,
     PluginDisabled,
@@ -113,22 +113,22 @@ impl From<BrowserErrorCode> for PanelReason {
 }
 
 impl PanelReason {
-    /// The host access's refusal `code` as a reason; none for one the page
+    /// The device access's refusal `code` as a reason; none for one the page
     /// has no words of its own for, such as an internal error, which it
     /// says by its HTTP status.
-    pub fn of_host(code: ErrorCode) -> Option<Self> {
+    pub fn of_device(code: ErrorCode) -> Option<Self> {
         Some(match code {
             ErrorCode::ConversationNotFound => Self::ConversationNotFound,
             ErrorCode::ConversationArchived => Self::ConversationArchived,
             ErrorCode::ConversationBusy => Self::ConversationBusy,
-            ErrorCode::HostStopped => Self::HostStopped,
+            ErrorCode::DeviceStopped => Self::DeviceStopped,
             ErrorCode::DeviceOffline => Self::DeviceOffline,
             ErrorCode::DeviceNotFound => Self::DeviceNotFound,
             ErrorCode::CloudUnavailable => Self::CloudUnavailable,
             ErrorCode::CloudResetting => Self::CloudResetting,
             ErrorCode::CloudCapacity => Self::CloudCapacity,
             ErrorCode::CloudCrashLoop => Self::CloudCrashLoop,
-            ErrorCode::HostOperationFailed => Self::HostOperationFailed,
+            ErrorCode::DeviceOperationFailed => Self::DeviceOperationFailed,
             _ => return None,
         })
     }

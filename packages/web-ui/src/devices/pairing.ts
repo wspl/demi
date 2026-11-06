@@ -41,7 +41,7 @@ export const pairingErrors = {
   },
 }
 
-/** UI lifecycle shared by settings, onboarding and host-selection entry points. */
+/** UI lifecycle shared by settings, onboarding and device-selection entry points. */
 export function useDevicePairing(
   claim: (code: string, signal?: AbortSignal) => Promise<PairingResult>,
 ) {

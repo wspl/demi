@@ -58,7 +58,7 @@ pub async fn save_with_overwrite(
     .await
 }
 
-/// Copy a completed browser download into an atomic Host publication without buffering it.
+/// Copy a completed browser download into an atomic device publication without buffering it.
 pub async fn publish_file(
     cwd: &str,
     output: &str,

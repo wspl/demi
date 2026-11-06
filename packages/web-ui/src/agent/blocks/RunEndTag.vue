@@ -12,7 +12,7 @@ import type { SentenceText } from '../../ui/ui-text'
  * - grey Stopped
  * - grey Stopping… while a stop waits for the runner
  * - grey Waiting for MacBook Pro while a command's start waits for its offline
- *   Host, `host`
+ *   device, `device`
  * - grey Lost
  *
  * The tag never shrinks, so a long title gives up its end to it. `hint` is the
@@ -24,10 +24,10 @@ const props = defineProps<{
   kind: RunEndKind
   hint?: SentenceText
   /** The device a waiting command's start waits for. */
-  host?: string
+  device?: string
 }>()
 
-const label = computed(() => t(`transcript.runEnd.${props.kind}`, { host: props.host ?? '' }))
+const label = computed(() => t(`transcript.runEnd.${props.kind}`, { device: props.device ?? '' }))
 
 </script>
 

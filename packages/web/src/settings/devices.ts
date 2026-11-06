@@ -7,7 +7,7 @@ import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { errorCode, errorFields, reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { pageLog } from '@demicodes/web-ui/infra/log'
 import { known, useProduct } from '../state/product'
-import { cloudDeviceIn } from '../state/hosts'
+import { cloudDeviceIn } from '../state/devices'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   cloudResetAnswerSchema,

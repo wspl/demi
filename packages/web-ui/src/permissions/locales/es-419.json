@@ -22,9 +22,7 @@
   "device": {
     "title": "¿Permitir a este chat usar “{name}”?",
     "description": "Sus agentes pueden ejecutar comandos en tu nombre en “{name}” hasta que lo desconectes.",
-    "use": "usar “{name}”"
-  },
-  "host": {
+    "use": "usar “{name}”",
     "pair": "vincular una computadora y acceder a ella"
   },
   "categories": {
@@ -32,7 +30,7 @@
       "action": "usar tus credenciales",
       "description": "Permite que los agentes de este chat enumeren, lean, guarden, reemplacen y eliminen tus credenciales guardadas, y que te pidan otras nuevas."
     },
-    "host_use": {
+    "device_use": {
       "action": "usar tus dispositivos",
       "description": "Permite que los agentes de este chat ejecuten comandos en tu nombre en cualquiera de tus dispositivos y en la nube, muevan este chat a uno de ellos, vinculen una computadora con tu cuenta y agreguen o eliminen reenvíos de puertos, que siguen activos después de este chat."
     },

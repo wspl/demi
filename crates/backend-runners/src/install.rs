@@ -57,7 +57,7 @@ pub fn backend_url(url: &Url) -> Result<Url, InvalidBackendUrl> {
 }
 
 /// The commands that install and start the runner of `backend` on each
-/// system, which Add Device and `demi host install-command` show. They fetch the
+/// system, which Add Device and `demi device install-command` show. They fetch the
 /// installer from `backend`'s origin, which serves it whatever path the URL
 /// has. `curl` may use only the URL's scheme, and TLS 1.2 or newer for
 /// `https`, so a development backend's plain `http` is reached too.
@@ -714,10 +714,10 @@ function Install-DemiGit {
   if (-not $everyone) {
     try {
       $choices = @(
-        [Management.Automation.Host.ChoiceDescription]::new('&Every user', 'Asks for an administrator''s name and password.'),
-        [Management.Automation.Host.ChoiceDescription]::new('&Me only', 'Installs in your own folder and asks for nothing.')
+        [Management.Automation.Device.ChoiceDescription]::new('&Every user', 'Asks for an administrator''s name and password.'),
+        [Management.Automation.Device.ChoiceDescription]::new('&Me only', 'Installs in your own folder and asks for nothing.')
       )
-      $everyone = $Host.UI.PromptForChoice('Git for Windows', 'Demi runs the utilities of Git for Windows, such as ls and grep, and it is not installed. Install it for:', $choices, 1) -eq 0
+      $everyone = $Device.UI.PromptForChoice('Git for Windows', 'Demi runs the utilities of Git for Windows, such as ls and grep, and it is not installed. Install it for:', $choices, 1) -eq 0
     } catch {
       $everyone = $false
     }

@@ -1,0 +1,707 @@
+//! File transfers: a file's bytes between the user's browser and the
+//! conversation's device, for as long as the user's browser takes.
+//!
+//! The shard admits a transfer like any operation and hands the edge the pipe
+//! end and a lease. An archive or a target change ends the conversation's open
+//! transfers instead of waiting for them, and a detach those that reached the
+//! detached device. This module also
+//! decides what a download answers from the file's metadata: its version, a
+//! conditional request, and the part a `Range` asks for.
+//!
+//! The edge holds the lease while bytes move and drops it when done, which
+//! releases the admission in the shard. When the shard ends the transfer first,
+//! it releases the admission at once without waiting for the edge, which sees
+//! the lease end and stops. A download of `report.txt` from the Cloud:
+//!
+//! ```text
+//! Web app          Edge                     User's shard         Runner
+//!   |-- GET fs/raw -->|                           |                   |
+//!   |                 |-- admit the download ---->| file gate, Cloud  |
+//!   |                 |                           |   admission       |
+//!   |                 |                           |-- read to pipe -->|
+//!   |                 |<-- pipe end and lease ----|                   |
+//!   |<-- bytes -------|<-- bytes from the pipe ----------------------|
+//!   |                 |-- last byte: drop lease ->| release both      |
+//! ```
+//!
+//! A transfer is device access like any operation, until its last byte is
+//! delivered or the user's browser ends it. Two rules keep a forgotten one from
+//! holding a Cloud awake or a conversation's file gate:
+//!
+//! - The edge, which alone sees the browser's pace, releases the access and
+//!   stops the runner's read or write when the browser accepted or sent no byte
+//!   for 60 seconds. It counts only time spent waiting for the browser, never
+//!   for the runner or a Cloud's wake. A download's response is left without an
+//!   end, so the user's browser sees it cut short, never complete, and a paused
+//!   player asks again for the range it still needs. An upload's file is left
+//!   as it was.
+//! - A transition ends the open transfers instead of waiting for them or being
+//!   refused by them.
+//!
+//! Backend shutdown ends every transfer before it saves and stops the user's
+//! Cloud, so a download left open never keeps a Cloud from being saved.
+
+use tracing::Instrument as _;
+use std::cell::{Cell, RefCell};
+use std::future::Future;
+use std::rc::Rc;
+
+use bytes::Bytes;
+use demi_runner_client::{ConditionalRead, OpenedRead, PipeReader, PipeWriter};
+use demi_device_interface::{ByteRange, FileStat, Device as _, DeviceError, WhenExists, WriteOptions};
+use demi_runner_protocol::search::SearchQuery;
+use demi_runner_protocol::wire::ReadAt;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+use http::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE};
+use http::{HeaderMap, HeaderValue, StatusCode};
+use tokio::sync::{oneshot, watch};
+use tokio_util::sync::CancellationToken;
+
+use crate::DeviceShard;
+use crate::access::{Admitted, ConversationDevice, DeviceAccessError, Refusal, Waits};
+use crate::lease::Lease;
+
+/// What a download asks for.
+#[derive(Debug, Clone)]
+pub struct DownloadRequest {
+    pub path: DownloadPath,
+    /// The version the page expects the file to still have.
+    pub version: Option<String>,
+    /// Only the answer's head, as `HEAD` asks.
+    pub head: bool,
+    pub range: Option<String>,
+    pub if_none_match: Option<String>,
+}
+
+impl DownloadRequest {
+    /// The request with a path it names from `~` under `device`'s home.
+    fn from_home(self, device: &ConversationDevice) -> Self {
+        let path = match self.path {
+            DownloadPath::Named(path) => DownloadPath::Named(device.path(&path)),
+            place => place,
+        };
+        Self { path, ..self }
+    }
+}
+
+/// Which file a download reads.
+#[derive(Debug, Clone)]
+pub enum DownloadPath {
+    /// The file at a path the user names, as the File view reads one.
+    Named(String),
+    /// The file at a place, as an HTML view's URL names it: its path's names
+    /// joined by `/`, read in the device's form of paths
+    /// ([`demi_device_paths::DevicePaths::place`]).
+    Place(String),
+}
+
+/// What a download answers.
+pub enum Download {
+    /// Nothing at the path is a regular file.
+    NotAFile,
+    /// The place names no path on the device.
+    NoPath,
+    /// The file is no longer the version the request named.
+    Changed,
+    /// The request's condition names the file's version.
+    NotModified { version: String, read_at: ReadAt },
+    /// The part's head alone: for a `HEAD`, a range past the end, or an
+    /// empty part.
+    Head {
+        stat: FileStat,
+        version: String,
+        part: RangeAnswer,
+        read_at: ReadAt,
+    },
+    /// The part's bytes as the device reads them; the edge holds the lease
+    /// until it sent the last one.
+    Stream {
+        stat: FileStat,
+        version: String,
+        part: RangeAnswer,
+        body: PipeReader,
+        lease: Lease,
+        read_at: ReadAt,
+    },
+}
+
+/// A search's lines as the device writes them
+/// (`crates/runner-device/src/search.rs`); the edge holds the lease until the
+/// last one, or until the user's browser leaves, which stops the search.
+pub struct OpenSearch {
+    pub body: PipeReader,
+    pub lease: Lease,
+}
+
+/// An upload's write: the device takes the bytes the edge writes and puts the
+/// file in place once they end, whole or not at all.
+pub struct OpenUpload {
+    pub writer: PipeWriter,
+    /// The write's outcome, once the device put the file in place or failed:
+    /// `EISDIR` for a directory at the path, and `EEXIST` for a file there
+    /// the upload did not ask to replace, which the device answers before the
+    /// bytes move.
+    pub written: oneshot::Receiver<Result<(), DeviceError>>,
+    pub lease: Lease,
+}
+
+impl dyn DeviceShard + '_ {
+    /// Admits a download of one file on the conversation's primary device, and
+    /// answers what the file's metadata decides: the part's bytes as a
+    /// stream, or an answer without them.
+    pub async fn open_download(
+        &self,
+        id: &ConversationId,
+        request: DownloadRequest,
+        cancel: &CancellationToken,
+    ) -> Result<Download, DeviceAccessError> {
+        let record = self.owned_conversation(id).await?;
+        let slot = self.conversations().slot(&record.id);
+        // From the check to the registration nothing awaits, so a transition
+        // that closes the conversation's transfers never misses this one.
+        let open = slot.transfers.open().map_err(|_| Refusal::Busy)?;
+        let waits = Waits::until_ended(cancel, &open.ended);
+        let admitted = self.admit_device(&record.id, None, waits).await?;
+        bind_to(&open, &admitted)?;
+        let request = request.from_home(&admitted.device);
+        let device = &admitted.device.device;
+        let path = match &request.path {
+            DownloadPath::Named(path) => path.clone(),
+            DownloadPath::Place(place) => match device.identity().paths.at_place(place) {
+                Some(path) => path,
+                None => return Ok(Download::NoPath),
+            },
+        };
+        // The read answers the file's metadata with its first bytes, so it
+        // is the one request (`crates/runner-device/src/lib.rs`): it asks for
+        // the part the request names, read to the file's end when that
+        // comes first. A HEAD reads nothing, and neither does a part counted
+        // from the end, which waits for the size. The versions the request holds
+        // go with it, and a file that still has one sends no byte.
+        let header = request.range.as_deref();
+        let asked = if request.head {
+            None
+        } else {
+            RangeAnswer::before_size(header)
+        };
+        let read = asked.unwrap_or(ByteRange {
+            offset: 0,
+            length: Some(0),
+        });
+        let opened = waits
+            .wait(async {
+                match request.if_none_match.as_deref() {
+                    Some(held) => device.read_pipe_unless(&path, read, held).await,
+                    None => device.read_pipe(&path, read).await.map(ConditionalRead::Opened),
+                }
+            })
+            .await?;
+        let opened = match opened {
+            Ok(opened) => opened,
+            Err(error) if error.code() == Some("EISDIR") => return Ok(Download::NotAFile),
+            Err(error) => return Err(error.into()),
+        };
+        let changed = |version: &str| {
+            request
+                .version
+                .as_ref()
+                .is_some_and(|expected| expected != version)
+        };
+        // A description of the file is read at the first read's number.
+        let OpenedRead {
+            stat,
+            version,
+            body,
+            read_at,
+        } = match opened {
+            ConditionalRead::Unchanged {
+                version, read_at, ..
+            } => {
+                if changed(&version) {
+                    return Ok(Download::Changed);
+                }
+                return Ok(Download::NotModified { version, read_at });
+            }
+            ConditionalRead::Opened(opened) => opened,
+        };
+        let mut body = body;
+        if changed(&version) {
+            return Ok(Download::Changed);
+        }
+        let part = RangeAnswer::of(header, stat.size);
+        let range = match part.range() {
+            Some(range) if !request.head && range.length != Some(0) => range,
+            _ => {
+                return Ok(Download::Head {
+                    stat,
+                    version,
+                    part,
+                    read_at,
+                });
+            }
+        };
+        // A part counted from the end, which the size decides, is read once
+        // the size is known, of the version that size is of.
+        if asked.map(|asked| asked.offset) != Some(range.offset) {
+            let part = waits.wait(device.read_pipe(&path, range)).await??;
+            if part.version != version {
+                return Ok(Download::Changed);
+            }
+            body = part.body;
+        }
+        // The bytes move at the edge; the shard only holds the admission.
+        let lease = self.lease_transfer(admitted, open, std::future::pending(), || {});
+        Ok(Download::Stream {
+            stat,
+            version,
+            part,
+            body,
+            lease,
+            read_at,
+        })
+    }
+
+    /// The place of the file at `path` on the conversation's primary device, as
+    /// an HTML view's URL names it.
+    pub async fn html_place(
+        &self,
+        id: &ConversationId,
+        path: &str,
+        cancel: &CancellationToken,
+    ) -> Result<String, DeviceAccessError> {
+        let place = self.with_unheld_device(id, None, cancel, async |device| {
+            let path = device.rooted(path)?;
+            Ok::<_, Refusal>(device.device.identity().paths.place(&path))
+        });
+        Ok(place.await??)
+    }
+
+    /// Admits a search of the text of the files under `root` on the
+    /// conversation's primary device, its working directory when `root` is
+    /// none, and answers its lines as a stream once the device started it.
+    pub async fn open_search(
+        &self,
+        id: &ConversationId,
+        root: Option<String>,
+        query: SearchQuery,
+        cancel: &CancellationToken,
+    ) -> Result<OpenSearch, DeviceAccessError> {
+        let record = self.owned_conversation(id).await?;
+        let slot = self.conversations().slot(&record.id);
+        // From the check to the registration nothing awaits, as a download's.
+        let open = slot.transfers.open().map_err(|_| Refusal::Busy)?;
+        let waits = Waits::until_ended(cancel, &open.ended);
+        let admitted = self.admit_device(&record.id, None, waits).await?;
+        bind_to(&open, &admitted)?;
+        let root = match root {
+            Some(root) => admitted.device.rooted(&root)?,
+            None => admitted.device.root.clone(),
+        };
+        let body = waits.wait(admitted.device.device.search(&root, query)).await??;
+        let lease = self.lease_transfer(admitted, open, std::future::pending(), || {});
+        Ok(OpenSearch { body, lease })
+    }
+
+    /// Admits an upload of one file to the conversation's primary device: a
+    /// directory at the path is never written over, and a file only when
+    /// `replace` asks. The write itself checks, so no request precedes it
+    /// (`crates/runner-device/src/lib.rs`), and it makes the directories above
+    /// the path that are missing.
+    pub async fn open_upload(
+        &self,
+        id: &ConversationId,
+        path: String,
+        replace: bool,
+        cancel: &CancellationToken,
+    ) -> Result<OpenUpload, DeviceAccessError> {
+        let record = self.owned_conversation(id).await?;
+        let slot = self.conversations().slot(&record.id);
+        // As for a download: no await between the check and the
+        // registration.
+        let open = slot.transfers.open().map_err(|_| Refusal::Busy)?;
+        let waits = Waits::until_ended(cancel, &open.ended);
+        let admitted = self.admit_device(&record.id, None, waits).await?;
+        bind_to(&open, &admitted)?;
+        let device = admitted.device.device.clone();
+        let path = admitted.device.path(&path);
+        let pipe = device.write_pipe()?;
+        let writer = pipe.writer().expect("a pipe just made has its source free");
+        let (done, written) = oneshot::channel();
+        let input = pipe.clone();
+        let options = WriteOptions {
+            exists: if replace {
+                WhenExists::Replace
+            } else {
+                WhenExists::Refuse
+            },
+        };
+        let write = async move {
+            let outcome = device.write_from(&path, &input, options).await;
+            // An edge that went away reads no outcome.
+            let _ = done.send(outcome.map(|_| ()));
+        };
+        let stop = move || pipe.fail("the upload ended before its last byte");
+        let lease = self.lease_transfer(admitted, open, write, stop);
+        Ok(OpenUpload {
+            writer,
+            written,
+            lease,
+        })
+    }
+
+    /// Hands the edge a lease on an admitted transfer.
+    ///
+    /// The shard's owner task keeps the admission and the transfer's
+    /// registration until `work` ends, the edge drops the lease, or a
+    /// transition ends the transfer. In the last two cases `stop` runs first.
+    /// The admission goes before the registration, so a transition that waits
+    /// for the transfer finds the file gate free.
+    fn lease_transfer(
+        &self,
+        admitted: Admitted,
+        open: OpenTransfer,
+        work: impl Future<Output = ()> + 'static,
+        stop: impl FnOnce() + 'static,
+    ) -> Lease {
+        let (lease, released) = Lease::new(open.ended.clone());
+        let ended = open.ended.clone();
+        // The transfer logs under the request that opened it.
+        self.tasks().spawn_local(async move {
+            tokio::select! {
+                () = work => {}
+                () = released => stop(),
+                () = ended.cancelled() => stop(),
+            }
+            drop(admitted);
+            drop(open);
+        }
+        .in_current_span());
+        lease
+    }
+}
+
+/// Binds `open` to the device `admitted` reaches, so a detach of it ends the
+/// transfer.
+fn bind_to(open: &OpenTransfer, admitted: &Admitted) -> Result<(), Refusal> {
+    let device = admitted
+        .device
+        .device
+        .device_id()
+        .and_then(|device| DeviceId::try_from(device).ok());
+    match device {
+        Some(device) => open.bind(&device).map_err(|_| Refusal::Busy),
+        None => Ok(()),
+    }
+}
+
+/// The conversation's open file transfers and user streams, and whether a
+/// transition is closing them.
+pub struct TransferSet {
+    /// Cancelled when a transition closes the transfers, then replaced, so
+    /// transfers admitted afterwards run under a fresh one.
+    generation: RefCell<CancellationToken>,
+    open: watch::Sender<usize>,
+    /// How many transitions hold the transfers closed; while any does, a
+    /// new transfer is refused.
+    closings: Cell<u32>,
+    /// The open transfers and streams, each with the device it reached once
+    /// admitted, which a detach of that device ends.
+    entries: RefCell<Vec<Entry>>,
+    /// The devices a detach is ending the transfers of: one is not bound to
+    /// them meanwhile.
+    closed_devices: RefCell<Vec<DeviceId>>,
+    next: Cell<u64>,
+}
+
+struct Entry {
+    id: u64,
+    ended: CancellationToken,
+    device: Option<DeviceId>,
+}
+
+/// A transition is ending the conversation's transfers: a new one waits for
+/// nothing and is refused (`conversation_busy`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("The conversation is changing; its file transfers are closed")]
+pub struct TransfersBusy;
+
+/// A registered transfer or user stream. `ended` is cancelled when a
+/// transition closes the conversation's transfers; dropping the value
+/// unregisters it, which the transition waits for.
+pub struct OpenTransfer {
+    set: Rc<TransferSet>,
+    id: u64,
+    pub ended: CancellationToken,
+}
+
+/// A detach's hold that keeps new transfers and streams from reaching a
+/// device; dropping it lets them in again.
+pub struct DeviceClosed {
+    set: Rc<TransferSet>,
+    device: DeviceId,
+}
+
+impl OpenTransfer {
+    /// Says which device the admitted transfer reaches, so a detach of it
+    /// ends this one. Refused while a detach of that device is ending its
+    /// transfers.
+    pub fn bind(&self, device: &DeviceId) -> Result<(), TransfersBusy> {
+        if self.set.closed_devices.borrow().contains(device) {
+            return Err(TransfersBusy);
+        }
+        if let Some(entry) = self.set.entries.borrow_mut().iter_mut().find(|entry| entry.id == self.id) {
+            entry.device = Some(device.clone());
+        }
+        Ok(())
+    }
+}
+
+/// A transition's hold that keeps the conversation's transfers closed;
+/// dropping it lets new ones in again once no other transition holds them.
+pub struct TransfersClosed(Rc<TransferSet>);
+
+impl TransferSet {
+    pub fn new() -> Rc<Self> {
+        Rc::new(Self {
+            generation: RefCell::new(CancellationToken::new()),
+            open: watch::Sender::new(0),
+            closings: Cell::new(0),
+            entries: RefCell::default(),
+            closed_devices: RefCell::default(),
+            next: Cell::new(0),
+        })
+    }
+
+    /// Whether a file transfer or a user stream is open.
+    pub fn any_open(&self) -> bool {
+        *self.open.borrow() > 0
+    }
+
+    /// Registers a transfer, unless a transition is closing the
+    /// conversation's transfers. The check and the registration are one
+    /// step, with no await between them, so a transition that closes the
+    /// transfers never misses one admitted beside it.
+    pub fn open(self: &Rc<Self>) -> Result<OpenTransfer, TransfersBusy> {
+        if self.closings.get() > 0 {
+            return Err(TransfersBusy);
+        }
+        self.open.send_modify(|open| *open += 1);
+        let id = self.next.get();
+        self.next.set(id + 1);
+        let ended = self.generation.borrow().child_token();
+        self.entries.borrow_mut().push(Entry {
+            id,
+            ended: ended.clone(),
+            device: None,
+        });
+        Ok(OpenTransfer {
+            set: self.clone(),
+            id,
+            ended,
+        })
+    }
+
+    /// Ends the open transfers and streams that reached `device`, refuses
+    /// new ones to it until the answer is dropped, and resolves once the
+    /// ended ones let go of their admission. The others go on.
+    pub async fn close_device(self: &Rc<Self>, device: &DeviceId) -> DeviceClosed {
+        self.closed_devices.borrow_mut().push(device.clone());
+        let closed = DeviceClosed {
+            set: self.clone(),
+            device: device.clone(),
+        };
+        let mut open = self.open.subscribe();
+        loop {
+            let mut bound = false;
+            for entry in self.entries.borrow().iter().filter(|entry| entry.device.as_ref() == Some(device)) {
+                entry.ended.cancel();
+                bound = true;
+            }
+            if !bound {
+                return closed;
+            }
+            // The set holds the sender while anyone watches it.
+            let _ = open.changed().await;
+        }
+    }
+
+    /// Ends every open transfer, refuses new ones until the answer is
+    /// dropped, and resolves once every ended transfer let go of its
+    /// admission. Transitions that close at once share the drain; the last
+    /// one to let go opens the transfers again.
+    pub async fn close(self: &Rc<Self>) -> TransfersClosed {
+        self.closings.set(self.closings.get() + 1);
+        let closed = TransfersClosed(self.clone());
+        let ended = self.generation.replace(CancellationToken::new());
+        ended.cancel();
+        let mut open = self.open.subscribe();
+        // The set holds the sender while anyone watches it.
+        let _ = open.wait_for(|open| *open == 0).await;
+        closed
+    }
+}
+
+impl Drop for OpenTransfer {
+    fn drop(&mut self) {
+        self.set.entries.borrow_mut().retain(|entry| entry.id != self.id);
+        self.set.open.send_modify(|open| *open -= 1);
+    }
+}
+
+impl Drop for DeviceClosed {
+    fn drop(&mut self) {
+        let mut closed = self.set.closed_devices.borrow_mut();
+        if let Some(at) = closed.iter().position(|device| *device == self.device) {
+            closed.remove(at);
+        }
+    }
+}
+
+impl Drop for TransfersClosed {
+    fn drop(&mut self) {
+        self.0.closings.set(self.0.closings.get() - 1);
+    }
+}
+
+/// The part of a file of `size` bytes an answer sends (RFC 9110 § 14).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RangeAnswer {
+    /// No range, one that does not parse, several, or a reversed one: the
+    /// whole file, 200.
+    Whole { size: u64 },
+    /// One satisfiable range, clamped to the end: 206.
+    Part { start: u64, length: u64, size: u64 },
+    /// A range that starts past the end, or an empty suffix: 416.
+    Unsatisfiable { size: u64 },
+}
+
+impl RangeAnswer {
+    /// What a request for `size` bytes answers, given its `Range` header:
+    /// `bytes=a-b`, `bytes=a-` or the suffix `bytes=-n`. A start too large
+    /// for a number starts past the end; an end too large for one ends at
+    /// the file's end.
+    pub fn of(header: Option<&str>, size: u64) -> Self {
+        let whole = Self::Whole { size };
+        let Some((first, last)) =
+            header.and_then(|header| header.trim().strip_prefix("bytes=")?.split_once('-'))
+        else {
+            return whole;
+        };
+        let digits = |text: &str| text.chars().all(|char| char.is_ascii_digit());
+        if !digits(first) || !digits(last) || (first.is_empty() && last.is_empty()) {
+            return whole;
+        }
+        let (start, end) = if first.is_empty() {
+            // The digits are ASCII, so they only fail to parse by overflowing.
+            let suffix = last.parse::<u64>().unwrap_or(u64::MAX);
+            if suffix == 0 {
+                return Self::Unsatisfiable { size };
+            }
+            (size.saturating_sub(suffix), size.checked_sub(1))
+        } else {
+            let Ok(start) = first.parse::<u64>() else {
+                return Self::Unsatisfiable { size };
+            };
+            let end = if last.is_empty() {
+                size.checked_sub(1)
+            } else {
+                let last = last.parse::<u64>().unwrap_or(u64::MAX);
+                // A last byte before the first is no range at all.
+                if last < start {
+                    return whole;
+                }
+                Some(last.min(size.saturating_sub(1)))
+            };
+            (start, end)
+        };
+        match end {
+            Some(end) if start < size => Self::Part {
+                start,
+                length: end - start + 1,
+                size,
+            },
+            _ => Self::Unsatisfiable { size },
+        }
+    }
+
+    /// The bytes a request asks for before the file's size is known: none
+    /// for a part counted from the end, which the size decides.
+    pub fn before_size(header: Option<&str>) -> Option<ByteRange> {
+        let from_end = header
+            .and_then(|header| header.trim().strip_prefix("bytes="))
+            .is_some_and(|spec| spec.starts_with('-'));
+        if from_end {
+            return None;
+        }
+        Self::of(header, u64::MAX).range()
+    }
+
+    pub fn status(&self) -> StatusCode {
+        match self {
+            Self::Whole { .. } => StatusCode::OK,
+            Self::Part { .. } => StatusCode::PARTIAL_CONTENT,
+            Self::Unsatisfiable { .. } => StatusCode::RANGE_NOT_SATISFIABLE,
+        }
+    }
+
+    /// The bytes to send; none for a refusal.
+    pub fn range(&self) -> Option<ByteRange> {
+        match *self {
+            Self::Whole { size } => Some(ByteRange {
+                offset: 0,
+                length: Some(size),
+            }),
+            Self::Part { start, length, .. } => Some(ByteRange {
+                offset: start,
+                length: Some(length),
+            }),
+            Self::Unsatisfiable { .. } => None,
+        }
+    }
+
+    /// The part of `bytes`, held whole, that the answer sends; none for a
+    /// refusal. `bytes` are the `size` the answer was made for.
+    pub fn part_of(&self, bytes: &Bytes) -> Option<Bytes> {
+        match *self {
+            Self::Whole { .. } => Some(bytes.clone()),
+            Self::Part { start, length, .. } => {
+                let start = usize::try_from(start).expect("a part of held bytes fits usize");
+                let length = usize::try_from(length).expect("a part of held bytes fits usize");
+                Some(bytes.slice(start..start + length))
+            }
+            Self::Unsatisfiable { .. } => None,
+        }
+    }
+
+    /// The headers that describe the answer's part. A streamed body's
+    /// length is left out by the edge, which sends it chunked.
+    pub fn headers(&self) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+        match *self {
+            Self::Whole { size } => {
+                headers.insert(CONTENT_LENGTH, HeaderValue::from(size));
+            }
+            Self::Part {
+                start,
+                length,
+                size,
+            } => {
+                headers.insert(CONTENT_LENGTH, HeaderValue::from(length));
+                let range = format!("bytes {start}-{}/{size}", start + length - 1);
+                headers.insert(
+                    CONTENT_RANGE,
+                    HeaderValue::from_str(&range).expect("digits are a header value"),
+                );
+            }
+            Self::Unsatisfiable { size } => {
+                let range = format!("bytes */{size}");
+                headers.insert(
+                    CONTENT_RANGE,
+                    HeaderValue::from_str(&range).expect("digits are a header value"),
+                );
+            }
+        }
+        headers
+    }
+}

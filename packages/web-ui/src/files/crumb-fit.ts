@@ -11,7 +11,7 @@ export interface Crumb {
 }
 
 /**
- * A path bar's crumbs: the whole path, from the Host's root down to the path
+ * A path bar's crumbs: the whole path, from the device's root down to the path
  * itself, the root and the home wearing their glyphs.
  */
 export function pathCrumbs(path: string, source: Pick<FileBrowserSource, 'platform' | 'home'>): Crumb[] {

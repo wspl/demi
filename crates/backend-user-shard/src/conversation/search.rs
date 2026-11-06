@@ -382,7 +382,7 @@ pub async fn follow_resets(
 }
 
 /// Answers `query` for `user` from the user's index alone: no conversation's
-/// database is opened and no Host woken.
+/// database is opened and no device woken.
 ///
 /// The conversations' records give their current titles, archive state and
 /// activity, and their order: title matches first, then the rest, each kind most

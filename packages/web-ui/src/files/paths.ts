@@ -34,15 +34,15 @@ export function expandHome(path: string, home: string): string {
  */
 export function typedPath(text: string, places: { home: string; root?: string }): string {
   const expanded = expandHome(text, places.home)
-  return normalizePath(places.root === undefined ? expanded : resolveHostPath(places.root, expanded))
+  return normalizePath(places.root === undefined ? expanded : resolveDevicePath(places.root, expanded))
 }
 
 /**
- * A path as a Host names it: absolute on either path syntax (`/…` or
+ * A path as a device names it: absolute on either path syntax (`/…` or
  * `C:/…`) as it is, relative resolved against `base`. Backslashes count as
  * slashes.
  */
-export function resolveHostPath(base: string, path: string): string {
+export function resolveDevicePath(base: string, path: string): string {
   const normalized = path.replaceAll('\\', '/')
   return normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)
     ? normalized
@@ -50,7 +50,7 @@ export function resolveHostPath(base: string, path: string): string {
 }
 
 /**
- * Whether `path` is `folder` or lies within it, compared as the Host names
+ * Whether `path` is `folder` or lies within it, compared as the device names
  * them, on either path syntax.
  */
 export function isWithinPath(path: string, folder: string): boolean {
@@ -83,10 +83,10 @@ export function relativePath(root: string, path: string): string {
 }
 
 /**
- * Whether `path` is absolute as a Host writes it: from `/`, or on Windows
+ * Whether `path` is absolute as a device writes it: from `/`, or on Windows
  * from a drive, `C:\` or `C:/`, or a share, `\\server\share`.
  */
-export function isAbsoluteHostPath(path: string): boolean {
+export function isAbsoluteDevicePath(path: string): boolean {
   return path.startsWith('/') || isWindowsPath(path)
 }
 
@@ -95,7 +95,7 @@ function isWindowsPath(path: string): boolean {
   return /^[A-Za-z]:([\\/]|$)/.test(path) || path.startsWith('\\\\')
 }
 
-/** `path` as a person reads it on a Host whose home is `home`: `~` and `~/a/b` under it, any other path whole. */
+/** `path` as a person reads it on a device whose home is `home`: `~` and `~/a/b` under it, any other path whole. */
 export function homePath(path: string, home: string | null | undefined): string {
   if (!home || normalizePath(home) === '/')
     return path

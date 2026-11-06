@@ -10,7 +10,7 @@
 //!    only Demi's own utilities record. [`UTILITIES`] lists them.
 //! 2. Every other utility is the system's own: GNU's on Linux, macOS's on a
 //!    Mac, Git for Windows' on Windows (`crates/runner/src/git.rs`). One the
-//!    Host lacks is missing, as it is on the machine itself.
+//!    device lacks is missing, as it is on the machine itself.
 //!
 //! A utility that runs in the shell's process takes macOS's forms on a Mac where GNU's
 //! refuses them or reads them otherwise (`sed -i ''`, `cp -c`), so that a model

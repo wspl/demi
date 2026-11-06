@@ -4,7 +4,7 @@ import { followsPreferred, viewDirectory, type ChangeData } from './data'
 
 /** The working tree the Change view shows, which its tab and its badge share. */
 export interface ShownDirectory {
-  /** The repositories Commits offers, null until the Host answered. */
+  /** The repositories Commits offers, null until the device answered. */
   repositories: ComputedRef<Repositories | null>
   /**
    * The directory shown, undefined for the conversation's; null while Commits

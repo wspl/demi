@@ -681,7 +681,7 @@ impl AgentSession {
     }
 
     /// Keeps `files` with the complete text `id` as which of its code spans
-    /// name files on the conversation's Host
+    /// name files on the conversation's device
     /// (`crates/agent-server/src/node/reply_files.rs`): once, and only while
     /// the window holds the text.
     pub fn keep_code_files(&self, id: &BlockId, files: Vec<demi_shared_types::CodeFile>) {

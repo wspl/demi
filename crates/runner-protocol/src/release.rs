@@ -112,7 +112,7 @@ impl RunnerRelease {
 
 /// The directory of a server release's root that holds the release's files:
 /// the compressed copy of each runner and command program for each target,
-/// which the backend gives the Hosts (`crates/xtask/src/server_release.rs`).
+/// which the backend gives the devices (`crates/xtask/src/server_release.rs`).
 pub const FILES: &str = "files";
 
 /// The directory of a server release's root that holds the release's command

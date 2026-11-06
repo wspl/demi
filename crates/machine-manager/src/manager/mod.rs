@@ -436,7 +436,7 @@ mod linux {
                 let worker = match self.worker(&device).await {
                     Ok(worker) => worker,
                     Err(error) => {
-                        tracing::warn!(event = "cloud_move.skipped", host_id = %device, error = %crate::server::chain(&error), "a Cloud to move has no worker");
+                        tracing::warn!(event = "cloud_move.skipped", device_id = %device, error = %crate::server::chain(&error), "a Cloud to move has no worker");
                         continue;
                     }
                 };
@@ -609,7 +609,7 @@ mod linux {
                 }),
                 Err(error) => {
                     // The backend keeps the status it had.
-                    tracing::warn!(event = "manager_status.read_failed", host_id = %device, %error, "a device's stored image could not be read");
+                    tracing::warn!(event = "manager_status.read_failed", device_id = %device, %error, "a device's stored image could not be read");
                     None
                 }
             }

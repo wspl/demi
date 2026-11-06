@@ -1,15 +1,15 @@
 //! The `mobile` kind's tabs on the backend (`crates/plugin-mobile/plugin/src/lib.rs`):
-//! one tab for each device the conversation has open on its own Host.
+//! one tab for each simulator the conversation has open on its own device.
 //!
 //! - A tab is added when the agent opens the device.
 //! - A tab is removed when the device closes or is lost, that is, when the
-//!   Host no longer lists it as open. A
-//!   resident that starts again, an update or a stopped Host loses no tab: the
-//!   Host's resident takes its devices back under their handles, and a stopped
-//!   Host's tabs stay as they were until it lists them again.
+//!   device no longer lists it as open. A
+//!   resident that starts again, an update or a stopped device loses no tab: the
+//!   device's resident takes its simulators back under their handles, and a stopped
+//!   device's tabs stay as they were until it lists them again.
 //! - Closing a tab closes its device, as `demi mobile close` does.
-//! - A device the agent opens on an attached Host has no tab: the panel shows
-//!   the conversation's Host's devices alone.
+//! - A simulator the agent opens on an attached device has no tab: the panel shows
+//!   the conversation's device's simulators alone.
 //!
 //! One conversation's work runs one piece at a time.
 
@@ -85,7 +85,7 @@ impl Work {
         }
     }
 
-    /// Reads the Host's devices and updates the panel: a tab for each device
+    /// Reads the device's simulators and updates the panel: a tab for each simulator
     /// this conversation has open that has none, and each tab whose device
     /// is no longer open removed.
     pub async fn sync(
@@ -95,7 +95,7 @@ impl Work {
     ) -> Result<(), PluginError> {
         let lock = self.lock(conversation);
         let _turn = lock.lock().await;
-        // A stopped Host's devices are as the panel last showed them, until
+        // A stopped device's simulators are as the panel last showed them, until
         // it lists them again.
         let Some(listed) = page::list(port).await? else {
             return Ok(());

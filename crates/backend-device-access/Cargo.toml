@@ -1,0 +1,43 @@
+[package]
+name = "demi-backend-device-access"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# No doc examples.
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+demi-agent-store = { path = "../agent-store" }
+demi-agent-tools = { path = "../agent-tools" }
+demi-backend-cloud = { path = "../backend-cloud" }
+demi-backend-blobs = { path = "../backend-blobs" }
+demi-backend-runners = { path = "../backend-runners" }
+demi-backend-database = { path = "../backend-database" }
+demi-command-protocol = { path = "../command-protocol" }
+demi-command-declarations = { path = "../command-declarations" }
+demi-shared-types = { path = "../shared-types" }
+demi-shared-gates = { path = "../shared-gates" }
+demi-runner-client = { path = "../runner-client" }
+demi-runner-protocol = { path = "../runner-protocol" }
+demi-device-interface = { path = "../device-interface" }
+demi-device-paths = { path = "../device-paths" }
+demi-plugin-interface = { path = "../plugin-interface" }
+demi-web-api-protocol = { path = "../web-api-protocol" }
+bytes.workspace = true
+futures-util.workspace = true
+http.workspace = true
+garde.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+shlex = "2"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+url = "2"

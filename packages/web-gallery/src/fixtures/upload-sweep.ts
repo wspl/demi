@@ -76,7 +76,7 @@ export function galleryUploads() {
   function received(content: readonly MessageEditContent[]): UserContentBlock[] {
     return content.flatMap((part): UserContentBlock[] => {
       if (part.type === 'remote_file') {
-        return [{ type: 'reference', reference: encodeRemoteReference(part.host, part.path, part.deviceId) }]
+        return [{ type: 'reference', reference: encodeRemoteReference(part.device, part.path, part.deviceId) }]
       }
       if (part.type !== 'upload') {
         return [part]

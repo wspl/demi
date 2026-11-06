@@ -7,9 +7,9 @@
 //! - the conversations as the agent sees them, their idle watches, and the
 //!   pages' product state and synchronization channels.
 //!
-//! The shard implements what the Cloud, the conversations' host access, the
+//! The shard implements what the Cloud, the conversations' device access, the
 //! conversation permissions and the plugin host need of it (`CloudShard`,
-//! `HostShard`, `PermissionShard`, `ProductPort`).
+//! `DeviceShard`, `PermissionShard`, `ProductPort`).
 //!
 //! A user's conversations, devices, projects and attachments belong to that
 //! user alone in both instance modes. An administrator's role gives no access to
@@ -81,7 +81,7 @@
 //! # Threading and placement
 //!
 //! Shard code uses `Rc`, `RefCell` and local futures, and the traits it calls
-//! through (`Host`, `ShellEnvironment`, `RpcHandler`, `ProviderRuntime`) have no
+//! through (`Device`, `ShellEnvironment`, `RpcHandler`, `ProviderRuntime`) have no
 //! `Send` bound; shared services are `Send + Sync`.
 //!
 //! A user is the unit of placement at both levels, one worker process in a

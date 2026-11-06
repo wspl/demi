@@ -33,7 +33,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use demi_backend_database::StorageError;
 use demi_backend_database::schedules::{NewCall, PendingCall, RunCause};
-use demi_host_interface::{FileContents, Host, WhenExists, WriteOptions};
+use demi_device_interface::{FileContents, Device, WhenExists, WriteOptions};
 use demi_shared_types::{ScheduleId, ScheduleRunId, Timestamp};
 use demi_web_api_protocol::schedules::{RunState, Trigger};
 use demi_web_api_protocol::ids::ConversationId;
@@ -284,7 +284,7 @@ impl Shard {
     }
 
     /// Writes each call's body to the conversation's scratch directory on
-    /// its Host, never the project (`crates/runner-jobs/src/scratch.rs`), and
+    /// its device, never the project (`crates/runner-jobs/src/scratch.rs`), and
     /// answers each file's path, none for an empty body.
     pub(crate) async fn write_bodies(
         &self,
@@ -293,11 +293,11 @@ impl Shard {
         calls: &[Call],
     ) -> Result<Vec<Option<String>>, String> {
         let cancel = CancellationToken::new();
-        self.host_shard()
-            .with_host(conversation, None, &cancel, async |host| {
-                let identity = host.host.identity();
+        self.device_shard()
+            .with_device(conversation, None, &cancel, async |device| {
+                let identity = device.device.identity();
                 if identity.scratch_root.is_empty() {
-                    return Err("the Host has not named its scratch directory".to_owned());
+                    return Err("the device has not named its scratch directory".to_owned());
                 }
                 let scratch = identity.paths.join(&identity.scratch_root, &demi_command_protocol::scratch_name(conversation.as_str()));
                 let mut written = Vec::with_capacity(calls.len());
@@ -312,8 +312,8 @@ impl Shard {
                     });
                     let file = format!("schedule-{short}-call-{}.{}", index + 1, if json { "json" } else { "txt" });
                     let path = identity.paths.join(&scratch, &file);
-                    let name = host
-                        .host
+                    let name = device
+                        .device
                         .fs()
                         .write_file(&path, FileContents::Bytes(call.body.clone()), WriteOptions {
                             exists: WhenExists::Rename,

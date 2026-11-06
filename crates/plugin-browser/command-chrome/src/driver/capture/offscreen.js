@@ -1,7 +1,7 @@
 // Captures the tabs the live view watches and the tabs being recorded, and
 // encodes them as H.264.
 //
-// The live view module on this Host drives it over a loopback socket that
+// The live view module on this device drives it over a loopback socket that
 // accepts only this environment's token, and names the live protocol's codec.
 //
 // Chrome grants one capture of a tab, so a tab has one source that reads its
@@ -45,7 +45,7 @@ const SOURCE_FPS = 120;
 // a one-pixel move of text shows.
 const QUANTIZER = 18;
 // Frames waiting in a recording, to be compared or coded, beyond which a new
-// frame is not taken and counts as missed, so a slow Host costs frames,
+// frame is not taken and counts as missed, so a slow device costs frames,
 // never a broken video.
 const MAX_ENCODER_QUEUE = 8;
 // The most bytes the socket may hold unsent before a recording fails: its
@@ -172,7 +172,7 @@ async function openSource(target, width, height) {
   try {
     return await open(target, width, height);
   } catch (error) {
-    // With Chrome's captures of its tabs then, which the Host logs to tell why.
+    // With Chrome's captures of its tabs then, which the device logs to tell why.
     throw new OpenFailed(error, await capturedTabs());
   }
 }
@@ -194,7 +194,7 @@ async function open(target, width, height) {
     },
   }).catch(error => {
     // Chrome can retain a pending tabCapture request after getUserMedia aborts.
-    // There is no track or API to cancel that grant; the Host recreates this
+    // There is no track or API to cancel that grant; the device recreates this
     // extension, which clears Chrome's registry without replacing the user's
     // tabs or documents.
     if (error.name === 'AbortError') send({ type: 'recreate' });
@@ -582,8 +582,8 @@ function differs(now, before, layout, geometry) {
 }
 
 // The recording's consumer of a tab: keeps every frame that differs from the
-// one before, exactly, codes it, and hands the pictures to the Host with where
-// they differ, as they come. Frames the Host asks to be kept are never dropped
+// one before, exactly, codes it, and hands the pictures to the device with where
+// they differ, as they come. Frames the device asks to be kept are never dropped
 // after coding, since the next picture needs the one before. A frame the tab
 // drew again unchanged is not coded: the same pixels cost nothing.
 async function recordingConsumer(message, source) {
@@ -593,7 +593,7 @@ async function recordingConsumer(message, source) {
     source,
     id: message.capture,
     fps: RECORDING_FPS,
-    // A key frame every this many frames, which the Host says: every source
+    // A key frame every this many frames, which the device says: every source
     // of a recording has the same.
     keyInterval: message.keyInterval,
     sequence: 0,
@@ -657,7 +657,7 @@ async function recordingConsumer(message, source) {
             // flushes: those pictures were drawn before the stop.
             if (state.retired) return;
             if (socket.bufferedAmount > MAX_BUFFERED) {
-              fail(state.id, 'the Host does not take the recording as fast as it is made');
+              fail(state.id, 'the device does not take the recording as fast as it is made');
               void stop(state.id);
               return;
             }
@@ -730,7 +730,7 @@ async function recordingConsumer(message, source) {
   return state;
 }
 
-// Tells the Host how many frames the recording lost since it last did: those
+// Tells the device how many frames the recording lost since it last did: those
 // it did not take, and those the browser discarded before they reached it,
 // which the track counts (a source that does not count says none).
 function report(state) {

@@ -139,7 +139,7 @@ impl Management {
     }
 
     /// Tells the person at the console the pairing code the runner waits
-    /// with; the code goes nowhere else, and the host log only says that one
+    /// with; the code goes nowhere else, and the device log only says that one
     /// is waiting.
     pub fn tell_code(&self, code: impl Display) {
         let line = format!("{PAIRING_CODE}{code}");

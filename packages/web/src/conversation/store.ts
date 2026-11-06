@@ -88,7 +88,7 @@ import {
   savedListingSchema,
   conversationUpdateSchema,
   transcriptPageSchema,
-  type AttachedHost,
+  type AttachedDevice,
   type ConversationBatch,
   type ConversationDetail,
   type ConversationDraft,
@@ -244,7 +244,7 @@ export const useConversations = defineStore('conversations', () => {
   const deleted = reactive(new Set<string>())
   /**
    * The conversations with a change the page shows in progress until the
-   * backend answers, as a move to another Host.
+   * backend answers, as a move to another device.
    */
   const pendingChanges = ref<string[]>([])
   /**
@@ -443,7 +443,7 @@ export const useConversations = defineStore('conversations', () => {
    * page's changes over it: the model settings its record holds, whichever
    * page or device changed them last, its directory, workflow and plugins.
    * A record without a model leaves the page's own settings, which a send
-   * writes to it. Its hosts come whole with it, under their revision, and
+   * writes to it. Its devices come whole with it, under their revision, and
    * one no newer than the page's changes nothing.
    */
   function followMetadata(conversation: Conversation): void {
@@ -459,7 +459,7 @@ export const useConversations = defineStore('conversations', () => {
     if (shown.model) {
       conversation.model = { ...shown.model }
     }
-    conversation.attachedHosts.replace(shown.hosts.hosts, { revisions: { '': shown.hosts.revision } })
+    conversation.attachedDevices.replace(shown.devices.devices, { revisions: { '': shown.devices.revision } })
   }
 
   /** Takes `metadata` as a read of the conversation's, as its lane or a read of it brings it, in the backend's run `run`. */
@@ -547,7 +547,7 @@ export const useConversations = defineStore('conversations', () => {
       removing: [],
       messageEdit: null,
       scroll: null,
-      attachedHosts: markRaw(new Slot<AttachedHost[]>([])),
+      attachedDevices: markRaw(new Slot<AttachedDevice[]>([])),
       attachmentDescriptions: {},
       replyBlockFacts: {},
       subagents: [],
@@ -1192,11 +1192,11 @@ export const useConversations = defineStore('conversations', () => {
     const carried = conversation.files.find(
       (item) => item.kind === 'reference' && item.deviceId === file.deviceId && item.path === file.path,
     )
-    const host =
-      conversation.attachedHosts.shown.value?.find((attached) => attached.deviceId === file.deviceId)?.name ??
+    const device =
+      conversation.attachedDevices.shown.value?.find((attached) => attached.deviceId === file.deviceId)?.name ??
       resources.deviceById(file.deviceId)?.name ??
       file.deviceId
-    return carried ?? { ...composerRemoteAttachment({ host, path: file.path }), deviceId: file.deviceId }
+    return carried ?? { ...composerRemoteAttachment({ device, path: file.path }), deviceId: file.deviceId }
   }
 
   /** Shows `writing` in the conversation's composer, from outside: another page's draft, a restored one, or what the slot shows. */
@@ -1719,7 +1719,7 @@ export const useConversations = defineStore('conversations', () => {
       } else {
         disk = showFromDisk(conversation, signal).catch(() => {})
       }
-      // The saved list and the hosts come with the metadata, the disk's now
+      // The saved list and the devices come with the metadata, the disk's now
       // and the lane's as it arrives.
       followMetadata(conversation)
       if (conversation.archived) {
@@ -3046,27 +3046,27 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Detaches a device the conversation's agents attached; a draft has none.
-   * It ends the device's access, so the host menu shows it in progress until
+   * It ends the device's access, so the device menu shows it in progress until
    * the backend answers.
    */
-  async function detachHost(
+  async function detachDevice(
     conversation: Conversation,
     deviceId: string,
   ): Promise<void> {
     try {
-      const sentAt = conversation.attachedHosts.now()
+      const sentAt = conversation.attachedDevices.now()
       await apiRequest(
         `/conversations/${encodeURIComponent(
           conversation.id,
-        )}/hosts/${encodeURIComponent(deviceId)}`,
+        )}/devices/${encodeURIComponent(deviceId)}`,
         {
           method: 'DELETE',
           signal: lifetime.signal,
         },
       )
       // The answer says the device is detached.
-      conversation.attachedHosts.answered([''], sentAt, {
-        value: (hosts) => hosts.filter((host) => host.deviceId !== deviceId),
+      conversation.attachedDevices.answered([''], sentAt, {
+        value: (devices) => devices.filter((device) => device.deviceId !== deviceId),
       })
     } catch (error) {
       // A conversation another page deleted meanwhile has no device attached.
@@ -3485,7 +3485,7 @@ export const useConversations = defineStore('conversations', () => {
         }]
       }
       const shown = draftAttachment(conversation, file)
-      return [{ type: 'remote_file', deviceId: file.deviceId, path: file.path, host: shown.kind === 'reference' ? shown.host : file.deviceId }]
+      return [{ type: 'remote_file', deviceId: file.deviceId, path: file.path, device: shown.kind === 'reference' ? shown.device : file.deviceId }]
     }))
   }
 
@@ -3960,7 +3960,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /** Takes a file on a paired device a pasted message names, as many times as messages name it. */
   function carryDeviceFile(conversation: Conversation, file: CopiedDeviceFile): ProductAttachment {
-    conversation.files.push({ ...composerRemoteAttachment({ host: file.host, path: file.path }), deviceId: file.deviceId })
+    conversation.files.push({ ...composerRemoteAttachment({ device: file.device, path: file.path }), deviceId: file.deviceId })
     return conversation.files.at(-1)!
   }
 
@@ -4657,10 +4657,10 @@ export const useConversations = defineStore('conversations', () => {
     remove,
     switchTarget,
     pendingChanges,
-    detachHost: (conversation: Conversation, deviceId: string) =>
+    detachDevice: (conversation: Conversation, deviceId: string) =>
       changeConversations(
         [conversation.id],
-        () => detachHost(conversation, deviceId),
+        () => detachDevice(conversation, deviceId),
         undefined,
       ),
     reloadPlugins: (conversation: Conversation) =>

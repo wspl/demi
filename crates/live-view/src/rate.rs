@@ -32,7 +32,7 @@
 //!   page or stall is a pause, not congestion.
 //! - The only ceiling is the codec level's 240 Mbps, past which the encoder
 //!   refuses to start.
-//! - Watching costs Host CPU, which this adaptation does not measure.
+//! - Watching costs device CPU, which this adaptation does not measure.
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -106,7 +106,7 @@ pub(crate) struct Rate {
     started: Option<Instant>,
     /// Whether the round trips of the view's first span are all there are.
     early: bool,
-    /// The page's clock against the Host's: a local instant and the page's
+    /// The page's clock against the device's: a local instant and the page's
     /// milliseconds at the first acknowledgement.
     clock: Option<(Instant, f64)>,
     pixels: f64,
@@ -332,7 +332,7 @@ impl Rate {
         self.fit();
     }
 
-    /// The page's `received` milliseconds as an instant on the Host's clock,
+    /// The page's `received` milliseconds as an instant on the device's clock,
     /// which the estimate takes only the differences of.
     fn page_time(&mut self, received: f64, now: Instant) -> Instant {
         // A minute of room before the first acknowledgement's time: a later

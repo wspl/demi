@@ -1,6 +1,6 @@
 //! The `file` plugin: the `demi file`
 //! group, every leaf bound to an operation of the `demi.file` command
-//! package, which runs it on the Host.
+//! package, which runs it on the device.
 
 mod file;
 

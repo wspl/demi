@@ -79,7 +79,7 @@
   "deleteProject": {
     "title": "Delete “{name}”?",
     "archived": "Its conversation will be archived. | Its {count} conversations will be archived.",
-    "files": "Files on {host} are not deleted."
+    "files": "Files on {device} are not deleted."
   },
   "savedScope": {
     "title": "Keep saved messages per conversation?",

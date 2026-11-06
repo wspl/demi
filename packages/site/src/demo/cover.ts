@@ -1,6 +1,6 @@
 // A screen the demo draws itself over a live view of the work panel: the
 // page in the browser, the app in the simulator. The live view is a canvas,
-// as a Host's stream is, and a recording would keep it as a picture that
+// as a device's stream is, and a recording would keep it as a picture that
 // blurs as the camera comes close; drawn as the page's own elements, the
 // screen stays sharp, and the recording keeps it as it keeps the rest.
 import { createApp, h, reactive, type Component } from 'vue'

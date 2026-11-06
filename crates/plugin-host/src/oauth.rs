@@ -23,7 +23,7 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use crate::store::StoreError;
 use crate::store::OAuthClient;
-use demi_host_interface::PortError;
+use demi_device_interface::PortError;
 use demi_plugin_interface::{
     OAuth, PortFailure, PortRefusal, StoredSecret, WebFailure, WebMethod, WebRequest, WebResponse,
 };

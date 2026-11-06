@@ -119,9 +119,9 @@
     "files": "{count} archivo | {count} archivos",
     "failedOf": "{failed} / {files} con errores",
     "more": "y {count} más",
-    "cannotRemove": "Este host no puede eliminar archivos.",
-    "cannotCreateFolder": "Este host no puede crear carpetas.",
-    "cannotTake": "Este host no puede recibir cargas.",
+    "cannotRemove": "Este dispositivo no puede eliminar archivos.",
+    "cannotCreateFolder": "Este dispositivo no puede crear carpetas.",
+    "cannotTake": "Este dispositivo no puede recibir cargas.",
     "nameTaken": "Ya existe un archivo con este nombre."
   },
   "conflict": {

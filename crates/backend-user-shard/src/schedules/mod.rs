@@ -68,7 +68,7 @@ struct Pending {
     generation: u64,
     burst: Option<hooks::Burst>,
     /// Stops the check under way when dropped: its command ends on its
-    /// Host, and its task records nothing.
+    /// device, and its task records nothing.
     check: Option<tokio_util::sync::DropGuard>,
 }
 

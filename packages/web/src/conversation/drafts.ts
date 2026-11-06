@@ -33,7 +33,7 @@ const remoteSchema = z.object({
   kind: z.literal('reference'),
   id: z.string(),
   name: z.string(),
-  host: z.string(),
+  device: z.string(),
   path: z.string(),
   deviceId: z.string(),
 })
@@ -143,7 +143,7 @@ export type SavedFile = z.infer<typeof fileSchema>
  * record's shape, whose upgrade turns the previous release's records into
  * the new one.
  */
-const DRAFTS_VERSION = 7
+const DRAFTS_VERSION = 8
 
 /** A message on its way as release 0.1.21 stored it: one per conversation, or none. */
 const pendingSendV1Schema = z.looseObject({
@@ -157,7 +157,7 @@ const draftV2Schema = z.looseObject({
 
 /**
  * A record as version 3 stored it, whose edit in progress may hold an
- * attachment record that named its file by its path on the Host, before an
+ * attachment record that named its file by its path on the device, before an
  * attachment had a number.
  */
 const draftV3Schema = z.looseObject({
@@ -240,6 +240,50 @@ function draftV6ToV7(value: unknown): unknown {
   }
 }
 
+/** A file as version 7 stored it, which named a device its host. */
+const fileV7Schema = z.looseObject({ host: z.string() })
+
+/** The file `value` of version 7 as version 8: `host` is `device`. */
+function fileV7ToV8(value: unknown): unknown {
+  const old = fileV7Schema.safeParse(value)
+  if (!old.success || 'device' in old.data) {
+    return value
+  }
+  const { host, ...rest } = old.data
+  return { ...rest, device: host }
+}
+
+/** A record as version 7 stored it, whose files on a device named it their host. */
+const draftV7Schema = z.looseObject({
+  files: z.array(z.unknown()).optional(),
+  messageEdit: z.looseObject({
+    request: z.looseObject({ content: z.array(z.unknown()) }).optional(),
+    content: z.array(z.unknown()).optional(),
+  }).nullable().optional(),
+})
+
+/**
+ * The record `value` of version 7 as version 8: each file on a device, in the
+ * composer or in an edit in progress, names it `device` where it said `host`.
+ */
+function draftV7ToV8(value: unknown): unknown {
+  const old = draftV7Schema.safeParse(value)
+  if (!old.success) {
+    return value
+  }
+  const record = old.data
+  const edit = record.messageEdit
+  return {
+    ...record,
+    ...(record.files ? { files: record.files.map(fileV7ToV8) } : {}),
+    ...(edit?.request
+      ? { messageEdit: { ...edit, request: { ...edit.request, content: edit.request.content.map(fileV7ToV8) } } }
+      : edit?.content
+        ? { messageEdit: { ...edit, content: edit.content.map(fileV7ToV8) } }
+        : {}),
+  }
+}
+
 /** A message's file as the record stores a composer's. */
 function storedFile(file: z.infer<typeof draftFileSchema>): z.infer<typeof fileSchema> | z.infer<typeof remoteSchema> {
   const id = crypto.randomUUID()
@@ -257,7 +301,7 @@ function storedFile(file: z.infer<typeof draftFileSchema>): z.infer<typeof fileS
     kind: 'reference',
     id,
     name: file.path.split('/').pop() || file.path,
-    host: file.deviceId,
+    device: file.deviceId,
     path: file.path,
     deviceId: file.deviceId,
   }
@@ -294,7 +338,7 @@ function draftV5ToV6(value: unknown): unknown {
  * - One of version 2 gives each record and each message on its way no comments,
  *   which a draft held none of then.
  * - One of version 3 drops an edit in progress whose message names a file by
- *   its path on the Host, which the backend has since numbered, so the rest of
+ *   its path on the device, which the backend has since numbered, so the rest of
  *   the draft stays and the user opens the edit again.
  * - One of version 4 marks an edit in progress as a sent message's.
  * - One of version 5 renames each record's `base` to `over`, and puts each
@@ -303,6 +347,8 @@ function draftV5ToV6(value: unknown): unknown {
  *   back.
  * - One of version 6 gives each comment its words as a message with no
  *   files, before a comment held files.
+ * - One of version 7 names the device of each file on one `device`, which it
+ *   called `host`.
  *
  * A record of another shape stays as it was, and its read drops it.
  */
@@ -353,6 +399,9 @@ function upgradeDrafts(request: IDBOpenDBRequest, oldVersion: number): void {
     }
     if (oldVersion < 7) {
       value = draftV6ToV7(value)
+    }
+    if (oldVersion < 8) {
+      value = draftV7ToV8(value)
     }
     if (value !== cursor.value) {
       cursor.update(value)

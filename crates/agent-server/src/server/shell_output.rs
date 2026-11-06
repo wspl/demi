@@ -20,21 +20,21 @@
 //!   long line shows in part so it cannot fill a page.
 //! - `--raw` is the bytes with the pages' line numbering, so `grep -n` on it
 //!   gives the numbers `--lines` takes. The command has no search of its own.
-//! - It reads a running command from its Host through host access and an ended
+//! - It reads a running command from its device through device access and an ended
 //!   one from the store, where the backend put it before any result reported
 //!   the end.
-//! - A Host keeps at most 16 MiB of a command's output (all of it, or its first
+//! - A device keeps at most 16 MiB of a command's output (all of it, or its first
 //!   and last 8 MiB), so a command that prints without end costs 16 MiB on its
-//!   Host and in the backend alike.
+//!   device and in the backend alike.
 
 use std::{rc::{Rc, Weak}, sync::Arc};
 
 use bytes::Bytes;
 use demi_agent_store::{AgentTreeStore, StoredCommand, StoredOutput};
 use demi_agent_tools::{
-    HostResolver, Look, PAGE_CHARS, Stopper, look_text, whole_look_text,
+    DeviceResolver, Look, PAGE_CHARS, Stopper, look_text, whole_look_text,
 };
-use demi_host_interface::{
+use demi_device_interface::{
     CommandState, Ending, GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen,
     ShellError, Streams, TypedRpc, WholeOutput,
 };
@@ -110,7 +110,7 @@ struct StopArgs {
     id: Vec<String>,
 }
 
-pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> GroupBuilder {
+pub(super) fn shell_group<H: DeviceResolver>(server: Weak<AgentServer<H>>) -> GroupBuilder {
     GroupBuilder::new("shell", GROUP_SUMMARY)
         .index_entry(GROUP_ENTRY)
         .leaf(
@@ -143,7 +143,7 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
 ///
 /// A command that cannot be looked at is told on stderr, and the next is looked
 /// at all the same.
-async fn status<H: HostResolver>(
+async fn status<H: DeviceResolver>(
     call: Invoked<H, StatusArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -260,7 +260,7 @@ struct StatusJson {
     status: &'static str,
     /// Null until it exited.
     exit_code: Option<i32>,
-    /// Why its Host lost it; null otherwise.
+    /// Why its device lost it; null otherwise.
     reason: Option<String>,
     /// Null when the look does not know it.
     running_ms: Option<u64>,
@@ -285,7 +285,7 @@ enum Moved {
 /// node whose command no shells hold any more, looks from its own place in the
 /// command's whole output. Each look shows the output since the node's own last
 /// look and moves only its place, once the caller printed it.
-async fn status_one<H: HostResolver>(
+async fn status_one<H: DeviceResolver>(
     tree: &Tree<H>,
     caller: &NodeId,
     id: &str,
@@ -427,7 +427,7 @@ fn ended_lines(id: &str, end: CommandEnd) -> Vec<String> {
 /// Stops each of the conversation's commands the call names, in order. A
 /// command that cannot be stopped is told on stderr, and the next is
 /// stopped all the same.
-async fn stop<H: HostResolver>(call: Invoked<H, StopArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn stop<H: DeviceResolver>(call: Invoked<H, StopArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let mut failed = false;
     for id in &call.args.id {
         match stop_one(&call.tree, &call.caller, id).await {
@@ -447,7 +447,7 @@ async fn stop<H: HostResolver>(call: Invoked<H, StopArgs>, port: RpcPort) -> Res
 /// The result is what the command prints of it, or why it could not. The end's
 /// report says which agent stopped it, and the node that stopped its own
 /// command, which it was told so, hears nothing more of it.
-async fn stop_one<H: HostResolver>(tree: &Tree<H>, caller: &NodeId, id: &str) -> Result<String, String> {
+async fn stop_one<H: DeviceResolver>(tree: &Tree<H>, caller: &NodeId, id: &str) -> Result<String, String> {
     let unknown = || "no such command in this conversation".to_owned();
     let command = CommandId::try_from(id).map_err(|_| unknown())?;
     let already = || format!("[command {id} had already ended]\n");
@@ -476,7 +476,7 @@ async fn stop_one<H: HostResolver>(tree: &Tree<H>, caller: &NodeId, id: &str) ->
             node.stopped_by(&command, stopper);
         }
     }
-    // The environment that runs it stops it, as for a page's stop; no Host
+    // The environment that runs it stops it, as for a page's stop; no device
     // is resolved, so the call never enters the conversation's file gate
     // its own job holds a lease of.
     let stopped = match environment.abort(&command).await {
@@ -507,7 +507,7 @@ struct Found {
     end: Option<CommandEnd>,
 }
 
-async fn output<H: HostResolver>(
+async fn output<H: DeviceResolver>(
     call: Invoked<H, OutputArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
@@ -576,7 +576,7 @@ async fn output<H: HostResolver>(
     Ok(0)
 }
 
-impl<H: HostResolver> AgentServer<H> {
+impl<H: DeviceResolver> AgentServer<H> {
     /// Page `page`, from 1, of what `demi conversation history open` shows of
     /// the command `id` of the conversation `root`; also how many pages there
     /// are. The conversation need not be open: an ended command is read from
@@ -725,7 +725,7 @@ fn range(lines: &str) -> Option<(u64, u64)> {
 
 /// The command `id` of a conversation: from its live `tree`, when it has
 /// one, while the command runs, else from its `store`.
-async fn find<H: HostResolver>(
+async fn find<H: DeviceResolver>(
     tree: Option<&Tree<H>>,
     store: &Rc<dyn AgentTreeStore>,
     id: &str,

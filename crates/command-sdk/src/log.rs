@@ -1,6 +1,6 @@
 //! A resident's log: each `tracing` event the resident writes leaves as one JSON
 //! [`LogLine`] on its standard error, which the runner reads line by line and
-//! keeps in the Host's log as the line it is
+//! keeps in the device's log as the line it is
 //! (`crates/runner-command-packages/src/process.rs`). What is not a line, a
 //! panic's report for one, is kept there as text.
 //!

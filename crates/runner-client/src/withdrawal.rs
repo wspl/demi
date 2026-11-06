@@ -1,13 +1,13 @@
-//! A job's withdrawal: how its conversation's host access stops it when its
-//! Host is no longer one of the conversation's, as a detach makes it.
+//! A job's withdrawal: how its conversation's device access stops it when its
+//! device is no longer one of the conversation's, as a detach makes it.
 
 use std::cell::RefCell;
 
 use tokio_util::sync::CancellationToken;
 
-/// A request, made once, to stop a running job because its Host was withdrawn
+/// A request, made once, to stop a running job because its device was withdrawn
 /// from the conversation. Whoever runs the job awaits [`asked`](Self::asked)
-/// and stops it as an abort does, with the reason in its end; the job's host
+/// and stops it as an abort does, with the reason in its end; the job's device
 /// access holds the request beside the job, and makes it.
 #[derive(Default)]
 pub struct Withdrawal {

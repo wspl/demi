@@ -51,7 +51,7 @@
     "cloudResetting": "Le cloud est en cours de réinitialisation."
   },
   "workflows": {
-    "hostSilent": "L’hôte n’a pas répondu."
+    "deviceSilent": "L’appareil n’a pas répondu."
   },
   "uploads": {
     "notUploaded": "{name} n’a pas été envoyé. {reason}",

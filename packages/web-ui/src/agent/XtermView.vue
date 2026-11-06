@@ -226,32 +226,32 @@ onBeforeUnmount(() => {
   <div class="h-full min-h-0 w-full px-3 py-2" @contextmenu.stop>
     <div
       ref="hostRef"
-      class="xterm-host h-full min-h-0 w-full"
+      class="xterm-device h-full min-h-0 w-full"
     />
   </div>
 </template>
 
 <style scoped>
-.xterm-host :deep(.xterm) {
+.xterm-device :deep(.xterm) {
   height: 100%;
 }
 
-.xterm-host :deep(.xterm-viewport) {
+.xterm-device :deep(.xterm-viewport) {
   background-color: transparent !important;
   overflow-y: auto !important;
 }
 
 /* Selection decorations sit behind the glyphs so ANSI colors stay visible. */
-.xterm-host :deep(.xterm-selection) {
+.xterm-device :deep(.xterm-selection) {
   z-index: 0 !important;
 }
 
-.xterm-host :deep(.xterm-rows) {
+.xterm-device :deep(.xterm-rows) {
   position: relative;
   z-index: 1;
 }
 
-.xterm-host :deep(.xterm-selection div) {
+.xterm-device :deep(.xterm-selection div) {
   background-color: var(--xterm-selection) !important;
 }
 </style>

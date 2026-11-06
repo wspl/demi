@@ -2,8 +2,8 @@
 //! and `git_ok { id, readAt, op, result }`.
 //!
 //! - `op` names the call and decides the type of `result`.
-//! - `readAt` is the Host's number taken as the runner received the call,
-//!   before it read anything (`crates/runner-host/src/subscriptions.rs`).
+//! - `readAt` is the device's number taken as the runner received the call,
+//!   before it read anything (`crates/runner-device/src/subscriptions.rs`).
 //!
 //! Their serde is written by hand, because the keys follow the message tag in
 //! the order `id`, `readAt`, `op`, `result`, and `op` must be read before

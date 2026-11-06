@@ -16,7 +16,7 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_host_interface::{Process, ProcessControl, ProcessEnd};
+use demi_device_interface::{Process, ProcessControl, ProcessEnd};
 use demi_provider_common::Secret;
 use demi_provider_common::credentials::{
     AccountKit, AccountsCapability, AccountsError, CredentialPool, LoginError, LoginIo, LoginKind,
@@ -267,7 +267,7 @@ async fn sign_in_at(
 /// a newline. A code the CLI calls invalid goes to `shown` in the CLI's words,
 /// while the CLI waits for another. Answers the tail of its standard error.
 async fn relay(
-    mut output: futures_util::stream::LocalBoxStream<'static, demi_host_interface::ProcessOutput>,
+    mut output: futures_util::stream::LocalBoxStream<'static, demi_device_interface::ProcessOutput>,
     control: &dyn ProcessControl,
     shown: mpsc::UnboundedSender<Shown>,
     mut codes: mpsc::UnboundedReceiver<Secret>,

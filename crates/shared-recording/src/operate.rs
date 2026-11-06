@@ -203,7 +203,7 @@ impl Library {
             }
             // Drawing needs the coder, and so do several recordings and a
             // screen that changed size, which are coded again; a plain video of
-            // one recording does not, and goes without fetching it. A Host that
+            // one recording does not, and goes without fetching it. A device that
             // cannot load it gives a video it can plain, and says why.
             let needed = !reading.plain || parts.len() > 1 || video::resized(&parts);
             let (load, unloaded) = match needed {
@@ -227,7 +227,7 @@ impl Library {
                     write(None).await.map_err(|error| Error::Failed(format!("the export stopped: {error}")))??
                 }
                 Err(Error::Unavailable(why)) => {
-                    return Err(Error::Unavailable(format!("{why}, and this Host cannot load it: {}", unloaded.unwrap_or(why.clone()))));
+                    return Err(Error::Unavailable(format!("{why}, and this device cannot load it: {}", unloaded.unwrap_or(why.clone()))));
                 }
                 written => written?,
             };

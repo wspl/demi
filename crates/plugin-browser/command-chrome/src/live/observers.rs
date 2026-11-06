@@ -629,7 +629,7 @@ pub(crate) async fn attach(
     attached
 }
 
-/// Puts the viewer's clipboard on the browser's own clipboard, when the Host
+/// Puts the viewer's clipboard on the browser's own clipboard, when the device
 /// keeps that apart from its user's clipboard; false when it does not.
 pub(crate) async fn write_clipboard(tab: &BrowserTab, text: &str, html: &str) -> Result<bool> {
     if !crate::page::clipboard::capability(tab.page())

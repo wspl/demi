@@ -13,7 +13,7 @@ import { gallerySubagents } from '@demicodes/web-gallery/fixtures/subagents'
 import { press, shown, shownText } from './dom'
 import harborInner from './assets/harbor-inner.webp'
 import harborOuter from './assets/harbor-outer.webp'
-import { MACBOOK_HOST, WINDOWS_PC_HOST, ALL_DEVICES, type Scene } from './scenes'
+import { MACBOOK_DEVICE, WINDOWS_PC_DEVICE, ALL_DEVICES, type Scene } from './scenes'
 import type { ShellStep } from './conversation'
 import type { ReadmeCues } from './readme-page'
 
@@ -109,7 +109,7 @@ export const README_SCENES: Record<string, ReadmeScene> = {
   code: {
     title: 'Two-column orders on iPhone Duo',
     cwd: HARBOR,
-    primary: MACBOOK_HOST,
+    primary: MACBOOK_DEVICE,
     devices: ALL_DEVICES,
     workspaces: {
       list: [
@@ -127,8 +127,8 @@ export const README_SCENES: Record<string, ReadmeScene> = {
     },
     saved: ['Run the UI tests on the Android foldable too', 'Write the release notes for 2.3'],
     screen: HARBOR_SCREEN,
-    async play({ conversation: c, work, hosts, commenting }) {
-      hosts.attached = [WINDOWS_PC_HOST]
+    async play({ conversation: c, work, devices, commenting }) {
+      devices.attached = [WINDOWS_PC_DEVICE]
       const desktop = document.documentElement.clientWidth > 600
       const cues: ReadmeCues = (window.demiReadme = { marks: {} })
       // `demi mobile open` shows the device in the panel, as the product's

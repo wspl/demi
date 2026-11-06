@@ -17,7 +17,7 @@ import { t } from '../locales/text'
 
 /**
  * A view notice's words: the reason's own, quoting the viewer's text the
- * notice carries where the reason is about it; never the Host's error text.
+ * notice carries where the reason is about it; never the runner's error text.
  */
 export function noticeText(reason: PanelReason, message: string): string {
   return reason === LIVE_NO_FOCUSED_FIELD ? t(`reasons.${reason}`, { text: message }) : t(`reasons.${reason}`)
@@ -124,8 +124,8 @@ export class MobileDevicesController {
 
   /**
    * The video of a recording this panel started that ended without a press of
-   * Stop, at its limit: the file on the Host that the content saves on the
-   * user's computer. None when the Host holds none, as after the device
+   * Stop, at its limit: the file on the runner's device that the content saves on the
+   * user's computer. None when the runner holds none, as after the device
    * reconnected.
    */
   async collect(device: string): Promise<string | null> {
@@ -153,7 +153,7 @@ export class MobileDevicesController {
   }
 
   /**
-   * Runs a toolbar control's call; answers the file on the Host that
+   * Runs a toolbar control's call; answers the file on the runner's device that
    * Screenshot or a stopped Record left, which the content saves on the
    * user's computer. A refusal is a toast. Whether a device records is the
    * device's to say, in the view's state, whoever started it.

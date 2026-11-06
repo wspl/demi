@@ -42,7 +42,7 @@
   "failures": {
     "control": "시뮬레이터에서 수행할 수 없음",
     "save": "파일을 저장할 수 없음",
-    "hostFilesUnreachable": "지금은 기기의 파일에 접근할 수 없습니다."
+    "deviceFilesUnreachable": "지금은 기기의 파일에 접근할 수 없습니다."
   },
   "reasons": {
     "invalid_input": "시뮬레이터가 해당 입력을 받을 수 없습니다.",
@@ -68,13 +68,13 @@
     "conversation_not_found": "이 대화가 더 이상 존재하지 않습니다.",
     "conversation_archived": "이 대화는 보관되었습니다.",
     "conversation_busy": "대화가 사용 중입니다. 잠시 후 다시 시도하십시오.",
-    "host_stopped": "기기가 중지되었습니다.",
+    "device_stopped": "기기가 중지되었습니다.",
     "device_offline": "기기가 오프라인입니다.",
     "cloud_unavailable": "지금은 클라우드를 사용할 수 없습니다.",
     "cloud_resetting": "클라우드를 재설정하는 중입니다.",
     "cloud_capacity": "지금은 클라우드에 여유가 없습니다.",
     "cloud_crash_loop": "클라우드가 계속 중지됩니다.",
-    "host_operation_failed": "기기에서 수행할 수 없었습니다.",
+    "device_operation_failed": "기기에서 수행할 수 없었습니다.",
     "unknown_plugin_method": "이 페이지가 오래되었습니다. 새로고침하십시오.",
     "plugin_disabled": "시뮬레이터가 꺼져 있습니다."
   },

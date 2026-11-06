@@ -42,7 +42,7 @@
   "failures": {
     "control": "El simulador no pudo hacer eso",
     "save": "No se pudo guardar el archivo",
-    "hostFilesUnreachable": "No se puede acceder a los archivos del dispositivo en este momento."
+    "deviceFilesUnreachable": "No se puede acceder a los archivos del dispositivo en este momento."
   },
   "reasons": {
     "invalid_input": "El simulador no puede aceptar eso.",
@@ -68,13 +68,13 @@
     "conversation_not_found": "Este chat ya no existe.",
     "conversation_archived": "Este chat está archivado.",
     "conversation_busy": "El chat está ocupado. Vuelve a intentarlo en un momento.",
-    "host_stopped": "El dispositivo está detenido.",
+    "device_stopped": "El dispositivo está detenido.",
     "device_offline": "El dispositivo está sin conexión.",
     "cloud_unavailable": "La nube no está disponible en este momento.",
     "cloud_resetting": "La nube se está restableciendo.",
     "cloud_capacity": "La nube no tiene espacio en este momento.",
     "cloud_crash_loop": "La nube se sigue deteniendo.",
-    "host_operation_failed": "El dispositivo no pudo hacer eso.",
+    "device_operation_failed": "El dispositivo no pudo hacer eso.",
     "unknown_plugin_method": "Esta página está desactualizada. Vuelve a cargarla.",
     "plugin_disabled": "Los simuladores están desactivados."
   },

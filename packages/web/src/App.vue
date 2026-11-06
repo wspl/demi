@@ -216,7 +216,7 @@ const foldedGroups = computed({
     resources.local.foldedGroups = value
   },
 })
-// Add Device, from the host menu or elsewhere, pairs right here rather than in settings;
+// Add Device, from the device menu or elsewhere, pairs right here rather than in settings;
 // started beside a device menu, it hands that menu the device it pairs.
 const pairing = useDevicePairing(claimDevice)
 const installCommands = useInstallCommands()

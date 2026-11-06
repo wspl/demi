@@ -28,8 +28,8 @@ Follow these steps to create the crate:
    [Names](../../ARCHITECTURE.md#names).
 2. Depend on `provider-common`, which holds the contract and the shared
    building blocks. A provider that starts a process also depends on
-   `host-interface` for the Host process interface. Never depend on what sits
-   above a provider: the agent, the backend or a Host implementation.
+   `device-interface` for the device process interface. Never depend on what sits
+   above a provider: the agent, the backend or a device implementation.
 3. Add the crate and its edges to the Rust graph in
    [Rust crates](../../ARCHITECTURE.md#rust-crates). The
    [boundary check](../../crates/xtask/src/boundaries.rs) refuses an edge that
@@ -148,7 +148,7 @@ Two more methods:
   A runtime that keeps a process between runs follows Claude Code
   (`crates/provider-claude-code/src/live.rs`): the process moves into the run
   and back to the runtime only where the conversation can continue in it, so
-  every other exit drops it and the Host terminates it.
+  every other exit drops it and the device terminates it.
 
 ## Read the vendor's stream
 

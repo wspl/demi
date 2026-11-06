@@ -3,7 +3,7 @@
 //! The backend serves a file under the media type this table gives it and shows
 //! in place only the types marked so. The page picks its viewer from the same
 //! table, generated into `@demicodes/protocol`, so the two always agree. An HTML
-//! file shown from a Host's files loads them as these types and the web's
+//! file shown from a device's files loads them as these types and the web's
 //! others.
 //!
 //! A file is told by its extension, not its content, for three reasons:
@@ -63,7 +63,7 @@ pub const PREVIEW_TYPES: [PreviewType; 22] = [
     preview("text/html", &["html", "htm"], false),
 ];
 
-/// What else an HTML file shown from a Host's files loads, by extension,
+/// What else an HTML file shown from a device's files loads, by extension,
 /// beside the previewed types: the web's own types that the preview has no
 /// viewer for.
 const HTML_VIEW_TYPES: [(&str, &[&str]); 9] = [
@@ -103,7 +103,7 @@ pub fn preview_media_type(path: &str) -> Option<&'static str> {
         .map(|entry| entry.media_type)
 }
 
-/// The media type an HTML file shown from a Host's files loads the file at
+/// The media type an HTML file shown from a device's files loads the file at
 /// `path` as: a previewed type, HTML as UTF-8, or another type of the web's;
 /// `None` for any other file.
 pub fn html_view_media_type(path: &str) -> Option<&'static str> {
@@ -134,7 +134,7 @@ fn extension(path: &str) -> Option<String> {
     Some(extension.to_ascii_lowercase())
 }
 
-/// The sandbox an HTML file shown from a Host's files loads in, the
+/// The sandbox an HTML file shown from a device's files loads in, the
 /// `sandbox` policy of its answers and of the frame it shows in: it runs
 /// scripts, sends forms, shows `alert`, opens windows that leave the sandbox
 /// and downloads, as in a browser tab. Without `allow-same-origin` it never

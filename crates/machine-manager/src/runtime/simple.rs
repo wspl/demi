@@ -736,10 +736,10 @@ impl Device {
     /// proot exited without being asked to: end what remains of the device.
     pub async fn recover(&mut self, outcome: io::Result<()>) {
         if let Err(error) = outcome {
-            tracing::error!(event = "cloud_runtime.wait_failed", host_id = %self.device, %error, "a Cloud's runtime could not be waited for");
+            tracing::error!(event = "cloud_runtime.wait_failed", device_id = %self.device, %error, "a Cloud's runtime could not be waited for");
         }
         if let Err(error) = self.stop().await {
-            tracing::error!(event = "cloud_recovery.failed", host_id = %self.device, error = %crate::server::chain(&error), "a Cloud's recovery after its runtime exited failed");
+            tracing::error!(event = "cloud_recovery.failed", device_id = %self.device, error = %crate::server::chain(&error), "a Cloud's recovery after its runtime exited failed");
         }
     }
 
@@ -896,7 +896,7 @@ impl Device {
         let pid = child.id().ok_or_else(|| io::Error::other("proot exited as it started"))? as i32;
         let started = process::started(pid).ok_or_else(|| io::Error::other("proot exited as it started"))?;
         let waiter = tokio::task::spawn_local(async move { child.wait().await.map(drop) });
-        tracing::info!(event = "cloud_runtime.started", host_id = %self.device, pid, "a Cloud started on Simple Isolation");
+        tracing::info!(event = "cloud_runtime.started", device_id = %self.device, pid, "a Cloud started on Simple Isolation");
         Ok(Process {
             pid,
             started,

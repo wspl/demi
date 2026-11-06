@@ -7,7 +7,7 @@
 //! The types are defined once: the `demi browser` declarations take their
 //! schemas from them, the handlers decode into them, and the web app uses the
 //! TypeScript generated from them. Whatever enters from outside (command input,
-//! Host files, CDP replies and events, page tool results, the page's and the
+//! device files, CDP replies and events, page tool results, the page's and the
 //! extension's messages) is decoded and bounded here, and corrupt data is
 //! refused, never repaired.
 

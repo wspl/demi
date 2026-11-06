@@ -1,7 +1,7 @@
 //! Where a conversation runs, as the control store keeps it: the Cloud's
-//! directory of a conversation, a Host's home, or a project.
+//! directory of a conversation, a device's home, or a project.
 //!
-//! One rule turns a destination, a directory on a Host or a project, into one of
+//! One rule turns a destination, a directory on a device or a project, into one of
 //! them. Every move, a conversation's creation, a restore whose project was
 //! deleted and the upgrade's leftovers go through [`select`], in the transaction
 //! that writes the selection, which makes the directory's project when the user
@@ -10,9 +10,9 @@
 //! # Directories
 //!
 //! A move names a directory, never a selection kind, so no conversation runs
-//! outside a project in a project's directory, or in a project in its Host's home.
+//! outside a project in a project's directory, or in a project in its device's home.
 //!
-//! A directory is known by its canonical path on its Host, as the Host resolves it
+//! A directory is known by its canonical path on its device, as the device resolves it
 //! when the move checks the directory: links followed, no trailing separator, the
 //! spelling the file system keeps (on Windows `C:/Users/alex/` and
 //! `c:\users\alex` are the one directory `C:\Users\alex`). The runner reports its
@@ -28,7 +28,7 @@
 //!   reports.
 //! - When a report changes what an execution context said, the context advances,
 //!   so a node's next inference names the directory its shells really start in and
-//!   never hands on a path that does not exist on its Host.
+//!   never hands on a path that does not exist on its device.
 //!
 //! # Projects
 //!
@@ -46,11 +46,11 @@
 //! ../app-2` made the worktree `app-2` of its repository; a conversation moved
 //! to `~/app-2` is in `app`, with the worktree `app-2`.
 //!
-//! - The project's Host reports the worktrees of each project's repository
-//!   (`crates/runner-host/src/worktrees.rs`), before any message that could
+//! - The project's device reports the worktrees of each project's repository
+//!   (`crates/runner-device/src/worktrees.rs`), before any message that could
 //!   follow a change of them, and its directory keeps them as last reported,
 //!   for each workspace's project of it, so
-//!   a move selects by them in its own transaction, with the Host away.
+//!   a move selects by them in its own transaction, with the device away.
 //! - A directory selects, in order: the project of that directory; the
 //!   project that lists it as a worktree, with the worktree; a project made for
 //!   it.
@@ -60,7 +60,7 @@
 //!   worktree, and deletes it, as a second spelling of a project's directory
 //!   goes into the project (`ControlService::name_directory`).
 
-use demi_host_paths::HostPaths;
+use demi_device_paths::DevicePaths;
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::devices::DeviceKind;
@@ -82,7 +82,7 @@ pub enum Selection {
     /// `<home>/sessions/<id>`, without `path`, or after a Fork its
     /// source's, another directory directly under `<home>/sessions`.
     Cloud { path: Option<String> },
-    /// A Host's home: a paired device's or the Cloud's.
+    /// A device's home: a paired device's or the Cloud's.
     Home { device_id: DeviceId },
     /// A project, with the device and directory its project names, kept
     /// so a conversation whose project was deleted is restored to its
@@ -106,7 +106,7 @@ pub enum Selection {
 pub struct Worktree {
     /// The name git gave it: its directory's under `.git/worktrees/`.
     pub name: String,
-    /// Its directory, as its Host reported it.
+    /// Its directory, as its device reported it.
     pub path: String,
 }
 
@@ -123,7 +123,7 @@ impl Selection {
     /// The selection as the web app reads a conversation's target, from
     /// `resolved`, what it resolves to: a project by its project, the
     /// Cloud's directory of a conversation as it was asked for, and a home
-    /// or a directory as the Host and directory it is.
+    /// or a directory as the device and directory it is.
     pub fn shown(&self, resolved: &ExecutionTarget) -> ConversationTarget {
         match (self, resolved) {
             (Self::Cloud { path }, _) => ConversationTarget::Cloud { path: path.clone() },
@@ -176,7 +176,7 @@ impl Selected {
 
 /// The selection `to` names for `owner`'s conversation `conversation` in
 /// `workspace`, by its directory: the Cloud's directory of a conversation, the
-/// Host's home, or else the workspace's project of that device and directory,
+/// device's home, or else the workspace's project of that device and directory,
 /// made now when it has none.
 ///
 /// A Cloud directory makes the user's Cloud device when it was never made.
@@ -342,7 +342,7 @@ pub(crate) fn project_of(
 
 /// `path` as a selection keeps it: without a separator after its last
 /// component, so `/srv/app/` is the directory `/srv/app` is.
-pub(crate) fn directory(paths: HostPaths, path: &str) -> String {
+pub(crate) fn directory(paths: DevicePaths, path: &str) -> String {
     paths.trimmed(path).to_owned()
 }
 
@@ -365,7 +365,7 @@ pub(crate) fn execution_target(
                         .as_ref()
                         .and_then(|cloud| cloud.home.as_deref())
                         .unwrap_or(CLOUD_HOME);
-                    HostPaths::Posix.join(&HostPaths::Posix.join(home, "sessions"), conversation.as_str())
+                    DevicePaths::Posix.join(&DevicePaths::Posix.join(home, "sessions"), conversation.as_str())
                 }
             };
             ExecutionTarget::Cloud {

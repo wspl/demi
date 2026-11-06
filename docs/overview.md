@@ -52,13 +52,13 @@ connection. Provider services are external to Demi.
      v
 +--------------------+
 | Runner             |
-| Host operations    |
+| Device operations  |
 +--------------------+
 ```
 
 A runner executes on a user's paired device or inside the user's Cloud
 sandbox. In both places its outbound connection registers with the backend.
-The arrow indicates who requests Host operations, not who opens that
+The arrow indicates who requests device operations, not who opens that
 connection.
 
 The following table lists what each part is responsible for:
@@ -68,7 +68,7 @@ The following table lists what each part is responsible for:
 | Web application | Present conversations and product controls through shared `web-ui` components. |
 | Backend | Authorize users, host agent sessions, persist conversations, resolve providers, and manage execution targets and each user's Cloud. |
 | Providers | Implement each vendor's authentication and inference transport inside the backend. |
-| Runner | Execute Host operations and shell jobs, and dispatch declared commands. |
+| Runner | Execute device operations and shell jobs, and dispatch declared commands. |
 | Native command resident | Run independently released native operations beside the target's files. |
 | Machine manager | Run each user's Cloud as a gVisor sandbox with persistent volumes on a Linux host. |
 
@@ -77,7 +77,7 @@ its CLI on the user's Cloud, whatever the conversation's execution target is.
 The two sides of that boundary work as follows:
 
 - The provider in the backend exchanges stream-json with that process through
-  the Host process interface.
+  the device process interface.
 - The CLI contacts the vendor directly.
 
 The following files define the boundaries:
@@ -114,7 +114,7 @@ transcript.
 
 Two files own the rules around a target:
 
-- Sessions and targets (`crates/backend-host-access/src/lib.rs`) owns switching
+- Sessions and targets (`crates/backend-device-access/src/lib.rs`) owns switching
   and attachment rules.
 - Execution coordination (`crates/backend-cloud/src/uses.rs`) owns admission
   while agent nodes or device operations are active.
@@ -163,9 +163,8 @@ The following table defines the terms this page uses:
 | --- | --- |
 | Conversation | Backend-owned transcript, agent state, and product settings. |
 | Execution target | The conversation's selection of Cloud, a device directory, or a project. |
-| Device | A registered execution device, either user-paired or managed. |
-| Host | The filesystem and process abstraction used to execute on a device. |
-| Host access | The one way the backend reaches a conversation's Host: it resolves the target, wakes a stopped Cloud and holds the conversation's file gate (`crates/backend-host-access/src/access.rs`). |
+| Device | A machine the conversation's work runs on, the user's Cloud or a paired one, and the filesystem and process abstraction its runner serves. |
+| Device access | The one way the backend reaches a conversation's device: it resolves the target, wakes a stopped Cloud and holds the conversation's file gate (`crates/backend-device-access/src/access.rs`). |
 | Guest | A managed gVisor/systrap sandbox running a runner. |
 | User shard | The part of the backend that holds everything belonging to one user, such as conversations, runner connections and Cloud state, on a single thread ([The user shard](../crates/backend-user-shard/src/lib.rs)). |
 | Backend machine | The machine that runs the backend or the machine manager. |

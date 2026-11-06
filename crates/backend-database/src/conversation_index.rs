@@ -48,7 +48,7 @@ pub struct ConversationRecord {
     /// Where it runs (`crates/backend-database/src/selection.rs`).
     pub target: Selection,
     /// Advanced by every change of the conversation's execution context,
-    /// such as a target switch or a Host attached.
+    /// such as a target switch or a device attached.
     pub context_version: u64,
     /// The conversation's model selection; none until its first model is
     /// chosen.
@@ -66,9 +66,9 @@ pub struct ConversationRecord {
     /// The revision of the conversation's work panel, 0 before its first
     /// change.
     pub panel_revision: u64,
-    /// The revision of the conversation's attached hosts, raised by each
+    /// The revision of the conversation's attached devices, raised by each
     /// change of them; 0 before the first.
-    pub hosts_revision: u64,
+    pub devices_revision: u64,
     /// How many of the conversation's permission requests are undecided.
     pub permission_requests: u64,
     /// How many of those the user has not read yet: none has been
@@ -93,7 +93,7 @@ pub enum ConversationChange {
     /// A change of the conversation's model settings, which the
     /// conversation's settings order applies against the catalog.
     Settings(SettingsChange),
-    /// A switch of the primary target (`crates/backend-host-access/src/transition.rs`), which the target compare-and-set commits.
+    /// A switch of the primary target (`crates/backend-device-access/src/transition.rs`), which the target compare-and-set commits.
     Target(ConversationTarget),
 }
 
@@ -183,7 +183,7 @@ pub enum RecordChange {
     /// The conversation's new Workflow menu choice.
     Workflow(WorkflowChoice),
     /// A device of the user's attached; one attached already stays as it is.
-    Attach(AttachedHostRecord),
+    Attach(AttachedDeviceRecord),
     /// A detach of an attached device; a device that is not attached
     /// detaches as nothing.
     Detach(DeviceId),
@@ -253,7 +253,7 @@ const CONVERSATION_ORDER: &str = "archived_at DESC, pinned DESC, sort_order, id"
 
 const CONVERSATION_COLUMNS: &str = "id, user_id, workspace_id, title, title_origin, archived_at, pinned, read_revision, target_kind, target_device_id,
      target_path, target_project_id, target_worktree_name, target_worktree_path, context_version, model, workflow_kind,
-     workflow_id, workflow_worktree, created_at, updated_at, hosts_revision,
+     workflow_id, workflow_worktree, created_at, updated_at, devices_revision,
      COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
      COALESCE((SELECT saved_revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS saved_revision,
      (SELECT count(*) FROM saved_messages
@@ -324,7 +324,7 @@ impl ControlService {
     /// the id.
     ///
     /// The new conversation is first in the owner's sidebar, as `start` says, with
-    /// its hosts attached, all in one step. A retry of the owner's finds the one it
+    /// its devices attached, all in one step. A retry of the owner's finds the one it
     /// created, in the spelling it was created with, and applies nothing of
     /// `start`.
     pub async fn create_conversation(
@@ -478,7 +478,7 @@ impl ControlService {
         .await
     }
 
-    /// The owner's conversations a Host is to hold residents for: those not
+    /// The owner's conversations a device is to hold residents for: those not
     /// archived whose target resolves to `device`, or that `device` is
     /// attached to. A target that cannot be resolved holds nothing.
     pub async fn conversations_on(
@@ -487,7 +487,7 @@ impl ControlService {
         device: DeviceId,
     ) -> Result<Vec<ConversationId>, StorageError> {
         self.call(move |connection, _| {
-            let mut attached = connection.prepare("SELECT conversation_id FROM conversation_hosts WHERE device_id = ?1")?;
+            let mut attached = connection.prepare("SELECT conversation_id FROM conversation_devices WHERE device_id = ?1")?;
             let attached: std::collections::HashSet<String> = attached
                 .query_map([device.as_str()], |row| row.get(0))?
                 .collect::<Result<_, _>>()?;
@@ -613,22 +613,22 @@ impl ControlService {
                         params![id.as_str(), kind, workflow, worktree],
                     )?
                 }
-                RecordChange::Attach(host) => {
-                    if insert_attached_host(&transaction, &id, host, now)? {
+                RecordChange::Attach(attached) => {
+                    if insert_attached_device(&transaction, &id, attached, now)? {
                         advance_context(&transaction, &id)?;
                     }
                     1
                 }
                 RecordChange::Detach(device) => {
                     let removed = transaction.execute(
-                        "DELETE FROM conversation_hosts WHERE conversation_id = ?1 AND device_id = ?2",
+                        "DELETE FROM conversation_devices WHERE conversation_id = ?1 AND device_id = ?2",
                         params![id.as_str(), device.as_str()],
                     )?;
                     if removed == 0 {
                         return Ok(ChangeOutcome::Unchanged);
                     }
                     advance_context(&transaction, &id)?;
-                    raise_hosts_revision(&transaction, &id)?;
+                    raise_devices_revision(&transaction, &id)?;
                     removed
                 }
             };
@@ -919,10 +919,10 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
             "revision",
             u64::try_from(row.get::<_, i64>("panel_revision")?),
         )?,
-        hosts_revision: decode(
+        devices_revision: decode(
             TABLE,
-            "hosts_revision",
-            u64::try_from(row.get::<_, i64>("hosts_revision")?),
+            "devices_revision",
+            u64::try_from(row.get::<_, i64>("devices_revision")?),
         )?,
         permission_requests: decode(
             "permission_requests",
@@ -986,38 +986,38 @@ fn target_row(row: &Row<'_>) -> Result<Selection, StorageError> {
     })
 }
 
-/// A device attached to a conversation: a Host the conversation reaches besides its primary one.
+/// A device attached to a conversation: a device the conversation reaches besides its primary one.
 /// A Fork keeps its source's in its operation's metadata. It has no name of
-/// its own: it goes by its device's, which [`AttachedHost`] carries as read.
+/// its own: it goes by its device's, which [`AttachedDevice`] carries as read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AttachedHostRecord {
+pub struct AttachedDeviceRecord {
     #[garde(skip)]
     pub device: DeviceId,
     /// The directory its commands start in, fixed when it was attached: the
     /// conversation's directory there for a departed primary target; none
-    /// for a device `demi host attach` attached, whose commands start in its
+    /// for a device `demi device attach` attached, whose commands start in its
     /// home.
     #[serde(deserialize_with = "Option::deserialize")]
     #[garde(skip)]
     pub cwd: Option<String>,
 }
 
-/// An attached host as the conversation reaches it: its device, the name it
+/// An attached device as the conversation reaches it: its device, the name it
 /// goes by, which is its device's current name, with `-2`, `-3` and so on
-/// after the name when the primary Host or a host attached before it goes by
+/// after the name when the primary device or a device attached before it goes by
 /// that name already, and the directory its commands start in.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AttachedHost {
+pub struct AttachedDevice {
     pub device: DeviceId,
     pub name: String,
     pub cwd: Option<String>,
 }
 
-impl AttachedHost {
+impl AttachedDevice {
     /// What storage keeps of it, which a Fork copies.
-    pub fn record(&self) -> AttachedHostRecord {
-        AttachedHostRecord {
+    pub fn record(&self) -> AttachedDeviceRecord {
+        AttachedDeviceRecord {
             device: self.device.clone(),
             cwd: self.cwd.clone(),
         }
@@ -1025,23 +1025,23 @@ impl AttachedHost {
 }
 
 impl ControlService {
-    /// The conversation's attached hosts, first attached first.
-    pub async fn attached_hosts(
+    /// The conversation's attached devices, first attached first.
+    pub async fn attached_devices(
         &self,
         id: ConversationId,
-    ) -> Result<Vec<AttachedHost>, StorageError> {
+    ) -> Result<Vec<AttachedDevice>, StorageError> {
         let listed = self
             .call(move |connection, _| attached_rows(connection, &id))
             .await?;
-        Ok(listed.into_iter().map(|(host, _)| host).collect())
+        Ok(listed.into_iter().map(|(device, _)| device).collect())
     }
 
-    /// The conversation's attached hosts with when each was attached, first
+    /// The conversation's attached devices with when each was attached, first
     /// attached first, as the web app lists them.
-    pub async fn attached_host_listing(
+    pub async fn attached_device_listing(
         &self,
         id: ConversationId,
-    ) -> Result<Vec<(AttachedHost, Timestamp)>, StorageError> {
+    ) -> Result<Vec<(AttachedDevice, Timestamp)>, StorageError> {
         self.call(move |connection, _| attached_rows(connection, &id))
             .await
     }
@@ -1052,7 +1052,7 @@ impl ControlService {
 pub struct SwitchEnds {
     /// The device the switch leaves, attached afterwards where it was left.
     pub departed: Option<(DeviceId, String)>,
-    /// The device the switch reaches, detached if it was attached: a Host is
+    /// The device the switch reaches, detached if it was attached: a device is
     /// primary or attached, never both.
     pub arriving: Option<DeviceId>,
 }
@@ -1160,31 +1160,31 @@ impl ControlService {
             super::saved::moved(&transaction, &id, project(&before)?.as_ref(), project(&target)?.as_ref(), now)?;
             if let Some(arriving) = &ends.arriving {
                 let removed = transaction.execute(
-                    "DELETE FROM conversation_hosts WHERE conversation_id = ?1 AND device_id = ?2",
+                    "DELETE FROM conversation_devices WHERE conversation_id = ?1 AND device_id = ?2",
                     params![id.as_str(), arriving.as_str()],
                 )?;
                 if removed > 0 {
-                    raise_hosts_revision(&transaction, &id)?;
+                    raise_devices_revision(&transaction, &id)?;
                 }
             }
             if let Some((departed, cwd)) = &ends.departed
                 && Some(departed) != ends.arriving.as_ref()
             {
-                let host = AttachedHostRecord {
+                let attached = AttachedDeviceRecord {
                     device: departed.clone(),
                     cwd: Some(cwd.clone()),
                 };
-                insert_attached_host(&transaction, &id, &host, now)?;
+                insert_attached_device(&transaction, &id, &attached, now)?;
             }
-            // The attached hosts' names avoid the primary Host's, so a new
+            // The attached devices' names avoid the primary device's, so a new
             // primary can change them.
             let attached: bool = transaction.query_row(
-                "SELECT EXISTS (SELECT 1 FROM conversation_hosts WHERE conversation_id = ?1)",
+                "SELECT EXISTS (SELECT 1 FROM conversation_devices WHERE conversation_id = ?1)",
                 [id.as_str()],
                 |row| row.get(0),
             )?;
             if attached {
-                raise_hosts_revision(&transaction, &id)?;
+                raise_devices_revision(&transaction, &id)?;
             }
             transaction.commit()?;
             Ok(SwitchWrite::Switched { switch, revision, made })
@@ -1248,22 +1248,22 @@ fn restore_in(connection: &Connection, id: &ConversationId, now: Timestamp) -> R
     super::saved::moved(connection, id, None, to, now)
 }
 
-/// The conversation's attached hosts, first attached first, each by its device's
+/// The conversation's attached devices, first attached first, each by its device's
 /// current name.
 ///
-/// - A host whose name the primary Host or one attached before it goes by already
+/// - A device whose name the primary device or one attached before it goes by already
 ///   takes the first free `name-2`, `name-3` and so on, so no name stands for two
-///   hosts and a name stays the same device while the target, the hosts and their
+///   devices and a name stays the same device while the target, the devices and their
 ///   devices' names do.
-/// - Hosts attached at one time, as a Fork's are, keep the order they were
+/// - devices attached at one time, as a Fork's are, keep the order they were
 ///   attached in, which their row ids hold.
-/// - The primary Host goes by the name the header shows: its device's, Cloud for
+/// - The primary device goes by the name the header shows: its device's, Cloud for
 ///   the Cloud.
 fn attached_rows(
     connection: &Connection,
     id: &ConversationId,
-) -> Result<Vec<(AttachedHost, Timestamp)>, StorageError> {
-    const TABLE: &str = "conversation_hosts";
+) -> Result<Vec<(AttachedDevice, Timestamp)>, StorageError> {
+    const TABLE: &str = "conversation_devices";
     let primary: Option<String> = connection
         .prepare_cached(
             "SELECT CASE
@@ -1277,14 +1277,14 @@ fn attached_rows(
         .optional()?
         .flatten();
     let mut statement = connection.prepare_cached(
-        "SELECT host.device_id, device.name, host.cwd, host.attached_at
-         FROM conversation_hosts host JOIN devices device ON device.id = host.device_id
-         WHERE host.conversation_id = ?1
-         ORDER BY host.attached_at, host.rowid",
+        "SELECT attached.device_id, device.name, attached.cwd, attached.attached_at
+         FROM conversation_devices attached JOIN devices device ON device.id = attached.device_id
+         WHERE attached.conversation_id = ?1
+         ORDER BY attached.attached_at, attached.rowid",
     )?;
     let mut rows = statement.query([id.as_str()])?;
     let mut taken: std::collections::HashSet<String> = primary.into_iter().collect();
-    let mut hosts = Vec::new();
+    let mut attached = Vec::new();
     while let Some(row) = rows.next()? {
         let device: String = row.get("name")?;
         let mut name = device.clone();
@@ -1294,7 +1294,7 @@ fn attached_rows(
             suffix += 1;
         }
         taken.insert(name.clone());
-        let host = AttachedHost {
+        let each = AttachedDevice {
             device: decode(
                 TABLE,
                 "device_id",
@@ -1303,38 +1303,38 @@ fn attached_rows(
             name,
             cwd: row.get("cwd")?,
         };
-        hosts.push((host, instant(row, TABLE, "attached_at")?));
+        attached.push((each, instant(row, TABLE, "attached_at")?));
     }
-    Ok(hosts)
+    Ok(attached)
 }
 
-/// Attaches `host` to the conversation. A device attached already keeps its
-/// row, and the answer is false. For a transaction that attaches hosts with
-/// its other writes, such as a target switch's or a Fork's.
-pub fn insert_attached_host(
+/// Attaches `attached` to the conversation. A device attached already keeps
+/// its row, and the answer is false. For a transaction that attaches devices
+/// with its other writes, such as a target switch's or a Fork's.
+pub fn insert_attached_device(
     connection: &Connection,
     conversation: &ConversationId,
-    host: &AttachedHostRecord,
+    attached: &AttachedDeviceRecord,
     now: Timestamp,
 ) -> Result<bool, StorageError> {
     let inserted = connection.execute(
-        "INSERT INTO conversation_hosts (conversation_id, device_id, cwd, attached_at)
+        "INSERT INTO conversation_devices (conversation_id, device_id, cwd, attached_at)
          VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT (conversation_id, device_id) DO NOTHING",
         params![
             conversation.as_str(),
-            host.device.as_str(),
-            host.cwd,
+            attached.device.as_str(),
+            attached.cwd,
             now.as_millisecond()
         ],
     )? == 1;
     if inserted {
-        raise_hosts_revision(connection, conversation)?;
+        raise_devices_revision(connection, conversation)?;
     }
     Ok(inserted)
 }
 
-/// Whether the conversation reaches `device`: its primary Host, the device of
+/// Whether the conversation reaches `device`: its primary device, the device of
 /// its project, the user's Cloud for a conversation there, or a device
 /// attached to it, which the user attached or allowed an agent to.
 ///
@@ -1347,7 +1347,7 @@ pub fn reaches_device(
     device: &DeviceId,
 ) -> Result<bool, StorageError> {
     Ok(connection.query_row(
-        "SELECT EXISTS (SELECT 1 FROM conversation_hosts WHERE conversation_id = ?1 AND device_id = ?2)
+        "SELECT EXISTS (SELECT 1 FROM conversation_devices WHERE conversation_id = ?1 AND device_id = ?2)
              OR EXISTS (
                SELECT 1 FROM conversations c WHERE c.id = ?1 AND (
                  c.target_device_id = ?2
@@ -1358,14 +1358,14 @@ pub fn reaches_device(
     )?)
 }
 
-/// Raises the revision of the conversation's attached hosts, which its
+/// Raises the revision of the conversation's attached devices, which its
 /// summary carries, so a page that shows them reads them again.
-pub fn raise_hosts_revision(
+pub fn raise_devices_revision(
     connection: &Connection,
     conversation: &ConversationId,
 ) -> Result<(), StorageError> {
     connection.execute(
-        "UPDATE conversations SET hosts_revision = hosts_revision + 1 WHERE id = ?1",
+        "UPDATE conversations SET devices_revision = devices_revision + 1 WHERE id = ?1",
         [conversation.as_str()],
     )?;
     Ok(())

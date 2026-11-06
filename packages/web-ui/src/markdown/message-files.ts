@@ -26,7 +26,7 @@ export function useMessageFiles(): () => MessageFiles | undefined {
 
 /**
  * `files` as a render reads them: the same object while it reads the same
- * of them, its directory, its Host's home, its kept files and which of its
+ * of them, its directory, its device's home, its kept files and which of its
  * services there are. Their owners make a new object each time the
  * conversation changes, which is each time a reply's text grows, and a
  * streaming reply's settled blocks would render again with each
@@ -55,7 +55,7 @@ export function useRenderedFiles(files: () => MessageFiles | undefined): Compute
  *
  * - A click on an image the message shows, or on an attachment's image or video
  *   or its link, shows it large in `viewer`, where a video plays: an
- *   attachment's own copy (`attachmentMedium`), as for a picture of the Host a
+ *   attachment's own copy (`attachmentMedium`), as for a picture of the device a
  *   reply shows, whose copy is an attachment.
  *   `among` gives the media of the transcript it stands in.
  * - An image inside a link follows the link.

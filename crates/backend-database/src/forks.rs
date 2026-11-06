@@ -19,8 +19,8 @@ use super::control::ControlService;
 use super::selection::{Selected, Selection, select};
 use super::projects::ProjectRecord;
 use super::conversation_index::{
-    AttachedHostRecord, ConversationRecord, NewConversation, conversation_by_id,
-    insert_attached_host, insert_conversation,
+    AttachedDeviceRecord, ConversationRecord, NewConversation, conversation_by_id,
+    insert_attached_device, insert_conversation,
 };
 
 /// One creation attempt.
@@ -58,7 +58,7 @@ pub struct ForkMetadata {
     #[garde(skip)]
     pub created_at: Timestamp,
     #[garde(dive)]
-    pub attached_hosts: Vec<AttachedHostRecord>,
+    pub attached_devices: Vec<AttachedDeviceRecord>,
     /// The source's execution-context revision at the Fork, which the
     /// destination starts at, so the context blocks it copies are older
     /// than any it is announced.
@@ -144,11 +144,11 @@ impl ControlService {
     }
 
     /// Publishes the destination `id` reserved: its conversation first in the
-    /// owner's sidebar, with the title, target, model, workflow and attached hosts
+    /// owner's sidebar, with the title, target, model, workflow and attached devices
     /// of the attempt, the title the user's.
     ///
     /// - A destination published already is answered as it is.
-    /// - An attached host whose device is gone since is left out, as its
+    /// - An attached device whose device is gone since is left out, as its
     ///   revocation left the source.
     /// - Its directory is selected as a move's is
     ///   (`crates/backend-database/src/selection.rs`), and the project that
@@ -203,17 +203,17 @@ impl ControlService {
                 },
             )?;
             if inserted == 1 {
-                for host in &metadata.attached_hosts {
+                for attached in &metadata.attached_devices {
                     let paired: bool = transaction.query_row(
                         "SELECT EXISTS (SELECT 1 FROM devices WHERE id = ?1)",
-                        [host.device.as_str()],
+                        [attached.device.as_str()],
                         |row| row.get(0),
                     )?;
                     if paired {
-                        insert_attached_host(
+                        insert_attached_device(
                             &transaction,
                             &operation.id,
-                            host,
+                            attached,
                             metadata.created_at,
                         )?;
                     }

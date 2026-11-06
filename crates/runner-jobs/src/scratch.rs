@@ -1,12 +1,12 @@
 //! Each conversation's scratch directory, for the files only the agent needs (a
 //! screenshot it looks at, a probe script): `<scratch root>/<first 12 digits
 //! of the conversation's id>/` ([`scratch_name`]), made at the conversation's
-//! first job on the Host.
+//! first job on the device.
 //!
 //! It shows in no pill and no Change view, and it is still there an hour later,
 //! which `/tmp` does not promise. The runner picks the scratch root: a
 //! Cloud's is `~/.demi/scratch` in its home, since its `DEMI_HOME` is in
-//! memory and every stop would empty it; any other Host's is
+//! memory and every stop would empty it; any other device's is
 //! `<DEMI_HOME>/scratch`. Every program the runner starts finds it in
 //! `DEMI_SCRATCH_ROOT`
 //! ([`SCRATCH_ROOT_ENV`](demi_command_protocol::SCRATCH_ROOT_ENV)).
@@ -29,17 +29,17 @@
 //! The directory goes with the conversation; archiving keeps it. The hello's
 //! answer names the user's conversations that still exist, and the runner
 //! removes every scratch directory not among them ([`Scratch::keep_only`]). A
-//! Host that was offline when a conversation was deleted therefore cleans up as
+//! device that was offline when a conversation was deleted therefore cleans up as
 //! soon as it connects, with nothing to remember in between.
 //!
 //! The conversation's recordings (`crates/shared-recording`) and its browser
 //! profile, each in a directory of its own inside it, go sooner: when the
 //! conversation is archived or deleted. The release the backend sends then
 //! says so ([`Scratch::forget_archived`]), and the hello's answer names the
-//! conversations that are archived, so a Host that was offline then removes
+//! conversations that are archived, so a device that was offline then removes
 //! them as it connects. Neither depends on a resident running: a recording
 //! outlives every device and tab it recorded, the profile every browser that
-//! ran on it, and the conversation's idleness, its move to another Host and
+//! ran on it, and the conversation's idleness, its move to another device and
 //! the detaching of a device end neither.
 //!
 //! A backend that cannot read the conversations drops the connection rather
@@ -160,7 +160,7 @@ impl Scratch {
                     event = "archived_files.removed",
                     conversation,
                     what,
-                    "what an archived or deleted conversation kept on the Host was removed"
+                    "what an archived or deleted conversation kept on the device was removed"
                 ),
                 Err(error) if error.kind() == io::ErrorKind::NotFound => {}
                 Err(error) => tracing::warn!(
@@ -168,7 +168,7 @@ impl Scratch {
                     conversation,
                     what,
                     %error,
-                    "what an archived or deleted conversation kept on the Host could not be removed"
+                    "what an archived or deleted conversation kept on the device could not be removed"
                 ),
             }
         }

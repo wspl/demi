@@ -1,7 +1,7 @@
 /**
- * What a page keeps of one Host's files: listings, texts, descriptions, the
+ * What a page keeps of one device's files: listings, texts, descriptions, the
  * changes list and each changed file's sides, each the last answer read, by the
- * absolute path on the Host.
+ * absolute path on the device.
  *
  * Every entry kept holds the subscriptions it depends on, carried by the watch
  * of the view that brought it, until it leaves the cache. Only what a view shows
@@ -28,15 +28,15 @@
  * - At most `budget` of text and `MAX_ENTRIES` entries stay, the entries shown
  *   longest ago leaving first.
  *
- * The cache follows the Host's own file system as VS Code, JetBrains IDEs and
- * Zed follow a remote folder. The Host says when a subscription's subject
+ * The cache follows the device's own file system as VS Code, JetBrains IDEs and
+ * Zed follow a remote folder. The device says when a subscription's subject
  * changed and pushes no content, so a change says only that the answer kept may
- * be out of date, and an answer read is the Host's whole truth. Nothing is read
+ * be out of date, and an answer read is the device's whole truth. Nothing is read
  * on a timer.
  *
  * Every answer is a result: a text, a binary file, one too large to read as text
  * and one that is gone each carry their version and number, and a view draws
- * each as itself. Only a read that could not be made, a Host out of reach or a
+ * each as itself. Only a read that could not be made, a device out of reach or a
  * refusal, is a failure.
  *
  * No update remounts or resets a view:
@@ -61,10 +61,10 @@ import {
   type WatchListener,
 } from './watch-channel'
 
-/** The most text a page keeps of the Hosts' files, counted in characters, because the cache is the browser's memory and grows with every file read. */
+/** The most text a page keeps of the devices' files, counted in characters, because the cache is the browser's memory and grows with every file read. */
 export const KEPT_TEXT = 64 * 1024 * 1024
 
-/** The most entries a page keeps of one Host's files, as many as the subscriptions it may hold. */
+/** The most entries a page keeps of one device's files, as many as the subscriptions it may hold. */
 export const MAX_ENTRIES = 4096
 
 /**
@@ -111,7 +111,7 @@ export interface ShownEntry<T> {
   /** What the last answer was; null before the first. A view draws each as itself, never as a failure. */
   readonly answer: KeptAnswer | null
   /**
-   * Why the last read could not be made, a Host out of reach or a refusal.
+   * Why the last read could not be made, a device out of reach or a refusal.
    *
    * - Without an answer, it is what the view shows, as a first read would.
    * - Beside one, the view keeps the answer and says quietly that it could not
@@ -119,7 +119,7 @@ export interface ShownEntry<T> {
    */
   readonly failure: FileBrowserFailure | null
   /**
-   * The Host's own words for the path being gone, when the last answer was
+   * The Device's own words for the path being gone, when the last answer was
    * `gone`: a view that shows the missing path as a failure, as the working
    * directory's, says them where the others say the path is no longer there.
    */
@@ -127,13 +127,13 @@ export interface ShownEntry<T> {
   /** A read is on its way: the first, which a view shows as loading, or a check, which it does not. */
   readonly reading: boolean
   /**
-   * The Host reported a change after the answer kept, which is being read
+   * The Device reported a change after the answer kept, which is being read
    * again: a view that must never show an outdated answer first, as the
    * media viewer's opening, waits for it.
    */
   readonly outdated: boolean
   /**
-   * Why the Host does not watch it, while a subscription it depends on is
+   * Why the device does not watch it, while a subscription it depends on is
    * refused or unavailable: the view says quietly that it shows what was
    * last read, with Refresh, and it is read each time it is shown.
    */
@@ -178,7 +178,7 @@ export interface Showing<T> {
 }
 
 /**
- * What a read answered, with the Host's number before it read; null for a
+ * What a read answered, with the device's number before it read; null for a
  * source without numbers, whose answers are never current.
  */
 export interface Answered<T> {
@@ -188,14 +188,14 @@ export interface Answered<T> {
 
 /**
  * What a read that names the version kept answered: a value, or that the
- * version is still the Host's, so what is kept is.
+ * version is still the device's, so what is kept is.
  */
 export type Read<T> = Answered<T> | { unchanged: true; readAt: ReadAt | null }
 
 /** How an entry is read, measured and watched. */
 export interface KeptSpec<T> {
   kind: KeptKind
-  /** The absolute path on the Host: a listing's folder, a file, the changes list's root. */
+  /** The absolute path on the device: a listing's folder, a file, the changes list's root. */
   path: string
   /** Tells the entries of one path and kind apart, such as a changed file's sides from its working tree root. */
   key?: string
@@ -277,13 +277,13 @@ function subjectKey({ kind, path, suffix }: Subject): string {
 }
 
 /**
- * One kept answer, shared by every view of its Host and path: data alone, never
+ * One kept answer, shared by every view of its device and path: data alone, never
  * a way to read it.
  *
  * It holds what was read, its number and the subscriptions it holds. Each view
  * reads it through its own route, as a conversation's views through the
  * conversation's and a device's folder dialog through the device's
- * (`crates/backend-host-access/src/lib.rs`), and every view sees what one of
+ * (`crates/backend-device-access/src/lib.rs`), and every view sees what one of
  * them read.
  */
 class Entry<T> {
@@ -358,7 +358,7 @@ class Entry<T> {
 
   /**
    * The number a read must be taken at or after to hold against its live watch:
-   * the highest `since` of the subscriptions the Host watches now.
+   * the highest `since` of the subscriptions the device watches now.
    *
    * It is null while none is watched, or while they are of different runs, whose
    * numbers compare with nothing.
@@ -438,8 +438,8 @@ class Entry<T> {
   }
 }
 
-/** The kept files of one Host, which every conversation and page on it shares. */
-export class HostFiles implements WatchListener {
+/** The kept files of one device, which every conversation and page on it shares. */
+export class DeviceFiles implements WatchListener {
   private readonly entries = new Map<string, Entry<unknown>>()
   /** The subscriptions the kept entries hold, each subject once. */
   private readonly subscriptions = new Map<string, Subscription>()
@@ -514,7 +514,7 @@ export class HostFiles implements WatchListener {
 
   /**
    * Reads `entry` through `read`, or joins the read on its way, whatever route
-   * that one took: what it answers is the Host's.
+   * that one took: what it answers is the device's.
    *
    * An answer that the numbers already show changed reads once more for the views
    * that show it.
@@ -543,7 +543,7 @@ export class HostFiles implements WatchListener {
           return
         }
         entry.readAt = answer.readAt
-        // Unchanged: the answer kept is the Host's, and nothing a view shows changes.
+        // Unchanged: the answer kept is the device's, and nothing a view shows changes.
         if (!('unchanged' in answer)) {
           const value = answer.value
           if (value !== entry.state.value)
@@ -735,7 +735,7 @@ export class HostFiles implements WatchListener {
    * without a read: an upload's new file in its folder's listing.
    *
    * Nothing kept, nothing to edit. Whether the entry is current stays as it was,
-   * since the Host's watch reports the write too.
+   * since the device's watch reports the write too.
    */
   amend<T>(spec: KeptSpec<T>, edit: (value: T) => T): void {
     const entry = this.entries.get(`${spec.kind}\u0000${spec.path}\u0000${spec.key ?? ''}`) as Entry<T> | undefined
@@ -777,7 +777,7 @@ export class HostFiles implements WatchListener {
   }
 
   /**
-   * The Host said something of `subscriptions`.
+   * The Device said something of `subscriptions`.
    *
    * Each entry on screen that depends on one is read again, at once but a listing
    * and a changes list at most once a second, when one of these holds:
@@ -798,7 +798,7 @@ export class HostFiles implements WatchListener {
         continue
       const failed = entry.state.answer === null && entry.state.failure !== null
       // An answer read at no number, as a conversation's workflows while its
-      // Host does not run, holds against no watch: its watch live, the Host's
+      // device does not run, holds against no watch: its watch live, the device's
       // word that it runs, makes it out of date, and it is read after that.
       const unnumbered = entry.state.answer !== null && entry.readAt === null && !entry.spec.immutable &&
         entry.readAfter(now) !== null

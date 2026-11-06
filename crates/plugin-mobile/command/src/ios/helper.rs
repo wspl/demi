@@ -121,7 +121,7 @@ pub struct Connection {
 }
 
 impl Connection {
-    /// `executable serve`, its diagnostics going to the Host's log.
+    /// `executable serve`, its diagnostics going to the device's log.
     pub fn spawn(executable: &std::path::Path) -> Result<Self, DriverError> {
         let mut child = tokio::process::Command::new(executable)
             .arg("serve")

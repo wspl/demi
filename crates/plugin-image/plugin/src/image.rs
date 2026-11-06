@@ -1,6 +1,6 @@
 //! What `demi image` does:
 //!
-//! 1. It reads the call's prompt and, for an edit, its images from the Host the
+//! 1. It reads the call's prompt and, for an edit, its images from the device the
 //!    command runs on.
 //! 2. It asks the Providers service for one image.
 //! 3. It decodes the image whole and writes it to stdout in the format asked
@@ -12,7 +12,7 @@
 
 use std::io::Cursor;
 
-use demi_host_interface::RpcInvocation;
+use demi_device_interface::RpcInvocation;
 use demi_plugin_interface::{ImageAsk, PluginError, PluginPort};
 use demi_plugin_media::{decode_args, fits, models, parse_aspect, prompt, read_images, refused, required_model};
 use demi_shared_types::MediaKind;

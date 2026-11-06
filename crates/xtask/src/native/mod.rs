@@ -6,9 +6,9 @@
 //! and inside the Cloud guest, and Windows executables link the C runtime
 //! statically.
 //!
-//! The programs that run on a Host allocate with mimalloc on a musl target, and
+//! The programs that run on a device allocate with mimalloc on a musl target, and
 //! the server's programs keep musl's (`shared-cli` holds the reasons). Cargo
-//! merges the features of every package one invocation builds, so the Host
+//! merges the features of every package one invocation builds, so the device
 //! programs and the server programs are built in separate invocations, here and
 //! in the build workflow: built together, the backend would take mimalloc
 //! too.
@@ -168,9 +168,9 @@ impl Executable {
         }
     }
 
-    /// Whether it runs on a Host, as the runner and the command programs
+    /// Whether it runs on a device, as the runner and the command programs
     /// do, and so allocates with mimalloc on a musl target.
-    pub(crate) fn runs_on_host(self) -> bool {
+    pub(crate) fn runs_on_device(self) -> bool {
         match self {
             Self::Runner
             | Self::File

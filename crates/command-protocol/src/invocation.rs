@@ -63,7 +63,7 @@ impl CommandCaller {
 }
 
 /// The variable in which the runner names its scratch root, the directory
-/// that holds every conversation's scratch directory on its Host, for the
+/// that holds every conversation's scratch directory on its device, for the
 /// programs it starts (`crates/runner-jobs/src/scratch.rs`).
 pub const SCRATCH_ROOT_ENV: &str = "DEMI_SCRATCH_ROOT";
 
@@ -96,7 +96,7 @@ pub fn scratch_name(conversation: &str) -> String {
         .collect()
 }
 
-/// Where a conversation's recordings are on a Host (`crates/shared-recording`):
+/// Where a conversation's recordings are on a device (`crates/shared-recording`):
 /// beside its scratch files, as [`scratch_directory`] places them. Every
 /// program that records for a conversation names it with this; the runner
 /// removes it when the conversation is archived or deleted
@@ -105,9 +105,9 @@ pub fn recordings_directory(scratch_root: Option<&std::path::Path>, conversation
     scratch_directory(scratch_root, conversation).join(".recordings")
 }
 
-/// Where a conversation's browser profile is on a Host: beside its scratch
+/// Where a conversation's browser profile is on a device: beside its scratch
 /// files, as [`scratch_directory`] places them. Every Chrome the conversation
-/// starts on the Host runs on it, so its sign-ins outlast each browser; the
+/// starts on the device runs on it, so its sign-ins outlast each browser; the
 /// runner removes it with the recordings, when the conversation is archived
 /// or deleted (`crates/runner-jobs/src/scratch.rs`).
 pub fn browser_profile_directory(scratch_root: Option<&std::path::Path>, conversation: &str) -> std::path::PathBuf {
@@ -166,7 +166,7 @@ pub fn is_conversation_scope(name: &str) -> bool {
 /// a script can change variables, and every program a job runs inherits them.
 /// So only declared commands receive it; the job's environment carries just
 /// an opaque handle that leads the runner to the job's execution context. A
-/// job another Host starts for `demi host shell` carries its invoking job's
+/// job another device starts for `demi device shell` carries its invoking job's
 /// context.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -192,7 +192,7 @@ pub struct Invocation {
     pub invocation_id: String,
     /// The command's path, such as `demi file edit`, which a handler that
     /// takes several values puts before each failure it reports
-    /// (`crates/host-interface/src/rpc.rs`).
+    /// (`crates/device-interface/src/rpc.rs`).
     #[garde(length(min = 1))]
     pub command: String,
     #[garde(dive)]

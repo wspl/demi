@@ -55,7 +55,7 @@ import type { FileBrowserSource } from './types'
  *   text replaces the old in place.
  * - A file that is not text keeps its card while it is checked.
  * - A read that fails keeps what shows and says so quietly, with Retry.
- * - A file the Host cannot watch has the view say that it shows it as last read,
+ * - A file the device cannot watch has the view say that it shows it as last read,
  *   with Refresh.
  * - A text file too large to read whole shows its start, with a line saying how
  *   much of it shows and Download.

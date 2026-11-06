@@ -14,7 +14,7 @@
 //!   beside the page's own lines.
 //!
 //! Work the request starts in another task is started inside its span: a
-//! session it opens, a Host operation it sends and a store write it waits for
+//! session it opens, a device operation it sends and a store write it waits for
 //! log under the same ID.
 //!
 //! A page connection keeps the ID of its upgrade for its whole life, and each
@@ -127,7 +127,7 @@ pub(crate) fn page_of<'a>(headers: &'a HeaderMap, uri: &'a Uri) -> Option<&'a st
 /// never its query, which can carry a file's path or a token, the page load
 /// that made it and Cloudflare's `cf-ray` when a proxy passes it. The session
 /// gate records the caller as `user_id`, and the lookup of the conversation or
-/// the device a route names records it as `conversation_id` or `host_id`.
+/// the device a route names records it as `conversation_id` or `device_id`.
 pub(crate) fn span<B>(request: &axum::http::Request<B>) -> tracing::Span {
     let id = request.extensions().get::<RequestId>();
     let ray = request
@@ -143,7 +143,7 @@ pub(crate) fn span<B>(request: &axum::http::Request<B>) -> tracing::Span {
         page_id = page_of(request.headers(), request.uri()),
         user_id = tracing::field::Empty,
         conversation_id = tracing::field::Empty,
-        host_id = tracing::field::Empty,
+        device_id = tracing::field::Empty,
     )
 }
 
@@ -151,7 +151,7 @@ pub(crate) fn span<B>(request: &axum::http::Request<B>) -> tracing::Span {
 /// its open, `LANE` and `/lanes/<kind>` for its method and path, the page load
 /// and the `cf-ray` of its connection's upgrade, and its user. The lookup of
 /// the conversation or the device it names records it as `conversation_id` or
-/// `host_id`.
+/// `device_id`.
 pub(crate) fn lane_span(
     id: &RequestId,
     kind: &str,
@@ -169,7 +169,7 @@ pub(crate) fn lane_span(
         page_id = page,
         user_id = %user,
         conversation_id = tracing::field::Empty,
-        host_id = tracing::field::Empty,
+        device_id = tracing::field::Empty,
     )
 }
 

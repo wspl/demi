@@ -613,7 +613,7 @@ impl Reading {
                 Some(wire::PipeFrame::Idle) => continue,
                 Some(wire::PipeFrame::End(Ok(()))) => return Ok(None),
                 // The cause, in the words the backend gave it, stands alone
-                // (`crates/host-interface/src/rpc.rs`).
+                // (`crates/device-interface/src/rpc.rs`).
                 Some(wire::PipeFrame::End(Err(cause))) => return Err(io::Error::other(cause)),
                 None => {}
             }
@@ -730,7 +730,7 @@ fn socket_error(error: tungstenite::Error) -> io::Error {
 ///
 /// - A 409 says why the pipe cannot go on, such as `build-box is offline: …`,
 ///   which the command reports as its own error, so its words stand alone
-///   (`crates/host-interface/src/rpc.rs`).
+///   (`crates/device-interface/src/rpc.rs`).
 /// - Another status is a fault of the request, named with the status.
 fn refused(status: reqwest::StatusCode, body: &[u8]) -> io::Error {
     let words = String::from_utf8_lossy(body);

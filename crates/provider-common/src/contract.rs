@@ -135,7 +135,7 @@ impl OfferedModel {
     }
 }
 
-/// What a provider requires of the Host its conversation runs on.
+/// What a provider requires of the device its conversation runs on.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Capabilities {
     /// The command package whose CLI its requests run as a process on a
@@ -158,7 +158,7 @@ pub struct RuntimeEnv {
 pub enum RuntimeError {
     /// The provider runs its CLI as a process, which only a runtime over the
     /// backend's placement starts.
-    #[error("{provider} needs a Host that runs processes")]
+    #[error("{provider} needs a device that runs processes")]
     PlacementRequired { provider: String },
     /// The provider makes media and no text, so it runs no session.
     #[error("{provider} makes no text")]
@@ -517,7 +517,7 @@ impl RequestPurpose {
 /// - A change of the output limit or the service tier, which no vendor counts
 ///   in the cached prefix.
 ///
-/// The prompt and the tools hold no time, id, Host or state, and a body holds
+/// The prompt and the tools hold no time, id, device or state, and a body holds
 /// no request id or time, which would break the prefix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum PromptCache {

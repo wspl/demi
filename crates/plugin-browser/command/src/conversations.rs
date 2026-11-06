@@ -115,7 +115,7 @@ struct Started {
 
 #[derive(Clone)]
 enum EnvironmentFailure {
-    /// The Host lacks Chrome or a library it loads, which the message says
+    /// The device lacks Chrome or a library it loads, which the message says
     /// how to install.
     Installation(String),
     Unavailable(String),
@@ -147,7 +147,7 @@ struct ConversationBrowser {
     recordings: Recordings,
 }
 
-/// The conversation's recordings on this Host.
+/// The conversation's recordings on this device.
 struct Recordings {
     library: Arc<Library>,
     /// The recording each tab has, held while one starts so that a tab has
@@ -565,7 +565,7 @@ impl Owner {
 
     /// Starts the conversation's Chrome in the starting caller's locale and
     /// color scheme,
-    /// from the installation the Host holds.
+    /// from the installation the device holds.
     fn start(&mut self, starting: Starting) -> watch::Receiver<Readiness> {
         let stop = CancellationToken::new();
         let (publish, ready) = watch::channel(None);
@@ -892,11 +892,11 @@ pub(crate) struct Conversations {
     /// Where the resident tells the plugin of the conversations' tab changes,
     /// once it has its message sender.
     messages: watch::Sender<Option<Messages>>,
-    /// The Host's Chrome, which `install` installs for every conversation.
+    /// The device's Chrome, which `install` installs for every conversation.
     chrome: Chrome,
 }
 
-/// What a conversation keeps on this Host beside its scratch files: its
+/// What a conversation keeps on this device beside its scratch files: its
 /// library of recordings and its browser profile.
 #[derive(Clone)]
 struct Kept {
@@ -1250,7 +1250,7 @@ impl Conversations {
     }
 
     /// Installs Chrome for an operation that starts the conversation's
-    /// browser on a Host that has none, before the operation's own time
+    /// browser on a device that has none, before the operation's own time
     /// runs: the agent's first `tab new` works instead of failing, and a tab
     /// the user opens in the panel opens once Chrome is in place. Its lines
     /// go to standard error, as the operation's output is its own.
@@ -1275,7 +1275,7 @@ impl Conversations {
         environment_ms: &mut Option<u64>,
     ) -> Result<CommandOutput> {
         if matches!(command, BrowserOperation::Install(_)) {
-            // The Host's browser, not the conversation's: nothing starts.
+            // The device's browser, not the conversation's: nothing starts.
             let installed = self.install(context, Lines::Stdout).await?;
             return Ok(CommandOutput::Json(output::value(installed)?));
         }
@@ -1757,7 +1757,7 @@ impl Conversations {
 
 /// `record` of a recording: stops it, lists its frames, notes it, or exports
 /// it, or several one after another. The recording is the conversation's on
-/// this Host, and outlasts its tab and its browser. `stop` also takes the tab
+/// this device, and outlasts its tab and its browser. `stop` also takes the tab
 /// the recording runs on, as a device's does.
 async fn record(
     browser: &ConversationBrowser,

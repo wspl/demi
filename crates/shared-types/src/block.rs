@@ -549,14 +549,14 @@ pub const SKILLS_SOURCE: &str = "skills";
 pub enum InstructionEntry {
     /// The user's personal instructions.
     Personal,
-    /// A project file, by its path on the Host.
+    /// A project file, by its path on the device.
     File {
         #[garde(skip)]
         path: String,
     },
     /// The instructions of the workflow the conversation chose
     /// (`crates/backend-user-shard/src/conversation/workflows.rs`): its name, and its file's
-    /// path on the Host.
+    /// path on the device.
     Workflow {
         #[garde(skip)]
         name: String,
@@ -745,7 +745,7 @@ pub enum CommandEnd {
     /// It was stopped: by a page, `demi shell stop`, a Stop of its action,
     /// or the end of its node's shells.
     Stopped,
-    /// Its Host lost it, for this reason (`crates/agent-session/src/reports.rs`).
+    /// Its device lost it, for this reason (`crates/agent-session/src/reports.rs`).
     Lost {
         #[garde(length(chars, min = 1, max = 1024))]
         reason: String,
@@ -1252,10 +1252,10 @@ pub struct TextBlock {
     #[garde(skip)]
     pub forkable: bool,
     /// The inline code of the text that names a file on the conversation's
-    /// Host, which opens as a link: read once through the Host when the text
+    /// device, which opens as a link: read once through the device when the text
     /// is complete (`crates/agent-server/src/node/reply_files.rs`) and kept
     /// with the block. Absent until then; empty when no code names a file, or
-    /// when the Host could not say.
+    /// when the device could not say.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -1264,7 +1264,7 @@ pub struct TextBlock {
     #[schemars(with = "Vec<CodeFile>")]
     #[garde(dive)]
     pub code_files: Option<Vec<CodeFile>>,
-    /// The pictures of the Host the text shows, by the path it wrote, and what
+    /// The pictures of the device the text shows, by the path it wrote, and what
     /// became of the copy the backend makes of each when the text is complete
     /// (`crates/agent-server/src/node/reply_files.rs`). Absent when no copy
     /// was asked for: a text that names no such picture, one that is not
@@ -1289,7 +1289,7 @@ pub struct TextBlock {
     pub entries: Vec<Entry>,
 }
 
-/// Inline code of a reply that names a file on the Host: the code as the
+/// Inline code of a reply that names a file on the device: the code as the
 /// reply wrote it, such as `src/app.ts:42`, the file's absolute path and the
 /// line it names.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -1305,7 +1305,7 @@ pub struct CodeFile {
     pub line: Option<u64>,
 }
 
-/// A picture of the Host a reply shows, and its copy: the path as the reply
+/// A picture of the device a reply shows, and its copy: the path as the reply
 /// wrote it, such as `out/chart.png`, and what the backend made of it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1316,7 +1316,7 @@ pub struct ReplyPicture {
     pub copy: PictureCopy,
 }
 
-/// What became of the copy of a picture of the Host that a reply shows.
+/// What became of the copy of a picture of the device that a reply shows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum PictureCopy {
@@ -1334,12 +1334,12 @@ pub enum PictureCopy {
     },
 }
 
-/// Why a picture of the Host that a reply shows could not be copied. The
+/// Why a picture of the device that a reply shows could not be copied. The
 /// backend names the cause and the page words it in the user's language.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum PictureFailure {
-    /// The Host has no such file.
+    /// The device has no such file.
     Missing,
     /// The file is over the limit of an attachment; `size` is its bytes.
     TooLarge {
@@ -1351,10 +1351,10 @@ pub enum PictureFailure {
         #[garde(length(min = 1))]
         media_type: String,
     },
-    /// The Host could not be reached for the copy: it is offline or stopped,
-    /// the conversation works elsewhere now, or it has no Host yet.
-    HostUnavailable,
-    /// The Host could not read the file, or the copy could not be kept.
+    /// The device could not be reached for the copy: it is offline or stopped,
+    /// the conversation works elsewhere now, or it has no device yet.
+    DeviceUnavailable,
+    /// The device could not read the file, or the copy could not be kept.
     Unreadable,
 }
 
@@ -1571,8 +1571,8 @@ pub struct ErrorBlock {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]
     pub outside_turn: bool,
-    /// The device of a `host_offline` failure, which earlier releases
-    /// recorded when a call found the turn's Host offline; nothing writes
+    /// The device of a `device_offline` failure, which earlier releases
+    /// recorded when a call found the turn's device offline; nothing writes
     /// it now, and a stored one is read so that its block still decodes.
     /// Omitted otherwise.
     #[serde(

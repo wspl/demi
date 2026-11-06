@@ -8,7 +8,7 @@
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
-use demi_host_interface::RpcInvocation;
+use demi_device_interface::RpcInvocation;
 use demi_plugin_interface::{
     PluginError, PluginPort, PortFailure, PortRefusal, Scope, WebFailure, WebResponse,
 };

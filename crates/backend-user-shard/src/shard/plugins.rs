@@ -3,7 +3,7 @@
 //!
 //! It serves:
 //!
-//! - package calls and reads of a conversation through its host access;
+//! - package calls and reads of a conversation through its device access;
 //! - the user's blobs;
 //! - the Providers service's images.
 //!
@@ -13,25 +13,25 @@ use std::rc::Weak;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_backend_host_access::HostShard;
-use demi_backend_host_access::device_git::DeviceGitError;
+use demi_backend_device_access::DeviceShard;
+use demi_backend_device_access::device_git::DeviceGitError;
 use demi_plugin_interface::{DeviceName, GitEntry, GitFile, GitRefusal, GitTree};
 use demi_web_api_protocol::devices::DeviceKind;
-use demi_backend_host_access::access::HostAccessError;
-use demi_backend_host_access::plugin_files::ReadFilesError;
-use demi_backend_host_access::stream::{ResidentBinding, ResidentCall, UserCallError, UserCallKind};
+use demi_backend_device_access::access::DeviceAccessError;
+use demi_backend_device_access::plugin_files::ReadFilesError;
+use demi_backend_device_access::stream::{ResidentBinding, ResidentCall, UserCallError, UserCallKind};
 use demi_backend_page_sync::Part;
-use demi_backend_host_access::host_commands::reachable;
+use demi_backend_device_access::device_commands::reachable;
 use demi_plugin_host::{Lost, MediaCall, ProductPort, ReadOn, VideoJob};
 use demi_backend_providers::vault::seal::Row;
 use demi_runner_client::ResidentCallError;
 use demi_command_declarations::NativeOperation;
-use demi_host_interface::{HostErrorKind, JobCaller, PortError};
+use demi_device_interface::{DeviceErrorKind, JobCaller, PortError};
 use demi_plugin_interface::{
     AskedVideo, AudioAsk, AudioVoices, CallKind, ImageAsk, MadeAudio, MediaListing, MadeImage, PortFailure,
     PortRefusal, VideoAsk,
 };
-use demi_host_interface::{HostFile, HostRead};
+use demi_device_interface::{DeviceFile, DeviceRead};
 use demi_shared_types::{B64Bytes, BlobRef, MediaKind, Timestamp};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
@@ -97,7 +97,7 @@ impl ProductPort for ShardPort {
                 CallKind::Looks => UserCallKind::Looks,
             };
             let answer: Bytes = shard
-                .host_shard()
+                .device_shard()
                 .user_call(conversation, kind, &call, cancel)
                 .await
                 .map_err(call_failure)?;
@@ -107,28 +107,28 @@ impl ProductPort for ShardPort {
         })
     }
 
-    fn read_host_files<'a>(
+    fn read_device_files<'a>(
         &'a self,
         conversation: &'a ConversationId,
         on: &'a ReadOn,
-        reads: Vec<HostRead>,
+        reads: Vec<DeviceRead>,
         cancel: &'a CancellationToken,
-    ) -> LocalBoxFuture<'a, Result<Vec<HostFile>, PortFailure>> {
+    ) -> LocalBoxFuture<'a, Result<Vec<DeviceFile>, PortFailure>> {
         Box::pin(async move {
             let shard = self.shard()?;
-            let hosts = shard.host_shard();
+            let devices = shard.device_shard();
             let read = match on {
-                ReadOn::Primary => hosts.read_files_on(conversation, None, &reads, cancel).await.map(|(files, _)| files),
-                ReadOn::PrimaryOf(device) => hosts
+                ReadOn::Primary => devices.read_files_on(conversation, None, &reads, cancel).await.map(|(files, _)| files),
+                ReadOn::PrimaryOf(device) => devices
                     .read_files_on(conversation, Some(device), &reads, cancel)
                     .await
                     .map(|(files, _)| files),
                 ReadOn::Job { device, directory } => {
-                    hosts.read_job_files(conversation, device, directory, &reads, cancel).await
+                    devices.read_job_files(conversation, device, directory, &reads, cancel).await
                 }
             };
             read.map_err(|error| match error {
-                // A project search's Host that is no longer the
+                // A project search's device that is no longer the
                 // conversation's is not running for it.
                 ReadFilesError::NotRunning | ReadFilesError::Moved => PortFailure::Refused(PortRefusal::NotRunning),
                 ReadFilesError::Access(error) => access_refusal(error),
@@ -153,7 +153,7 @@ impl ProductPort for ShardPort {
                 .into_iter()
                 .filter(|record| record.kind == DeviceKind::User)
                 .map(|record| DeviceName {
-                    online: shard.host_shard().devices().link(&record.id).is_some(),
+                    online: shard.device_shard().devices().link(&record.id).is_some(),
                     id: record.id,
                     name: record.name,
                 })
@@ -164,7 +164,7 @@ impl ProductPort for ShardPort {
     fn device_git_head<'a>(&'a self, device: &'a DeviceId, url: &'a str) -> LocalBoxFuture<'a, Result<String, PortFailure>> {
         Box::pin(async move {
             let shard = self.shard()?;
-            shard.host_shard().device_git_head(device, url).await.map_err(git_refusal)
+            shard.device_shard().device_git_head(device, url).await.map_err(git_refusal)
         })
     }
 
@@ -180,7 +180,7 @@ impl ProductPort for ShardPort {
             let shard = self.shard()?;
             let limit = |bytes: u64| usize::try_from(bytes).unwrap_or(usize::MAX);
             let tree = shard
-                .host_shard()
+                .device_shard()
                 .device_git_fetch(device, url, marker, limit(repository_max), limit(files_max))
                 .await
                 .map_err(git_refusal)?;
@@ -258,7 +258,7 @@ impl ProductPort for ShardPort {
     fn put_blob(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, PortFailure>> {
         Box::pin(async move {
             let shard = self.shard()?;
-            HostShard::blobs(&*shard)
+            DeviceShard::blobs(&*shard)
                 .put(bytes.into_bytes())
                 .await
                 .map_err(failed)
@@ -268,7 +268,7 @@ impl ProductPort for ShardPort {
     fn get_blob(&self, blob: BlobRef) -> LocalBoxFuture<'_, Result<Option<B64Bytes>, PortFailure>> {
         Box::pin(async move {
             let shard = self.shard()?;
-            let bytes = HostShard::blobs(&*shard).get(&blob).await.map_err(failed)?;
+            let bytes = DeviceShard::blobs(&*shard).get(&blob).await.map_err(failed)?;
             Ok(bytes.map(B64Bytes::from))
         })
     }
@@ -322,10 +322,10 @@ fn failed(error: impl ToString) -> PortFailure {
     PortFailure::Port(PortError::Failed(error.to_string()))
 }
 
-/// The conversation's host access refused, as its routes would answer.
-fn access_refusal(error: HostAccessError) -> PortFailure {
+/// The conversation's device access refused, as its routes would answer.
+fn access_refusal(error: DeviceAccessError) -> PortFailure {
     let (code, status) = error.code();
-    PortFailure::Refused(PortRefusal::Host {
+    PortFailure::Refused(PortRefusal::Device {
         code,
         status,
         message: error.to_string(),
@@ -334,11 +334,11 @@ fn access_refusal(error: HostAccessError) -> PortFailure {
 
 /// A package call that did not answer. The cases are:
 ///
-/// - the host access's refusal when the Host cannot be reached or takes no
+/// - the device access's refusal when the device cannot be reached or takes no
 ///   operations, as its routes answer it;
 /// - a resident that did not start, which the plugin names in its own words;
-/// - a call whose connection to the Host broke partway, 409
-///   `host_operation_failed`;
+/// - a call whose connection to the device broke partway, 409
+///   `device_operation_failed`;
 /// - otherwise the call's own failure, such as an answer over its bound, which a
 ///   page call answers as the plugin's failure.
 fn call_failure(error: UserCallError) -> PortFailure {
@@ -350,16 +350,16 @@ fn call_failure(error: UserCallError) -> PortFailure {
         UserCallError::Call(ResidentCallError::NotOpened(message)) => {
             PortFailure::Refused(PortRefusal::Resident { message })
         }
-        UserCallError::Call(ResidentCallError::Host(error))
-            if matches!(error.kind, HostErrorKind::Offline | HostErrorKind::Unavailable) =>
+        UserCallError::Call(ResidentCallError::Device(error))
+            if matches!(error.kind, DeviceErrorKind::Offline | DeviceErrorKind::Unavailable) =>
         {
-            access_refusal(HostAccessError::Host(error))
+            access_refusal(DeviceAccessError::Device(error))
         }
-        UserCallError::Call(ResidentCallError::Host(error))
-            if matches!(error.kind, HostErrorKind::Interrupted | HostErrorKind::Protocol) =>
+        UserCallError::Call(ResidentCallError::Device(error))
+            if matches!(error.kind, DeviceErrorKind::Interrupted | DeviceErrorKind::Protocol) =>
         {
-            PortFailure::Refused(PortRefusal::Host {
-                code: ErrorCode::HostOperationFailed,
+            PortFailure::Refused(PortRefusal::Device {
+                code: ErrorCode::DeviceOperationFailed,
                 status: 409,
                 message: error.to_string(),
             })
@@ -372,7 +372,7 @@ fn call_failure(error: UserCallError) -> PortFailure {
 #[derive(Debug, thiserror::Error)]
 pub enum ReloadRefusal {
     #[error(transparent)]
-    Access(#[from] HostAccessError),
+    Access(#[from] DeviceAccessError),
     #[error("The conversation is archived")]
     Archived,
     #[error("The conversation's agents are working; reload once they are done")]
@@ -385,7 +385,7 @@ impl Shard {
     /// Every live tree takes the commands of the plugins now on, and its
     /// summary is marked, since whether a reload would change its system
     /// prompt may have changed. A plugin turned off has the services of its
-    /// packages stopped on every connected Host now, and on the others when
+    /// packages stopped on every connected device now, and on the others when
     /// they connect, as their `hello` names the packages that are off.
     pub async fn switch_plugin(
         &self,
@@ -401,14 +401,14 @@ impl Shard {
             tracing::error!(event = "plugin_commands.switch_failed", plugin, %error, "the open conversations could not take the plugins' commands");
         }
         if !switched.released.is_empty() {
-            self.host_shard().release_packages(&switched.released).await;
+            self.device_shard().release_packages(&switched.released).await;
         }
         // Off, it keeps nothing; on, its next context request asks again.
         self.project_files().plugins.forget(|(kept, _)| kept.as_str() == plugin);
         let marks = self.services().sync.of(self.user());
         for root in self.agent().live_roots() {
             marks.mark(Part::Metadata(
-                demi_backend_host_access::conversation_of(&root),
+                demi_backend_device_access::conversation_of(&root),
             ));
         }
         Ok(())
@@ -432,7 +432,7 @@ impl Shard {
         let marks = self.services().sync.of(self.user());
         for root in self.agent().live_roots() {
             marks.mark(Part::Metadata(
-                demi_backend_host_access::conversation_of(&root),
+                demi_backend_device_access::conversation_of(&root),
             ));
         }
         Ok(())
@@ -442,12 +442,12 @@ impl Shard {
     /// user's current plugins; a tree that works or an archived
     /// conversation is refused, and one with no live tree has nothing to do.
     pub async fn reload_conversation(&self, id: &ConversationId) -> Result<(), ReloadRefusal> {
-        let record = self.host_shard().owned_conversation(id).await?;
+        let record = self.device_shard().owned_conversation(id).await?;
         if record.archived() {
             return Err(ReloadRefusal::Archived);
         }
         self.agent()
-            .reload(&demi_backend_host_access::root_of(&record.id))
+            .reload(&demi_backend_device_access::root_of(&record.id))
             .await
             .map_err(|_| ReloadRefusal::Working)
     }
@@ -470,19 +470,19 @@ impl Shard {
             Err(error) => {
                 // The plugins then show what was lost until their packages
                 // next say something about the conversations.
-                tracing::warn!(event = "package_lost.read_failed", what = "conversations", host_id = %device, error = &error as &dyn std::error::Error, "the conversations a lost package showed in could not be read");
+                tracing::warn!(event = "package_lost.read_failed", what = "conversations", device_id = %device, error = &error as &dyn std::error::Error, "the conversations a lost package showed in could not be read");
                 return;
             }
         };
         let mut reaching = Vec::new();
         for conversation in panelled {
-            match reachable(self.host_shard(), &conversation).await {
-                Ok(hosts) if hosts.iter().any(|host| &host.device == device) => {
+            match reachable(self.device_shard(), &conversation).await {
+                Ok(devices) if devices.iter().any(|each| &each.device == device) => {
                     reaching.push(conversation);
                 }
                 Ok(_) => {}
                 Err(error) => {
-                    tracing::warn!(event = "package_lost.read_failed", what = "hosts", %conversation, %error, "the Hosts of a conversation a lost package showed in could not be read");
+                    tracing::warn!(event = "package_lost.read_failed", what = "devices", %conversation, %error, "the devices of a conversation a lost package showed in could not be read");
                 }
             }
         }

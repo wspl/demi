@@ -435,23 +435,23 @@ mod service {
         for sandbox in left_sandboxes {
             match handover::take_over(&core, sandbox).await {
                 Ok(Some(taken)) => {
-                    tracing::info!(event = "cloud_runtime.taken_over", host_id = %sandbox.device, "a Cloud the manager before this one left running was taken over");
+                    tracing::info!(event = "cloud_runtime.taken_over", device_id = %sandbox.device, "a Cloud the manager before this one left running was taken over");
                     adopted.push((sandbox.device.clone(), taken.sandbox));
                     owners.push(taken.owner);
                 }
-                Ok(None) => tracing::info!(event = "cloud_runtime.ended_meanwhile", host_id = %sandbox.device, "a Cloud the manager before this one left had ended; it is saved"),
-                Err(error) => tracing::warn!(event = "cloud_runtime.take_over_failed", host_id = %sandbox.device, %error, "a Cloud the manager before this one left could not be taken over; it is saved"),
+                Ok(None) => tracing::info!(event = "cloud_runtime.ended_meanwhile", device_id = %sandbox.device, "a Cloud the manager before this one left had ended; it is saved"),
+                Err(error) => tracing::warn!(event = "cloud_runtime.take_over_failed", device_id = %sandbox.device, %error, "a Cloud the manager before this one left could not be taken over; it is saved"),
             }
         }
         let mut adopted_simple = Vec::new();
         for left in left_simple {
             match simple::Process::take_over(&core.simple, left).await {
                 Ok(Some(process)) => {
-                    tracing::info!(event = "cloud_runtime.taken_over", host_id = %left.device, "a Cloud the manager before this one left running was taken over");
+                    tracing::info!(event = "cloud_runtime.taken_over", device_id = %left.device, "a Cloud the manager before this one left running was taken over");
                     adopted_simple.push((left.device.clone(), process));
                 }
-                Ok(None) => tracing::info!(event = "cloud_runtime.ended_meanwhile", host_id = %left.device, "a Cloud the manager before this one left had ended"),
-                Err(error) => tracing::warn!(event = "cloud_runtime.take_over_failed", host_id = %left.device, %error, "a Cloud the manager before this one left could not be taken over; it is stopped"),
+                Ok(None) => tracing::info!(event = "cloud_runtime.ended_meanwhile", device_id = %left.device, "a Cloud the manager before this one left had ended"),
+                Err(error) => tracing::warn!(event = "cloud_runtime.take_over_failed", device_id = %left.device, %error, "a Cloud the manager before this one left could not be taken over; it is stopped"),
             }
         }
         if runs_gvisor {

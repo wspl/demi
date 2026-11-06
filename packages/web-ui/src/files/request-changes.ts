@@ -218,7 +218,7 @@ export const requestEditSelectionSchema = z.object({
   node: z.string().nullable(),
   /** The `user` block that starts the request. */
   request: z.string(),
-  /** The file's path, as the Host names it. */
+  /** The file's path, as the device names it. */
   file: z.string(),
   edit: requestEditRefSchema.nullable(),
   /**

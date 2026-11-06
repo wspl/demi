@@ -39,14 +39,14 @@
     "conversation_not_found": "Dieser Chat existiert nicht mehr.",
     "conversation_archived": "Dieser Chat ist archiviert.",
     "conversation_busy": "Der Chat ist beschäftigt. Versuche es gleich noch einmal.",
-    "host_stopped": "Die Cloud ist gestoppt.",
+    "device_stopped": "Die Cloud ist gestoppt.",
     "device_offline": "Das Gerät ist offline.",
     "device_not_found": "Das Gerät wurde aus deinem Konto entfernt.",
     "cloud_unavailable": "Die Cloud ist gerade nicht verfügbar.",
     "cloud_resetting": "Die Cloud wird zurückgesetzt.",
     "cloud_capacity": "Auf dem Server ist kein Platz, um die Cloud zu starten.",
     "cloud_crash_loop": "Die Cloud startet nach wiederholten Fehlern nicht mehr.",
-    "host_operation_failed": "Die Verbindung zum Gerät ist abgebrochen.",
+    "device_operation_failed": "Die Verbindung zum Gerät ist abgebrochen.",
     "unknown_plugin_method": "Dieser Server kann keinen Browser ausführen.",
     "plugin_disabled": "Das Browser-Plug-in ist deaktiviert."
   },
@@ -73,13 +73,13 @@
     "stopLoading": "Laden konnte nicht gestoppt werden",
     "openPage": "Seite konnte nicht geöffnet werden",
     "saveDownload": "Download konnte nicht gespeichert werden",
-    "hostFilesUnreachable": "Die Dateien des Hosts sind nicht erreichbar."
+    "deviceFilesUnreachable": "Die Dateien des Geräts sind nicht erreichbar."
   },
   "region": {
     "couldntOpen": "Diese Seite konnte nicht geöffnet werden.",
     "couldntShow": "Diese Seite konnte nicht angezeigt werden.",
     "noH264": "Dieser Browser kann kein H.264-Video decodieren.",
-    "waiting": "Warten auf den Host …"
+    "waiting": "Warten auf das Gerät …"
   },
   "menu": {
     "copyLink": "Linkadresse kopieren",
@@ -108,7 +108,7 @@
   },
   "dialog": {
     "leavePage": "Seite verlassen?",
-    "says": "{host} meldet",
+    "says": "{device} meldet",
     "thisPageSays": "Diese Seite meldet",
     "answer": "Antworten",
     "stay": "Bleiben",

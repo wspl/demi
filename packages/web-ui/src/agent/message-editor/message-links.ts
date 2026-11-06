@@ -4,7 +4,7 @@ import { withCommandKey } from '../../ui/shortcut'
 
 /**
  * A click on a user message's link: in the conversation a web link opens as a
- * link does and a Host file opens in the File view; in the composer,
+ * link does and a device file opens in the File view; in the composer,
  * `editable`, a click places the cursor and a click with the command key
  * (`withCommandKey`) opens either.
  */

@@ -53,9 +53,9 @@ import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
-import { hostGlyph } from '../devices/device-glyphs'
+import { targetGlyph } from '../devices/device-glyphs'
 import { DEVICE_STATE_LABEL } from '../devices/state'
-import type { HostMenuHost } from '../hosts/types'
+import type { MenuDevice } from '../targets/types'
 import AddModelDialog from './AddModelDialog.vue'
 import AddProviderDialog from './AddProviderDialog.vue'
 import ProviderShareDialog from './ProviderShareDialog.vue'
@@ -187,11 +187,11 @@ const props = defineProps<{
    */
   sharedApiKeys?: boolean
   /**
-   * The user's Hosts a provider's requests may go out from (Connect
-   * Through), the Cloud first, as the Host menu lists them; absent until the
+   * The user's devices a provider's requests may go out from (Connect
+   * Through), the Cloud first, as the device menu lists them; absent until the
    * page knows them.
    */
-  hosts?: HostMenuHost[]
+  devices?: MenuDevice[]
   /**
    * Share's keys, by which another Demi server uses an entry the user
    * manages, as every entry the page lists is; absent, no entry has Share.
@@ -939,14 +939,14 @@ const endpointFault = ref<string | null>(null)
 watch(selectedId, () => {
   endpointFault.value = null
 })
-/** The Host the entry's requests go out from; null for the server, and for a device the page does not list. */
-function throughOf(provider: SettingsProviderEntry): HostMenuHost | null {
-  return provider.throughDevice ? props.hosts?.find((host) => host.id === provider.throughDevice) ?? null : null
+/** The Device the entry's requests go out from; null for the server, and for a device the page does not list. */
+function throughOf(provider: SettingsProviderEntry): MenuDevice | null {
+  return provider.throughDevice ? props.devices?.find((device) => device.id === provider.throughDevice) ?? null : null
 }
 
-/** Whether the entry goes out through a device its owner removed since: one the listed Hosts no longer hold. */
+/** Whether the entry goes out through a device its owner removed since: one the listed devices no longer hold. */
 function throughRemoved(provider: SettingsProviderEntry): boolean {
-  return !!provider.throughDevice && !!props.hosts && !throughOf(provider)
+  return !!provider.throughDevice && !!props.devices && !throughOf(provider)
 }
 
 /** What Connect Through's trigger shows: the device's name, Removed Device, or Server. */
@@ -959,7 +959,7 @@ function throughLabel(provider: SettingsProviderEntry): string {
 
 /**
  * What Connect Through's row can say of the choice, with the one it says
- * now: where requests go out from, and an offline or removed Host. A Host's
+ * now: where requests go out from, and an offline or removed device. A device's
  * row holds the room of each state it can pass to without a choice of the
  * user's, so that going offline or removed moves nothing below it.
  */
@@ -968,15 +968,15 @@ function throughDescriptions(provider: SettingsProviderEntry): { text: string; s
   if (throughRemoved(provider)) {
     return [{ text: removed, shown: true }]
   }
-  const host = throughOf(provider)
-  if (!host) {
+  const device = throughOf(provider)
+  if (!device) {
     return [{ text: t('providers.connection.throughServerDescription'), shown: true }]
   }
   // A subscription has no endpoint of the user's to reach.
   const online = provider.kind === 'subscription' ? 'providers.connection.throughDeviceSubscription' : 'providers.connection.throughDevice'
   return [
-    { text: t(online, { device: host.name }), shown: host.state === 'online' },
-    { text: t('providers.connection.throughOffline', { device: host.name }), shown: host.state !== 'online' },
+    { text: t(online, { device: device.name }), shown: device.state === 'online' },
+    { text: t('providers.connection.throughOffline', { device: device.name }), shown: device.state !== 'online' },
     { text: removed, shown: false },
   ]
 }
@@ -1023,7 +1023,7 @@ function endpointDescription(provider: SettingsProviderEntry): string | undefine
 
 <template>
   <SettingsPage wide fill :title="t('providers.title')">
-    <!-- Where the requests go out from: the server, or one of the user's Hosts,
+    <!-- Where the requests go out from: the server, or one of the user's devices,
          which then reaches the endpoint on its own network. -->
     <DefineThrough v-slot="{ provider }">
       <SettingsRow :label="t('providers.connection.through')">
@@ -1043,7 +1043,7 @@ function endpointDescription(provider: SettingsProviderEntry): string | undefine
           :overlay-store="overlayStore"
           variant="default"
           :trigger-label="t('providers.connection.through')"
-          :icon="throughOf(provider) ? hostGlyph(throughOf(provider)!) : throughRemoved(provider) ? MonitorX : Server"
+          :icon="throughOf(provider) ? targetGlyph(throughOf(provider)!) : throughRemoved(provider) ? MonitorX : Server"
           :disabled="fieldsLocked(provider)"
         >
           <template #trigger>{{ throughLabel(provider) }}</template>
@@ -1059,18 +1059,18 @@ function endpointDescription(provider: SettingsProviderEntry): string | undefine
                   provider.throughDevice && emit('change', provider, { throughDevice: null })
                 "
               />
-              <MenuDivider v-if="hosts?.length" />
+              <MenuDivider v-if="devices?.length" />
               <MenuItem
-                v-for="host in hosts ?? []"
-                :key="host.id"
-                :icon="hostGlyph(host)"
-                :label="host.name"
-                :value="host.state === 'online' ? undefined : DEVICE_STATE_LABEL[host.state]"
+                v-for="device in devices ?? []"
+                :key="device.id"
+                :icon="targetGlyph(device)"
+                :label="device.name"
+                :value="device.state === 'online' ? undefined : DEVICE_STATE_LABEL[device.state]"
                 choice
-                :is-selected="provider.throughDevice === host.id"
+                :is-selected="provider.throughDevice === device.id"
                 @select="
                   close();
-                  provider.throughDevice !== host.id && emit('change', provider, { throughDevice: host.id })
+                  provider.throughDevice !== device.id && emit('change', provider, { throughDevice: device.id })
                 "
               />
             </Menu>

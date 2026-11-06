@@ -1,6 +1,6 @@
 //! What a reply's Markdown names, as the backend reads it.
 //!
-//! The pictures of the Host a reply shows are named here, once, when its text
+//! The pictures of the device a reply shows are named here, once, when its text
 //! is complete (`TranscriptLog::complete_tail_text`): the block keeps each by
 //! its target, and the page finds a picture's copy by the same target. The
 //! target of an image is the one the Markdown parser gives it, which the page
@@ -52,11 +52,11 @@ fn normalized(target: &str) -> String {
     }
 }
 
-/// The path of the Host an image's `target` names, as the reply wrote it
+/// The path of the device an image's `target` names, as the reply wrote it
 /// without its query, fragment and percent-encoding, which the page reads as
-/// a picture of the Host; none for a web image, a `data:` URL or a target
+/// a picture of the device; none for a web image, a `data:` URL or a target
 /// that names no file. Relative to the node's working directory, or `~/` from
-/// the Host's home.
+/// the device's home.
 pub fn picture_path(target: &str) -> Option<String> {
     let trimmed = target.trim();
     let named = normalized(trimmed);
@@ -87,7 +87,7 @@ fn image_targets(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// The pictures of the Host `text` shows, each once, by its target, with the
+/// The pictures of the device `text` shows, each once, by its target, with the
 /// path it names.
 pub fn named_pictures(text: &str) -> Vec<(String, String)> {
     if !text.contains("![") {

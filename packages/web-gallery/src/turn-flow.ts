@@ -1334,10 +1334,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   }
 
   /** The specimen's composer takes back what Recall gives; answers the call that lets it go again. */
-  function attachComposer(host: RecallComposer): () => void {
-    composer = host
+  function attachComposer(device: RecallComposer): () => void {
+    composer = device
     return () => {
-      if (composer === host) {
+      if (composer === device) {
         composer = null
       }
     }

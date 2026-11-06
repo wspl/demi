@@ -43,7 +43,7 @@ const copiedDeviceFileSchema = z.object({
   name: z.string().min(1),
   deviceId: z.string().min(1),
   /** The device's name, which the capsule shows. */
-  host: z.string(),
+  device: z.string(),
   path: z.string().min(1),
 })
 
@@ -69,7 +69,7 @@ export type CopiedMessage = z.infer<typeof copiedMessageSchema>
 /**
  * Where a sent message's file is, as the message holds it and its capsule
  * keeps it beside what it shows: the blob of an upload, or the device a file
- * on a paired device is on. Its name, and a device file's host and path, are
+ * on a paired device is on. Its name, and a device file's device and path, are
  * the capsule's own.
  */
 export type FileReference =
@@ -166,7 +166,7 @@ function copiedFile(capsule: MessageCapsule): CopiedFile | null {
     return { ...reference, name: capsule.name }
   }
   if (reference?.type === 'device' && capsule.path) {
-    return { ...reference, name: capsule.name, host: capsule.host ?? '', path: capsule.path }
+    return { ...reference, name: capsule.name, device: capsule.device ?? '', path: capsule.path }
   }
   return null
 }

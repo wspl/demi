@@ -39,14 +39,14 @@
     "conversation_not_found": "此對話已不存在。",
     "conversation_archived": "此對話已封存。",
     "conversation_busy": "對話正忙。請稍後再試。",
-    "host_stopped": "雲端已停止。",
+    "device_stopped": "雲端已停止。",
     "device_offline": "裝置已離線。",
     "device_not_found": "裝置已從你的帳號中移除。",
     "cloud_unavailable": "雲端目前無法使用。",
     "cloud_resetting": "雲端正在重設。",
     "cloud_capacity": "伺服器沒有足夠的空間啟動雲端。",
     "cloud_crash_loop": "雲端多次啟動失敗，已停止嘗試。",
-    "host_operation_failed": "與裝置的連線已中斷。",
+    "device_operation_failed": "與裝置的連線已中斷。",
     "unknown_plugin_method": "此伺服器無法執行瀏覽器。",
     "plugin_disabled": "瀏覽器外掛程式已關閉。"
   },
@@ -73,13 +73,13 @@
     "stopLoading": "無法停止載入",
     "openPage": "無法開啟頁面",
     "saveDownload": "無法儲存下載內容",
-    "hostFilesUnreachable": "無法存取主機的檔案。"
+    "deviceFilesUnreachable": "無法存取裝置的檔案。"
   },
   "region": {
     "couldntOpen": "無法開啟此頁面。",
     "couldntShow": "無法顯示此頁面。",
     "noH264": "此瀏覽器無法解碼 H.264 影片。",
-    "waiting": "正在等待主機…"
+    "waiting": "正在等待裝置…"
   },
   "menu": {
     "copyLink": "複製連結位址",
@@ -108,7 +108,7 @@
   },
   "dialog": {
     "leavePage": "離開此頁面？",
-    "says": "{host} 顯示",
+    "says": "{device} 顯示",
     "thisPageSays": "此頁面顯示",
     "answer": "回答",
     "stay": "留在此頁面",

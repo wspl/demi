@@ -221,7 +221,7 @@ impl ControlService {
             let cloud = cloud.as_ref().map(DeviceId::as_str);
             let mut statement = connection.prepare_cached(
                 "SELECT c.id, c.target_kind, c.target_device_id, w.device_id AS project_device, c.model,
-                        EXISTS (SELECT 1 FROM conversation_hosts h
+                        EXISTS (SELECT 1 FROM conversation_devices h
                                 WHERE h.conversation_id = c.id AND h.device_id = ?2) AS attached
                  FROM conversations c LEFT JOIN projects w ON w.id = c.target_project_id
                  WHERE c.user_id = ?1 AND c.archived_at IS NULL

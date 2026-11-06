@@ -1,22 +1,22 @@
-//! A Host type for agents that run no shell tools, with its shell
+//! A device type for agents that run no shell tools, with its shell
 //! environment factory (feature `testing`).
 
 use std::rc::Rc;
 
-use demi_host_interface::{
-    Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, ShellEnvironment,
+use demi_device_interface::{
+    Device, DeviceError, DeviceFs, DeviceIdentity, DeviceKey, DeviceProcess, ShellEnvironment,
 };
 use futures_util::future::LocalBoxFuture;
 
 use crate::{EnvironmentScope, ShellEnvironmentFactory};
 
-/// The Host type of a test product whose agents run no shell tools: it has
+/// The device type of a test product whose agents run no shell tools: it has
 /// no values, so no environment is ever made on one.
 #[derive(Debug)]
-pub enum NoHost {}
+pub enum NoDevice {}
 
-impl Host for NoHost {
-    fn key(&self) -> HostKey {
+impl Device for NoDevice {
+    fn key(&self) -> DeviceKey {
         match *self {}
     }
 
@@ -24,29 +24,29 @@ impl Host for NoHost {
         match *self {}
     }
 
-    fn identity(&self) -> HostIdentity {
+    fn identity(&self) -> DeviceIdentity {
         match *self {}
     }
 
-    fn fs(&self) -> &dyn HostFs {
+    fn fs(&self) -> &dyn DeviceFs {
         match *self {}
     }
 
-    fn process(&self) -> &dyn HostProcess {
+    fn process(&self) -> &dyn DeviceProcess {
         match *self {}
     }
 }
 
-/// The shell environment factory of a product whose Host is [`NoHost`].
+/// The shell environment factory of a product whose device is [`NoDevice`].
 #[derive(Debug, Default)]
 pub struct NoShells;
 
-impl ShellEnvironmentFactory<NoHost> for NoShells {
+impl ShellEnvironmentFactory<NoDevice> for NoShells {
     fn create<'a>(
         &'a self,
         _: EnvironmentScope<'a>,
-        host: Rc<NoHost>,
-    ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>> {
-        match *host {}
+        device: Rc<NoDevice>,
+    ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, DeviceError>> {
+        match *device {}
     }
 }

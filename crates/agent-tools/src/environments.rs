@@ -1,8 +1,8 @@
-//! A node's shell environments: one per Host the node used, keyed by the Host's
+//! A node's shell environments: one per device the node used, keyed by the device's
 //! key.
 //!
-//! Concurrent calls for one Host make one environment, and a handle belongs to
-//! the environment that made it, so a `commandId` of another Host's environment
+//! Concurrent calls for one device make one environment, and a handle belongs to
+//! the environment that made it, so a `commandId` of another device's environment
 //! is refused.
 //!
 //! Beside them, this module holds what the node's command reports need to know
@@ -15,7 +15,7 @@ use std::{
     rc::Rc,
 };
 
-use demi_host_interface::{CommandSet, HostError, HostKey, PageState, PageView, Seen, ShellEnvironment};
+use demi_device_interface::{CommandSet, DeviceError, DeviceKey, PageState, PageView, Seen, ShellEnvironment};
 use demi_shared_types::CommandId;
 use futures_util::future::join_all;
 use tokio::sync::OnceCell;
@@ -48,9 +48,9 @@ pub enum Stopper {
     Agent(u64),
 }
 
-/// One Host's environment, once made.
+/// One device's environment, once made.
 pub(super) struct Slot {
-    key: HostKey,
+    key: DeviceKey,
     environment: OnceCell<Rc<dyn ShellEnvironment>>,
 }
 
@@ -62,17 +62,17 @@ pub(super) enum Handle<'a> {
 }
 
 impl Environments {
-    /// The environment for the Host `key`, made with `create` unless it was
+    /// The environment for the device `key`, made with `create` unless it was
     /// made before.
     ///
-    /// A concurrent call for the same Host waits for the same creation. The
-    /// handle `handle` must be this environment's: one another Host's
+    /// A concurrent call for the same device waits for the same creation. The
+    /// handle `handle` must be this environment's: one another device's
     /// environment owns is refused, as is one two environments claim.
     pub(super) async fn resolve(
         &self,
-        key: HostKey,
+        key: DeviceKey,
         handle: Handle<'_>,
-        create: impl Future<Output = Result<Rc<dyn ShellEnvironment>, HostError>>,
+        create: impl Future<Output = Result<Rc<dyn ShellEnvironment>, DeviceError>>,
     ) -> Result<(Rc<Slot>, Rc<dyn ShellEnvironment>), String> {
         if self.disposed.get() {
             return Err(DISPOSED.to_owned());
@@ -93,12 +93,12 @@ impl Environments {
             && let Some(owner) = self.owner(command)?
             && owner.key != slot.key
         {
-            return Err(format!("Command \"{command}\" belongs to a different Host"));
+            return Err(format!("Command \"{command}\" belongs to a different device"));
         }
         Ok((slot, environment))
     }
 
-    fn slot(&self, key: HostKey) -> Rc<Slot> {
+    fn slot(&self, key: DeviceKey) -> Rc<Slot> {
         let mut slots = self.slots.borrow_mut();
         if let Some(slot) = slots.iter().find(|slot| slot.key == key) {
             return slot.clone();
@@ -133,9 +133,9 @@ impl Environments {
         }
     }
 
-    /// Ends each command whose start still waits for its Host, in every
+    /// Ends each command whose start still waits for its device, in every
     /// environment made so far, as the user's Stop does
-    /// (`crates/backend-host-access/src/access.rs`).
+    /// (`crates/backend-device-access/src/access.rs`).
     pub async fn stop_waiting(&self) {
         let made: Vec<Rc<dyn ShellEnvironment>> = self
             .slots
@@ -160,7 +160,7 @@ impl Environments {
     /// Gives every environment made so far the node's commands `commands`
     /// (`ShellEnvironment::replace_commands`); one that refuses them keeps
     /// its own, and the last refusal is the answer.
-    pub fn replace_commands(&self, commands: &Rc<CommandSet>) -> Result<(), HostError> {
+    pub fn replace_commands(&self, commands: &Rc<CommandSet>) -> Result<(), DeviceError> {
         let mut refused = Ok(());
         for slot in self.slots.borrow().iter() {
             if let Some(environment) = slot.environment.get()
@@ -183,7 +183,7 @@ impl Environments {
     }
 
     /// Stops every command of every environment made so far and forgets them,
-    /// so the next call on a Host makes a fresh environment there.
+    /// so the next call on a device makes a fresh environment there.
     pub async fn end_all(&self) {
         join_all(
             self.forget_all()
@@ -214,7 +214,7 @@ impl Environments {
         environments
     }
 
-    /// Forgets every environment made so far, so the next call on a Host
+    /// Forgets every environment made so far, so the next call on a device
     /// makes a fresh one there.
     fn forget_all(&self) -> Vec<Rc<dyn ShellEnvironment>> {
         self.slots

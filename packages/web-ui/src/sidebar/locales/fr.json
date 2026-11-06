@@ -79,7 +79,7 @@
   "deleteProject": {
     "title": "Supprimer « {name} » ?",
     "archived": "Sa conversation sera archivée. | Ses {count} conversations seront archivées.",
-    "files": "Les fichiers sur {host} ne sont pas supprimés."
+    "files": "Les fichiers sur {device} ne sont pas supprimés."
   },
   "savedScope": {
     "title": "Conserver les messages enregistrés par conversation ?",

@@ -61,7 +61,7 @@ pub enum DeviceRefusal {
 
 /// The backend's way to the user's devices.
 pub trait DeviceRoute: Send + Sync + 'static {
-    /// Sends `request` from its device, one of `owner`'s Hosts.
+    /// Sends `request` from its device, one of `owner`'s devices.
     fn send(&self, owner: &str, request: DeviceRequest) -> BoxFuture<'static, Result<DeviceAnswer, DeviceRefusal>>;
 }
 

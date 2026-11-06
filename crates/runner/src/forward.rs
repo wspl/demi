@@ -514,7 +514,7 @@ impl Accepting {
         let Some(Listed { forward, ended, .. }) = listed else {
             return;
         };
-        // A forward between a Host and itself joins its connections here.
+        // A forward between a device and itself joins its connections here.
         if let Some(address) = &forward.connect {
             let Ok(mut target) = connect_target(address, &ended).await else {
                 return;
@@ -644,7 +644,7 @@ async fn connect_relayed(
     let (connected, ended) = match target {
         Some((address, ended)) => (connect_target(&address, &ended).await, ended),
         None => (
-            Err(std::io::Error::other("this Host connects no such forward")),
+            Err(std::io::Error::other("this device connects no such forward")),
             CancellationToken::new(),
         ),
     };

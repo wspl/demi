@@ -36,10 +36,10 @@ import { composerModel, type ModelSettings, type ModelSettingsChange } from './m
 import type { ContextLimitChange } from './context-limit'
 import SessionNoticeBar from './SessionNoticeBar.vue'
 import PluginsChangedNotice from './PluginsChangedNotice.vue'
-import HostOfflineNotice from './HostOfflineNotice.vue'
-import type { OfflineHost } from './offline-host'
+import DeviceOfflineNotice from './DeviceOfflineNotice.vue'
+import type { OfflineDevice } from './offline-device'
 import { dockCardsKey } from './dock-cards'
-import type { HostChoice } from '../hosts/types'
+import type { DeviceChoice } from '../targets/types'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
 import { ICON_PX } from '../ui/icon-metrics'
@@ -93,7 +93,7 @@ const props = withDefaults(
      */
     paste: PasteHost
     /**
-     * The conversation has a host with files: the menu offers a remote file
+     * The conversation has a device with files: the menu offers a remote file
      * beside local ones.
      */
     remoteFiles?: boolean
@@ -152,11 +152,11 @@ const props = withDefaults(
      */
     hold?: string | null
     /**
-     * The conversation's primary Host is a paired device that is offline. The
+     * The conversation's primary device is a paired device that is offline. The
      * composer says how to start its runner again, and offers a move to Run
-     * On's online Hosts.
+     * On's online devices.
      */
-    offlineHost?: OfflineHost | null
+    offlineDevice?: OfflineDevice | null
     /**
      * The conversation runs with commands of plugins since turned on or off:
      * offers a reload.
@@ -260,9 +260,9 @@ const emit = defineEmits<{
   /** Open the conversation again with the plugins the user has on. */
   reloadPlugins: []
   /**
-   * A Host the offline primary Host's card chose to move the conversation to.
+   * A device the offline primary device's card chose to move the conversation to.
    */
-  moveHost: [host: HostChoice]
+  moveDevice: [choice: DeviceChoice]
 }>()
 /**
  * The edit the composer shows. It is none while Regenerate sends one, which
@@ -733,11 +733,11 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
         and outside a dock, they stand here.
       -->
       <Teleport :to="dockCards" :disabled="!dockCards">
-        <HostOfflineNotice
-          v-if="offlineHost"
+        <DeviceOfflineNotice
+          v-if="offlineDevice"
           class="mb-2"
-          v-bind="offlineHost"
-          @move="emit('moveHost', $event)"
+          v-bind="offlineDevice"
+          @move="emit('moveDevice', $event)"
         />
         <PluginsChangedNotice
           v-if="pluginsChanged"

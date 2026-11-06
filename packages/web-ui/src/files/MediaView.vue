@@ -76,7 +76,7 @@ watch(medium, (shown) => {
   size.value = shown?.size ?? null
 }, { immediate: true })
 const resolution = computed(() => (size.value ? `${size.value.width} × ${size.value.height}` : null))
-/** What the icon is told: a Host image's file, whose name its caption need not carry, or the medium's name. */
+/** What the icon is told: a device image's file, whose name its caption need not carry, or the medium's name. */
 const iconName = computed(() => {
   const shown = medium.value
   return shown?.file ? baseName(shown.file.path) : shown?.name ?? ''
@@ -135,7 +135,7 @@ function onKeydown(event: KeyboardEvent): void {
   viewer.step(step)
 }
 
-/** Downloads the medium as it shows: a Host file's version, or its address. */
+/** Downloads the medium as it shows: a device file's version, or its address. */
 function download(): void {
   const shown = medium.value
   if (!shown)

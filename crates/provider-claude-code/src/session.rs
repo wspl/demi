@@ -26,7 +26,7 @@
 //!
 //! The provider writes the `environment` entry itself, with a single space as
 //! its text, because the CLI's own would describe the machine it runs on and
-//! not the conversation's Host.
+//! not the conversation's device.
 //!
 //! These rules use the session file as CLI 2.1.295 reads it, which the vendor
 //! documents only as a file to move between machines. The Claude Code scenario

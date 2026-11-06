@@ -25,7 +25,7 @@ pub struct ConversationWorkflows {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub directory: Option<String>,
-    /// Why that directory cannot be used: the Host could not read it; null
+    /// Why that directory cannot be used: the device could not read it; null
     /// while it can.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
@@ -34,13 +34,13 @@ pub struct ConversationWorkflows {
 }
 
 /// The workflows of a directory as the backend holds them, which it answers
-/// at once, never waiting on the Host.
+/// at once, never waiting on the device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum KeptWorkflowList {
     /// The backend has not read them yet: their first read is announced.
     Unknown,
-    /// As the backend last read them, at `read_at`; a Host offline since
+    /// As the backend last read them, at `read_at`; a device offline since
     /// leaves them as they were.
     Read {
         list: ConversationWorkflows,
@@ -56,7 +56,7 @@ pub enum KeptWorkflowList {
 }
 
 /// The workflows of a conversation's working directory as its metadata
-/// carries them, under the revision the backend raises when the Host reports
+/// carries them, under the revision the backend raises when the device reports
 /// a change, 0 before the backend first read them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ConversationWorkflowList {
@@ -86,7 +86,7 @@ pub struct MenuWorkflow {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub name: Option<String>,
-    /// The file on the Host.
+    /// The file on the device.
     pub path: String,
     /// Why it cannot be used: it does not read, with its path and the line
     /// and field that are wrong; null while it can.
@@ -103,7 +103,7 @@ pub struct MenuWorkflow {
     pub user_profiles: bool,
 }
 
-/// A subject a project search watches on the Host's file watch: what makes
+/// A subject a project search watches on the device's file watch: what makes
 /// the backend read it again.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

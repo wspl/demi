@@ -17,7 +17,7 @@
  *   connection lost while its module was silent shows only then, and
  * - opens a view that ended again after the page's reconnect waits, or, for
  *   one nobody watches, once someone does: an unwatched view keeps no
- *   conversation, Host or Cloud awake, so the backend may end its stream.
+ *   conversation, device or Cloud awake, so the backend may end its stream.
  *
  * What a source's view says over it is its own: the session that uses a link
  * reads its messages and sends its own.
@@ -381,7 +381,7 @@ export class LiveLink<F, S extends LivePictureStream> {
 
   /**
    * A picture's chunk, or a probe's padding: acknowledged with when it arrived,
-   * whatever its generation, so the Host's window frees and its probe measures.
+   * whatever its generation, so the device's window frees and its probe measures.
    *
    * Its frame is shown once it is whole and its turn came, when it is of the
    * generation the view shows. Answers whether it was of that generation.
@@ -389,7 +389,7 @@ export class LiveLink<F, S extends LivePictureStream> {
   show(chunk: LiveVideoChunk): boolean {
     this.acknowledge({ generation: chunk.generation, sequence: chunk.sequence, chunk: chunk.chunk, padding: chunk.padding, received: this.received })
     if (chunk.padding) {
-      // The Host's probe of the path: acknowledged, and nothing to show.
+      // The Device's probe of the path: acknowledged, and nothing to show.
       return false
     }
     if (this.first && this.first.arrived === undefined) {

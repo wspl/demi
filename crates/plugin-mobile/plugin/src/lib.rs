@@ -3,13 +3,13 @@
 //! The plugin holds:
 //!
 //! - the `demi mobile` group, every leaf bound to an operation of the
-//!   `demi.mobile` command package, which runs it on the Host;
+//!   `demi.mobile` command package, which runs it on the device;
 //! - the `mobile` user stream of the live view, one per device a page shows;
 //! - the methods behind the panel's controls, each the operation of the command
 //!   that does the same;
 //! - the `mobile` kind's tabs on the backend.
 //!
-//! It is a plugin as the browser is: the commands, the panel and the Host-side
+//! It is a plugin as the browser is: the commands, the panel and the device-side
 //! drivers are its own, and nothing in the agent, the backend or the runner
 //! knows a simulator.
 
@@ -44,7 +44,7 @@ impl Mobile {
         let mut manifest = Manifest::new(
             PluginId::try_from("mobile").expect("a valid plugin id"),
             "Simulators",
-            "Gives the agent the iOS simulators of the conversation's host, which it drives with demi mobile and you watch and use in the work panel.",
+            "Gives the agent the iOS simulators of the conversation's device, which it drives with demi mobile and you watch and use in the work panel.",
         );
         manifest.commands = commands().manifest_commands();
         manifest.streams = vec![live_stream()];
@@ -87,7 +87,7 @@ fn live_stream() -> Stream {
         )
         .constant(
             "LIVE_CAPTURE_UNAVAILABLE",
-            "A notice's code when the Host cannot capture the device.",
+            "A notice's code when the device cannot capture the simulator.",
             live::CAPTURE_UNAVAILABLE,
         )
         .constant(
@@ -161,8 +161,8 @@ impl Plugin for Instance {
                     port.changed(Scope::Conversation).await?;
                     Ok(Reply::Done)
                 }
-                // What the package kept on a Host ended without its word, as
-                // when the runner restarted: the Host's resident takes its open
+                // What the package kept on a device ended without its word, as
+                // when the runner restarted: the device's resident takes its open
                 // devices back, which listing them starts, and the tabs follow
                 // what it lists.
                 Request::PackageLost { conversation, .. } => {

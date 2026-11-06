@@ -25,8 +25,8 @@ export interface MessageCapsule {
   /** The opening of a text file, shown when the capsule is pointed at. */
   snippet?: string
   /** The device a file on another device is on. */
-  host?: string
-  /** Where the file is: on the Host, or on `host`. */
+  device?: string
+  /** Where the file is: on the conversation's device, or on `device`. */
   path?: string
   /**
    * The file as a sent message holds it, which a copy of the message carries
@@ -56,7 +56,7 @@ function blobVideo(mediaType: string, sha256: string): ContentMediaSource | unde
   return mediaType.startsWith('video/') ? { type: 'ref', ref: sha256, mediaType } : undefined
 }
 
-/** What is happening to a file the composer is still carrying to the Host. */
+/** What is happening to a file the composer is still carrying to the device. */
 export type MessageTransfer =
   | { phase: 'uploading'; progress: number }
   /**
@@ -98,7 +98,7 @@ const capsuleSchema = z.object({
   name: z.string(),
   image: z.string().optional(),
   snippet: z.string().optional(),
-  host: z.string().optional(),
+  device: z.string().optional(),
   path: z.string().optional(),
 })
 
@@ -135,7 +135,7 @@ export function useTransfers(): TransferContext | null {
 export function composerCapsule(item: ComposerAttachment): MessageCapsule {
   const reference = item.reference ? { reference: item.reference } : {}
   if (item.kind === 'reference') {
-    return { id: item.id, name: item.name, host: item.host, path: item.path, ...reference }
+    return { id: item.id, name: item.name, device: item.device, path: item.path, ...reference }
   }
   return {
     id: item.id,
@@ -175,10 +175,10 @@ export function contentCapsule(id: string, blocks: readonly MessageEditContent[]
   let capsule: MessageCapsule = { id, name: 'file' }
   for (const block of blocks) {
     if (block.type === 'reference') {
-      const { host, path, name, deviceId } = decodeRemoteReference(block.reference)
-      capsule = { ...capsule, name, host, path, ...(deviceId ? { reference: { type: 'device', deviceId } } : {}) }
+      const { device, path, name, deviceId } = decodeRemoteReference(block.reference)
+      capsule = { ...capsule, name, device, path, ...(deviceId ? { reference: { type: 'device', deviceId } } : {}) }
     } else if (block.type === 'remote_file') {
-      capsule = { ...capsule, name: baseName(block.path), host: block.host, path: block.path, reference: { type: 'device', deviceId: block.deviceId } }
+      capsule = { ...capsule, name: baseName(block.path), device: block.device, path: block.path, reference: { type: 'device', deviceId: block.deviceId } }
     } else if (block.type === 'attachment') {
       // The media block before the record, fitted for the model, shows the
       // picture; without one, as for a model that reads no images, the
@@ -232,7 +232,7 @@ export function contentMessage(content: readonly MessageEditContent[]): { markdo
 /**
  * An image a message names, as the capsule the user's message shows it by:
  * named as the user alt-texted it, else by its file or address, its picture the
- * one loaded from `src`, and a Host image at its path, which a click opens. The
+ * one loaded from `src`, and a device image at its path, which a click opens. The
  * message's Markdown is not touched; only how it shows changes.
  */
 export function imageCapsule(image: { url: string } | { path: string }, src: string, alt: string): MessageCapsule {

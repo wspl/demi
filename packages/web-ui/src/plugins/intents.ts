@@ -7,7 +7,7 @@ import type { RequestEditSelection } from '../files/request-changes'
  */
 export interface IntentPayloads {
   /**
-   * A file on the conversation's Host, by its absolute path, and the line to open
+   * A file on the conversation's device, by its absolute path, and the line to open
    * it at, scrolled there and marked for a moment, when one is named. An empty
    * path shows the directory's tree alone.
    *
@@ -40,7 +40,7 @@ export interface IntentPayloads {
    */
   branch: { root: string; branch: string | null }
   /**
-   * An attachment of the conversation (`crates/backend-host-access/src/attachment_commands.rs`) that is no image, video or audio, as its block's card opens
+   * An attachment of the conversation (`crates/backend-device-access/src/attachment_commands.rs`) that is no image, video or audio, as its block's card opens
    * it: its number, its file's name and size in bytes, and where its stored
    * copy loads from.
    */

@@ -51,7 +51,7 @@
     "cloudResetting": "云端正在重置。"
   },
   "workflows": {
-    "hostSilent": "主机没有响应。"
+    "deviceSilent": "设备没有响应。"
   },
   "uploads": {
     "notUploaded": "{name} 未能上传。{reason}",

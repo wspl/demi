@@ -14,12 +14,12 @@ import { conversationPageKind, transcriptShown } from '@demicodes/web-ui/agent/s
 import ConversationComposer from './ConversationComposer.vue'
 import { useContextCard } from './context-card'
 import ProjectInfo from '../targets/ProjectInfo.vue'
-import { executionFor, primaryHostOf } from '../targets/execution'
+import { executionFor, primaryDeviceOf } from '../targets/execution'
 import { useConversations } from './store'
 import { useConversationNavigation } from './navigation'
 import { useResources } from '../state/resources'
-import { hostKindOf, hostLabel } from '../state/hosts'
-import { provideHostNames } from '@demicodes/web-ui/agent/host-names'
+import { targetKindOf, deviceLabel } from '../state/devices'
+import { provideDeviceNames } from '@demicodes/web-ui/agent/device-names'
 import type { CredentialKinds } from '@demicodes/web-ui/agent/credential-kinds'
 import { useProviderSettings } from '../settings/providers'
 import { useSettingsAddress } from '../settings/address'
@@ -99,12 +99,12 @@ provideCostWatch((window) => {
 })
 // The transcripts of the open conversation show a loading row at an edge only
 // while a page is being read for it.
-// A subagent on another Host than the conversation's names it as the
+// A subagent on another device than the conversation's names it as the
 // account's devices do.
-provideHostNames(() => (device) => {
+provideDeviceNames(() => (device) => {
   const record = resources.deviceById(device)
-  const kind = hostKindOf(record)
-  return { name: hostLabel(kind, record), kind }
+  const kind = targetKindOf(record)
+  return { name: deviceLabel(kind, record), kind }
 })
 provideHistoryReading((node) => {
   const current = conversation.value
@@ -112,11 +112,11 @@ provideHistoryReading((node) => {
 })
 /** The schedules that wake the conversation, which the chip above the composer lists. */
 const schedules = computed(() => conversation.value?.metadata.shown.value?.schedules ?? [])
-/** The header's place, which carries out a move the offline primary Host's card asks for. */
+/** The header's place, which carries out a move the offline primary device's card asks for. */
 const place = useTemplateRef<InstanceType<typeof ProjectInfo>>('place')
 /** Where the conversation runs now, live over the account's device states: Resume runs there. */
-const primaryHost = keptComputed(() =>
-  conversation.value ? primaryHostOf(executionFor(conversation.value)) : null,
+const primaryDevice = keptComputed(() =>
+  conversation.value ? primaryDeviceOf(executionFor(conversation.value)) : null,
 )
 /**
  * Whether the conversations are known: an address that names none yet waits
@@ -274,7 +274,7 @@ const replyBlocks = useReplyBlockFacts(() => props.id)
 const credentials = messageCredentials()
 
 /**
- * The Host files the conversation's messages name:
+ * The Device files the conversation's messages name:
  *
  * - Images from the files the conversation's service keeps, at the version its
  *   file watch keeps current.
@@ -282,7 +282,7 @@ const credentials = messageCredentials()
  *   lines.
  * - Commits opened through the `commit` intent, and a branch through the `branch` intent.
  * - The history a subagent's bar reads its branch from.
- * - Which paths of a reply's inline code are files, from the Host, whose home a
+ * - Which paths of a reply's inline code are files, from the device, whose home a
  *   `~/` path starts from.
  * - The attachments they deliver, a card's opened through the `attachment`
  *   intent while a plugin opens it.
@@ -326,7 +326,7 @@ const files = computed<ConversationFiles | undefined>(() => {
     attachmentOrigin: (id, attachment) => attachmentOrigin(id, attachment, {
       conversation: current.id,
       device: executionFor(current).deviceId ?? null,
-      online: primaryHost.value?.state === 'online',
+      online: primaryDevice.value?.state === 'online',
     }),
     openAttachment: work.canOpen('attachment')
       ? (id, { name, size, url }) => work.openIn(current.id, { intent: 'attachment', payload: { id, name, size, url } })
@@ -418,7 +418,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @edit-suggestion="(text: string) => conversation && store.reportSuggestion(conversation, text, 'edited')"
     :asking="asking"
     :files="files"
-    :primary-host="primaryHost"
+    :primary-device="primaryDevice"
     :permission-requests="permissions.stateFor(conversation.id).requests"
     :deciding-permission="permissions.stateFor(conversation.id).deciding"
     :request-error="permissions.stateFor(conversation.id).error"
@@ -488,7 +488,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
         :key="conversation.id"
         :conversation="conversation"
         :open-file="files?.open"
-        @move-host="place?.choose($event)"
+        @move-device="place?.choose($event)"
     /></template>
   </ChatSession>
   <section

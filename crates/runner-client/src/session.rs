@@ -25,7 +25,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use demi_host_interface::{HostError, HostErrorKind};
+use demi_device_interface::{DeviceError, DeviceErrorKind};
 use demi_runner_protocol::wire::{self, Inbound, Resume};
 use tokio_util::task::TaskTracker;
 
@@ -36,7 +36,7 @@ use crate::{
 };
 
 /// Why the calls of a session end when its runner started anew.
-pub const RUNNER_RESTARTED_CALLS: &str = "the Host's runner started anew";
+pub const RUNNER_RESTARTED_CALLS: &str = "the device's runner started anew";
 
 /// How a hello's connection relates to the session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -222,7 +222,7 @@ impl DeviceSession {
                     aborted_handler = true;
                     tracing::warn!(
                         event = "link_task.aborted",
-                        host_id = %device,
+                        device_id = %device,
                         task = name.as_str(),
                         grace_ms = END_GRACE.as_millis() as u64,
                         "a call's handler was aborted after its call ended"
@@ -296,9 +296,9 @@ impl DeviceSession {
 
     /// Queues `message` for the runner behind the messages of calls before
     /// it: it waits for a connection to write it, however long that takes.
-    pub(crate) fn send(&self, message: &Inbound) -> Result<(), HostError> {
+    pub(crate) fn send(&self, message: &Inbound) -> Result<(), DeviceError> {
         let frame = wire::encode(message)
-            .map_err(|error| HostError::new(HostErrorKind::Protocol, error.to_string()))?;
+            .map_err(|error| DeviceError::new(DeviceErrorKind::Protocol, error.to_string()))?;
         self.0.backlog.push(frame);
         Ok(())
     }

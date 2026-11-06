@@ -419,7 +419,7 @@ impl crate::Encoder for VideoToolbox {
             CVPixelBufferUnlockBaseAddress(buffer.0, LOCK_WRITE);
         }
         // The video says BT.601, the matrix the decoder of an export reads it
-        // with, and which the Host's other encoders convert with.
+        // with, and which the device's other encoders convert with.
         // SAFETY: the buffer is valid, and the keys and values are statics of
         // CoreVideo; the attachments propagate to the encoder.
         unsafe {

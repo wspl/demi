@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
-use demi_host_interface::{GroupBuilder, LeafBuilder, RpcInvocation};
+use demi_device_interface::{GroupBuilder, LeafBuilder, RpcInvocation};
 use demi_shared_types::output::{Cell, Table, warning};
 use demi_plugin_interface::{
     CommandPlugin, Placement, PluginError, PluginPort, PortHandled,
@@ -25,12 +25,12 @@ use crate::{Fetched, State};
 /// The group's category: what the user allows a conversation.
 const MANAGE: &str = "skills.manage";
 
-const SUMMARY: &str = "The user's skills: list, add, update, remove, enable, disable. A source is Global, whose skills every conversation receives, or a workspace's, whose skills that workspace's conversations receive; these commands see Global's and this conversation's workspace's. Demi sees only the skills these commands install; one another tool installs reaches no other host and no other conversation. Name a source by its repository, owner/repo for GitHub or an https URL; any spelling of one repository names the same source.";
+const SUMMARY: &str = "The user's skills: list, add, update, remove, enable, disable. A source is Global, whose skills every conversation receives, or a workspace's, whose skills that workspace's conversations receive; these commands see Global's and this conversation's workspace's. Demi sees only the skills these commands install; one another tool installs reaches no other device and no other conversation. Name a source by its repository, owner/repo for GitHub or an https URL; any spelling of one repository names the same source.";
 
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "The user's skills: list, add, update, remove, enable, disable; a skill is installed only this way.";
 
-const MANAGE_DESCRIPTION: &str = "Manage Skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Global skills reach every conversation and a workspace's skills reach that workspace's conversations, and the skills that are on are installed on the Hosts those conversations use.";
+const MANAGE_DESCRIPTION: &str = "Manage Skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Global skills reach every conversation and a workspace's skills reach that workspace's conversations, and the skills that are on are installed on the devices those conversations use.";
 
 const REFUSED_OUTPUT: &str =
     "writes the reason to stderr and exits non-zero, having changed nothing the reason does not name";

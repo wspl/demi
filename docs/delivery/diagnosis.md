@@ -3,7 +3,7 @@
 Demi keeps few tests, so a problem is diagnosed from the log, after the fact,
 without reproducing it. The backend's `log.sqlite`, in its data directory
 (`<DEMI_BACKEND_DATA>/log.sqlite`), holds every line of the backend, of each
-Host's runner and of each page, under the same IDs. Whoever diagnoses, a person
+device's runner and of each page, under the same IDs. Whoever diagnoses, a person
 or an agent with a shell on the server, reads it with `sqlite3`. No route reads
 it.
 
@@ -18,7 +18,7 @@ sqlite3 -json "$DEMI_BACKEND_DATA/log.sqlite" "
   ORDER BY at"
 ```
 
-and sees the page's, the backend's and the Host's lines together, each by its
+and sees the page's, the backend's and the device's lines together, each by its
 own writer's clock.
 
 ## The columns
@@ -27,15 +27,15 @@ The `events` table has one row per line, whatever wrote it:
 
 | Column | Holds |
 | --- | --- |
-| `at` | Milliseconds since the Unix epoch, by the writer's clock: the page's, a Host's or the backend's differ |
+| `at` | Milliseconds since the Unix epoch, by the writer's clock: the page's, a device's or the backend's differ |
 | `origin` | `backend`, `runner`, `page` or `machine_manager` |
 | `level` | `trace`, `debug`, `info`, `warn` or `error` |
 | `event` | What happened, as `noun.verb` in the past tense, such as `command.ended`; the `tracing` target for a backend event that names none, with its message in `fields.message` |
 | `request_id` | The HTTP request, a page connection's upgrade and a lane's open included. A page's line carries the request that brought it to the backend |
 | `user_id`, `conversation_id`, `turn_id` | The user, conversation and turn the line is about |
-| `host_id` | The Host whose runner wrote the line, or that a backend line is about |
+| `device_id` | The device whose runner wrote the line, or that a backend line is about |
 | `page_id` | The page load that wrote the line, or whose request a backend line serves |
-| `seq` | A runner line's number in its Host's files; the backend asks for the lines after the highest it stored |
+| `seq` | A runner line's number in its device's files; the backend asks for the lines after the highest it stored |
 | `fields` | JSON: the span's and the event's other fields. A duration is an integer in a field that ends in `_ms` |
 
 A line never holds a request's or a message's body, text a user typed, a
@@ -58,11 +58,11 @@ sqlite3 -json "$DEMI_BACKEND_DATA/log.sqlite" \
   "SELECT at, origin, level, event, fields FROM events WHERE page_id = 'pg_example' ORDER BY at"
 ```
 
-By Host, an hour of its runner's lines and the backend's lines about it:
+By device, an hour of its runner's lines and the backend's lines about it:
 
 ```sh
 sqlite3 -json "$DEMI_BACKEND_DATA/log.sqlite" \
-  "SELECT at, origin, level, event, fields FROM events WHERE host_id = 'host_example' AND at > 1761140000000 ORDER BY at"
+  "SELECT at, origin, level, event, fields FROM events WHERE device_id = 'device_example' AND at > 1761140000000 ORDER BY at"
 ```
 
 The warnings and errors of the last hour:
@@ -79,7 +79,7 @@ sqlite3 "$DEMI_BACKEND_DATA/log.sqlite" "SELECT json_extract(fields, '$.duration
   json_extract(fields, '$.path') FROM events WHERE event = 'request.answered' ORDER BY ms DESC LIMIT 20"
 ```
 
-A query by conversation, request, Host or page uses an index. A filter on
+A query by conversation, request, device or page uses an index. A filter on
 `event` or inside `fields` reads the whole table, which takes a second or so
 on a million lines.
 
@@ -107,12 +107,12 @@ on a million lines.
 
 - **The backend's** `tracing` events become lines through a layer, and a writer
   thread commits them every 200 milliseconds.
-- **A runner's** events are kept in two files on its Host (4 MiB each), and the
+- **A runner's** events are kept in two files on its device (4 MiB each), and the
   backend asks for them after the hello with `log_follow`, from the highest
-  `seq` it stored for the Host. The runner sends them in frames of 32 KiB,
+  `seq` it stored for the device. The runner sends them in frames of 32 KiB,
   since a frame being written cannot be interrupted, behind its answers and
-  its commands' exits. A Host that is offline keeps its lines in its files
-  until it connects again. The backend stores them as the Host's owner's: a
+  its commands' exits. A device that is offline keeps its lines in its files
+  until it connects again. The backend stores them as the device's owner's: a
   request, page or turn ID a runner names is not taken.
 - **A command package's resident** writes each `tracing` event as one JSON line
   of the log on its standard error (`demi_command_sdk::log_to_stderr`), and its

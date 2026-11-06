@@ -11,7 +11,7 @@
 //! nothing.
 
 use demi_agent_transcript::{REPLAY_CHARS, report_text};
-use demi_host_interface::CommandStatus;
+use demi_device_interface::CommandStatus;
 use demi_shared_types::{CommandId, CommandReport, ReportEvent, StoppedBy};
 
 use crate::{Stopper, result::report_output};
@@ -22,7 +22,7 @@ pub enum EndOf {
     Exited(i32),
     /// It was stopped, by whom when that is known.
     Stopped(Option<Stopper>),
-    /// Its Host lost it, for this reason (`crates/agent-session/src/reports.rs`).
+    /// Its device lost it, for this reason (`crates/agent-session/src/reports.rs`).
     Lost(String),
     /// Its record keeps no end.
     Unrecorded,

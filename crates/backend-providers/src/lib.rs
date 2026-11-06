@@ -32,7 +32,7 @@
 //! | usage  meter        |                                        | runtime,
 //! +----------+----------+                                        v one per
 //!            | wraps each runtime              HTTPS to the vendor  session
-//!            v                                 API; for claude-code, Host
+//!            v                                 API; for claude-code, device
 //!     metered runtime ---------------------->  process IO to the CLI on
 //!                                              the Claude Code machine
 //! * none for Claude Code: the CLI keeps its sign-in on that machine

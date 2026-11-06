@@ -166,7 +166,7 @@ impl Kept {
     }
 
     /// Changes the record and writes the file, as a whole, before it
-    /// answers. A write that fails is the Host log's: the change in memory
+    /// answers. A write that fails is the device log's: the change in memory
     /// still counts until the program ends.
     fn change(&self, edit: impl FnOnce(&mut Record)) {
         let mut record = self.record.lock().expect("the record is intact");

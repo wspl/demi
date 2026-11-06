@@ -5,13 +5,13 @@
 
 use std::time::Duration;
 
-/// When Demi reclaims what a conversation uses on a Host, one idle window
+/// When Demi reclaims what a conversation uses on a device, one idle window
 /// for the conversation's release and for a Cloud's stop (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 /// Tests shorten the times.
 #[derive(Debug, Clone, Copy)]
 pub struct LifecycleTuning {
     /// How long a conversation, or every conversation using the Cloud, stays
-    /// inactive before its Host's resources are reclaimed.
+    /// inactive before its device's resources are reclaimed.
     pub idle_window: Duration,
     /// How often a conversation's idle watch reads its activity.
     pub idle_poll: Duration,

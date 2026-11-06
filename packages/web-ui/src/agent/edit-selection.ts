@@ -1,7 +1,7 @@
 import { inject, provide, type InjectionKey } from 'vue'
 import type { MediaSequence } from '../files/media-viewer'
 import { selectsBinary, type RequestEditSelection, type TranscriptRequests } from '../files/request-changes'
-import { resolveHostPath } from '../files/paths'
+import { resolveDevicePath } from '../files/paths'
 import type { MessageFiles } from '../markdown/types'
 
 /**
@@ -25,7 +25,7 @@ export function pillAction(
 ): (() => void) | null {
   const open = files?.open
   if (open && files && selectsBinary(requests, selection)) {
-    const path = resolveHostPath(selection.root ?? files.cwd, selection.file)
+    const path = resolveDevicePath(selection.root ?? files.cwd, selection.file)
     return () => open({ path, line: null, ...(selection.root === undefined ? {} : { root: selection.root }) })
   }
   return select ? () => select(selection) : null

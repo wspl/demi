@@ -33,7 +33,7 @@ Assemble the Linux filesystem on a Linux builder of the image's architecture:
   `ubuntu-26.04-arm` runners, which give a job root through passwordless
   `sudo`.
 - For development, a Linux machine or VM of the developer's, with the targets
-  of the Hosts in use packaged by `bun xtask native build` on the developer's
+  of the devices in use packaged by `bun xtask native build` on the developer's
   machine.
 
 Do not confuse cross-compiling a Rust executable with validating the complete

@@ -2,14 +2,14 @@
 //! by the project's name.
 //!
 //! It is made through the Cloud's machine access
-//! (`crates/backend-host-access/src/lib.rs`), which wakes a stopped Cloud.
+//! (`crates/backend-device-access/src/lib.rs`), which wakes a stopped Cloud.
 
 use demi_backend_database::projects::{ProjectCreation, ProjectRecord, new_project_id};
 use demi_web_api_protocol::ids::WorkspaceId;
-use demi_host_interface::{Host as _, HostErrorKind, HostFs, MkdirOptions};
+use demi_device_interface::{Device as _, DeviceErrorKind, DeviceFs, MkdirOptions};
 
 use crate::shard::Shard;
-use demi_backend_host_access::access::{HostAccessError, Refusal};
+use demi_backend_device_access::access::{DeviceAccessError, Refusal};
 
 /// What a new Cloud project came to.
 #[derive(Debug)]
@@ -37,12 +37,12 @@ impl Shard {
         &self,
         workspace: WorkspaceId,
         name: String,
-    ) -> Result<CloudProject, HostAccessError> {
+    ) -> Result<CloudProject, DeviceAccessError> {
         if name.contains(['/', '\\', '\0']) || name == "." || name == ".." {
             return Ok(CloudProject::NameInvalid);
         }
         let access = self.cloud_shard().machine_access().await?;
-        let paths = access.host.identity().paths;
+        let paths = access.remote.identity().paths;
         let projects = paths.join(&access.home, "projects");
         let path = paths.join(&projects, &name);
         let control = &self.services().control;
@@ -53,10 +53,10 @@ impl Shard {
             Some(kept) if !kept.deleted => return Ok(CloudProject::NameTaken),
             Some(_) => {}
             None => {
-                HostFs::mkdir(&access.host, &projects, MkdirOptions { recursive: true }).await?;
-                if let Err(error) = HostFs::mkdir(&access.host, &path, MkdirOptions { recursive: false }).await {
+                DeviceFs::mkdir(&access.remote, &projects, MkdirOptions { recursive: true }).await?;
+                if let Err(error) = DeviceFs::mkdir(&access.remote, &path, MkdirOptions { recursive: false }).await {
                     return match error.kind {
-                        HostErrorKind::Failed { code: Some(code) } if code == "EEXIST" => Ok(CloudProject::NameTaken),
+                        DeviceErrorKind::Failed { code: Some(code) } if code == "EEXIST" => Ok(CloudProject::NameTaken),
                         _ => Err(error.into()),
                     };
                 }

@@ -18,10 +18,10 @@ import { createId } from '@demicodes/utils'
 import { savedParts, type SavedRow } from '@demicodes/web-ui/agent/saved'
 import { beginSavedEdit, type MessageEditContent, type MessageEditState, type SavedMessageEdit } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
-import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
-import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
-import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
-import type { HostChoice } from '@demicodes/web-ui/hosts/types'
+import type { OfflineDevice } from '@demicodes/web-ui/agent/offline-device'
+import MoveConversationDialog from '@demicodes/web-ui/targets/MoveConversationDialog.vue'
+import { useMoveQuestion } from '@demicodes/web-ui/targets/move-question'
+import type { DeviceChoice } from '@demicodes/web-ui/targets/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import {
   applyAttachmentUpdate,
@@ -52,7 +52,7 @@ import type { SendWay, SendWhileRunning } from '@demicodes/web-ui/agent/send-way
 import { galleryMessages } from '../fixtures/send-while-running'
 import { demoInstructions, demoOpenInstruction } from '../fixtures/instructions'
 import type { SentMessage, RecallComposer } from '../turn-flow'
-import { createGalleryRemoteFileHosts } from '../fixtures/files'
+import { createGalleryRemoteFileDevices } from '../fixtures/files'
 import { galleryUploads } from '../fixtures/upload-sweep'
 import type { SeedSaved } from '../fixtures/saved'
 
@@ -91,12 +91,12 @@ const props = withDefaults(
     /** Plugins changed since the conversation opened: the composer offers a reload. */
     pluginsChanged?: boolean
     /**
-     * The conversation's primary Host is an offline paired device: the
-     * composer says how to start its runner, and Move to Another Host…
+     * The conversation's primary device is an offline paired device: the
+     * composer says how to start its runner, and Move to Another Device…
      * moves the specimen's conversation, whose card then goes.
      */
-    offlineHost?: OfflineHost | null
-    /** The conversation has messages, so Move to Another Host… asks first, as the product's does. */
+    offlineDevice?: OfflineDevice | null
+    /** The conversation has messages, so Move to Another Device… asks first, as the product's does. */
     hasMessages?: boolean
     /** Compacts the specimen's conversation; without it, a toast says what the product would do. */
     onCompact?: () => void
@@ -138,8 +138,8 @@ const emit = defineEmits<{
   /** The user chose model settings or a workflow, as the product remembers them where the conversation belongs. */
   choseModel: [settings: ModelSettings]
   choseWorkflow: [choice: WorkflowChoice]
-  /** The offline primary Host's card moved the conversation to `host`, named `name`. */
-  moved: [host: HostChoice, name: string]
+  /** The offline primary device's card moved the conversation to `device`, named `name`. */
+  moved: [device: DeviceChoice, name: string]
 }>()
 const draft = ref(props.draft)
 const attached = ref(props.attachments.map((item) => composerAttachment(item)))
@@ -183,24 +183,24 @@ function reloadPlugins() {
   }, 600)
 }
 /**
- * The offline primary Host's card, until a move takes the conversation to
- * another Host or the specimen brings the device back.
+ * The offline primary device's card, until a move takes the conversation to
+ * another device or the specimen brings the device back.
  */
-const offlineHost = ref(props.offlineHost ?? null)
+const offlineDevice = ref(props.offlineDevice ?? null)
 // Only a device that comes or goes resets the card: a specimen's inline value is new on every render.
-watch(() => !!props.offlineHost, () => {
-  offlineHost.value = props.offlineHost ?? null
+watch(() => !!props.offlineDevice, () => {
+  offlineDevice.value = props.offlineDevice ?? null
 })
 /** The card goes with the move, as the product's does, and a toast says where the product would run it. */
 const moveQuestion = useMoveQuestion()
-function moveHost(host: HostChoice) {
-  const to = host.kind === 'cloud'
+function moveDevice(choice: DeviceChoice) {
+  const to = choice.kind === 'cloud'
     ? 'Cloud'
-    : offlineHost.value?.devices.find((device) => device.id === host.id)?.name
-  const from = offlineHost.value
+    : offlineDevice.value?.devices.find((device) => device.id === choice.id)?.name
+  const from = offlineDevice.value
   const carryOut = async () => {
-    offlineHost.value = null
-    emit('moved', host, to ?? host.kind)
+    offlineDevice.value = null
+    emit('moved', choice, to ?? choice.kind)
     productWould(`Move the Conversation to ${to}`)
     return true
   }
@@ -209,7 +209,7 @@ function moveHost(host: HostChoice) {
     return
   }
   void moveQuestion.ask(
-    { host: to, directory: host.kind === 'cloud' ? null : '~', from: from.name, fromCloud: false },
+    { device: to, directory: choice.kind === 'cloud' ? null : '~', from: from.name, fromCloud: false },
     carryOut,
   )
 }
@@ -264,7 +264,7 @@ const composerProps = computed(() => {
     onQueue: _queue,
     flow: _flow,
     sendWhileRunning: _sendWhileRunning,
-    offlineHost: _offlineHost,
+    offlineDevice: _offlineDevice,
     hasMessages: _hasMessages,
     saved: _saved,
     savedOpen: _savedOpen,
@@ -332,7 +332,7 @@ let nextAttachment = 1
 function sentBlocks(item: ComposerAttachment): UserContentBlock[] {
   // The gallery's devices go by their names.
   if (item.kind === 'reference') {
-    return [{ type: 'reference', reference: encodeRemoteReference(item.host, item.path, item.host) }]
+    return [{ type: 'reference', reference: encodeRemoteReference(item.device, item.path, item.device) }]
   }
   const answer = answers.get(item.id)
   const record: UserContentBlock = {
@@ -406,7 +406,7 @@ function takeSaved(id: string): { saved: SavedMessage } | undefined {
 /** A saved message's file as an edit holds it: its record, after its picture when it has one, or its reference. */
 function savedFileContent(item: ComposerAttachment): MessageEditContent[] {
   if (item.kind === 'reference') {
-    return [{ type: 'reference', reference: encodeRemoteReference(item.host, item.path, item.host) }]
+    return [{ type: 'reference', reference: encodeRemoteReference(item.device, item.path, item.device) }]
   }
   const answer = answers.get(item.id)
   const record: MessageEditContent = {
@@ -434,11 +434,11 @@ function editedMessage(saved: SavedMessage, content: readonly MessageEditContent
         return saved.files.filter((item) => item.id === block.id)
       }
       if (block.type === 'reference') {
-        const { host, path } = decodeRemoteReference(block.reference)
-        return [composerRemoteAttachment({ host: host ?? '', path })]
+        const { device, path } = decodeRemoteReference(block.reference)
+        return [composerRemoteAttachment({ device: device ?? '', path })]
       }
       if (block.type === 'remote_file') {
-        return [composerRemoteAttachment({ host: block.host, path: block.path })]
+        return [composerRemoteAttachment({ device: block.device, path: block.path })]
       }
       if (block.type === 'upload') {
         const item = composerAttachment({
@@ -701,7 +701,7 @@ const paste: PasteHost = {
     return { capsule: composerCapsule(item), kept }
   },
   remote: (file) => {
-    const item = composerRemoteAttachment({ host: file.host, path: file.path })
+    const item = composerRemoteAttachment({ device: file.device, path: file.path })
     attached.value.push(item)
     return composerCapsule(item)
   },
@@ -731,9 +731,9 @@ function retry(id: string) {
   }
 }
 
-const remoteHosts = createGalleryRemoteFileHosts()
+const remoteDevices = createGalleryRemoteFileDevices()
 const remotePicker = ref<InstanceType<typeof RemoteFilePicker>>()
-function attachRemote(file: { host: string; path: string }) {
+function attachRemote(file: { device: string; path: string }) {
   const item = composerRemoteAttachment(file)
   attached.value.push(item)
   composer.value?.insertCapsules([composerCapsule(item)])
@@ -796,8 +796,8 @@ onBeforeUnmount(() => {
     @delete-saved="deleteSaved"
     :plugins-changed="pluginsChanged"
     :reloading="reloading"
-    :offline-host="offlineHost"
-    @move-host="moveHost"
+    :offline-device="offlineDevice"
+    @move-device="moveDevice"
     remote-files
     @reload-plugins="reloadPlugins"
     @submit="submit"
@@ -820,7 +820,7 @@ onBeforeUnmount(() => {
   <RemoteFilePicker
     ref="remotePicker"
     :overlay-store="appOverlayStore"
-    :hosts="remoteHosts"
+    :devices="remoteDevices"
     @select="attachRemote"
   />
   <MoveConversationDialog

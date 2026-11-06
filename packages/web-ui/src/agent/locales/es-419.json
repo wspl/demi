@@ -43,7 +43,7 @@
       "allowed": "Permitiste que este chat pueda {action}",
       "denied": "Negaste a este chat el permiso para {action}",
       "reached": "Otro chat se comunicó con este, así que puede {action}",
-      "moved": "Moviste este chat a {host} · {path}",
+      "moved": "Moviste este chat a {device} · {path}",
       "moveFailed": "No se pudo mover: {reason}",
       "fromMain": "Mensaje de {agent}",
       "mainAgent": "agente principal",
@@ -67,7 +67,7 @@
       "failed": "Falló",
       "stopped": "Detenido",
       "stopping": "Deteniendo…",
-      "waiting": "Esperando a {host}",
+      "waiting": "Esperando a {device}",
       "lost": "Perdido",
       "exitCode": "Código de salida {code}"
     },
@@ -75,7 +75,7 @@
       "lost": "Perdido",
       "lostWhy": "Perdido: {reason}",
       "stopping": "Deteniendo…",
-      "waiting": "Esperando a {host}",
+      "waiting": "Esperando a {device}",
       "running": "En ejecución desde hace {span}",
       "exited": "Terminó después de {span}",
       "exitedZero": "Terminó con 0 después de {span}",
@@ -238,7 +238,7 @@
     "tabsOpen": "Pestañas, {count} abiertas",
     "closePanel": "Cerrar panel",
     "options": "{title}, opciones del chat",
-    "hostState": "{name} está {state}",
+    "deviceState": "{name} está {state}",
     "renameTitle": "Cambiar nombre del chat",
     "titleLabel": "Título del chat",
     "runsOn": "Se ejecuta en",
@@ -281,9 +281,9 @@
     "lastTurnRate": "Último turno: {rate} tok/s"
   },
   "notices": {
-    "hostOffline": "{name} está sin conexión.",
-    "moveHost": "Mover a otro host…",
-    "hostOfflineLastSeen": "{name} está sin conexión. Última conexión: {time}.",
+    "deviceOffline": "{name} está sin conexión.",
+    "moveDevice": "Mover a otro dispositivo…",
+    "deviceOfflineLastSeen": "{name} está sin conexión. Última conexión: {time}.",
     "pluginsChanged": "Los plugins cambiaron"
   },
   "composer": {
@@ -435,7 +435,7 @@
     "nothingOpen": "No hay nada abierto",
     "noFiles": "No hay archivos ni cambios",
     "reading": "Leyendo {name}",
-    "hostOffline": "{name} está sin conexión.",
-    "hostOfflineDetail": "Los archivos, los cambios y el navegador vuelven a aparecer cuando se reconecte."
+    "deviceOffline": "{name} está sin conexión.",
+    "deviceOfflineDetail": "Los archivos, los cambios y el navegador vuelven a aparecer cuando se reconecte."
   }
 }

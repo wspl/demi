@@ -79,7 +79,7 @@
   "deleteProject": {
     "title": "“{name}” 프로젝트를 삭제하시겠습니까?",
     "archived": "대화 {count}개가 보관됩니다.",
-    "files": "{host}의 파일은 삭제되지 않습니다."
+    "files": "{device}의 파일은 삭제되지 않습니다."
   },
   "savedScope": {
     "title": "저장된 메시지를 대화별로 보관하시겠습니까?",

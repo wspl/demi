@@ -1,5 +1,5 @@
 //! `xtask device-art` (`crates/plugin-mobile/command/src/android/art.rs`):
-//! pins the Android device art a Host downloads from AOSP.
+//! pins the Android emulator art a device downloads from AOSP.
 //!
 //! It reads AOSP's `device-art-resources` at a commit, the head of Android
 //! Studio's main branch unless one is named, downloads each device's folder
@@ -99,7 +99,7 @@ async fn pin(commit: Option<String>) -> Result<String, Error> {
             .any(|file| *file == "layout" || file.split_once('/').is_some_and(|(_, name)| name == "layout"))
     });
     let mut source = format!(
-        "//! The Android device art a Host downloads (`art.rs`): AOSP's commit and\n\
+        "//! The Android emulator art a device downloads (`art.rs`): AOSP's commit and\n\
          //! the SHA-256 of each file of each device's folder. Written by\n\
          //! `xtask device-art`; a new device's art comes with a new pin.\n\
          \n\

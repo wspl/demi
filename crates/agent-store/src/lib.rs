@@ -10,7 +10,7 @@
 //! commit, whatever the realization. Parent and child are related by a column,
 //! never by a key path.
 //!
-//! Nothing about a node depends on a Host: a Host executes, the store
+//! Nothing about a node depends on a device: a device executes, the store
 //! remembers, so a node is readable while its target is offline. A child is
 //! rebuilt on restore and resume from what it was spawned with (its profile's
 //! name, the instructions the profile added, the spawn restriction) and its
@@ -59,7 +59,7 @@ use std::{
 };
 
 use demi_conversation_lane_protocol::{JobModel, JobPhase, Subagent, TurnSpeed, Versions};
-use demi_host_interface::{CommandMedium, Seen, UnsentStart, WholeOutput};
+use demi_device_interface::{CommandMedium, Seen, UnsentStart, WholeOutput};
 use demi_shared_types::{
     AgentAccount, AgentMessage, AgentMessageEvent, Block, BlockId, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
     OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId, UserContentBlock,
@@ -311,7 +311,7 @@ pub trait AgentTreeStore {
 
 /// A command the conversation records running.
 ///
-/// It holds its job on its Host, the `shell` call that started it, that call's
+/// It holds its job on its device, the `shell` call that started it, that call's
 /// title and whether it is a service, when it started, and how far
 /// the node that ran it has looked in its output.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -333,8 +333,8 @@ pub struct RunningCommand {
     pub service: bool,
     pub started: Timestamp,
     pub place: Seen,
-    /// What it starts once its Host is back, while its start waits for it
-    /// and was never sent (`crates/backend-host-access/src/access.rs`).
+    /// What it starts once its device is back, while its start waits for it
+    /// and was never sent (`crates/backend-device-access/src/access.rs`).
     pub unsent: Option<UnsentStart>,
 }
 
@@ -437,7 +437,7 @@ pub struct NodeRecord {
     /// None for the root, for a child started by no call, and for a child
     /// stored before versions existed, which is on every path.
     pub started_by: Option<BlockId>,
-    /// A child's own placement, its Host's device and its working directory
+    /// A child's own placement, its device's device and its working directory
     /// there, which its spawn and `demi agent cwd` set and a move of the
     /// conversation leaves (`crates/agent-server/src/node/mod.rs`); none for
     /// the root, which works where the conversation does.
@@ -486,7 +486,7 @@ pub struct SideOf {
     pub asked_at: Timestamp,
 }
 
-/// Where a conversation or an agent works: a Host's device, none for the
+/// Where a conversation or an agent works: a device's device, none for the
 /// user's Cloud not made yet, and a directory there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Placement {
@@ -499,7 +499,7 @@ impl NodeRecord {
     /// (`crates/agent-server/src/server/tree.rs`).
     ///
     /// It runs on `model` while it is live, else as it closed, at its own
-    /// placement, whose Host it names when that is not the Host of `conversation`,
+    /// placement, whose device it names when that is not the device of `conversation`,
     /// where the conversation works; with `conversation` unknown, it names
     /// none. The root, which no node spawned, has none.
     pub fn child(&self, model: JobModel, conversation: Option<&Placement>, on_path: bool) -> Option<Subagent> {
@@ -533,7 +533,7 @@ impl NodeRecord {
         self.placement.as_ref().expect("a child's record names its placement")
     }
 
-    /// The device of a child's Host when it is not the Host of
+    /// The device of a child's device when it is not the device of
     /// `conversation`, where the conversation works; none when it is, for
     /// `conversation` unknown, and for a node that has no place of its own.
     pub fn elsewhere(&self, conversation: Option<&Placement>) -> Option<&str> {

@@ -1,5 +1,5 @@
 //! A simulated path for the rate control's tests (`tests/live-view`): the
-//! Host's sender as `delivery` drives the rate control, a link with a capacity
+//! device's sender as `delivery` drives the rate control, a link with a capacity
 //! and a queue, and a page that stamps each chunk when its main thread takes
 //! it, as the web app does (`packages/web-ui/src/live/link.ts`).
 //!

@@ -244,12 +244,12 @@ pub enum ErrorCode {
     /// file transfers and user streams; a new one waits for nothing and is
     /// refused.
     ConversationBusy,
-    /// The device is neither the conversation's primary Host nor attached to
+    /// The device is neither the conversation's primary device nor attached to
     /// it.
-    HostNotAttached,
+    DeviceNotAttached,
     /// The Cloud is stopped, and a user stream or a call like one never
     /// wakes it.
-    HostStopped,
+    DeviceStopped,
     /// The Cloud cannot start, or it is changing state and admits no
     /// operation now.
     CloudUnavailable,
@@ -262,10 +262,10 @@ pub enum ErrorCode {
     /// The Cloud's runtime was lost too often in a short time, so it no
     /// longer starts by itself; a reset recovers it.
     CloudCrashLoop,
-    /// The Host's filesystem refused the operation: nothing at the path, or
+    /// The device's filesystem refused the operation: nothing at the path, or
     /// no permission for it.
     FsError,
-    /// The directory a request names is not on the Host.
+    /// The directory a request names is not on the device.
     FsNotFound,
     /// The file is no longer the version the request named.
     FileChanged,
@@ -273,7 +273,7 @@ pub enum ErrorCode {
     IsDirectory,
     /// A file is at the path, and the upload did not ask to replace it.
     FileExists,
-    /// The path is, or holds, a directory the Host needs: its root, its home
+    /// The path is, or holds, a directory the device needs: its root, its home
     /// or the conversation's execution directory.
     ProtectedPath,
     /// The user's browser sent nothing of an upload, or of any request's
@@ -294,8 +294,8 @@ pub enum ErrorCode {
     Ambiguous,
     /// The working tree could not be read.
     ChangesFailed,
-    /// The Host failed the operation in a way no other code names.
-    HostOperationFailed,
+    /// The device failed the operation in a way no other code names.
+    DeviceOperationFailed,
     /// The request could act with the user's session and came from a page
     /// that is not the product's (`crates/backend-http/src/gate.rs`).
     ForbiddenOrigin,
@@ -306,7 +306,7 @@ pub enum ErrorCode {
     /// The page connection holds as many lanes as it may, and refused
     /// another (`crates/web-api-protocol/src/connection.rs`).
     TooManyLanes,
-    /// The Host could not open the stream: its resident failed to start or
+    /// The device could not open the stream: its resident failed to start or
     /// refused it.
     StreamFailed,
     /// Another user's conversation holds the id, or a Fork reserved it.
@@ -387,9 +387,9 @@ pub enum ErrorCode {
     /// The plugin failed, such as a value that does not read or a package
     /// call whose operation failed.
     PluginFailed,
-    /// The device is the conversation's primary Host, which is never attached
+    /// The device is the conversation's primary device, which is never attached
     /// as well.
-    HostIsPrimary,
+    DeviceIsPrimary,
     /// Another target change of the conversation came first.
     TargetConflict,
     /// One field of a conversation patch failed in a way the request could

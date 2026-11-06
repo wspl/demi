@@ -317,7 +317,7 @@ export function useMessageEditComposer(options: {
       return { capsule, kept: uploadFile(id).then((done) => done || !!added.value.get(id)?.file) }
     },
     remote: (file) => editable.value
-      ? keep({ type: 'remote_file', deviceId: file.deviceId, path: file.path, host: file.host })
+      ? keep({ type: 'remote_file', deviceId: file.deviceId, path: file.path, device: file.device })
       : null,
   }
 

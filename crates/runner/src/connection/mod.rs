@@ -1,7 +1,7 @@
 //! One backend connection (the wire is `demi_runner_protocol::wire`).
 //!
 //! Its owner routes each message to the work it belongs to and owns what lasts
-//! as long as the connection: the volumes, the Host requests, the resident
+//! as long as the connection: the volumes, the device requests, the resident
 //! streams and the raw processes. The owner never waits for that work, so it
 //! reads each message as it arrives; closing the connection ends all of it.
 //!
@@ -13,7 +13,7 @@
 //! that replaces another carries on from the message the backend got to, and
 //! the calls the jobs' commands make go on across the drop.
 //!
-//! The hello names the Host: system and release, architecture, kernel (read
+//! The hello names the device: system and release, architecture, kernel (read
 //! once at start without a shell), `SHELL`, installation directory, and why
 //! autostart is unavailable. The backend keeps it on the device record and the
 //! agent reads it in its context block.

@@ -38,7 +38,7 @@ use demi_agent_store::SavedVersions;
 use demi_conversation_lane_protocol::{
     Followed, Held, STORED_EPOCH, ServerFrame, ShellStatus, TranscriptPatch, Version,
 };
-use demi_agent_tools::HostResolver;
+use demi_agent_tools::DeviceResolver;
 use demi_shared_types::NodeId;
 
 use super::Tree;
@@ -150,7 +150,7 @@ pub(crate) fn compare_stored(value: &Followed, held: &Held, saved: Option<&Saved
     }
 }
 
-impl<H: HostResolver> Tree<H> {
+impl<H: DeviceResolver> Tree<H> {
     /// Brings a follow of `value` at the version `held` current for the
     /// connection whose follows are `follows`, which have the follow
     /// registered already, with nothing awaited between the registration and

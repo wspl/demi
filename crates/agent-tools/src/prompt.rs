@@ -9,10 +9,10 @@
 //! 5. the instructions a subagent profile added.
 //!
 //! The prompt is rendered once, when the node is assembled, and holds no time,
-//! id, Host or state, so the prefix of every request changes only when the
+//! id, device or state, so the prefix of every request changes only when the
 //! node's command set changes, with a Demi release, or on a model switch.
 //!
-//! - What changes, or differs by Host, user or project, reaches the model as a
+//! - What changes, or differs by device, user or project, reaches the model as a
 //!   `context` block appended to the transcript, never as a change to a layer.
 //! - Details reach it when it asks, as a command's `--help` result.
 //! - The prompt never lists what the user can change, such as the subagent
@@ -37,7 +37,7 @@
 //!   model claim to be another.
 
 use demi_agent_session::{PromptLayer, SystemPrompt};
-use demi_host_interface::CapabilityIndex;
+use demi_device_interface::CapabilityIndex;
 
 /// What the model identity line names of the model that serves a node,
 /// from its model selection.

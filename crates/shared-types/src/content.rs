@@ -124,7 +124,7 @@ pub enum UserContentBlock {
 
 /// The record of a file that came with a message, by its number among the
 /// conversation's attachments, such as `a7`, never inlined and never on a
-/// Host: the model reads it as a tag that names the file
+/// device: the model reads it as a tag that names the file
 /// ([`attachment_tag`]) and fetches it with `demi attachment download` when
 /// a command needs it; the page draws the file's tile from it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]

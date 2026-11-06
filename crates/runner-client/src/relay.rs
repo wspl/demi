@@ -1,4 +1,4 @@
-//! The rpc relay (`crates/host-interface/src/rpc.rs`): a job's `rpc_call`
+//! The rpc relay (`crates/device-interface/src/rpc.rs`): a job's `rpc_call`
 //! becomes a handler call in the backend.
 //!
 //! The relay:
@@ -26,7 +26,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_host_interface::{
+use demi_device_interface::{
     PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, RpcError, RpcInvocation,
     RpcPort,
 };
@@ -74,7 +74,7 @@ impl CallEnv {
     }
 
     /// Queues `message` for the runner, behind the call messages before it.
-    fn send(&self, message: &Inbound) -> Result<(), demi_host_interface::HostError> {
+    fn send(&self, message: &Inbound) -> Result<(), demi_device_interface::DeviceError> {
         self.session.send(message)
     }
 }
@@ -174,7 +174,7 @@ impl CallEntry {
     /// Ends the call's finite standard input as finished, read or unread:
     /// the handler took what it wanted, so the process's upload is answered
     /// as a whole one rather than failed, and its stdout goes on to its end
-    /// (`crates/host-interface/src/rpc.rs`).
+    /// (`crates/device-interface/src/rpc.rs`).
     fn finish_input(&self) {
         let pipes = self.pipes.borrow();
         let Some(stdin) = pipes.as_ref().and_then(|pipes| pipes.stdin.as_ref()) else {
@@ -270,7 +270,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
         let cause = entry.cause();
         tracing::info!(
             event = "rpc_call.ended",
-            host_id = relaying.device(),
+            device_id = relaying.device(),
             job_id = job_id.as_str(),
             call = call_id.as_str(),
             command = command.as_str(),
@@ -290,7 +290,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
             Ok(code) => code,
             Err(ended) => {
                 // A usage error is clap's text whole; a runtime error is
-                // GNU's line, the command's path first (`crates/host-interface/src/rpc.rs`).
+                // GNU's line, the command's path first (`crates/device-interface/src/rpc.rs`).
                 let (text, code) = match ended {
                     Ended::Usage(text) => (format!("{text}\n"), 2),
                     Ended::Failed(message) => (
@@ -306,7 +306,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
                     bytes: WireBytes(text.into_bytes()),
                 };
                 if let Err(error) = relaying.send(&error) {
-                    tracing::warn!(event = "link.send_failed", host_id = relaying.device(), what = "rpc_error", call = %call_id, %error, "a message to a runner was not sent");
+                    tracing::warn!(event = "link.send_failed", device_id = relaying.device(), what = "rpc_error", call = %call_id, %error, "a message to a runner was not sent");
                 }
                 code
             }
@@ -319,7 +319,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
             exit_code,
         };
         if let Err(error) = relaying.send(&exit) {
-            tracing::warn!(event = "link.send_failed", host_id = relaying.device(), what = "exit", call = %call_id, %error, "a message to a runner was not sent");
+            tracing::warn!(event = "link.send_failed", device_id = relaying.device(), what = "exit", call = %call_id, %error, "a message to a runner was not sent");
         }
     };
     // A handler aborted after its grace never answered: the call ends here
@@ -348,7 +348,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
             };
             for message in [text, exit] {
                 if let Err(error) = relaying.send(&message) {
-                    tracing::warn!(event = "link.send_failed", host_id = relaying.device(), what = "aborted_call", call = %call_id, %error, "a message to a runner was not sent");
+                    tracing::warn!(event = "link.send_failed", device_id = relaying.device(), what = "aborted_call", call = %call_id, %error, "a message to a runner was not sent");
                 }
             }
         }
@@ -429,7 +429,7 @@ async fn run(
         json: call.json,
         // A job's calls come over the connection of the device it runs on,
         // whose state holds the job's record.
-        host: link.device().to_owned(),
+        device: link.device().to_owned(),
         cwd: call.cwd,
         env: call.env,
         context: origin.context.clone(),
@@ -439,7 +439,7 @@ async fn run(
             stdin: stdin.as_ref().map(|pipe| pipe.id().to_owned()),
             stdout: stdout.id().to_owned(),
         }),
-        // The dispatch resolves the call's host.
+        // The dispatch resolves the call's device.
         brought: None,
     };
     let port = Rc::new(RelayPort {
@@ -559,7 +559,7 @@ impl RelayPort {
                 Ok(writer) => writer.end(),
                 // Handed to a device, whose upload ends it.
                 Err(PipeError::AlreadyFixed(_)) => {}
-                Err(error) => tracing::warn!(event = "link.send_failed", host_id = self.link.device(), what = "stdout_end", call = %self.call_id, %error, "a call's standard output was not ended"),
+                Err(error) => tracing::warn!(event = "link.send_failed", device_id = self.link.device(), what = "stdout_end", call = %self.call_id, %error, "a call's standard output was not ended"),
             },
             Stdout::Writing(writer) => writer.end(),
             Stdout::Busy | Stdout::Done => {}

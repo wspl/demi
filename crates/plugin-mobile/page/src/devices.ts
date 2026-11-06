@@ -9,7 +9,7 @@
  */
 import { onScopeDispose } from 'vue'
 import type { z } from 'zod'
-import { PluginCallError, type ConversationPlugin, type HostDownload, type OpenUserStream } from '@demicodes/plugin-sdk'
+import { PluginCallError, type ConversationPlugin, type DeviceDownload, type OpenUserStream } from '@demicodes/plugin-sdk'
 import {
   appearanceResultSchema,
   closeResultSchema,
@@ -35,7 +35,7 @@ import {
 } from './generated/plugin'
 import { t } from './locales/text'
 
-/** A refused call, in the words the page shows for it, never the Host's own error text. */
+/** A refused call, in the words the page shows for it, never the runner's own error text. */
 export class MobileError extends Error {
   constructor(readonly reason: PanelReason | null, readonly status: string | null, message: string) {
     super(message)
@@ -66,8 +66,8 @@ export interface MobileApi {
   screenshot(device: string): Promise<Saved>
   record(device: string, action: PanelRecord): Promise<RecordResult>
   stream: OpenUserStream
-  /** What the Host downloads of the plugin's packages now, such as its program, read reactively. */
-  downloading(): readonly HostDownload[]
+  /** What the runner downloads of the plugin's packages now, such as its program, read reactively. */
+  downloading(): readonly DeviceDownload[]
 }
 
 export function mobileApi(plugin: ConversationPlugin): MobileApi {

@@ -28,7 +28,7 @@ import { vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import type { SidebarDevice } from '@demicodes/web-ui/sidebar/types'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
-import { deviceMarkOf, hostKindOf } from './hosts'
+import { deviceMarkOf, targetKindOf } from './devices'
 import { emptyLocalState, readLocalState, writeLocalState } from './local'
 import type { Device, Project } from './types'
 
@@ -171,10 +171,10 @@ export const useResources = defineStore('resources', () => {
         savedScope: project.savedScope,
         savedCount: project.savedCount,
       }
-      if (hostKindOf(device) === 'cloud') {
-        return { ...checkout, hostKind: 'cloud' }
+      if (targetKindOf(device) === 'cloud') {
+        return { ...checkout, targetKind: 'cloud' }
       }
-      return { ...checkout, hostKind: 'device', device: sidebarDevice(project.deviceId) }
+      return { ...checkout, targetKind: 'device', device: sidebarDevice(project.deviceId) }
     }),
   )
   const hidden = { provider: preferences.hidesProvider, model: preferences.hidesModel }

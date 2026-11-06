@@ -1,7 +1,7 @@
 import type { DeviceMark } from '@demicodes/web-ui/devices/mark'
 import { GALLERY_MARKS, shownAmong } from './device-marks'
 import { createMemoryFileSource, dir, file, link, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
-import type { FileBrowserHost, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
+import type { FileBrowserDevice, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
 
 /**
  * Two devices' worth of directories for the file browser: a laptop with projects,
@@ -187,13 +187,13 @@ export function buildBoxTree(): MemoryDirectory {
   })
 }
 
-export interface GalleryFileHost extends FileBrowserHost {
+export interface GalleryFileDevice extends FileBrowserDevice {
   source: FileBrowserSource
   places: FileBrowserPlaceGroup[]
 }
 
-/** The marks the backend serves the file hosts' devices, before a page shows them (`shownAmong`). */
-export const GALLERY_FILE_HOST_MARKS: Record<string, DeviceMark> = {
+/** The marks the backend serves the file browser's devices, before a page shows them (`shownAmong`). */
+export const GALLERY_FILE_DEVICE_MARKS: Record<string, DeviceMark> = {
   mac: GALLERY_MARKS.mac,
   build: GALLERY_MARKS.ubuntu,
   studio: GALLERY_MARKS.windows,
@@ -201,14 +201,14 @@ export const GALLERY_FILE_HOST_MARKS: Record<string, DeviceMark> = {
 
 /**
  * The paired devices of a specimen's account, with the marks they show among themselves: the one
- * Mac shows no number, in the host menu and the folder browser alike.
+ * Mac shows no number, in the device menu and the folder browser alike.
  */
-export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
-  return shownAmong<GalleryFileHost>([
+export function createGalleryFileDevices(latencyMs = 250): GalleryFileDevice[] {
+  return shownAmong<GalleryFileDevice>([
     {
       id: 'mac',
       label: 'alex-mbp',
-      mark: GALLERY_FILE_HOST_MARKS.mac,
+      mark: GALLERY_FILE_DEVICE_MARKS.mac,
       state: 'online',
       source: createMemoryFileSource(
         {
@@ -243,7 +243,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
     {
       id: 'build',
       label: 'build-01',
-      mark: GALLERY_FILE_HOST_MARKS.build,
+      mark: GALLERY_FILE_DEVICE_MARKS.build,
       state: 'online',
       source: createMemoryFileSource(
         {
@@ -264,7 +264,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
     {
       id: 'studio',
       label: 'studio',
-      mark: GALLERY_FILE_HOST_MARKS.studio,
+      mark: GALLERY_FILE_DEVICE_MARKS.studio,
       state: 'offline',
       source: createMemoryFileSource(
         {
@@ -286,9 +286,9 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
 }
 
 /** A conversation can also browse an attached Cloud while it is stopped. */
-export function createGalleryRemoteFileHosts(latencyMs = 250): GalleryFileHost[] {
+export function createGalleryRemoteFileDevices(latencyMs = 250): GalleryFileDevice[] {
   return [
-    ...createGalleryFileHosts(latencyMs),
+    ...createGalleryFileDevices(latencyMs),
     {
       id: 'managed-device',
       label: 'Cloud',

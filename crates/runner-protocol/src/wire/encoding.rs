@@ -38,7 +38,7 @@ impl<'de> Deserialize<'de> for WireBytes {
     }
 }
 
-/// A time in milliseconds since the Unix epoch, the precision of the Host
+/// A time in milliseconds since the Unix epoch, the precision of the device
 /// contract's JavaScript `Date` values. It travels as the MessagePack
 /// timestamp extension (type -1) in its shortest form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

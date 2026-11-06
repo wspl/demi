@@ -1,17 +1,17 @@
 /**
- * A file watch that carries the subscriptions of what a page keeps of one Host's
+ * A file watch that carries the subscriptions of what a page keeps of one device's
  * files: a conversation's watch, on the relay or its direct channel, or a
  * device's folder dialog's.
  *
- * The kept files (`HostFiles`) hand each subscription to the watch of the view
+ * The kept files (`DeviceFiles`) hand each subscription to the watch of the view
  * that brought it. The watch is open while it carries any, and it:
  *
  * - subscribes again to all of them each time it opens,
  * - renews them in one message every 3 minutes, and
- * - tells the kept files what the Host says of each.
+ * - tells the kept files what the device says of each.
  *
  * Nothing here decides whether an entry is current. A subscription holds what the
- * Host said, its `since`, the `at` of its last change and when its lease began as
+ * device said, its `since`, the `at` of its last change and when its lease began as
  * the page counts it, and the kept files compare those with each answer's
  * number.
  */
@@ -19,7 +19,7 @@ import { shallowReactive } from 'vue'
 import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '../transport/liveness'
 
 /**
- * How long a lease runs; the page counts it from when it sent the message the Host's
+ * How long a lease runs; the page counts it from when it sent the message the device's
  * answer acknowledges, the backend from when the message arrives, so the page always
  * believes a lease over first and never trusts a subscription the backend let go.
  */
@@ -31,11 +31,11 @@ export const RENEW_MS = 3 * 60 * 1000
 /** The most subscriptions or keys one message names. */
 const MESSAGE_KEYS = 4096
 
-/** What a subscription watches, and so when it changes (`crates/runner-host/src/subscriptions.rs`). */
+/** What a subscription watches, and so when it changes (`crates/runner-device/src/subscriptions.rs`). */
 export type SubscriptionKind = 'file' | 'folder_names' | 'folder_details' | 'worktree' | 'head'
 
 /**
- * What a subscription is to: a kind and an absolute path on the Host, and for a
+ * What a subscription is to: a kind and an absolute path on the device, and for a
  * folder the ending of the entry names that count, such as `.yaml`; without one,
  * every entry counts.
  */
@@ -45,7 +45,7 @@ export interface Subject {
   suffix?: string
 }
 
-/** Where in the Host's run of numbers a read began; another epoch's numbers compare with nothing. */
+/** Where in the device's run of numbers a read began; another epoch's numbers compare with nothing. */
 export interface ReadAt {
   epoch: string
   number: number
@@ -93,7 +93,7 @@ export type OpenWatchLink = (handlers: WatchLinkHandlers) => WatchLink
 
 /**
  * Where a subscription stands: subscribed and not yet answered, or after
- * its watch closed (`waiting`); watched (`live`); or over, the Host unable
+ * its watch closed (`waiting`); watched (`live`); or over, the device unable
  * to watch it or the page past its limits, until the watch opens again.
  */
 export type SubscriptionStatus = 'waiting' | 'live' | 'unavailable' | 'refused'
@@ -101,8 +101,8 @@ export type SubscriptionStatus = 'waiting' | 'live' | 'unavailable' | 'refused'
 /** One subscription of the kept files, shared by every entry that depends on its subject. */
 export class Subscription {
   /**
-   * What the views read of it. `reason` is the Host's own words for a
-   * subscription it could not watch; none for one the Host refused for the
+   * What the views read of it. `reason` is the device's own words for a
+   * subscription it could not watch; none for one the device refused for the
    * page's limits, which the page words itself (`unwatched`).
    */
   readonly state = shallowReactive({ status: 'waiting' as SubscriptionStatus, reason: null as string | null })
@@ -130,13 +130,13 @@ export class Subscription {
     return (this.leaseFrom ?? this.subscribedAt) + LEASE_MS <= now
   }
 
-  /** Whether the Host watches it, as the page counts the lease at `now`. */
+  /** Whether the device watches it, as the page counts the lease at `now`. */
   watching(now: number): boolean {
     return this.state.status === 'live' && !this.lapsed(now)
   }
 }
 
-/** Whoever keeps the entries a watch's subscriptions serve: it hears each time the Host said something of them. */
+/** Whoever keeps the entries a watch's subscriptions serve: it hears each time the device said something of them. */
 export interface WatchListener {
   heard(subscriptions: readonly Subscription[]): void
 }
@@ -148,14 +148,14 @@ interface SentRenewal {
 }
 
 /**
- * One watch of a Host. It connects while it carries a subscription and the
- * Host is online, and again after its reconnect waits when the connection
+ * One watch of a device. It connects while it carries a subscription and the
+ * device is online, and again after its reconnect waits when the connection
  * ends, which ends every subscription on it.
  *
- * While the Host is offline, as its owner holds it (`hostOnline`), the watch
- * is dormant: it opens nothing, and its owner's `online` when the Host
- * returns opens it once. Without an owner, as for a simulated Host, the
- * Host counts as online.
+ * While the device is offline, as its owner holds it (`deviceOnline`), the watch
+ * is dormant: it opens nothing, and its owner's `online` when the device
+ * returns opens it once. Without an owner, as for a simulated device, the
+ * device counts as online.
  *
  * A direct channel's watch that brings nothing, not even a heartbeat, for 75
  * seconds is broken.
@@ -178,7 +178,7 @@ export class WatchChannel {
     private readonly listener: WatchListener,
     private readonly open: OpenWatchLink,
     private readonly name = 'file watch',
-    private readonly hostOnline: () => boolean = () => true,
+    private readonly deviceOnline: () => boolean = () => true,
   ) {}
 
   /** The watch carries `subscription` from now on: subscribed while open, and each time it opens. */
@@ -216,7 +216,7 @@ export class WatchChannel {
   }
 
   /**
-   * The path to the Host changed (`packages/web/src/direct/index.ts`): an open watch reopens on the other path at once, as after a
+   * The path to the device changed (`packages/web/src/direct/index.ts`): an open watch reopens on the other path at once, as after a
    * lost connection but without its wait.
    */
   move(): void {
@@ -229,9 +229,9 @@ export class WatchChannel {
   }
 
   /**
-   * The watch no longer serves its Host, as a conversation's after it moved to
+   * The watch no longer serves its device, as a conversation's after it moved to
    * another. It lets go of everything it carries, which waits, unwatched, for a
-   * view whose watch serves the Host to take it, and closes.
+   * view whose watch serves the device to take it, and closes.
    *
    * It carries again what it is given later.
    */
@@ -251,7 +251,7 @@ export class WatchChannel {
       this.listener.heard(subscriptions)
   }
 
-  /** The Host came online: a watch waiting to connect again, or dormant, connects now. */
+  /** The Device came online: a watch waiting to connect again, or dormant, connects now. */
   online(): void {
     if (this.link || this.carried.size === 0)
       return
@@ -286,9 +286,9 @@ export class WatchChannel {
     })
   }
 
-  /** Opens a connection, unless it carries nothing or its Host is offline, which leaves it dormant until `online`. */
+  /** Opens a connection, unless it carries nothing or its device is offline, which leaves it dormant until `online`. */
   private connect(): void {
-    if (this.carried.size === 0 || !this.hostOnline())
+    if (this.carried.size === 0 || !this.deviceOnline())
       return
     let link: WatchLink | null = null
     const current = () => link !== null && this.link === link
@@ -338,7 +338,7 @@ export class WatchChannel {
   }
 
   /**
-   * Every 3 minutes: the subscriptions the Host still holds are renewed in
+   * Every 3 minutes: the subscriptions the device still holds are renewed in
    * one message, and those whose lease the page counts as over are
    * subscribed again.
    */

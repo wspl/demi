@@ -144,8 +144,8 @@ const rules: readonly ElementRule[] = [
     kind: 'Empty state',
     where: 'Menu and ChangeTree emptyText, an empty list; a search or filter that matches nothing says No results',
     style: 'sentence',
-    right: ['No hosts', 'No results', 'Empty folder'],
-    wrong: ['No Hosts Found', 'No hosts found.'],
+    right: ['No devices', 'No results', 'Empty folder'],
+    wrong: ['No Devices Found', 'No devices found.'],
     source: { label: `${SYSTEM_SETTINGS}: No Accounts, No external volumes are connected.` },
   },
   {
@@ -184,8 +184,8 @@ const rules: readonly ElementRule[] = [
     kind: 'Placeholder',
     where: 'A single-line TextInput placeholder, a menu’s filter; a multi-line text area has none',
     style: 'placeholder',
-    right: ['Search hosts', 'name@example.com', 'owner/repository'],
-    wrong: ['Search Hosts.', 'Keep answers brief. Run the tests before you finish.'],
+    right: ['Search devices', 'name@example.com', 'owner/repository'],
+    wrong: ['Search Devices.', 'Keep answers brief. Run the tests before you finish.'],
     source: { label: 'Safari: Search or enter website name' },
   },
   {
@@ -610,7 +610,7 @@ const sources: readonly Required<Source>[] = [
         </GallerySpecimen>
         <GallerySpecimen variant="MenuItem · a cut value shows whole in its tip">
           <Menu class="w-72" :autofocus="false">
-            <MenuItem :icon="Globe" label="Host" value="release-automation.platform-infrastructure.example.com" @select="productWould('Choose Host')" />
+            <MenuItem :icon="Globe" label="Device" value="release-automation.platform-infrastructure.example.com" @select="productWould('Choose Device')" />
             <MenuItem :icon="Globe" label="Region" value="eu-central" @select="productWould('Choose Region')" />
           </Menu>
         </GallerySpecimen>

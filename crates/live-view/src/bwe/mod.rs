@@ -25,7 +25,7 @@
 //! `probe_bitrate_estimator.cc`. When to probe is `live-view`'s own
 //! (`probe`).
 //!
-//! For each chunk the page acknowledged, it takes when the Host sent it, when
+//! For each chunk the page acknowledged, it takes when the device sent it, when
 //! the page received it and when the acknowledgement arrived. This is what
 //! str0m takes from a video track's TWCC feedback. A probe's chunks are
 //! padding the page acknowledges like a picture's.
@@ -85,7 +85,7 @@ const INITIAL_BITRATE_WINDOW: Duration = Duration::from_millis(500);
 const BITRATE_WINDOW: Duration = Duration::from_millis(150);
 
 /// What orders acknowledged chunks that the page received at the same time:
-/// the order the Host sent them in, as TWCC's sequence numbers do.
+/// the order the device sent them in, as TWCC's sequence numbers do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct TwccSeq(u64);
 
@@ -98,16 +98,16 @@ impl From<u64> for TwccSeq {
 /// A chunk the page acknowledged.
 #[derive(Debug, Copy, Clone)]
 pub struct AckedPacket {
-    /// The order the Host sent it in.
+    /// The order the device sent it in.
     pub seq_no: TwccSeq,
     /// Its bytes on the wire.
     pub size: DataSize,
-    /// When the Host sent it.
+    /// When the device sent it.
     pub local_send_time: Instant,
     /// When the page received it, on a clock of the page's that only its
     /// differences mean anything on.
     pub remote_recv_time: Instant,
-    /// When its acknowledgement reached the Host.
+    /// When its acknowledgement reached the device.
     pub local_recv_time: Instant,
 }
 

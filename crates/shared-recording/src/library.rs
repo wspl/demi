@@ -1,4 +1,4 @@
-//! A conversation's recordings on a Host: starting one, keeping the newest
+//! A conversation's recordings on a device: starting one, keeping the newest
 //! few, and reading any of them.
 
 use std::{
@@ -21,7 +21,7 @@ use crate::{
     stored::{self, Contents},
 };
 
-/// The recordings of one conversation on this Host, in one directory that
+/// The recordings of one conversation on this device, in one directory that
 /// every program recording for the conversation shares: the ids are given
 /// once across them, and the newest [`KEPT`] stay, whoever made them.
 pub struct Library {

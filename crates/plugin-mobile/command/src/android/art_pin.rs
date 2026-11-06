@@ -1,4 +1,4 @@
-//! The Android device art a Host downloads (`art.rs`): AOSP's commit and
+//! The Android emulator art a device downloads (`art.rs`): AOSP's commit and
 //! the SHA-256 of each file of each device's folder. Written by
 //! `xtask device-art`; a new device's art comes with a new pin.
 

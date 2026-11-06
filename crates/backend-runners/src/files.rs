@@ -1,4 +1,4 @@
-//! What the product reads from a Host's files for the web app: directory
+//! What the product reads from a device's files for the web app: directory
 //! listings and file text. Text is what edit tracking and line counts read as
 //! text, UTF-8 without a NUL byte, up to the size an edit snapshot keeps, so a
 //! file the runner counted lines for is one the web app shows.
@@ -6,8 +6,8 @@
 use bytes::BytesMut;
 use demi_command_protocol::EDIT_FILE_BYTES;
 pub use demi_command_protocol::{TextRefusal, text_of};
-use demi_runner_client::RemoteHost;
-use demi_host_interface::{ByteRange, ByteStream, FileKind, HostError, LinkTarget};
+use demi_runner_client::RemoteDevice;
+use demi_device_interface::{ByteRange, ByteStream, FileKind, DeviceError, LinkTarget};
 use demi_runner_protocol::wire::{self, ReadAt};
 use futures_util::StreamExt as _;
 use demi_web_api_protocol::files::DirectoryEntry;
@@ -16,7 +16,7 @@ use demi_web_api_protocol::files::DirectoryEntry;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum TextError {
     #[error(transparent)]
-    Host(#[from] HostError),
+    Device(#[from] DeviceError),
     #[error(transparent)]
     Refused(#[from] TextRefusal),
 }
@@ -41,12 +41,12 @@ pub async fn text_of_stream(mut stream: ByteStream) -> Result<String, TextError>
 }
 
 /// A directory's entries with their metadata, which the listing carries,
-/// so the whole answer is one request to the Host (`crates/runner-host/src/lib.rs`), and the Host's number before it listed.
+/// so the whole answer is one request to the device (`crates/runner-device/src/lib.rs`), and the device's number before it listed.
 pub async fn browse_directory(
-    host: &RemoteHost,
+    device: &RemoteDevice,
     path: &str,
-) -> Result<(Vec<DirectoryEntry>, ReadAt), HostError> {
-    let (entries, read_at) = host.list_directory(path).await?;
+) -> Result<(Vec<DirectoryEntry>, ReadAt), DeviceError> {
+    let (entries, read_at) = device.list_directory(path).await?;
     let entries = entries
         .into_iter()
         .map(|entry| DirectoryEntry {

@@ -13,7 +13,7 @@ use crate::error::ErrorCode;
 use crate::ids::{ConversationId, DeviceId, ProjectId, ProviderId, WorkspaceId};
 use crate::query::StrictBool;
 use crate::drafts::ConversationDraft;
-use crate::hosts::ConversationHosts;
+use crate::attached_devices::ConversationDevices;
 use crate::panel::{HeldState, WorkPanel};
 use crate::permissions::ConversationPermissions;
 use crate::saved::SavedListing;
@@ -301,11 +301,11 @@ pub struct ConversationMetadata {
     /// conversation.
     #[garde(dive)]
     pub panel_states: Vec<HeldState>,
-    /// The conversation's attached hosts, under a revision an attach, a
+    /// The conversation's attached devices, under a revision an attach, a
     /// detach or a rename raises.
-    pub hosts: ConversationHosts,
+    pub devices: ConversationDevices,
     /// The number of the conversation's latest attachment, 3 for `a3`, 0
-    /// before its first (`crates/backend-host-access/src/attachment_commands.rs`): a message
+    /// before its first (`crates/backend-device-access/src/attachment_commands.rs`): a message
     /// that names a higher number names one still to come, whose description
     /// the socket sends once it is uploaded.
     #[garde(range(max = MAX_SAFE_INTEGER))]

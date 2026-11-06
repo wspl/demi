@@ -2550,7 +2550,7 @@ html[data-theme="light"] .file-pill {
   color: var(--fg-muted);
 }
 
-/* Why a picture of the Host a reply shows is not shown, after the link to its
+/* Why a picture of the Device a reply shows is not shown, after the link to its
    file (`markdown/render.ts`). */
 .markdown-body .picture-reason {
   color: var(--fg-muted);
@@ -2710,7 +2710,7 @@ html[data-theme="light"] .file-pill {
   color: var(--color-fg-subtle);
 }
 
-/* A link that opens nothing is text; so is a path where the message has no Host to open it on. */
+/* A link that opens nothing is text; so is a path where the message has no Device to open it on. */
 .message-editor-text a[data-link="text"],
 .message-editor:not([data-files]) .message-editor-text a[data-link="file"] {
   color: inherit;

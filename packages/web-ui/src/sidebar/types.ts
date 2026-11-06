@@ -6,7 +6,7 @@ import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 
 export type { ListLoad }
 
-/** A checkout the agent works in, on the host that has it. Conversations that belong to one run there. */
+/** A checkout the agent works in, on the device that has it. Conversations that belong to one run there. */
 export type SidebarProject = {
   id: string
   /** The checkout's folder name, which the project goes by. */
@@ -16,16 +16,16 @@ export type SidebarProject = {
   savedScope: SavedScope
   /** How many messages the project's own list keeps; 0 while each conversation keeps its own. */
   savedCount: number
-} & SidebarProjectHost
+} & SidebarProjectDevice
 
 /** How a project's conversations keep their messages saved for later. */
 export type SavedScope = 'conversation' | 'project'
 
 /** Where a project's checkout lives: the user's Cloud, which is woken when needed, or a device, which is connected or not. */
-export type SidebarProjectHost =
-  | { hostKind: 'cloud' }
+export type SidebarProjectDevice =
+  | { targetKind: 'cloud' }
   | {
-    hostKind: 'device'
+    targetKind: 'device'
     /** The device the row's end marks, with its state, or as one since removed. */
     device: SidebarDevice
   }

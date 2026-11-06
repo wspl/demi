@@ -17,7 +17,7 @@ demi-agent-store = { path = "../agent-store" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-backend-accounts = { path = "../backend-accounts" }
 demi-backend-cloud = { path = "../backend-cloud" }
-demi-backend-host-access = { path = "../backend-host-access" }
+demi-backend-device-access = { path = "../backend-device-access" }
 demi-backend-blobs = { path = "../backend-blobs" }
 demi-backend-providers = { path = "../backend-providers" }
 demi-backend-runners = { path = "../backend-runners" }
@@ -35,7 +35,7 @@ demi-provider-registry = { path = "../provider-registry" }
 demi-provider-relay = { path = "../provider-relay" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-shared-lanes = { path = "../shared-lanes" }
-demi-host-interface = { path = "../host-interface" }
+demi-device-interface = { path = "../device-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 axum = { version = "0.8", features = ["ws"] }
 axum-extra = { version = "0.12", features = ["cookie", "typed-header"] }

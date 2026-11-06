@@ -12,7 +12,7 @@
 //!
 //! Chrome for Testing is used because its downloads are versioned and never
 //! update themselves, so one release can be verified and reproduced across
-//! Hosts. A Host installs the pinned artifact, never a moving channel.
+//! devices. A device installs the pinned artifact, never a moving channel.
 //!
 //! The capability is offered only where a verified artifact of that exact
 //! version exists: a missing one reports it unavailable and nothing stands in.

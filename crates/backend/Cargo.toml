@@ -22,7 +22,7 @@ demi-shared-cli = { path = "../shared-cli" }
 demi-backend-accounts = { path = "../backend-accounts" }
 demi-backend-cloud = { path = "../backend-cloud" }
 demi-backend-http = { path = "../backend-http" }
-demi-backend-host-access = { path = "../backend-host-access" }
+demi-backend-device-access = { path = "../backend-device-access" }
 demi-backend-blobs = { path = "../backend-blobs" }
 demi-backend-providers = { path = "../backend-providers" }
 demi-backend-runners = { path = "../backend-runners" }
@@ -87,7 +87,7 @@ reqwest.workspace = true
 # runs the backend against.
 # `testing` for `built_program`, which finds the runner the workspace built.
 demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
-demi-host-interface = { path = "../host-interface" }
+demi-device-interface = { path = "../device-interface" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 futures-util.workspace = true
 rustix = { version = "1", features = ["process"] }

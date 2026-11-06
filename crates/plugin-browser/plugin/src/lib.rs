@@ -3,7 +3,7 @@
 //! The plugin holds:
 //!
 //! - the `demi browser` group, every leaf bound to an operation of the
-//!   `demi.browser` command package, which runs it on the Host;
+//!   `demi.browser` command package, which runs it on the device;
 //! - the `browser` user stream of the live view;
 //! - the tab list and tab methods of the work panel's `browser` kind;
 //! - the kind's tabs on the backend.
@@ -45,7 +45,7 @@ impl Browser {
         let mut manifest = Manifest::new(
             PluginId::try_from("browser").expect("a valid plugin id"),
             "Browser",
-            "Gives the agent a browser on the conversation's host, which it drives with demi browser and you watch and use in the work panel.",
+            "Gives the agent a browser on the conversation's device, which it drives with demi browser and you watch and use in the work panel.",
         );
         manifest.commands = commands().manifest_commands();
         manifest.streams = vec![live_stream()];
@@ -99,7 +99,7 @@ fn live_stream() -> Stream {
         )
         .constant(
             "LIVE_CAPTURE_UNAVAILABLE",
-            "A notice's code when the Host cannot capture the watched tab.",
+            "A notice's code when the device cannot capture the watched tab.",
             live::CAPTURE_UNAVAILABLE,
         )
         .constant(
@@ -109,7 +109,7 @@ fn live_stream() -> Stream {
         )
         .constant(
             "LIVE_CAPTURE_STOPPED",
-            "A notice's code when the Host stopped trying to capture until the viewer asks again.",
+            "A notice's code when the device stopped trying to capture until the viewer asks again.",
             live::CAPTURE_STOPPED,
         )
 }

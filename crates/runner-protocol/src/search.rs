@@ -1,5 +1,5 @@
 //! A search of the names and the text of the files under a directory
-//! (`crates/runner-host/src/search.rs`): the text the page sends, and what the
+//! (`crates/runner-device/src/search.rs`): the text the page sends, and what the
 //! search writes, one JSON object per line, as the relay's route and a direct
 //! `search` channel both carry it.
 //!

@@ -15,7 +15,7 @@
 
 use demi_shared_types::{Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::ModelSettings;
-use demi_host_paths::HostPaths;
+use demi_device_paths::DevicePaths;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProjectId, UserId, WorkspaceId};
 use demi_runner_protocol::wire::RunnerPlatform;
@@ -311,7 +311,7 @@ impl ControlService {
     }
 }
 
-/// What a Host's first naming of a directory changed.
+/// What a device's first naming of a directory changed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DirectoryNamed {
     /// The conversations whose directory is now spelled otherwise, which
@@ -324,7 +324,7 @@ pub struct DirectoryNamed {
     pub saved: Vec<ConversationId>,
 }
 
-/// The directory a conversation's target stores as typed, which its Host
+/// The directory a conversation's target stores as typed, which its device
 /// names on its first use.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypedDirectory {
@@ -335,7 +335,7 @@ pub enum TypedDirectory {
 }
 
 impl ControlService {
-    /// Replaces the directory `typed` with `canonical`, as its Host names it.
+    /// Replaces the directory `typed` with `canonical`, as its device names it.
     ///
     /// - A project whose directory is another's spelling takes that spelling:
     ///   the project is renamed in place, with the conversations in it.
@@ -344,7 +344,7 @@ impl ControlService {
     ///   project.
     /// - A conversation of the Cloud takes the spelling for its directory.
     ///
-    /// A directory that is the Host's home stays as typed, which is no
+    /// A directory that is the device's home stays as typed, which is no
     /// project's. Answers what changed.
     pub async fn name_directory(
         &self,
@@ -360,7 +360,7 @@ impl ControlService {
                         return Ok(DirectoryNamed::default());
                     };
                     let current = matches!(&record.target, super::Selection::Cloud { path: Some(current) } if *current == path);
-                    let canonical = HostPaths::Posix.trimmed(&canonical).to_owned();
+                    let canonical = DevicePaths::Posix.trimmed(&canonical).to_owned();
                     if !current || canonical == path {
                         return Ok(DirectoryNamed::default());
                     }

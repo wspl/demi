@@ -1,4 +1,4 @@
-//! Where the package keeps what it fetched, under the Host's temporary
+//! Where the package keeps what it fetched, under the device's temporary
 //! directory's `demi-fetch/`: the pages read, and each file that is no text
 //! in a directory named after its URL, `demi-fetch/<hash>/<name>`, so two
 //! URLs with the same file name never overwrite each other.

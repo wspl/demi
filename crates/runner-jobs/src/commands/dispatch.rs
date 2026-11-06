@@ -62,7 +62,7 @@ impl Handler for Dispatcher {
 /// A local invocation's end as its caller sees it: a failure other than a
 /// cancellation is told on its standard error as a runtime error of the
 /// program or command `name`, `<name>: <error>`, and ends it with 1
-/// (`crates/host-interface/src/rpc.rs`).
+/// (`crates/device-interface/src/rpc.rs`).
 pub async fn reported(
     result: Result<Completion, ResidentError>,
     output: &Output,

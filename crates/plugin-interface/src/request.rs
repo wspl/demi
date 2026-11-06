@@ -1,8 +1,8 @@
 //! What the plugin host asks of a plugin, and what the plugin answers. Each request names its user,
 //! since a plugin process would serve every user.
 
-use demi_host_interface::{PortError, RpcError, RpcInvocation};
-use demi_host_paths::HostPaths;
+use demi_device_interface::{PortError, RpcError, RpcInvocation};
+use demi_device_paths::DevicePaths;
 use demi_shared_types::{NodeId, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use demi_web_api_protocol::panel::PanelTab;
@@ -34,7 +34,7 @@ pub enum Request {
     ///
     /// - `seen`: the text of its own blocks the model receives, oldest first.
     /// - `cwd`: the node's working directory.
-    /// - `paths`: how its Host writes paths (`crates/runner-shell/src/lib.rs`).
+    /// - `paths`: how its device writes paths (`crates/runner-shell/src/lib.rs`).
     /// - `project`: what the plugin's project search last found in the
     ///   conversation's project directory, for a plugin that declares one; none
     ///   until a search answered.
@@ -43,25 +43,25 @@ pub enum Request {
         conversation: ConversationId,
         node: NodeId,
         cwd: String,
-        paths: HostPaths,
+        paths: DevicePaths,
         turn: TurnId,
         seen: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         project: Option<Value>,
     },
     /// The plugin declares a project search: it searches `directory`, the
-    /// conversation's project directory, on its primary Host, with the port's
+    /// conversation's project directory, on its primary device, with the port's
     /// reads, and answers what it found and what tells of a change to it.
     ///
     /// The backend keeps the answer. It searches again when the runner says one
-    /// of `watch` changed or the Host comes online again, and gives what it
+    /// of `watch` changed or the device comes online again, and gives what it
     /// holds to each context request
-    /// (`crates/backend-host-access/src/plugin_files.rs`).
+    /// (`crates/backend-device-access/src/plugin_files.rs`).
     ProjectSearch {
         user: UserId,
         conversation: ConversationId,
         directory: String,
-        paths: HostPaths,
+        paths: DevicePaths,
     },
     /// The plugin's page state: the user's, or, with `conversation`, that
     /// conversation's.
@@ -69,7 +69,7 @@ pub enum Request {
     /// With `held`, the state as it goes along with the conversation's work
     /// panel ([`crate::State::held`]): what its package last reported, which
     /// the backend keeps; `Reply::Done` when it never did. No page state asks
-    /// a Host.
+    /// a device.
     PageState {
         user: UserId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -96,20 +96,20 @@ pub enum Request {
         tab: PanelTab,
     },
     /// The command package the plugin's commands bind said `message` about
-    /// `conversation`, from a resident on one of the conversation's Hosts.
+    /// `conversation`, from a resident on one of the conversation's devices.
     ///
     /// The package says the whole of its state the moment it changes, and
-    /// again whenever a runner's connection starts: the plugin never asks a Host.
+    /// again whenever a runner's connection starts: the plugin never asks a device.
     /// What a message says is for the package and its plugin to agree. The
     /// runner and the backend only carry it, and a plugin hears only the
-    /// package its commands bind. `device` is the Host it came from.
+    /// package its commands bind. `device` is the device it came from.
     PackageMessage {
         user: UserId,
         conversation: ConversationId,
         device: DeviceId,
         message: Value,
     },
-    /// What the plugin's command package kept for `conversation` on a Host
+    /// What the plugin's command package kept for `conversation` on a device
     /// ended without the package saying so: its resident crashed, its runner
     /// started anew or its Cloud stopped.
     PackageLost {

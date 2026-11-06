@@ -27,14 +27,14 @@
 //!
 //! - A request on a connection already open answers 503 `backend_closing`.
 //! - A pipe a runner would open is refused, so shutdown reads nothing from a
-//!   Host.
-//! - It stops nothing that runs on a Host: commands and Clouds go on, and the
+//!   device.
+//! - It stops nothing that runs on a device: commands and Clouds go on, and the
 //!   next start takes them up.
 //!
 //! Every step runs even when an earlier one fails, the failures are reported
 //! together, and the process exits with a failure status.
 //!
-//! A page cannot hold up shutdown, nor can a Host:
+//! A page cannot hold up shutdown, nor can a device:
 //!
 //! - A page connection's close waits at most a second for the page to take
 //!   the close frame.

@@ -11,8 +11,8 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_backend_host_access::host_commands::conversation_of;
-use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
+use demi_backend_device_access::device_commands::conversation_of;
+use demi_device_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_shared_types::output::{Fields, warning};
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::push::PushMessage;

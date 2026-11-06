@@ -3,7 +3,7 @@
     "turnStopped": "El turno se detuvo con un error.",
     "saveCredential": "¿Guardar la credencial “{name}”?"
   },
-  "hosts": {
+  "devices": {
     "unavailableDevice": "Dispositivo no disponible"
   },
   "failures": {

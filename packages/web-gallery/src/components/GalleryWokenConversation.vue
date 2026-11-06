@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ConversationSchedule } from '@demicodes/web-ui/schedules/types'
-import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
-import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import DeviceMenu from '@demicodes/web-ui/targets/DeviceMenu.vue'
+import type { MenuDevice } from '@demicodes/web-ui/targets/types'
 import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { wokenConversationBlocks } from '../fixtures/schedules'
 import { PROJECT_ROOT } from '../fixtures/project'
@@ -20,7 +20,7 @@ const props = defineProps<{
   title: string
   /** The schedules that wake it, the first of which has woken it here. */
   schedules: readonly ConversationSchedule[]
-  host: HostMenuHost
+  device: MenuDevice
 }>()
 
 const emit = defineEmits<{
@@ -47,13 +47,13 @@ const messageFiles = useMessageFiles()
     @retry="flow.resume()"
   >
     <template #place>
-      <HostMenu
-        :primary-host="host"
+      <DeviceMenu
+        :primary-device="device"
         :conversation-id="id"
-        :attached-hosts="[]"
+        :attached-devices="[]"
         :devices="[]"
         @choose="productWould('Move the Conversation')"
-        @detach="productWould('Detach the Device')"
+        @detach="productWould('Detach the device')"
         @connect="productWould('Add Device')"
       />
     </template>

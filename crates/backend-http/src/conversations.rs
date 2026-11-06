@@ -20,7 +20,7 @@ use demi_backend_database::conversation_attachments::{self, AttachmentNumber};
 use demi_backend_database::tree;
 use demi_backend_page_sync::Part;
 use demi_runner_client::OpenedRead;
-use demi_host_interface::ByteRange;
+use demi_device_interface::ByteRange;
 use demi_web_api_protocol::workflows::ConversationWorkflowList;
 use demi_web_api_protocol::conversations::{
     BatchAnswer, BatchResult, ConversationBatch, ConversationDetail, ConversationPatch, CreatedConversation,
@@ -35,7 +35,7 @@ use super::body::JsonBody;
 use super::connection::Opened;
 use super::error::ApiError;
 use super::gate::AuthUser;
-use super::hosts;
+use super::attached_devices;
 use super::query::QueryParams;
 use demi_backend_user_shard::conversation::{AgentsError, ForkRefusal};
 use demi_backend_user_shard::services::Services;
@@ -106,7 +106,7 @@ pub(super) async fn create(
         .of(&user.id)
         .call(move |shard, _| async move { shard.create_conversation_sending(request).await })
         .await?
-        .map_err(hosts::refused)?;
+        .map_err(attached_devices::refused)?;
     let (status, record) = match creation {
         Creation::Created(record) => (StatusCode::CREATED, record),
         Creation::Existing(record) => (StatusCode::OK, record),
@@ -117,7 +117,7 @@ pub(super) async fn create(
                 "Conversation id is unavailable",
             ));
         }
-        Creation::Unselectable(reason) => return Err(hosts::refused(reason.into())),
+        Creation::Unselectable(reason) => return Err(attached_devices::refused(reason.into())),
     };
     let (conversation, metadata) = state
         .shards
@@ -135,12 +135,12 @@ pub(super) async fn create(
 /// copy's place, asked once each time the page opens a card of the attachment.
 ///
 /// It answers 204 while the file is a regular file on the conversation's
-/// primary Host, and that Host is the device the attachment was uploaded
+/// primary device, and that device is the device the attachment was uploaded
 /// from; no byte of the file is read. It answers 404 `not_found` for an
 /// attachment the conversation does not have or that names no file, for a
-/// file that is not there, and while the conversation runs on another Host. It
-/// is a look, admitted as a user stream is (`look_at_host_on`): a stopped Cloud
-/// answers 409 `host_stopped` and is not woken, and an offline device answers
+/// file that is not there, and while the conversation runs on another device. It
+/// is a look, admitted as a user stream is (`look_at_device_on`): a stopped Cloud
+/// answers 409 `device_stopped` and is not woken, and an offline device answers
 /// as it does for any look.
 pub(super) async fn attachment_file(
     State(state): State<AppState>,
@@ -153,7 +153,7 @@ pub(super) async fn attachment_file(
         ApiError::new(
             StatusCode::NOT_FOUND,
             ErrorCode::NotFound,
-            format!("The file attachment {attachment} was uploaded from is not on the conversation's Host"),
+            format!("The file attachment {attachment} was uploaded from is not on the conversation's device"),
         )
     };
     let number: AttachmentNumber = attachment.parse().map_err(|_| no_file())?;
@@ -171,12 +171,12 @@ pub(super) async fn attachment_file(
         .of(&user.id)
         .call(move |shard, cancel| async move {
             shard
-                .host_shard()
-                .look_at_host_on(&conversation, &source.host, &cancel, async |host| {
+                .device_shard()
+                .look_at_device_on(&conversation, &source.device, &cancel, async |device| {
                     // A read of no bytes opens the file, as a `HEAD` of
                     // `fs/raw` does; a path that is no regular file fails it.
                     let empty = ByteRange { offset: 0, length: Some(0) };
-                    host.host.read_pipe(&source.path, empty).await.ok().map(|_: OpenedRead| ())
+                    device.device.read_pipe(&source.path, empty).await.ok().map(|_: OpenedRead| ())
                 })
                 .await
                 .map_err(ApiError::from)
@@ -293,7 +293,7 @@ pub(super) async fn batch(
 
 /// `GET /conversations/:id`: the conversation as the sidebar lists it, its
 /// metadata with its entity tag and its agents at their version. It answers from the live tree or, with none, from the
-/// store, and wakes no Host.
+/// store, and wakes no device.
 pub(super) async fn detail(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -308,7 +308,7 @@ pub(super) async fn detail(
             let conversation = shard.conversation_summary(record.clone()).await?;
             let metadata = shard.conversation_metadata(record).await?;
             let (agents, entries) = shard.conversation_agents(&id).await.map_err(|error| match error {
-                AgentsError::Host(error) => ApiError::from(error),
+                AgentsError::Device(error) => ApiError::from(error),
                 AgentsError::Unreadable(error) => ApiError::new(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     ErrorCode::ConversationUnreadable,

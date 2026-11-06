@@ -1,5 +1,5 @@
 /**
- * Completion for a field that takes a Host path.
+ * Completion for a field that takes a device path.
  *
  * 1. The text before the caret names a directory and a query.
  * 2. The directory's entries that match the query become a menu.
@@ -11,7 +11,7 @@ import { computed, ref, watch, type ComputedRef } from 'vue'
 import { stepHighlight } from '../composables/list-highlight'
 import fuzzysort from 'fuzzysort'
 import { compareFileNames } from './file-browser-state'
-import { expandHome, isHiddenName, normalizePath, resolveHostPath } from './paths'
+import { expandHome, isHiddenName, normalizePath, resolveDevicePath } from './paths'
 import { useShowing } from './showing'
 import type { FileBrowserEntry, FileBrowserSource } from './types'
 
@@ -58,7 +58,7 @@ export function completionSpot(
   const expanded = expandHome(typed, places.home)
   if (places.base === undefined && !expanded.startsWith('/'))
     return null
-  const absolute = places.base === undefined ? expanded : resolveHostPath(places.base, expanded)
+  const absolute = places.base === undefined ? expanded : resolveDevicePath(places.base, expanded)
   return { directory: normalizePath(absolute), query: before.slice(start), start }
 }
 

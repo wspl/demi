@@ -19,7 +19,7 @@ import { schemaRefusal } from '@demicodes/protocol'
 import type { Pinia } from 'pinia'
 import { z } from 'zod'
 import type { PanelTabKind, TabCommand } from '../agent/panel-kinds/kind'
-import type { HostArtifact, HostDownload } from '../devices/installed'
+import type { DeviceArtifact, DeviceDownload } from '../devices/installed'
 import type { ChangeSetSource, ReadCallChange } from '../files/changes'
 import type { CommitHistorySource } from '../files/history'
 import type { Repositories } from '../files/repositories'
@@ -128,7 +128,7 @@ export interface PluginCallOptions {
  * A conversation's files: a product service, whichever page shows them.
  */
 export interface ConversationFileService {
-  /** The Host's file tree and file contents, while the conversation's Host is known. */
+  /** The device's file tree and file contents, while the conversation's device is known. */
   readonly tree: { source: FileBrowserSource; root: string; name?: string } | null
   /** Where the conversation's work runs, which a retained edit's paths are relative to. */
   readonly root: string | null
@@ -140,24 +140,24 @@ export interface ConversationFileService {
   readonly directories: readonly FileDirectory[]
   /**
    * The uncommitted changes of the working tree under `directory`, on the
-   * conversation's Host; the conversation's own without one.
+   * conversation's device; the conversation's own without one.
    */
   changes(directory?: string): ChangeSetSource
   /**
    * The history of the repository the working tree under `directory` is
    * in, the conversation's without one (`packages/web-ui/src/files/history.ts`);
-   * null while the conversation's Host is not known.
+   * null while the conversation's device is not known.
    */
   history(directory?: string): CommitHistorySource | null
   /**
    * The repositories the conversation's directory is in or holds, and those
    * where its agents changed files (`packages/web-ui/src/files/repositories.ts`);
-   * null until a component shows them and the Host has answered. A Host that
+   * null until a component shows them and the device has answered. A device that
    * cannot list them lists none.
    */
   repositories(): Repositories | null
   /**
-   * The calling component shows the repositories: the service asks the Host
+   * The calling component shows the repositories: the service asks the device
    * while the component is on screen, and again as the agents change files in
    * a folder it did not ask about, until the component's scope ends.
    */
@@ -177,7 +177,7 @@ export interface ConversationFileService {
    * names, read at each change, the conversation's when it names none, and none
    * while it is null, as while the view waits to learn which one it shows.
    *
-   * The service follows the Host's reports for it and keeps `changes` of it current
+   * The service follows the device's reports for it and keeps `changes` of it current
    * until the component's scope ends.
    */
   showChanges(directory?: () => string | undefined | null): void
@@ -263,14 +263,14 @@ export interface PageHost {
     conversation: string | null,
     options?: PluginCallOptions,
   ): Promise<unknown>
-  /** The user stream `name` of `conversation`'s primary Host. */
+  /** The user stream `name` of `conversation`'s primary device. */
   stream(name: string, conversation: string): OpenUserStream
-  /** What `conversation`'s primary Host holds of `plugin`'s packages, read reactively. */
-  installed(plugin: string, conversation: string): readonly HostArtifact[]
-  /** What `conversation`'s primary Host downloads of `plugin`'s packages now, read reactively. */
-  downloading(plugin: string, conversation: string): readonly HostDownload[]
-  /** Whether `conversation`'s primary Host is the user's Cloud while it does not run, read reactively. */
-  hostStarting(conversation: string): boolean
+  /** What `conversation`'s primary device holds of `plugin`'s packages, read reactively. */
+  installed(plugin: string, conversation: string): readonly DeviceArtifact[]
+  /** What `conversation`'s primary device downloads of `plugin`'s packages now, read reactively. */
+  downloading(plugin: string, conversation: string): readonly DeviceDownload[]
+  /** Whether `conversation`'s primary device is the user's Cloud while it does not run, read reactively. */
+  deviceStarting(conversation: string): boolean
   files(conversation: string): ConversationFileService
   intents: IntentService
   /** The panel tabs of one conversation. */
@@ -351,15 +351,15 @@ export interface ConversationPlugin {
   /** Calls a method of the conversation scope. */
   call<T>(method: string, params: object, result: z.ZodType<T>, options?: PluginCallOptions): Promise<T>
   stream(name: string): OpenUserStream
-  /** What the conversation's primary Host holds of the plugin's packages, kept while it is offline. */
-  readonly installed: ComputedRef<readonly HostArtifact[]>
-  /** What the conversation's primary Host downloads of the plugin's packages now, and how far each came. */
-  readonly downloading: ComputedRef<readonly HostDownload[]>
+  /** What the conversation's primary device holds of the plugin's packages, kept while it is offline. */
+  readonly installed: ComputedRef<readonly DeviceArtifact[]>
+  /** What the conversation's primary device downloads of the plugin's packages now, and how far each came. */
+  readonly downloading: ComputedRef<readonly DeviceDownload[]>
   /**
-   * Whether the conversation's primary Host is the user's Cloud while it
+   * Whether the conversation's primary device is the user's Cloud while it
    * does not run: work the user starts there waits for it to start first.
    */
-  readonly hostStarting: ComputedRef<boolean>
+  readonly deviceStarting: ComputedRef<boolean>
 }
 
 /** The page's own plugin. */
@@ -577,7 +577,7 @@ export function useReplyBlocks(): ComputedRef<ReadonlyMap<string, PageBlock>> {
 /** Any page, as the registry lists them. */
 export type AnyPluginPage = PluginPage
 
-const PAGE_HOST: InjectionKey<PageHost> = Symbol('page-host')
+const PAGE_HOST: InjectionKey<PageHost> = Symbol('page-device')
 const PAGE_CONTEXT: InjectionKey<PageContext> = Symbol('page-context')
 
 /** Gives the components below the host every page's context is made over. */
@@ -688,7 +688,7 @@ function conversationPlugin(host: PageHost, plugin: string, conversation: string
     stream: (name) => host.stream(name, conversation),
     installed: computed(() => host.installed(plugin, conversation)),
     downloading: computed(() => host.downloading(plugin, conversation)),
-    hostStarting: computed(() => host.hostStarting(conversation)),
+    deviceStarting: computed(() => host.deviceStarting(conversation)),
   }
 }
 
@@ -722,14 +722,14 @@ class UserStateRefusals {
   }
 }
 
-const refusalsByHost = new WeakMap<PageHost, Map<string, UserStateRefusals>>()
+const refusalsByDevice = new WeakMap<PageHost, Map<string, UserStateRefusals>>()
 
 /** The refusals of `plugin`'s user state over `host`, which all its readers share. */
 function userStateRefusals(host: PageHost, plugin: string): UserStateRefusals {
-  let byPlugin = refusalsByHost.get(host)
+  let byPlugin = refusalsByDevice.get(host)
   if (!byPlugin) {
     byPlugin = new Map()
-    refusalsByHost.set(host, byPlugin)
+    refusalsByDevice.set(host, byPlugin)
   }
   let refusals = byPlugin.get(plugin)
   if (!refusals) {
@@ -745,12 +745,12 @@ function userStateRefusals(host: PageHost, plugin: string): UserStateRefusals {
  * of its own.
  */
 const hostNumbers = new WeakMap<PageHost, number>()
-let hostsNumbered = 0
+let devicesNumbered = 0
 
-function hostNumber(host: PageHost): number {
+function deviceNumber(host: PageHost): number {
   let number = hostNumbers.get(host)
   if (number === undefined) {
-    number = ++hostsNumbered
+    number = ++devicesNumbered
     hostNumbers.set(host, number)
   }
   return number
@@ -829,9 +829,9 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
     errors,
     overlays: host.overlays,
     files: (conversation) => host.files(conversation),
-    store: (store) => pluginStore(host.pinia, hostNumber(host), page.plugin, store, context),
+    store: (store) => pluginStore(host.pinia, deviceNumber(host), page.plugin, store, context),
     cache: pluginCache(page.plugin),
-    operation: (action, key) => ({ action, target: `plugin:${hostNumber(host)}:${page.plugin}:${key}` }),
+    operation: (action, key) => ({ action, target: `plugin:${deviceNumber(host)}:${page.plugin}:${key}` }),
   }
   return context
 }

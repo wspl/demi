@@ -39,7 +39,7 @@ export function tooLargeNote(): string {
 
 /**
  * What the File view shows of a file that is not there, whatever its kind,
- * as the folder list says of a folder that is not: the Host's answer drawn
+ * as the folder list says of a folder that is not: the device's answer drawn
  * as itself, not a read that failed.
  */
 export function missingFile(): { icon: typeof FileX; label: string } {

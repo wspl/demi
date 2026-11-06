@@ -5,7 +5,7 @@
 //!
 //! It is skipped when:
 //!
-//! - its conversation's Host is offline, after the restart hold for one the
+//! - its conversation's device is offline, after the restart hold for one the
 //!   backend's own restart disconnected;
 //! - its conversation is gone or archived.
 //!
@@ -19,7 +19,7 @@ use std::rc::Rc;
 use demi_agent_server::AgentServer;
 use demi_agent_store::StoreError;
 use demi_backend_database::schedules::{RunCause, StoredRun, StoredSchedule};
-use demi_backend_host_access::root_of;
+use demi_backend_device_access::root_of;
 use demi_backend_page_sync::Part;
 use demi_shared_types::{
     Block, QueuedMessage, ScheduleId, ScheduleMark, ScheduleRunId, SessionPhase, Timestamp, TurnId, UserContentBlock,
@@ -113,7 +113,7 @@ pub(crate) enum Unrunnable {
 
 impl Shard {
     /// Whether `schedule`'s conversation can run a run now, or why not: it
-    /// is archived or gone, or its Host is offline.
+    /// is archived or gone, or its device is offline.
     pub(crate) async fn runnable(&self, schedule: &StoredSchedule) -> Result<(), Unrunnable> {
         let control = &self.services().control;
         let record = match control.conversation(schedule.conversation.clone()).await {
@@ -121,7 +121,7 @@ impl Shard {
             _ => return Err(Unrunnable::Gone),
         };
         let device = self
-            .host_shard()
+            .device_shard()
             .resolve_target(&record)
             .await
             .ok()
@@ -449,7 +449,7 @@ enum TurnEnd {
 /// How the turn `turn` of the conversation's root ended, from its blocks
 /// through the next message wherever they are (`AgentSession::turn_blocks`);
 /// none while its message waits or it runs.
-async fn turn_end<H: demi_agent_tools::HostResolver>(
+async fn turn_end<H: demi_agent_tools::DeviceResolver>(
     agent: &Rc<AgentServer<H>>,
     conversation: &ConversationId,
     turn: &TurnId,

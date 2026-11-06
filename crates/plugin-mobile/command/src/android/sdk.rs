@@ -1,4 +1,4 @@
-//! The Android SDK of the Host
+//! The Android SDK of the device
 //! (`crates/plugin-mobile/command/src/android/mod.rs`): its AVDs, as their
 //! files describe them, the emulators that run, as their discovery files
 //! say, and the emulator program that boots an AVD.
@@ -339,7 +339,7 @@ impl Sdk for Installed {
                 None => (std::process::Stdio::null(), std::process::Stdio::null()),
             };
             let mut command = tokio::process::Command::new(emulator);
-            // Without a window, with the host's GPU, and with JWT
+            // Without a window, with the device's GPU, and with JWT
             // authentication, which keeps the gRPC interface on localhost.
             command
                 .args(["-avd", avd, "-no-window", "-gpu", "host", "-no-boot-anim", "-grpc-use-jwt"])

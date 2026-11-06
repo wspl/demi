@@ -783,7 +783,7 @@ fn normalize_through(path: &Path, links: usize) -> PathBuf {
     normal
 }
 
-/// Inside the runner the event reaches the Host log; inside a command resident
+/// Inside the runner the event reaches the device log; inside a command resident
 /// it reaches standard error, which the runner drains into the same log.
 fn diagnostic(error: &io::Error) {
     tracing::warn!(event = "edit_record.failed", %error, "an edit could not be recorded");

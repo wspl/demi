@@ -13,8 +13,8 @@
 
 use std::rc::Weak;
 
-use demi_agent_tools::{HostResolver, WORKFLOWS_HELP, WorkflowListing, parse_workflow};
-use demi_host_interface::{GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
+use demi_agent_tools::{DeviceResolver, WORKFLOWS_HELP, WorkflowListing, parse_workflow};
+use demi_device_interface::{GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_shared_types::{
     WorkflowChoice,
     output::{Cell, Fields, Table, warning},
@@ -71,7 +71,7 @@ struct CheckArgs {
 
 /// The `workflows` group of every node: reads, which need no permission,
 /// and the pick, under the category the `agent` group declares.
-pub(super) fn workflows_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> GroupBuilder {
+pub(super) fn workflows_group<H: DeviceResolver>(server: Weak<AgentServer<H>>) -> GroupBuilder {
     let (category, _, _) = WORKFLOW_CATEGORY;
     GroupBuilder::new("workflows", WORKFLOWS_GROUP)
         .details(WORKFLOWS_HELP)
@@ -119,7 +119,7 @@ struct ListedEntry {
     worktree: bool,
     /// What the menu shows; null for a file that cannot be used.
     name: Option<String>,
-    /// The file on the Host.
+    /// The file on the device.
     path: String,
     /// Whether this conversation uses it.
     current: bool,
@@ -146,7 +146,7 @@ struct CheckedProfile {
     description: String,
 }
 
-async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn list<H: DeviceResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let listing = match call.tree.workflows().await {
         Ok(listing) => listing,
         Err(error) => return fail(&error),
@@ -187,7 +187,7 @@ async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Res
     out(&port, table.render()).await
 }
 
-async fn use_workflow<H: HostResolver>(call: Invoked<H, UseArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn use_workflow<H: DeviceResolver>(call: Invoked<H, UseArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let workflow = call.args.workflow.clone();
     let choice = match workflow.as_str() {
         GLOBAL => WorkflowChoice::Default,
@@ -225,7 +225,7 @@ async fn use_workflow<H: HostResolver>(call: Invoked<H, UseArgs>, port: RpcPort)
     out(&port, fields.render()).await
 }
 
-async fn check<H: HostResolver>(call: Invoked<H, CheckArgs>, port: RpcPort) -> Result<u8, RpcError> {
+async fn check<H: DeviceResolver>(call: Invoked<H, CheckArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let file = &call.args.file;
     let text = match call.tree.workflow_file(&call.cwd, file).await {
         Ok(text) => text,

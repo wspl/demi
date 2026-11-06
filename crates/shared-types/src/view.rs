@@ -181,7 +181,7 @@ serde_plain::derive_fromstr_from_deserialize!(StreamKind);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditedFile {
-    /// Absolute, as the Host names it.
+    /// Absolute, as the device names it.
     #[garde(length(chars, min = 1))]
     pub path: String,
     #[garde(skip)]
@@ -243,7 +243,7 @@ pub enum EditKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChangedFile {
-    /// Absolute, as the Host names it.
+    /// Absolute, as the device names it.
     #[garde(length(chars, min = 1))]
     pub path: String,
     #[garde(skip)]
@@ -322,7 +322,7 @@ serde_plain::derive_display_from_serialize!(EditKind);
 serde_plain::derive_fromstr_from_deserialize!(EditKind);
 
 /// A rename an embedded utility made, or a path an embedded `rm` removed: a
-/// folder once, by its own path. Paths are absolute, as the Host names
+/// folder once, by its own path. Paths are absolute, as the device names
 /// them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]

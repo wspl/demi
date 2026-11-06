@@ -3,7 +3,7 @@
 //! The plugin holds:
 //!
 //! - the `demi web` group, whose `search` runs here against Exa and whose
-//!   `fetch` is bound to the `demi.fetch` command package on the Host;
+//!   `fetch` is bound to the `demi.fetch` command package on the device;
 //! - the user's Exa account, signed in through the plugin host's OAuth sign-in
 //!   or as an API key kept as a secret;
 //! - the switches of search and fetch, which the user turns on and off
@@ -44,7 +44,7 @@ impl Web {
         let mut manifest = Manifest::new(
             PluginId::try_from("web").expect("a valid plugin id"),
             "Web",
-            "Searches the web with Exa and reads pages from the conversation's Host with demi web.",
+            "Searches the web with Exa and reads pages from the conversation's device with demi web.",
         );
         manifest.commands = web::commands().manifest_commands();
         manifest.features = web::features();

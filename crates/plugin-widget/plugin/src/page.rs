@@ -6,7 +6,7 @@
 //! - the page's encoding, UTF-8, which the page's text is;
 //! - a `<base>` that opens every link in a new tab;
 //! - Tailwind's browser build, which the plugin ships and serves
-//!   ([`LIBRARIES`]), or holds in itself for a document a Host's browser
+//!   ([`LIBRARIES`]), or holds in itself for a document a device's browser
 //!   draws, which reaches no backend;
 //! - a `@theme` with the color and font names of the product's own Tailwind
 //!   theme (`packages/web-ui/src/styles/base.css`), so `bg-surface` is the
@@ -92,7 +92,7 @@ pub(crate) const LIBRARIES: [Library; 2] = [TAILWIND, PICTURE];
 pub(crate) enum Tailwind {
     /// From the backend that serves the document.
     Served,
-    /// From the document itself, which a Host's browser draws away from
+    /// From the document itself, which a device's browser draws away from
     /// any backend.
     Held,
 }

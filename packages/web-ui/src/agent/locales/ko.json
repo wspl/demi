@@ -43,7 +43,7 @@
       "allowed": "이 대화에서 다음 작업을 허용했습니다: {action}",
       "denied": "이 대화에서 다음 작업을 거부했습니다: {action}",
       "reached": "다른 대화가 이 대화에 연락해 다음 작업이 허용되었습니다: {action}",
-      "moved": "이 대화를 이동했습니다: {host} · {path}",
+      "moved": "이 대화를 이동했습니다: {device} · {path}",
       "moveFailed": "이동하지 못했습니다: {reason}",
       "fromMain": "{agent}의 메시지",
       "mainAgent": "메인 에이전트",
@@ -67,7 +67,7 @@
       "failed": "실패",
       "stopped": "중지됨",
       "stopping": "중지하는 중…",
-      "waiting": "{host} 기다리는 중",
+      "waiting": "{device} 기다리는 중",
       "lost": "상태 알 수 없음",
       "exitCode": "종료 코드 {code}"
     },
@@ -75,7 +75,7 @@
       "lost": "상태 알 수 없음",
       "lostWhy": "상태 알 수 없음: {reason}",
       "stopping": "중지하는 중…",
-      "waiting": "{host} 기다리는 중",
+      "waiting": "{device} 기다리는 중",
       "running": "{span} 동안 실행 중",
       "exited": "{span} 후 종료됨",
       "exitedZero": "{span} 후 종료 코드 0으로 종료됨",
@@ -238,7 +238,7 @@
     "tabsOpen": "탭, {count}개 열림",
     "closePanel": "패널 닫기",
     "options": "{title}, 대화 옵션",
-    "hostState": "{name} {state}",
+    "deviceState": "{name} {state}",
     "renameTitle": "대화 이름 변경",
     "titleLabel": "대화 제목",
     "runsOn": "실행 위치",
@@ -281,9 +281,9 @@
     "lastTurnRate": "이전 턴 속도: {rate} 토큰/초"
   },
   "notices": {
-    "hostOffline": "{name} 호스트가 오프라인입니다.",
-    "moveHost": "다른 호스트로 이동…",
-    "hostOfflineLastSeen": "{name} 호스트가 오프라인입니다. 마지막 접속: {time}.",
+    "deviceOffline": "{name} 기기가 오프라인입니다.",
+    "moveDevice": "다른 기기로 이동…",
+    "deviceOfflineLastSeen": "{name} 기기가 오프라인입니다. 마지막 접속: {time}.",
     "pluginsChanged": "플러그인 변경됨"
   },
   "composer": {
@@ -435,7 +435,7 @@
     "nothingOpen": "열린 항목 없음",
     "noFiles": "파일 또는 변경 사항 없음",
     "reading": "{name} 읽는 중",
-    "hostOffline": "{name} 호스트가 오프라인입니다.",
-    "hostOfflineDetail": "다시 연결되면 파일, 변경 사항, 브라우저가 다시 표시됩니다."
+    "deviceOffline": "{name} 기기가 오프라인입니다.",
+    "deviceOfflineDetail": "다시 연결되면 파일, 변경 사항, 브라우저가 다시 표시됩니다."
   }
 }

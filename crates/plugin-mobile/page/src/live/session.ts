@@ -5,33 +5,33 @@
  * while the device is open.
  *
  * - The stream's one state of its own is whether it is looked at: whether a
- *   view of the device shows in a visible page. While it is, the Host sends
+ *   view of the device shows in a visible page. While it is, the runner sends
  *   the device's pictures; while it is not, the stream stays open and the
- *   Host sends nothing. Nothing here says which device is wanted: any number
+ *   runner sends nothing. Nothing here says which device is wanted: any number
  *   of devices stream at once, each on its own session.
  * - What a view shows of the device is one look: its frame, the screen's
  *   size, its orientation and the picture painted on its canvas, which change
  *   together. A picture paints only once its orientation's frame is ready,
  *   its images decoded, so the screen and its frame always show together.
  * - Each frame names the orientation and the screen it was drawn for, as the
- *   Host drew it, and is kept for that orientation only, once its images
+ *   runner drew it, and is kept for that orientation only, once its images
  *   decoded and its screen has that orientation's shape. Before the first
  *   picture, the look is the frame of the orientation the device has, and
- *   the Host is asked again while it has sent none of that orientation; a
+ *   the runner is asked again while it has sent none of that orientation; a
  *   frame that cannot be shown says so and can be asked for again.
  * - Each frame the module draws is kept in the plugin's disk cache, by the
  *   device's model, the size and pixel ratio it is drawn for and its
  *   orientation, with the device's last orientation, so the device shows its
- *   frame at once, before the Host answers, even after a reload; the Host is
+ *   frame at once, before the runner answers, even after a reload; the runner is
  *   asked only for a frame the cache lacks.
  * - A stream that ended opens again, and its view says it reconnects until
  *   it does, over the picture it last showed; the device's tab stays, as
- *   the Host keeps the device across its resident's restarts.
- * - A view shown again asks its stream to answer, which the Host does with
+ *   the runner keeps the device across its resident's restarts.
+ * - A view shown again asks its stream to answer, which the runner does with
  *   the device's state: a stream that does not answer in time, as one whose
  *   connection was lost silently while nobody looked, opens again.
  * - Shows the device as it is held, which only a rotation changes: the
- *   Host turns its pictures and draws its frame that way, an app that did
+ *   runner turns its pictures and draws its frame that way, an app that did
  *   not follow lying on its side in them.
  * - Turns what the view shows at once when the viewer rotates the device,
  *   from the orientation it shows, until a picture drawn in the orientation
@@ -169,11 +169,11 @@ export interface DeviceState {
   connection: LiveConnection
   /** Why the stream ended, until one works again. */
   ended: string | null
-  /** The device as the Host says it is, once its stream was looked at. */
+  /** The device as the runner says it is, once its stream was looked at. */
   device: LiveDevice | null
   /** The agent's activity on the device. */
   activity: LiveActivity
-  /** Whether the device's screen is off, as the Host says. */
+  /** Whether the device's screen is off, as the runner says. */
   screenOff: boolean
   pictureless: PicturelessReason | null
   /** The device's orientation, as its last announced pictures on this connection report it. */
@@ -213,7 +213,7 @@ export interface DeviceSessionOptions {
   open: OpenUserStream
   /** The device the stream carries. */
   device: string
-  /** The device's model and native id as its tab keeps them, which find its cached frame before the Host answers. */
+  /** The device's model and native id as its tab keeps them, which find its cached frame before the runner answers. */
   model: string | null
   nativeId: string | null
   /** The plugin's disk cache, which keeps the frames the module draws; none keeps none. */
@@ -298,12 +298,12 @@ export class DeviceSession {
   private visible = true
   /** The views of the device that show now. */
   private readonly views = new Set<object>()
-  /** Whether the Host was told that the stream is looked at. */
+  /** Whether the runner was told that the stream is looked at. */
   private looked = false
   /** The device pixels the view lays the frame into, as it last measured them. */
   private area: FrameArea | null = null
   /**
-   * The area the Host was last asked to draw a frame for, on this
+   * The area the runner was last asked to draw a frame for, on this
    * connection, and the orientation it answered with, or the one the view
    * needed while no answer came, if it knew it.
    */
@@ -314,10 +314,10 @@ export class DeviceSession {
    * had until it decodes the new one, as a turn would show.
    */
   private readonly images = new Map<string, HTMLImageElement>()
-  /** The orientations whose frame shows from the disk cache, until the Host's replaces it. */
+  /** The orientations whose frame shows from the disk cache, until the runner's replaces it. */
   private readonly cached = new Set<Orientation>()
-  /** The area of the frame the Host sent last for each orientation, which a frame the cache read later does not replace. */
-  private readonly fromHost = new Map<Orientation, FrameArea>()
+  /** The area of the frame the runner sent last for each orientation, which a frame the cache read later does not replace. */
+  private readonly fromRunner = new Map<Orientation, FrameArea>()
   /** The device pixels the view shows the screen at, as it last measured them. */
   private screenSize: { width: number; height: number } | null = null
   /** The device's last orientation, as the disk cache keeps it. */
@@ -341,7 +341,7 @@ export class DeviceSession {
       open: options.open,
       frames: () => new DeviceFrames(),
       opened: () => {
-        // A new connection's Host knows nothing the last one was told.
+        // A new connection's runner knows nothing the last one was told.
         this.asked = null
         this.send({ type: 'hello', platform: options.platform, device: options.device })
         if (this.looked) {
@@ -375,13 +375,13 @@ export class DeviceSession {
     return this.options.device
   }
 
-  /** The device's platform, once the Host said it. */
+  /** The device's platform, once the runner said it. */
   get platform(): MobilePlatform | null {
     return this.state.device?.platform ?? null
   }
 
   /** Whether the device records now, as the device says, whoever started it. */
-  /** How the device folds and is folded, as the Host says; none for one that does not fold. */
+  /** How the device folds and is folded, as the runner says; none for one that does not fold. */
   get fold(): LiveFold | null {
     return this.state.device?.fold ?? null
   }
@@ -390,7 +390,7 @@ export class DeviceSession {
     return this.state.device?.recording ?? false
   }
 
-  /** The device's model: the Host's once it said, the tab's until then. */
+  /** The device's model: the runner's once it said, the tab's until then. */
   get model(): string | null {
     return this.state.device ? this.state.device.model : this.options.model
   }
@@ -482,7 +482,7 @@ export class DeviceSession {
 
   /**
    * The views show none of the stream's pictures, as a hinged foldable's 3D
-   * view shows its displays' own: the Host captures none until a view asks
+   * view shows its displays' own: the runner captures none until a view asks
    * for a frame or says a size again.
    */
   unshow(): void {
@@ -517,7 +517,7 @@ export class DeviceSession {
     this.update()
   }
 
-  /** Tells the Host whether the stream is looked at, when that changed. */
+  /** Tells the runner whether the stream is looked at, when that changed. */
   private update(): void {
     const looked = this.enabled && this.visible && this.views.size > 0 && !this.state.gone
     if (looked === this.looked) {
@@ -531,7 +531,7 @@ export class DeviceSession {
       this.send({ type: 'looked', looked })
       if (looked) {
         // A stream paused while nobody looked may have lost its connection
-        // silently: its Host answers with the device's state.
+        // silently: its runner answers with the device's state.
         this.link.expectAnswer()
         this.seekFrames()
       }
@@ -560,7 +560,7 @@ export class DeviceSession {
         this.link.live()
         if (this.state.device && litDisplay(message.device.fold) !== litDisplay(this.state.device.fold)) {
           // A foldable that lit its other display shows in that display's
-          // frames, which the Host draws anew or the cache keeps.
+          // frames, which the runner draws anew or the cache keeps.
           this.state.frames = {}
           this.readying.clear()
           this.asked = null
@@ -597,7 +597,7 @@ export class DeviceSession {
         if (message.frame !== null) {
           const area = { width: message.width, height: message.height, scale: message.scale }
           const frame = { orientation: message.orientation, pointsWidth: message.pointsWidth, pointsHeight: message.pointsHeight, frame: message.frame }
-          // The Host answered the view's ask with the frame of this
+          // The runner answered the view's ask with the frame of this
           // orientation: another one the view needs is asked for anew.
           if (this.asked && sameArea(this.asked.area, area)) {
             this.asked = { area, orientation: message.orientation }
@@ -605,7 +605,7 @@ export class DeviceSession {
           // A frame drawn for an area the view has left still fits until the one for its area comes.
           const held = this.state.frames[message.orientation]
           if (sameArea(area, this.area) || !held || !sameArea(held.area, this.area)) {
-            this.ready({ ...frame, area }, 'host')
+            this.ready({ ...frame, area }, 'runner')
           }
         }
         break
@@ -631,19 +631,19 @@ export class DeviceSession {
 
   /**
    * Decodes `frame`'s images, then makes it the frame of its orientation,
-   * unless a newer one came meanwhile; a frame from the Host is kept in the
+   * unless a newer one came meanwhile; a frame from the runner is kept in the
    * disk cache once it showed it can be. A frame that cannot be shown is
-   * asked of the Host when it came from the cache, and is the view's failure
-   * when it came from the Host.
+   * asked of the runner when it came from the cache, and is the view's failure
+   * when it came from the runner.
    */
-  private ready(frame: DeviceFrame, from: 'host' | 'cache'): void {
+  private ready(frame: DeviceFrame, from: 'runner' | 'cache'): void {
     const { orientation } = frame
-    // The Host's frame for the area is newer than the cache's.
-    if (from === 'cache' && sameArea(this.fromHost.get(orientation), frame.area)) {
+    // The runner's frame for the area is newer than the cache's.
+    if (from === 'cache' && sameArea(this.fromRunner.get(orientation), frame.area)) {
       return
     }
-    if (from === 'host') {
-      this.fromHost.set(orientation, frame.area)
+    if (from === 'runner') {
+      this.fromRunner.set(orientation, frame.area)
     }
     this.readying.set(orientation, frame.frame)
     const failed = (error: unknown) => {
@@ -670,7 +670,7 @@ export class DeviceSession {
         return
       }
       this.readying.delete(orientation)
-      if (from === 'host') {
+      if (from === 'runner') {
         this.cacheFrame(frame.area, { orientation, pointsWidth: frame.pointsWidth, pointsHeight: frame.pointsHeight, frame: frame.frame })
         this.cached.delete(orientation)
       } else {
@@ -685,7 +685,7 @@ export class DeviceSession {
         this.lookBeforePicture()
       }
       this.keepImages()
-      // The Host drew the frame for a screen that turned since: the view
+      // The runner drew the frame for a screen that turned since: the view
       // still needs the frame of the orientation the device has.
       const expected = this.expectedOrientation()
       if (expected && expected !== orientation && this.area && !this.readying.has(expected)) {
@@ -711,7 +711,7 @@ export class DeviceSession {
     this.state.look = { orientation: frame.orientation, pointsWidth: frame.pointsWidth, pointsHeight: frame.pointsHeight, frame: frame.frame, picture: null }
   }
 
-  /** The view shows that its frame could not be shown, and the viewer asks for it again: the Host draws it anew. */
+  /** The view shows that its frame could not be shown, and the viewer asks for it again: the runner draws it anew. */
   retryFrame(): void {
     this.state.frameFailed = false
     this.asked = null
@@ -847,7 +847,7 @@ export class DeviceSession {
   /**
    * The orientation the device shows, but for the viewer's presses: the one
    * its pictures report on this connection, else the one of the picture the
-   * view shows, else, before any picture, the one the Host says its screen
+   * view shows, else, before any picture, the one the runner says its screen
    * has, else the one the view shows.
    */
   private baseOrientation(): Orientation | null {
@@ -898,7 +898,7 @@ export class DeviceSession {
       return
     }
     cache.write(key, new TextEncoder().encode(JSON.stringify(frame))).catch((error: unknown) => {
-      // A cache that cannot be written leaves the frame to come from the Host again.
+      // A cache that cannot be written leaves the frame to come from the runner again.
       this.options.defect('The device frame could not be cached', error)
     })
   }
@@ -910,7 +910,7 @@ export class DeviceSession {
     }
     this.cachedOrientation = orientation
     this.options.cache?.write(this.orientationKey(), new TextEncoder().encode(orientation)).catch((error: unknown) => {
-      // A cache that cannot be written leaves the orientation to the Host's state.
+      // A cache that cannot be written leaves the orientation to the runner's state.
       this.options.defect('The device orientation could not be cached', error)
     })
   }
@@ -918,7 +918,7 @@ export class DeviceSession {
   /**
    * Finds the frames the view needs for the area it has: the expected
    * orientation's and, while a press turns it, the turned one's. Each comes
-   * from the disk cache, or from the Host when the cache lacks it; before
+   * from the disk cache, or from the runner when the cache lacks it; before
    * the device's orientation is known, the cache's is read first.
    */
   private seekFrames(): void {
@@ -938,9 +938,9 @@ export class DeviceSession {
 
   /**
    * Reads the device's orientation the disk cache kept, whose frame the
-   * cache may keep too; without one, the Host draws the frame for the
+   * cache may keep too; without one, the runner draws the frame for the
    * orientation the device has, rather than the view waiting for the
-   * Host's state to name it first.
+   * runner's state to name it first.
    */
   private readCachedOrientation(): void {
     const cache = this.options.cache
@@ -957,7 +957,7 @@ export class DeviceSession {
       if (!kept?.success) {
         this.askFrame(null)
       } else if (!this.state.device) {
-        // The Host's word, when it came first, stands.
+        // The runner's word, when it came first, stands.
         this.cachedOrientation = kept.data
         this.seekFrames()
       }
@@ -969,7 +969,7 @@ export class DeviceSession {
 
   private seekFrame(orientation: Orientation, area: FrameArea): void {
     if (sameArea(this.state.frames[orientation]?.area, area)) {
-      // A frame from the disk cache shows until the Host's own replaces it.
+      // A frame from the disk cache shows until the runner's own replaces it.
       if (this.cached.has(orientation)) {
         this.askFrame(orientation)
       }
@@ -996,7 +996,7 @@ export class DeviceSession {
         this.askFrame(orientation)
         return
       }
-      // Not kept, or written by another build of the page: the Host draws it.
+      // Not kept, or written by another build of the page: the runner draws it.
       this.askFrame(orientation)
     }, (error: unknown) => {
       this.reading.delete(key)
@@ -1006,9 +1006,9 @@ export class DeviceSession {
   }
 
   /**
-   * Asks the Host to draw the device's frame for the view's area, which it
+   * Asks the runner to draw the device's frame for the view's area, which it
    * draws for the screen as it is: once per area and connection, and again
-   * when the view needs another orientation's, as when the Host's last
+   * when the view needs another orientation's, as when the runner's last
    * frame was drawn for a screen that turned since.
    */
   private askFrame(orientation: Orientation | null): void {
@@ -1036,7 +1036,7 @@ export class DeviceSession {
   /**
    * The view lays the device's frame into `width` × `height` device pixels,
    * `scale` of them per CSS pixel: its frame for that size comes from the
-   * disk cache or the Host.
+   * disk cache or the runner.
    */
   frame(width: number, height: number, scale: number): void {
     const area = { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)), scale }
@@ -1049,7 +1049,7 @@ export class DeviceSession {
 
   /**
    * The view shows the device's screen at `width` × `height` device pixels:
-   * the Host captures it no larger (`crates/plugin-mobile/page/src/index.ts`).
+   * the runner captures it no larger (`crates/plugin-mobile/page/src/index.ts`).
    */
   showsScreenAt(width: number, height: number): void {
     const size = { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)) }

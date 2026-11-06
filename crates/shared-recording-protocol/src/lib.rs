@@ -6,7 +6,7 @@
 //! files and its encoding are `shared-recording`'s.
 //!
 //! - A recording's identity is `r` and a number, given once across a
-//!   conversation's recordings on a Host, whichever program made them.
+//!   conversation's recordings on a device, whichever program made them.
 //! - A frame is `f` and a number from 1, zero-padded to three digits, in the
 //!   order the recording kept them; only a frame that differs from the one
 //!   before is kept.
@@ -27,10 +27,10 @@ use demi_shared_types::MAX_SAFE_INTEGER;
 /// still screen draws almost nothing, so no size would ever end it.
 pub const MAX_DURATION: Duration = Duration::from_secs(120);
 /// The most bytes a recording's files take before it stops itself: they are
-/// written to the Host's disk.
+/// written to the device's disk.
 pub const MAX_BYTES: u64 = 200 * 1024 * 1024;
-/// How many recordings a conversation keeps on a Host; one more removes the
-/// oldest, so that the Host's disk does not fill with recordings nobody reads.
+/// How many recordings a conversation keeps on a device; one more removes the
+/// oldest, so that the device's disk does not fill with recordings nobody reads.
 pub const KEPT: usize = 5;
 
 numbered!(
@@ -525,7 +525,7 @@ pub struct RecordResult {
     #[schemars(with = "Vec<InputRow>")]
     pub inputs: Option<Vec<InputRow>>,
     /// For `export`: why the inputs are not drawn on the frames that were
-    /// to have them, as on a Host that cannot load the video coder.
+    /// to have them, as on a device that cannot load the video coder.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
     pub undrawn: Option<String>,
@@ -536,7 +536,7 @@ pub struct RecordResult {
     #[schemars(with = "Vec<RecordingInfo>")]
     pub recordings: Option<Vec<RecordingInfo>>,
     /// For `export`: what of the notes it could not show as they were set,
-    /// such as a character no font on this Host has, drawn as a box.
+    /// such as a character no font on this device has, drawn as a box.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "Vec<String>")]
     pub unshown: Option<Vec<String>>,
@@ -625,7 +625,7 @@ macro_rules! record_input {
             #[schemars(with = "bool")]
             #[garde(skip)]
             pub plain: Option<bool>,
-            /// For export: the directory for the images, or with --mp4 or --sheet a new file on this Host
+            /// For export: the directory for the images, or with --mp4 or --sheet a new file on this device
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
             #[schemars(with = "String")]
             #[garde(length(chars, min = 1, max = $length))]

@@ -43,7 +43,7 @@
       "allowed": "このチャットで次の操作を許可しました: {action}",
       "denied": "このチャットで次の操作を拒否しました: {action}",
       "reached": "別のチャットから連絡があったため、このチャットで次の操作が許可されました: {action}",
-      "moved": "このチャットを {host} · {path} に移動しました",
+      "moved": "このチャットを {device} · {path} に移動しました",
       "moveFailed": "移動できませんでした: {reason}",
       "fromMain": "{agent}からのメッセージ",
       "mainAgent": "メインエージェント",
@@ -67,7 +67,7 @@
       "failed": "失敗",
       "stopped": "停止済み",
       "stopping": "停止中…",
-      "waiting": "{host} を待機中",
+      "waiting": "{device} を待機中",
       "lost": "不明",
       "exitCode": "終了コード {code}"
     },
@@ -75,7 +75,7 @@
       "lost": "不明",
       "lostWhy": "不明: {reason}",
       "stopping": "停止中…",
-      "waiting": "{host} を待機中",
+      "waiting": "{device} を待機中",
       "running": "{span} 実行中",
       "exited": "{span} 後に終了",
       "exitedZero": "{span} 後に終了コード 0 で終了",
@@ -238,7 +238,7 @@
     "tabsOpen": "タブ、{count} 個開いています",
     "closePanel": "パネルを閉じる",
     "options": "{title}、チャットのオプション",
-    "hostState": "{name} は{state}",
+    "deviceState": "{name} は{state}",
     "renameTitle": "チャットの名前を変更",
     "titleLabel": "チャットのタイトル",
     "runsOn": "実行先",
@@ -281,9 +281,9 @@
     "lastTurnRate": "前回の速度：{rate} トークン/秒"
   },
   "notices": {
-    "hostOffline": "{name} はオフラインです。",
-    "moveHost": "別のホストに移動…",
-    "hostOfflineLastSeen": "{name} はオフラインです。最終確認：{time}。",
+    "deviceOffline": "{name} はオフラインです。",
+    "moveDevice": "別のデバイスに移動…",
+    "deviceOfflineLastSeen": "{name} はオフラインです。最終確認：{time}。",
     "pluginsChanged": "プラグインが変更されました"
   },
   "composer": {
@@ -435,7 +435,7 @@
     "nothingOpen": "開いているものはありません",
     "noFiles": "ファイルも変更もありません",
     "reading": "{name}を読み取っています",
-    "hostOffline": "{name} はオフラインです。",
-    "hostOfflineDetail": "再接続すると、ファイル、変更、ブラウザが再び表示されます。"
+    "deviceOffline": "{name} はオフラインです。",
+    "deviceOfflineDetail": "再接続すると、ファイル、変更、ブラウザが再び表示されます。"
   }
 }

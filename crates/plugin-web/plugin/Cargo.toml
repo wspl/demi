@@ -16,7 +16,7 @@ bench = false
 base64.workspace = true
 demi-command-declarations = { path = "../../command-declarations" }
 demi-command-package-fetch-protocol = { path = "../protocol" }
-demi-host-interface = { path = "../../host-interface" }
+demi-device-interface = { path = "../../device-interface" }
 demi-plugin-interface = { path = "../../plugin-interface" }
 # An MCP answer sent as an event stream.
 eventsource-stream = "0.2"

@@ -46,7 +46,7 @@ func fail(_ message: String) -> Never {
   exit(1)
 }
 
-/// A line on standard error, which demi-mobile keeps in the Host's log.
+/// A line on standard error, which demi-mobile keeps in the device's log.
 func log(_ message: String) {
   FileHandle.standardError.write(Data((message + "\n").utf8))
 }

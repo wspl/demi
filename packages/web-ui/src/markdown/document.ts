@@ -17,7 +17,7 @@ import { loadedKatex, mathExtensions, mathForm, mathSourceHtml } from './math'
 import { markdownReader } from './reader'
 import { scrollingTable } from './table'
 
-/** Where a document sits, against which the Host paths it names resolve. */
+/** Where a document sits, against which the device paths it names resolve. */
 export interface DocumentPlace {
   /**
    * The document's own path; a relative target resolves against its directory.
@@ -31,23 +31,23 @@ export interface DocumentPlace {
 }
 
 /**
- * The attribute a Host image carries in the rendering, holding the path of
+ * The attribute a device image carries in the rendering, holding the path of
  * its file: the image has no address yet, because the address names the
- * version of the file the page keeps (`useHostImagesAt`), which is given
+ * version of the file the page keeps (`useDeviceImagesAt`), which is given
  * to the image where it stands (`MarkdownDocument`) and changes with the file.
  */
-export const HOST_FILE_ATTRIBUTE = 'data-host-file'
+export const DEVICE_FILE_ATTRIBUTE = 'data-device-file'
 
 /**
  * The attribute an `<img>` or a `<picture>`'s `<source>` carries in place of
- * a `srcset` that names a Host file, holding its candidates as JSON
- * (`SrcsetCandidate[]`): each Host candidate takes the address of its file's
- * version where it stands, as a Host image's `src` does.
+ * a `srcset` that names a device file, holding its candidates as JSON
+ * (`SrcsetCandidate[]`): each device candidate takes the address of its file's
+ * version where it stands, as a device image's `src` does.
  */
-export const HOST_SRCSET_ATTRIBUTE = 'data-host-srcset'
+export const DEVICE_SRCSET_ATTRIBUTE = 'data-device-srcset'
 
 /**
- * One candidate of a `srcset`: an address on the web, or a Host file, and its
+ * One candidate of a `srcset`: an address on the web, or a device file, and its
  * descriptor such as `2x`.
  */
 const srcsetCandidateSchema = z.union([
@@ -61,10 +61,10 @@ type WebCandidate = Extract<SrcsetCandidate, { url: string }>
 export interface RenderedDocument {
   html: string
   /**
-   * The Host paths of the images the document names, `srcset` candidates
+   * The Device paths of the images the document names, `srcset` candidates
    * included, each once.
    */
-  hostFiles: string[]
+  deviceFiles: string[]
 }
 
 /**
@@ -184,20 +184,20 @@ interface ActiveRender {
 let purifier: Purifier | null = null
 let active: ActiveRender | null = null
 /**
- * The Host path of each image of the render in progress, until the hook that
+ * The Device path of each image of the render in progress, until the hook that
  * sets its attribute.
  */
-const hostFiles = new WeakMap<Node, string>()
+const deviceFiles = new WeakMap<Node, string>()
 /**
  * The `srcset` of each image or source of the render in progress that names a
- * Host file, until the hook that sets its attribute.
+ * device file, until the hook that sets its attribute.
  */
-const hostSrcsets = new WeakMap<Node, SrcsetCandidate[]>()
+const deviceSrcsets = new WeakMap<Node, SrcsetCandidate[]>()
 /** The images of the render in progress that show only in the other theme. */
 const otherTheme = new WeakSet<Node>()
 
 /**
- * The document as HTML the page can show as it is, and the Host files its
+ * The document as HTML the page can show as it is, and the device files its
  * images name. `theme` is the theme the page shows, which picks a `<picture>`'s
  * source for a color scheme and GitHub's mode-only images, so a new theme is a
  * new render. /
@@ -219,13 +219,13 @@ export function renderMarkdownDocument(text: string, place: DocumentPlace, theme
   sourcesForTheme(fragment, theme)
   renderAfterSanitizing(fragment)
   const paths = [
-    ...[...fragment.querySelectorAll(`[${HOST_FILE_ATTRIBUTE}]`)].map((image) => image.getAttribute(HOST_FILE_ATTRIBUTE)!),
-    ...[...fragment.querySelectorAll(`[${HOST_SRCSET_ATTRIBUTE}]`)].flatMap((element) =>
-      hostSrcsetCandidates(element).flatMap((candidate) => 'path' in candidate ? [candidate.path] : [])),
+    ...[...fragment.querySelectorAll(`[${DEVICE_FILE_ATTRIBUTE}]`)].map((image) => image.getAttribute(DEVICE_FILE_ATTRIBUTE)!),
+    ...[...fragment.querySelectorAll(`[${DEVICE_SRCSET_ATTRIBUTE}]`)].flatMap((element) =>
+      deviceSrcsetCandidates(element).flatMap((candidate) => 'path' in candidate ? [candidate.path] : [])),
   ]
   const container = document.createElement('div')
   container.append(fragment)
-  return { html: container.innerHTML, hostFiles: [...new Set(paths)] }
+  return { html: container.innerHTML, deviceFiles: [...new Set(paths)] }
 }
 
 function documentPurifier(): Purifier {
@@ -255,7 +255,7 @@ function documentPurifier(): Purifier {
         } else {
           data.keepAttr = false
           if (image)
-            hostFiles.set(node, image.path)
+            deviceFiles.set(node, image.path)
         }
         break
       }
@@ -266,10 +266,10 @@ function documentPurifier(): Purifier {
           return image ? [{ ...image, descriptor: descriptor.join(' ') }] : []
         })
         if (candidates.some((candidate) => 'path' in candidate)) {
-          // A Host candidate takes its address where it stands, from the
-          // version of its file the page keeps, as a Host image's `src` does.
+          // A Device candidate takes its address where it stands, from the
+          // version of its file the page keeps, as a device image's `src` does.
           data.keepAttr = false
-          hostSrcsets.set(node, candidates)
+          deviceSrcsets.set(node, candidates)
         } else if (candidates.length === 0) {
           data.keepAttr = false
         } else {
@@ -292,12 +292,12 @@ function documentPurifier(): Purifier {
       node.remove()
       return
     }
-    const hostFile = hostFiles.get(node)
-    if (hostFile !== undefined && node.nodeName === 'IMG')
-      node.setAttribute(HOST_FILE_ATTRIBUTE, hostFile)
-    const hostSrcset = hostSrcsets.get(node)
-    if (hostSrcset !== undefined && (node.nodeName === 'IMG' || node.nodeName === 'SOURCE'))
-      node.setAttribute(HOST_SRCSET_ATTRIBUTE, JSON.stringify(hostSrcset))
+    const deviceFile = deviceFiles.get(node)
+    if (deviceFile !== undefined && node.nodeName === 'IMG')
+      node.setAttribute(DEVICE_FILE_ATTRIBUTE, deviceFile)
+    const deviceSrcset = deviceSrcsets.get(node)
+    if (deviceSrcset !== undefined && (node.nodeName === 'IMG' || node.nodeName === 'SOURCE'))
+      node.setAttribute(DEVICE_SRCSET_ATTRIBUTE, JSON.stringify(deviceSrcset))
     if (node.nodeName === 'A') {
       const href = node.getAttribute('href') ?? ''
       if (isExternal(href)) {
@@ -321,11 +321,11 @@ function documentPurifier(): Purifier {
 }
 
 /**
- * The candidates an element's `HOST_SRCSET_ATTRIBUTE` holds, which the renderer
+ * The candidates an element's `DEVICE_SRCSET_ATTRIBUTE` holds, which the renderer
  * wrote.
  */
-export function hostSrcsetCandidates(element: Element): SrcsetCandidate[] {
-  return z.array(srcsetCandidateSchema).parse(JSON.parse(element.getAttribute(HOST_SRCSET_ATTRIBUTE) ?? '[]'))
+export function deviceSrcsetCandidates(element: Element): SrcsetCandidate[] {
+  return z.array(srcsetCandidateSchema).parse(JSON.parse(element.getAttribute(DEVICE_SRCSET_ATTRIBUTE) ?? '[]'))
 }
 
 /** A `srcset` of addresses, each with its descriptor. */
@@ -434,7 +434,7 @@ function hasScheme(target: string): boolean {
 }
 
 /**
- * What a link leads to: a heading of this document, a web page, or a Host path;
+ * What a link leads to: a heading of this document, a web page, or a device path;
  * null for anything else, whose text stays without the link.
  */
 export function linkTarget(target: string, place: DocumentPlace): string | null {
@@ -445,11 +445,11 @@ export function linkTarget(target: string, place: DocumentPlace): string | null 
     return trimmed
   if (hasScheme(trimmed))
     return null
-  return hostPath(trimmed, place)
+  return devicePath(trimmed, place)
 }
 
 /**
- * Where an image loads from: the web, at its address, or the Host, from the
+ * Where an image loads from: the web, at its address, or the device, from the
  * file at a path; null drops it.
  */
 export function imageTarget(target: string, place: DocumentPlace): { url: string } | { path: string } | null {
@@ -458,15 +458,15 @@ export function imageTarget(target: string, place: DocumentPlace): { url: string
     return { url: trimmed }
   if (hasScheme(trimmed) || trimmed.startsWith('#'))
     return null
-  const path = hostPath(trimmed, place)
+  const path = devicePath(trimmed, place)
   return path === null ? null : { path }
 }
 
 /**
- * The Host path a relative or `/`-rooted target names, its query and fragment
+ * The Device path a relative or `/`-rooted target names, its query and fragment
  * dropped.
  */
-function hostPath(target: string, place: DocumentPlace): string | null {
+function devicePath(target: string, place: DocumentPlace): string | null {
   const file = decodedTarget(target.split(/[?#]/)[0] ?? '')
   if (file === '')
     return null

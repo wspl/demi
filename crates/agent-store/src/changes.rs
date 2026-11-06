@@ -37,7 +37,7 @@ use std::collections::{HashMap, HashSet};
 
 use bytes::Bytes;
 use demi_command_protocol::line_counts;
-use demi_host_paths::is_inside;
+use demi_device_paths::is_inside;
 use demi_shared_types::{
     AgentMessageEvent, B64Bytes, BlobRef, Block, BlockId, ChangedFile, CommandId, EditKind, EditedFile,
     FileEdit, LineCounts, PathChange, ReportEvent, ShellToolView, ToolView,
@@ -192,8 +192,8 @@ impl Tracked {
     }
 }
 
-/// Whether `path` is `parent` or within it, a path of the Host with either
-/// separator, as a Windows Host names its paths with `\\`.
+/// Whether `path` is `parent` or within it, a path of the device with either
+/// separator, as a Windows device names its paths with `\\`.
 fn is_within(path: &str, parent: &str) -> bool {
     let parent = parent.trim_end_matches(['/', '\\']);
     path == parent

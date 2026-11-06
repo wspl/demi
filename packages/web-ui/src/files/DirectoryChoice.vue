@@ -12,7 +12,7 @@ import { directoryParts } from './paths'
  */
 defineProps<{
   path: string
-  /** The Host's home, which `~` writes. */
+  /** The Device's home, which `~` writes. */
   home?: string | null
   /** The name that stands for the directory's own, where it has one, such as the Cloud's conversation folder. */
   name?: string

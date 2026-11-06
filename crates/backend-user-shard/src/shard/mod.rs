@@ -14,7 +14,7 @@ pub(crate) mod notify_commands;
 pub mod credentials;
 pub mod cloud;
 pub mod instructions;
-mod host;
+mod device;
 pub mod lane;
 mod permissions;
 pub(crate) mod media;
@@ -68,12 +68,12 @@ use crate::conversation::idle_compaction::IdleCompactions;
 use crate::conversation::search::SearchIndexer;
 use crate::conversation::suggested_replies::SuggestedReplies;
 use crate::conversation::titles::Titles;
-use crate::conversation::{self, ConversationParts, ShardHosts};
+use crate::conversation::{self, ConversationParts, ShardDevices};
 use crate::lifecycle::collection::BlobCollection;
 use crate::lifecycle::conversations::ConversationWatches;
 use crate::services::Services;
-use demi_backend_host_access::access::Conversations;
-use demi_backend_host_access::plugin_files::PluginInstalls;
+use demi_backend_device_access::access::Conversations;
+use demi_backend_device_access::plugin_files::PluginInstalls;
 
 /// Where the shards run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,7 +115,7 @@ pub struct Shard {
     /// Cancelled when the shard starts closing: it takes no new runner.
     closing: CancellationToken,
     /// The user's conversation trees.
-    agent: Rc<AgentServer<ShardHosts>>,
+    agent: Rc<AgentServer<ShardDevices>>,
     /// The title requests of the user's conversations.
     titles: Titles,
     /// The suggested replies of the user's conversations.
@@ -152,7 +152,7 @@ pub struct Shard {
     claude_cli: ClaudeCli,
     /// An instance of every plugin for the user.
     plugins: UserPlugins,
-    /// What the shard remembers of its Hosts' plugin directories.
+    /// What the shard remembers of its devices' plugin directories.
     plugin_installs: PluginInstalls,
     /// How many times each conversation's permission requests changed
     /// since the shard started.
@@ -374,7 +374,7 @@ impl Shard {
         self.closing.cancelled()
     }
 
-    pub(crate) fn agent(&self) -> &Rc<AgentServer<ShardHosts>> {
+    pub(crate) fn agent(&self) -> &Rc<AgentServer<ShardDevices>> {
         &self.agent
     }
 
@@ -427,7 +427,7 @@ impl Shard {
     ///    running.
     /// 8. The runner connections close, and then the pipes fail.
     ///
-    /// Nothing on a Host stops.
+    /// Nothing on a device stops.
     ///
     /// The order has reasons:
     ///

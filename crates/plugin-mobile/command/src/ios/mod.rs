@@ -1,4 +1,4 @@
-//! The iOS driver: the Host's iOS simulators through `demi-ios-sim`, the helper
+//! The iOS driver: the device's iOS simulators through `demi-ios-sim`, the helper
 //! `demi-mobile` carries.
 //!
 //! A one-shot helper lists, boots and shuts down simulators. Each conversation
@@ -43,9 +43,9 @@ use helper::{Event, Helper};
 
 /// How the driver reaches `demi-ios-sim`: one-shot runs for listing,
 /// booting and shutting down, a serving connection per conversation, and
-/// what the Host says of its simulators' boots. A test gives its own.
+/// what the device says of its simulators' boots. A test gives its own.
 pub trait Launch: Send + Sync + 'static {
-    /// Why this Host cannot run the helper, or none.
+    /// Why this device cannot run the helper, or none.
     fn unavailable(&self) -> Option<String>;
     /// Runs `demi-ios-sim <args>` and answers what it printed.
     fn once<'a>(&'a self, args: &'a [&'a str]) -> BoxFuture<'a, Result<Vec<u8>>>;
@@ -771,7 +771,7 @@ impl Device for IosDevice {
         })
     }
 
-    /// The side button, while the screen is off by the Host's own account;
+    /// The side button, while the screen is off by the device's own account;
     /// nothing while it is on, which the side button would turn off.
     fn wake(&self) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
@@ -1058,7 +1058,7 @@ struct IosCapture {
 
 impl IosCapture {
     /// Asks the helper `method` for this capture without waiting: its
-    /// failure is the Host log's, and the capture's frames say the rest.
+    /// failure is the device log's, and the capture's frames say the rest.
     fn tell(&self, method: &'static str, params: Value) {
         let helper = self.helper.clone();
         let mut params = params;

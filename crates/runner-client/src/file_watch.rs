@@ -1,5 +1,5 @@
-//! A Host's subscriptions as the backend shares them
-//! (`crates/runner-host/src/subscriptions.rs`): one runner subscription per
+//! A device's subscriptions as the backend shares them
+//! (`crates/runner-device/src/subscriptions.rs`): one runner subscription per
 //! subject on a connection, held by every page's watch that holds the same
 //! subject.
 //!
@@ -19,10 +19,10 @@ use tokio::sync::mpsc;
 
 use crate::link::Link;
 
-/// What a holder of a Host's subscriptions hears next.
+/// What a holder of a device's subscriptions hears next.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HostEvent {
-    /// The Host watches `subject` from `since`, a number of `epoch`.
+pub enum DeviceEvent {
+    /// The device watches `subject` from `since`, a number of `epoch`.
     Live {
         subject: Subject,
         since: u64,
@@ -31,9 +31,9 @@ pub enum HostEvent {
     /// Subjects the holder holds that changed, each with the number of its
     /// latest change, from one batch of the runner's.
     Changed(Vec<(Subject, u64)>),
-    /// The Host cannot watch `subject`, for this reason; it is over.
+    /// The device cannot watch `subject`, for this reason; it is over.
     Failed { subject: Subject, reason: String },
-    /// The connection to the Host ended; nothing more comes.
+    /// The connection to the device ended; nothing more comes.
     Ended,
 }
 
@@ -51,7 +51,7 @@ struct Shared {
 pub(crate) struct LinkSubscriptions {
     by_subject: HashMap<Subject, Shared>,
     by_id: HashMap<String, Subject>,
-    holders: HashMap<u64, mpsc::UnboundedSender<HostEvent>>,
+    holders: HashMap<u64, mpsc::UnboundedSender<DeviceEvent>>,
     next: u64,
 }
 
@@ -67,7 +67,7 @@ impl LinkSubscriptions {
         for holder in &shared.holders {
             if let Some(sender) = self.holders.get(holder) {
                 // A holder that went has nothing to hear.
-                let _ = sender.send(HostEvent::Live {
+                let _ = sender.send(DeviceEvent::Live {
                     subject: subject.clone(),
                     since,
                     epoch: epoch.clone(),
@@ -91,7 +91,7 @@ impl LinkSubscriptions {
         }
         for (holder, changes) in by_holder {
             if let Some(sender) = self.holders.get(&holder) {
-                let _ = sender.send(HostEvent::Changed(changes));
+                let _ = sender.send(DeviceEvent::Changed(changes));
             }
         }
     }
@@ -105,7 +105,7 @@ impl LinkSubscriptions {
         let shared = self.by_subject.remove(&subject).expect("an id names a subject held");
         for holder in &shared.holders {
             if let Some(sender) = self.holders.get(holder) {
-                let _ = sender.send(HostEvent::Failed {
+                let _ = sender.send(DeviceEvent::Failed {
                     subject: subject.clone(),
                     reason: reason.clone(),
                 });
@@ -116,7 +116,7 @@ impl LinkSubscriptions {
     /// The connection ended: every holder hears it.
     pub(crate) fn end(&mut self) {
         for (_, sender) in self.holders.drain() {
-            let _ = sender.send(HostEvent::Ended);
+            let _ = sender.send(DeviceEvent::Ended);
         }
         self.by_subject.clear();
         self.by_id.clear();
@@ -138,30 +138,30 @@ impl LinkSubscriptions {
 
 /// One page's hold on a connection's subscriptions. Dropping it lets go of
 /// all it holds.
-pub struct HostSubscriber {
+pub struct DeviceSubscriber {
     link: Link,
     id: u64,
     held: RefCell<BTreeSet<Subject>>,
-    events: mpsc::UnboundedReceiver<HostEvent>,
+    events: mpsc::UnboundedReceiver<DeviceEvent>,
 }
 
 impl Link {
     /// A new holder of the connection's subscriptions. On a connection that
     /// ended, it hears `Ended` at once.
-    pub(crate) fn subscriber(&self) -> HostSubscriber {
+    pub(crate) fn subscriber(&self) -> DeviceSubscriber {
         let (sender, events) = mpsc::unbounded_channel();
         let id = self.with_subscriptions(|subscriptions| {
             subscriptions.next += 1;
             let id = subscriptions.next;
             if self.is_closed() {
                 // Nobody is left to hear it, but the holder.
-                let _ = sender.send(HostEvent::Ended);
+                let _ = sender.send(DeviceEvent::Ended);
             } else {
                 subscriptions.holders.insert(id, sender);
             }
             id
         });
-        HostSubscriber {
+        DeviceSubscriber {
             link: self.clone(),
             id,
             held: RefCell::new(BTreeSet::new()),
@@ -170,7 +170,7 @@ impl Link {
     }
 }
 
-impl HostSubscriber {
+impl DeviceSubscriber {
     /// Holds `subject`, subscribing on the runner unless another holder
     /// does: one that is live already is heard as live at once.
     pub fn hold(&self, subject: Subject) {
@@ -182,7 +182,7 @@ impl HostSubscriber {
             if let Some(shared) = subscriptions.by_subject.get_mut(&subject) {
                 shared.holders.insert(holder);
                 if let (Some((since, epoch)), Some(sender)) = (&shared.live, subscriptions.holders.get(&holder)) {
-                    let _ = sender.send(HostEvent::Live {
+                    let _ = sender.send(DeviceEvent::Live {
                         subject: subject.clone(),
                         since: *since,
                         epoch: epoch.clone(),
@@ -241,24 +241,24 @@ impl HostSubscriber {
         }
     }
 
-    /// What the Host says next of what this holder holds. After `Ended` it
+    /// What the device says next of what this holder holds. After `Ended` it
     /// says the same again.
-    pub async fn next(&mut self) -> HostEvent {
+    pub async fn next(&mut self) -> DeviceEvent {
         loop {
             match self.events.recv().await {
-                Some(HostEvent::Failed { subject, reason }) => {
+                Some(DeviceEvent::Failed { subject, reason }) => {
                     if self.held.borrow_mut().remove(&subject) {
-                        return HostEvent::Failed { subject, reason };
+                        return DeviceEvent::Failed { subject, reason };
                     }
                 }
                 Some(event) => return event,
-                None => return HostEvent::Ended,
+                None => return DeviceEvent::Ended,
             }
         }
     }
 }
 
-impl Drop for HostSubscriber {
+impl Drop for DeviceSubscriber {
     fn drop(&mut self) {
         let held = std::mem::take(&mut *self.held.borrow_mut());
         let holder = self.id;

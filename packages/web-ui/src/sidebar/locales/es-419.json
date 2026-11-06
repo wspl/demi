@@ -79,7 +79,7 @@
   "deleteProject": {
     "title": "¿Eliminar “{name}”?",
     "archived": "Su chat se archivará. | Sus {count} chats se archivarán.",
-    "files": "Los archivos en {host} no se eliminan."
+    "files": "Los archivos en {device} no se eliminan."
   },
   "savedScope": {
     "title": "¿Guardar los mensajes guardados por chat?",

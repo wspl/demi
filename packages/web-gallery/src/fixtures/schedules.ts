@@ -18,7 +18,7 @@ function nextWeekday(weekday: number, hour: number): string {
 /**
  * The schedules of a conversation, as its Schedules window lists them: a
  * weekly report, a change watch, a once schedule, a paused one, and one whose
- * last wake failed because its Host was offline.
+ * last wake failed because its device was offline.
  */
 export function gallerySchedules(): ConversationSchedule[] {
   const weekly = nextWeekday(1, 10)

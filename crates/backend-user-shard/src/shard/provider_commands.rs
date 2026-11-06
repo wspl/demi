@@ -23,10 +23,10 @@ use demi_backend_providers::vault::accounts as vault_accounts;
 use demi_backend_providers::vault::entries::Vault;
 use std::rc::Rc;
 
-use demi_backend_host_access::host_commands::conversation_of;
-use demi_backend_host_access::root_of;
+use demi_backend_device_access::device_commands::conversation_of;
+use demi_backend_device_access::root_of;
 use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
-use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc};
+use demi_device_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc};
 use demi_agent_tools::EFFORT_OFF;
 use demi_shared_types::{
     AccountInfo, ContextChoice, FileExtension, ModelSelection, ThinkingForm, WireApi, applied_context_limit, context_word, model_reads_images,
@@ -1648,7 +1648,7 @@ async fn shown(
     let through_name = match &entry.through_device {
         Some(id) => Some(
             shard
-                .host_records()
+                .device_records()
                 .await
                 .map_err(failed)?
                 .into_iter()

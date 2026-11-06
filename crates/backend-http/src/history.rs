@@ -11,7 +11,7 @@
 //!
 //! and where the call that started a command lies.
 //!
-//! No route wakes a Host, and none needs a live session: a node that does not
+//! No route wakes a device, and none needs a live session: a node that does not
 //! run is read from its database.
 
 use axum::Json;

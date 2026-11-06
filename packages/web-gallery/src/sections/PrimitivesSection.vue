@@ -702,7 +702,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
 
       <GallerySection
         title="ResizeHandle"
-        note="The divider that sizes a pane. Drag it (the pointer is captured, the document keeps the cursor), press the arrows on it (Shift for four steps, Home and End for the bounds), or double-click for the default. The host owns the size and clamps nothing: the handle never leaves the bounds."
+        note="The divider that sizes a pane. Drag it (the pointer is captured, the document keeps the cursor), press the arrows on it (Shift for four steps, Home and End for the bounds), or double-click for the default. The device owns the size and clamps nothing: the handle never leaves the bounds."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="vertical · pane before" wide>

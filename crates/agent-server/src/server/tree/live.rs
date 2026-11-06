@@ -44,7 +44,7 @@ use std::{
 };
 
 use demi_agent_tools::shell_output;
-use demi_host_interface::{CommandRecord, PageFeed};
+use demi_device_interface::{CommandRecord, PageFeed};
 use demi_shared_types::{CommandId, NodeId};
 use tokio::{
     sync::{Notify, watch},
@@ -174,7 +174,7 @@ impl LiveOutput {
 
     /// Sends `view`, of a command of the node `subagent`, the root when
     /// none, to the connections that follow the node.
-    fn emit(&self, subagent: Option<NodeId>, view: demi_host_interface::PageView) {
+    fn emit(&self, subagent: Option<NodeId>, view: demi_device_interface::PageView) {
         let node = subagent.unwrap_or_else(|| self.root.clone());
         self.sink.emit_to(&node, shell_output(node.clone(), view));
     }

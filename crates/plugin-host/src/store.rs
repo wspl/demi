@@ -2,13 +2,13 @@
 //! it stores, and the changes it tells the program's pages of.
 //!
 //! The host reaches both through [`PluginStore`] and [`PluginChanges`] alone:
-//! each user's switches and Host directories, the plugins' values, secrets,
-//! reports and OAuth clients, each conversation's work panel and the Host it
+//! each user's switches and device directories, the plugins' values, secrets,
+//! reports and OAuth clients, each conversation's work panel and the device it
 //! works on.
 
 use std::collections::BTreeMap;
 
-use demi_plugin_interface::{HostDirectory, WorkspaceName};
+use demi_plugin_interface::{DeviceDirectory, WorkspaceName};
 use demi_shared_types::{BlobRef, Timestamp};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
 use demi_web_api_protocol::panel::{PanelChange, PanelEffect, WorkPanel};
@@ -146,10 +146,10 @@ pub trait PluginStore {
     /// Removes the value if it is still at `revision`.
     fn remove_value(&self, user: UserId, plugin: String, key: String, revision: u64) -> Stored<'_, Written>;
 
-    /// Each plugin's Host directories for the user, by the plugin's id.
-    fn directories(&self, user: UserId) -> Stored<'_, BTreeMap<String, Vec<HostDirectory>>>;
+    /// Each plugin's device directories for the user, by the plugin's id.
+    fn directories(&self, user: UserId) -> Stored<'_, BTreeMap<String, Vec<DeviceDirectory>>>;
 
-    fn set_directories(&self, user: UserId, plugin: String, directories: Vec<HostDirectory>) -> Stored<'_, ()>;
+    fn set_directories(&self, user: UserId, plugin: String, directories: Vec<DeviceDirectory>) -> Stored<'_, ()>;
 
     fn secret(&self, row: SecretRow) -> Stored<'_, Option<SealedSecret>>;
 
@@ -170,11 +170,11 @@ pub trait PluginStore {
     /// client registered since stays.
     fn forget_oauth_client(&self, plugin: String, issuer: String, client_id: String) -> Stored<'_, ()>;
 
-    /// What the plugin's package on the Host of `device` last reported of
+    /// What the plugin's package on the device of `device` last reported of
     /// the conversation; none before it reported.
     fn report(&self, plugin: String, conversation: ConversationId, device: DeviceId) -> Stored<'_, Option<PluginReport>>;
 
-    /// Keeps `value` as what the plugin's package on the Host of `device`
+    /// Keeps `value` as what the plugin's package on the device of `device`
     /// reported of the conversation now; answers whether it differs from
     /// what was kept. A conversation that is gone keeps nothing.
     fn keep_report(
@@ -196,7 +196,7 @@ pub trait PluginStore {
     fn close_panel_kinds(&self, owner: UserId, kinds: Vec<String>) -> Stored<'_, Vec<ConversationId>>;
 
     /// The device the conversation works on, from the records: none for a
-    /// conversation whose Host does not exist yet. It asks no Host.
+    /// conversation whose device does not exist yet. It asks no device.
     fn primary_device(&self, conversation: ConversationId) -> Stored<'_, Option<DeviceId>>;
 
     /// The user's workspaces in the user's order, each with its name as

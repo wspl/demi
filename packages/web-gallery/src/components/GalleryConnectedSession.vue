@@ -4,18 +4,18 @@ import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import SidebarAccount from '@demicodes/web-ui/sidebar/SidebarAccount.vue'
 import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
-import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
-import ProjectDirectoryMenu from '@demicodes/web-ui/hosts/ProjectDirectoryMenu.vue'
-import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
-import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
+import DeviceMenu from '@demicodes/web-ui/targets/DeviceMenu.vue'
+import ProjectDirectoryMenu from '@demicodes/web-ui/targets/ProjectDirectoryMenu.vue'
+import MoveConversationDialog from '@demicodes/web-ui/targets/MoveConversationDialog.vue'
+import { useMoveQuestion } from '@demicodes/web-ui/targets/move-question'
 import { homePath } from '@demicodes/web-ui/files/paths'
-import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { DeviceOption, MenuDevice } from '@demicodes/web-ui/targets/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
 import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
-import { createGalleryFileHosts } from '../fixtures/files'
+import { createGalleryFileDevices } from '../fixtures/files'
 import { PROJECT_ROOT } from '../fixtures/project'
 import GalleryComposer from './GalleryComposer.vue'
 import { productWould } from '../product-would'
@@ -47,50 +47,50 @@ const session = flow.state
 useLiveGalleryCommand(session.terminals)
 // The session's messages find the files the gallery provides its transcripts.
 const messageFiles = useMessageFiles()
-const hosts = createGalleryFileHosts()
-// The hosts' marks are the ones the account's devices show, so the host menu and the folder
+const fileDevices = createGalleryFileDevices()
+// The marks are the ones the account's devices show, so the device menu and the folder
 // browser draw each device alike.
-const devices: HostDeviceOption[] = hosts.map((host) => ({
-  id: host.id,
-  name: host.label,
-  state: host.state,
-  mark: host.mark ?? null,
+const devices: DeviceOption[] = fileDevices.map((device) => ({
+  id: device.id,
+  name: device.label,
+  state: device.state,
+  mark: device.mark ?? null,
 }))
 /**
  * The linked worktrees of the account's projects, by git's name, as their
- * Hosts report them: a move to one stays in its project.
+ * devices report them: a move to one stays in its project.
  */
 const worktrees = [
-  { deviceId: hosts[0]!.id, project: PROJECT_ROOT, name: '2', path: '/Users/alex/Projects/shop-worktrees/2' },
+  { deviceId: fileDevices[0]!.id, project: PROJECT_ROOT, name: '2', path: '/Users/alex/Projects/shop-worktrees/2' },
 ]
 const folder = ref<{ deviceId: string; path: string; worktree: { name: string; path: string } | null }>(
   props.inWorktree
     ? { deviceId: worktrees[0]!.deviceId, path: worktrees[0]!.project, worktree: worktrees[0]! }
-    : { deviceId: hosts[0]!.id, path: hosts[0]!.source.home, worktree: null },
+    : { deviceId: fileDevices[0]!.id, path: fileDevices[0]!.source.home, worktree: null },
 )
 /**
- * The account's projects, by host and directory: each host's Recent places
+ * The account's projects, by device and directory: each device's Recent places
  * to begin with, and every directory but a home the session moves to, which
  * the move makes a project as the product's does.
  */
-const projectDirectories = ref(hosts.flatMap((host) =>
-  (host.places.find((group) => group.label === 'Recent')?.places ?? []).map((place) => ({ deviceId: host.id, path: place.path })),
+const projectDirectories = ref(fileDevices.flatMap((device) =>
+  (device.places.find((group) => group.label === 'Recent')?.places ?? []).map((place) => ({ deviceId: device.id, path: place.path })),
 ))
-/** The projects on the session's host, which the directory menu lists. */
-const hostProjects = computed(() => {
-  const host = hosts.find((candidate) => candidate.id === folder.value.deviceId)
+/** The projects on the session's device, which the directory menu lists. */
+const deviceProjects = computed(() => {
+  const device = fileDevices.find((candidate) => candidate.id === folder.value.deviceId)
   return projectDirectories.value
-    .filter((project) => project.deviceId === host?.id)
+    .filter((project) => project.deviceId === device?.id)
     .map((project) => ({
       id: `${project.deviceId}:${project.path}`,
       path: project.path,
-      disabled: host!.state !== 'online',
+      disabled: device!.state !== 'online',
     }))
 })
 /** The project the session runs in, which the menu checks; none in a home. */
-const selectedProject = computed(() => hostProjects.value.find((entry) => entry.path === folder.value.path)?.id)
+const selectedProject = computed(() => deviceProjects.value.find((entry) => entry.path === folder.value.path)?.id)
 
-/** Puts the session in `path` on `deviceId`, which makes the directory a project unless it is the host's home. */
+/** Puts the session in `path` on `deviceId`, which makes the directory a project unless it is the device's home. */
 function settle(deviceId: string, path: string): void {
   const worktree = worktrees.find((entry) => entry.deviceId === deviceId && entry.path === path)
   if (worktree) {
@@ -98,20 +98,20 @@ function settle(deviceId: string, path: string): void {
     return
   }
   folder.value = { deviceId, path, worktree: null }
-  const home = hosts.find((candidate) => candidate.id === deviceId)?.source.home
+  const home = fileDevices.find((candidate) => candidate.id === deviceId)?.source.home
   const known = projectDirectories.value.some((project) => project.deviceId === deviceId && project.path === path)
   if (path !== home && !known) {
     projectDirectories.value = [...projectDirectories.value, { deviceId, path }]
   }
 }
 const projectName = computed(() => folder.value.path.split('/').filter(Boolean).at(-1) ?? null)
-const primaryHost = computed<HostMenuHost>(() => {
+const primaryDevice = computed<MenuDevice>(() => {
   const device = devices.find((candidate) => candidate.id === folder.value.deviceId)
   return device
     ? { id: device.id, name: device.name, kind: 'device', state: device.state, mark: device.mark }
     : { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null }
 })
-const attachedHosts = ref<HostMenuHost[]>([])
+const attachedDevices = ref<MenuDevice[]>([])
 // A move stays open while the agent works, as the product's, and stops nothing.
 const locked = computed(() => (session.archived ? 'archived' as const : undefined))
 const moveQuestion = useMoveQuestion()
@@ -122,17 +122,17 @@ const moveQuestion = useMoveQuestion()
  * agent does goes on.
  */
 async function moveTo(deviceId: string, path: string): Promise<boolean> {
-  const host = hosts.find((candidate) => candidate.id === deviceId)
-  if (!host) {
+  const target = fileDevices.find((candidate) => candidate.id === deviceId)
+  if (!target) {
     settle(deviceId, path)
     return true
   }
   return moveQuestion.ask(
     {
-      host: host.label,
-      directory: homePath(path, host.source.home),
-      from: primaryHost.value.name,
-      fromCloud: primaryHost.value.kind === 'cloud',
+      device: target.label,
+      directory: homePath(path, target.source.home),
+      from: primaryDevice.value.name,
+      fromCloud: primaryDevice.value.kind === 'cloud',
     },
     async () => {
       settle(deviceId, path)
@@ -144,24 +144,24 @@ async function selectFolder(deviceId: string, path: string): Promise<boolean> {
   return moveTo(deviceId, path)
 }
 function selectProject(id: string): void {
-  const project = hostProjects.value.find((entry) => entry.id === id)
+  const project = deviceProjects.value.find((entry) => entry.id === id)
   if (project) {
     void moveTo(folder.value.deviceId, project.path)
   }
 }
-/** A Host chosen in the host menu: a device moves the session to its home; the gallery has no Cloud to move to. */
+/** A device chosen in the device menu: a device moves the session to its home; the gallery has no Cloud to move to. */
 function choose(chosen: { kind: 'cloud' } | { kind: 'device'; id: string }): void {
   if (chosen.kind === 'cloud') {
     productWould('Move the Conversation to the Cloud')
     return
   }
-  const host = hosts.find((candidate) => candidate.id === chosen.id)
-  if (host) {
-    void moveTo(host.id, host.source.home)
+  const target = fileDevices.find((candidate) => candidate.id === chosen.id)
+  if (target) {
+    void moveTo(target.id, target.source.home)
   }
 }
 function detach(id: string): void {
-  attachedHosts.value = attachedHosts.value.filter((host) => host.id !== id)
+  attachedDevices.value = attachedDevices.value.filter((device) => device.id !== id)
 }
 </script>
 <template>
@@ -206,17 +206,17 @@ function detach(id: string): void {
             :device-id="folder.deviceId"
             :locked="locked !== undefined"
             browse-enabled
-            :projects="hostProjects"
+            :projects="deviceProjects"
             :selected-project-id="selectedProject"
-            :hosts="hosts"
+            :devices="fileDevices"
             :worktree="folder.worktree"
             :select-folder="selectFolder"
             @select-project="selectProject"
           >
-            <HostMenu
-              :primary-host="primaryHost"
+            <DeviceMenu
+              :primary-device="primaryDevice"
               conversation-id="gallery-connected-session"
-              :attached-hosts="attachedHosts"
+              :attached-devices="attachedDevices"
               :devices="devices"
               :locked="locked"
               @choose="choose"

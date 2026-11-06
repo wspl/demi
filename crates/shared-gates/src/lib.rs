@@ -14,7 +14,7 @@
 //! # Activity gate
 //!
 //! A lease of an `ActivityGate` is one permit: work in progress, such as one
-//! host access. A reservation takes every permit: a transition that needs the
+//! device access. A reservation takes every permit: a transition that needs the
 //! gate quiet, such as a target switch.
 //!
 //! Entrants are served first in, first out, so a waiting reservation holds back

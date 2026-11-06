@@ -275,7 +275,7 @@ pub enum Trigger {
         timing: Timing,
     },
     /// When the output of `command`, run every `everyMinutes` on the
-    /// conversation's Host in its directory, changes.
+    /// conversation's device in its directory, changes.
     Change {
         #[garde(length(min = 1), custom(not_blank))]
         command: String,

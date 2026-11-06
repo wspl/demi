@@ -8,7 +8,7 @@ import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import type { SettingsTab } from '@demicodes/web-ui/settings/types'
 import { settingsSections as productSections } from '@demicodes/web-ui/settings/sections'
-import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { DeviceOption, MenuDevice } from '@demicodes/web-ui/targets/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { providePageHost, sidebarEntries, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
@@ -19,7 +19,7 @@ import PasskeyOffer from '@demicodes/web-ui/auth/PasskeyOffer.vue'
 import { deviceReportKey } from '@demicodes/web-ui/auth/device-unlock'
 import { DEVICE_REPORTS } from '../fixtures/device-reports'
 import GalleryComposer from '../components/GalleryComposer.vue'
-import GalleryHostMenu from '../components/GalleryHostMenu.vue'
+import GalleryDeviceMenu from '../components/GalleryDeviceMenu.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
@@ -114,14 +114,14 @@ const files = galleryConversationFiles(project.source, ({ path, line }) => {
   work.openIn({ intent: 'attachment', payload: { id, name, size, url } })
 })
 
-const devices: HostDeviceOption[] = shownAmong([
+const devices: DeviceOption[] = shownAmong([
   { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer', mark: GALLERY_MARKS.mac },
   { id: 'studio', name: 'Studio PC', state: 'updating', downloadPercent: 26, path: 'localNetwork', mark: GALLERY_MARKS.windows },
   { id: 'old', name: 'Old Laptop', state: 'offline', mark: GALLERY_MARKS.debian },
 ])
-/** The title sheet's scene runs on a Host that is updating, which the title's dot says. */
+/** The title sheet's scene runs on a device that is updating, which the title's dot says. */
 const primaryId = scene === 'title' ? 'studio' : 'mac'
-const primaryHost = computed<HostMenuHost>(() => {
+const primaryDevice = computed<MenuDevice>(() => {
   const device = devices.find((item) => item.id === primaryId)!
   return { id: device.id, name: device.name, kind: 'device', state: device.state, downloadPercent: device.downloadPercent, mark: device.mark }
 })
@@ -316,7 +316,7 @@ onMounted(async () => {
         :panel-tabs="work.panel.value.tabs.length"
         :select-edit="work.selectEdit"
         :files="files"
-        :primary-host="primaryHost"
+        :primary-device="primaryDevice"
         :listed="shownListed"
         :pending-submissions="flow.pendingSubmissions.value"
         :removing="flow.removing.value"
@@ -339,7 +339,7 @@ onMounted(async () => {
         v-bind="agentContext.session"
       >
         <template #place>
-          <GalleryHostMenu :devices="devices" :primary-id="primaryId" has-messages />
+          <GalleryDeviceMenu :devices="devices" :primary-id="primaryId" has-messages />
         </template>
         <template #composer>
           <GalleryComposer

@@ -22,9 +22,7 @@
   "device": {
     "title": "Diesem Chat erlauben, „{name}“ zu verwenden?",
     "description": "Seine Agenten können auf „{name}“ in deinem Namen Befehle ausführen, bis du es trennst.",
-    "use": "„{name}“ zu verwenden"
-  },
-  "host": {
+    "use": "„{name}“ zu verwenden",
     "pair": "einen Computer zu koppeln und ihn zu erreichen"
   },
   "categories": {
@@ -32,7 +30,7 @@
       "action": "deine Zugangsdaten zu verwenden",
       "description": "Damit können die Agenten dieses Chats deine gespeicherten Zugangsdaten auflisten, lesen, speichern, ersetzen und entfernen und dich nach neuen fragen."
     },
-    "host_use": {
+    "device_use": {
       "action": "deine Geräte zu verwenden",
       "description": "Damit können die Agenten dieses Chats auf jedem deiner Geräte und in der Cloud Befehle in deinem Namen ausführen, diesen Chat auf eines davon verschieben, einen Computer mit deinem Konto koppeln und Portweiterleitungen hinzufügen und entfernen, die über diesen Chat hinaus bestehen bleiben."
     },

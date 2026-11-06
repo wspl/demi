@@ -10,14 +10,14 @@ bytes.workspace = true
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
 demi-runner-direct = { path = "../runner-direct" }
-demi-runner-host = { path = "../runner-host" }
+demi-runner-device = { path = "../runner-device" }
 demi-runner-jobs = { path = "../runner-jobs" }
 demi-runner-process = { path = "../runner-process" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-runner-command-packages = { path = "../runner-command-packages" }
 demi-runner-shell = { path = "../runner-shell" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
-demi-shared-cli = { path = "../shared-cli", features = ["host-allocator"] }
+demi-shared-cli = { path = "../shared-cli", features = ["device-allocator"] }
 demi-shared-types = { path = "../shared-types", features = ["tracing"] }
 clap = { version = "4", features = ["derive", "env"] }
 # The home reported canonically, without Windows' verbatim prefix.
@@ -57,7 +57,7 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Registry"] }
 
 # sha2's ARM hardware backend is opt-in; artifact verification must not use
-# its unoptimized software fallback on supported Unix ARM hosts.
+# its unoptimized software fallback on supported Unix ARM devices.
 [target.'cfg(all(unix, target_arch = "aarch64"))'.dependencies]
 sha2 = { version = "0.10", features = ["asm"] }
 

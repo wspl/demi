@@ -1,5 +1,5 @@
 import {
-  type FileBrowserHost,
+  type FileBrowserDevice,
   type FileBrowserPlaceGroup,
   type FileBrowserSource,
 } from '@demicodes/web-ui/files/types'
@@ -43,7 +43,7 @@ export function placesFor(
   return groups
 }
 
-export function browserHosts(devices: Device[]): FileBrowserHost[] {
+export function browserDevices(devices: Device[]): FileBrowserDevice[] {
   return devices.map((device) => ({
     id: device.id,
     label: device.name,

@@ -204,7 +204,7 @@ impl ControlService {
         .await
     }
 
-    /// Deletes the user's workspace `id`, its projects and its plugins' Host
+    /// Deletes the user's workspace `id`, its projects and its plugins' device
     /// directories, once its conversations are deleted, as one transaction.
     pub async fn delete_workspace(&self, user: UserId, id: WorkspaceId) -> Result<WorkspaceDeletion, StorageError> {
         self.call(move |connection, _| {

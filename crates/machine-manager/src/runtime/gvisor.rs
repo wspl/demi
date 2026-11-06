@@ -148,7 +148,7 @@ impl Device {
     /// save the working pair. The worker reports the death after.
     pub async fn recover(&mut self, outcome: std::io::Result<()>) {
         if let Err(error) = outcome {
-            tracing::error!(event = "cloud_runtime.wait_failed", host_id = %self.device, %error, "a Cloud's runtime could not be waited for");
+            tracing::error!(event = "cloud_runtime.wait_failed", device_id = %self.device, %error, "a Cloud's runtime could not be waited for");
         }
         // No request named the machine: the save removes no fallback.
         let recovered = match self.stop().await {
@@ -156,7 +156,7 @@ impl Device {
             Err(error) => Err(error),
         };
         if let Err(error) = recovered {
-            tracing::error!(event = "cloud_recovery.failed", host_id = %self.device, error = %chain(&error), "a Cloud's recovery after its sandbox exited failed");
+            tracing::error!(event = "cloud_recovery.failed", device_id = %self.device, error = %chain(&error), "a Cloud's recovery after its sandbox exited failed");
         }
     }
 

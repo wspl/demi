@@ -3,7 +3,7 @@
 //! The plugin holds:
 //!
 //! - the user's skill sources, fetched from git and pinned to a commit, whose
-//!   skills the user turns on one by one and which the Hosts that run the
+//!   skills the user turns on one by one and which the devices that run the
 //!   conversations offered them receive as directories;
 //! - the skills a repository carries;
 //! - the catalog of both, which reaches the model as a context block.
@@ -32,35 +32,35 @@
 //!
 //! - A skill whose name another skill that is on has.
 //! - A skill that sets `disable-model-invocation`, which the agent is never
-//!   offered. On, it would only install its files on every Host and take its
+//!   offered. On, it would only install its files on every device and take its
 //!   name from another skill.
 //!
 //! Two skills that are on never share a name, in any place, which an update
 //! cannot break either, since a skill stays on only under the name it was on
-//! with: a Host may run conversations of several workspaces, and a skill's
+//! with: a device may run conversations of several workspaces, and a skill's
 //! directory is named after it.
 //!
-//! # Hosts
+//! # devices
 //!
-//! A Global skill that is on is installed on each Host the user's jobs run
-//! on, and a workspace's on each Host its conversations' jobs run on, so the
-//! bounds of a fetch bound what a Host keeps.
+//! A Global skill that is on is installed on each device the user's jobs run
+//! on, and a workspace's on each device its conversations' jobs run on, so the
+//! bounds of a fetch bound what a device keeps.
 //!
-//! A skill's path in the catalog is its directory on a Host, the same on every
-//! Host, so a target switch changes no path: the new Host receives the
+//! A skill's path in the catalog is its directory on a device, the same on every
+//! device, so a target switch changes no path: the new device receives the
 //! directory when its first job needs it.
 //!
-//! The plugin writes to no Host and never blocks the shard thread.
+//! The plugin writes to no device and never blocks the shard thread.
 //!
 //! # Fetchers
 //!
 //! The server fetches a source with gix on the blocking pool, and sends no
 //! credential. A source may instead name one of the user's paired devices,
 //! which fetches it with its own `git`, as its user, with that user's keys,
-//! credential helpers and network (`crates/backend-host-access/src/device_git.rs`):
+//! credential helpers and network (`crates/backend-device-access/src/device_git.rs`):
 //! the one way to an SSH address, or a repository only a company network
 //! reaches. What either fetch answers is read by the same rules, and the
-//! server keeps the files for every Host. An offline device fetches and
+//! server keeps the files for every device. An offline device fetches and
 //! checks nothing; its source keeps its skills and waits.
 //!
 //! # Updates
@@ -419,7 +419,7 @@ impl State {
     }
 
     /// The user's sources that are in a place, and the places. A source of a
-    /// workspace that no longer exists is removed on the way, with its Host
+    /// workspace that no longer exists is removed on the way, with its device
     /// directories, and the pages hear of it.
     ///
     /// The sources are read before the workspaces: a source is added only to
@@ -621,7 +621,7 @@ impl State {
         self.directories_changed(port).await
     }
 
-    /// The skills that are on changed: the Host directories follow, and
+    /// The skills that are on changed: the device directories follow, and
     /// every page receives the new state.
     async fn directories_changed(&self, port: &PluginPort) -> Result<(), PluginError> {
         let (all, _) = self.sources(port).await?;

@@ -7,7 +7,7 @@
 //!   its own prefix, and the backend every other `DEMI_*` name.
 //! - The panic hook every program installs at start
 //!   (`crates/xtask/src/native/build.rs`).
-//! - On a musl target, the memory allocator of the programs that run on a Host
+//! - On a musl target, the memory allocator of the programs that run on a device
 //!   (`crates/xtask/src/native/build.rs`).
 //! - Raising a program's soft limit on open files, which the runner and the
 //!   backend do as they start (`crates/runner/src/main.rs`,
@@ -18,7 +18,7 @@
 
 use std::{ffi::OsString, io::Write as _};
 
-/// The memory allocator of the programs that run on a Host.
+/// The memory allocator of the programs that run on a device.
 ///
 /// musl's own allocator unmaps and maps memory around small allocations and
 /// serializes threads on one lock. That costs most inside gVisor, where each
@@ -34,7 +34,7 @@ use std::{ffi::OsString, io::Write as _};
 /// - grew the runner's resident size from about 47 MB to 85 MB in gVisor's
 ///   accounting, the sandbox's memory by 1 to 2 MB.
 ///
-/// The runner and the command programs turn on `host-allocator`.
+/// The runner and the command programs turn on `device-allocator`.
 ///
 /// The server's programs keep musl's allocator: on a plain kernel mimalloc
 /// saved about a tenth of the backend's CPU on streamed replies but held 35 MB
@@ -42,7 +42,7 @@ use std::{ffi::OsString, io::Write as _};
 ///
 /// A program uses this allocator only if it links this crate's object, which
 /// calling `install_panic_hook` ensures.
-#[cfg(all(target_env = "musl", feature = "host-allocator"))]
+#[cfg(all(target_env = "musl", feature = "device-allocator"))]
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 

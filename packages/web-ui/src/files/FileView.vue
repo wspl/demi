@@ -17,8 +17,8 @@ import { normalizePath, parentPath } from './paths'
 import type { FileBrowserSource, FileDirectory } from './types'
 
 /**
- * One file of a Host, read through its source: the whole path as crumbs from the
- * Host's root, the file itself under its bar (`FileContent`), and beside it the
+ * One file of a device, read through its source: the whole path as crumbs from the
+ * device's root, the file itself under its bar (`FileContent`), and beside it the
  * file tree with the file selected.
  *
  * The tree docks, hides and shows over the file as its frame (`TreeFrame`)

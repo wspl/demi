@@ -1,5 +1,5 @@
 //! The user's port forwards (`crates/backend-user-shard/src/shard/port_forwards.rs`): what Settings › Port
-//! Forwarding and `demi host forward` read and send, and the rules an
+//! Forwarding and `demi device forward` read and send, and the rules an
 //! address follows wherever it arrives. A forward is its route, where it
 //! listens and where it connects; nothing names it.
 
@@ -13,12 +13,12 @@ use serde_with::rust::{double_option, unwrap_or_skip};
 use crate::ids::{DeviceId, PortForwardId};
 
 /// The port a new forward listens on, unless another of the user's
-/// forwards on that Host uses it.
+/// forwards on that device uses it.
 pub const DEFAULT_PORT: u16 = 8080;
 /// The address a new forward connects to.
 pub const DEFAULT_ADDRESS: &str = "localhost:11434";
 
-/// Where a forward connects on its Connect To Host: `host:port`, a name,
+/// Where a forward connects on its Connect To Device: `host:port`, a name,
 /// an IPv4 address or an IPv6 address in brackets, and a port from 1 to
 /// 65535.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -92,7 +92,7 @@ impl JsonSchema for ForwardAddress {
     }
 }
 
-/// A forward as the page and `demi host forward list` see it: its fields,
+/// A forward as the page and `demi device forward list` see it: its fields,
 /// and what its Listen On runner last announced of it, null while that
 /// runner has said nothing, as when it is offline or the forward does not
 /// listen (`crates/runner-protocol/src/forward.rs`).
@@ -102,7 +102,7 @@ pub struct PortForwardDto {
     pub id: PortForwardId,
     pub listen_device: DeviceId,
     pub listen_port: u16,
-    /// Null until the user chooses the Host it connects on.
+    /// Null until the user chooses the device it connects on.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<DeviceId>")]
     pub connect_device: Option<DeviceId>,
@@ -128,9 +128,9 @@ pub struct PortForwardAnswer {
 
 /// `POST /port-forwards` and `PATCH /port-forwards/:id`: what changes; a
 /// new forward starts from its defaults, on, listening on the first of the
-/// user's Hosts, or on the Cloud for a user who has none yet, on port 8080
+/// user's devices, or on the Cloud for a user who has none yet, on port 8080
 /// or the next port none of the user's forwards there uses, connecting to
-/// `localhost:11434` on no Host yet, and takes these over them.
+/// `localhost:11434` on no device yet, and takes these over them.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PortForwardPatch {

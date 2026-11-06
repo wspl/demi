@@ -225,7 +225,7 @@ pub async fn invoke(
     };
     let mut receiver = receiver;
     let result = async {
-        // What the job changed of the Host's projects goes first, so the
+        // What the job changed of the device's projects goes first, so the
         // backend knows a worktree the command names (`Backlog::report`).
         backlog.report();
         backlog.push(message(resumed)?);
@@ -370,7 +370,7 @@ async fn exchange(
     };
     // The call's exit and its whole stdout own its lifetime: its input
     // ending, read or unread, ends nothing else, however long the stdout
-    // takes to reach a slow process (`crates/host-interface/src/rpc.rs`).
+    // takes to reach a slow process (`crates/device-interface/src/rpc.rs`).
     // Only an input that cannot be read or sent ends the call early.
     tokio::pin!(complete);
     tokio::select! {
@@ -388,7 +388,7 @@ async fn exchange(
 ///
 /// A failure of the pipe itself, such as a stdout handed to a job on another
 /// device that went away, also ends the call on the backend, whose exit then
-/// ends it with the cause on stderr (`crates/host-interface/src/rpc.rs`). Only
+/// ends it with the cause on stderr (`crates/device-interface/src/rpc.rs`). Only
 /// a failure to write the output ends it here.
 async fn download(
     pipes: &PipeClient,
@@ -489,7 +489,7 @@ fn report(
     output.push(message);
     Ok(())
 }
-/// A call's relay broke the rpc protocol (`crates/host-interface/src/rpc.rs`).
+/// A call's relay broke the rpc protocol (`crates/device-interface/src/rpc.rs`).
 #[derive(Debug, thiserror::Error)]
 enum RpcError {
     #[error("duplicate RPC pipes")]

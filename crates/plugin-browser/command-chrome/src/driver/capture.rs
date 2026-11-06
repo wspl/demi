@@ -24,9 +24,9 @@
 //!   hint selects ignores the bit rate and keeps every picture blurred.
 //! - The extension runs outside this process, so a message that does not decode
 //!   fails that connection and is logged. It is never dropped silently.
-//! - Stopping a capture invalidates its queued restart, and the Host alone owns
+//! - Stopping a capture invalidates its queued restart, and the device alone owns
 //!   retries and backoff. The extension reports a failed or silent capture and
-//!   releases it, and never starts a replacement that could outlive the Host's
+//!   releases it, and never starts a replacement that could outlive the device's
 //!   owner.
 //!
 //! # Chrome defects the module works around
@@ -82,7 +82,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// pages and their state stay.
 pub type Recreate = Box<dyn Fn() -> BoxFuture<'static, Result<()>> + Send + Sync>;
 
-/// Why this Host cannot capture, or none. On Linux arm64, Chrome's SME code
+/// Why this device cannot capture, or none. On Linux arm64, Chrome's SME code
 /// faults on a CPU that reports SME without SVE, until the GPU process gives up
 /// and Chrome exits.
 pub(crate) fn unavailable() -> Option<&'static str> {
@@ -97,7 +97,7 @@ pub(crate) fn unavailable() -> Option<&'static str> {
         };
         if sme_without_sve(hwcap, hwcap2) {
             return Some(
-                "this Host's CPU reports SME without SVE, which Chrome's tab capture cannot run on; boot its kernel with arm64.nosme to show the browser",
+                "this device's CPU reports SME without SVE, which Chrome's tab capture cannot run on; boot its kernel with arm64.nosme to show the browser",
             );
         }
     }

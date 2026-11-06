@@ -2,13 +2,13 @@
   "files": {
     "offline": "Das Gerät ist offline.",
     "notFound": "Es ist nicht mehr vorhanden.",
-    "permission": "Der Host erlaubt keinen Zugriff darauf.",
+    "permission": "Das Gerät erlaubt keinen Zugriff darauf.",
     "exists": "Es gibt bereits ein Objekt mit diesem Namen.",
     "binary": "Es ist kein Text.",
     "tooLarge": "Es ist zu groß.",
     "notRepository": "Es befindet sich nicht in einem Git-Repository.",
-    "other": "Der Host hat nicht geantwortet.",
-    "conversationBusy": "Der Chat wechselt gerade seinen Host.",
+    "other": "Das Gerät hat nicht geantwortet.",
+    "conversationBusy": "Der Chat wechselt gerade sein Gerät.",
     "selectDevice": "Wähle ein verbundenes Gerät aus.",
     "searchCut": "Die Suche wurde vor dem Ende abgebrochen."
   }

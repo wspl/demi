@@ -102,7 +102,7 @@ struct Offered {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum End {
     /// The runner's connection ended.
-    HostUnreachable,
+    DeviceUnreachable,
     /// The page sent a message it should not have.
     Refused,
     /// The page closed the lane, or its connection ended.
@@ -115,7 +115,7 @@ impl End {
     fn lane_end(self) -> LaneEnd {
         let close = |code, reason| LaneEnd::Close(LaneClose { code, reason });
         match self {
-            Self::HostUnreachable => close(1011, "host_unreachable"),
+            Self::DeviceUnreachable => close(1011, "device_unreachable"),
             Self::Refused => close(1003, "invalid_message"),
             Self::PageClosed => LaneEnd::Gone,
         }
@@ -179,7 +179,7 @@ impl Signaling {
             self.peer_events(DirectPeer::Files).await,
             self.peer_events(DirectPeer::Live).await,
         ) else {
-            page.end(from_page, End::HostUnreachable.lane_end());
+            page.end(from_page, End::DeviceUnreachable.lane_end());
             return;
         };
         let mut said = [files, live];
@@ -190,7 +190,7 @@ impl Signaling {
             let tokens = [peers[0].introduced.clone(), peers[1].introduced.clone()];
             let request = tokio::select! {
                 biased;
-                () = &mut link_ended => break End::HostUnreachable,
+                () = &mut link_ended => break End::DeviceUnreachable,
                 at = switched(tokens) => {
                     // The peer's streams are no longer the user's: the
                     // runner closes it, and the page offers again.
@@ -213,7 +213,7 @@ impl Signaling {
                 }) => {
                     answering[at] = None;
                     let Some(Offered { message, switched }) = answer else {
-                        break End::HostUnreachable;
+                        break End::DeviceUnreachable;
                     };
                     // A new offer replaced the peer, and only an answered
                     // one made another, which the held candidates are for.
@@ -248,7 +248,7 @@ impl Signaling {
                         // end says next.
                         None => {
                             link_ended.as_mut().await;
-                            break End::HostUnreachable;
+                            break End::DeviceUnreachable;
                         }
                     };
                     if page.send(text(&message)).await.is_err() {
@@ -385,7 +385,7 @@ impl Signaling {
                     OfferRefusal::Busy => "busy",
                     OfferRefusal::InvalidOffer => "invalid_offer",
                 };
-                tracing::debug!(event = "runner_offer.refused", host_id = %self.device, reason, "a runner refused an offer");
+                tracing::debug!(event = "runner_offer.refused", device_id = %self.device, reason, "a runner refused an offer");
                 let code = match code {
                     OfferRefusal::Busy => Unanswered::Busy,
                     OfferRefusal::InvalidOffer => Unanswered::InvalidOffer,

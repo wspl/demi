@@ -49,7 +49,7 @@
 //! A thread can still sit in a system call only a signal would interrupt, such
 //! as an `open()` the kernel holds while macOS asks the user for access to
 //! another app's data. So once `KILL` has gone, the job ends `KILLED_WORK`
-//! later whatever in-process work is left, reporting `SIGKILL`, and the Host
+//! later whatever in-process work is left, reporting `SIGKILL`, and the device
 //! log names the work it left behind.
 //!
 //! A cancellation request alone does not establish that execution stopped: the
@@ -352,7 +352,7 @@ impl Job {
             // A stopped job reports the signal that ended it, `KILL` once it
             // was killed, and no exit code: bash's own is the interruption's
             //. What a killed job
-            // left running goes to the Host log beside it.
+            // left running goes to the device log beside it.
             let stopped_by = if owner_cancel.is_cancelled() {
                 Some(Signal::Kill)
             } else {

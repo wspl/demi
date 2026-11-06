@@ -3,7 +3,7 @@
     "turnStopped": "The turn stopped with an error.",
     "saveCredential": "Save the credential “{name}”?"
   },
-  "hosts": {
+  "devices": {
     "unavailableDevice": "Unavailable device"
   },
   "failures": {

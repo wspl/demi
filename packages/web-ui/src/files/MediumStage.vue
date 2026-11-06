@@ -14,7 +14,7 @@ import type { StepReach } from './swipe-step'
  * show it: an image fitted to the space, which zooms and pans as in an image
  * viewer (`ImagePreview`), or a video that plays at once in Demi's player
  * while `open`, and never while not (`SwipeVideo`). A finger swipes either
- * the same way where `steps` and `dismissible` say so. A Host image shows its file at
+ * the same way where `steps` and `dismissible` say so. A device image shows its file at
  * the version the page keeps while `open`, and says so when the file is not
  * there.
  *
@@ -23,13 +23,13 @@ import type { StepReach } from './swipe-step'
  * the middle, until the picture shows. A new version of a picture shown
  * replaces it in place with no loading pane.
  *
- * Nothing shows before the medium has an address, as a Host file has none
+ * Nothing shows before the medium has an address, as a device file has none
  * while it is not `open`: a web browser fails a player given none, which
  * would leave the stage saying it could not show the medium.
  */
 const props = defineProps<{
   medium: ShownMedium
-  /** Whether the medium shows now, which a Host image's file is followed while. */
+  /** Whether the medium shows now, which a device image's file is followed while. */
   open: boolean
   /** Edge to edge, with no margin around the medium. */
   flush: boolean

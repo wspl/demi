@@ -3,7 +3,7 @@
 //!
 //! The handler asks the runner to install an artifact for one of its
 //! invocations, following how its download goes if it likes, or which artifacts
-//! of a line the Host has. It uses only the paths the runner answers.
+//! of a line the device has. It uses only the paths the runner answers.
 
 use std::path::PathBuf;
 
@@ -89,7 +89,7 @@ impl Artifacts {
         }
     }
 
-    /// The artifacts of the line `name` the Host has, the newest install
+    /// The artifacts of the line `name` the device has, the newest install
     /// first.
     pub async fn installed(&self, name: &str) -> Result<Vec<InstalledArtifact>, ResidentError> {
         let question = ArtifactsInstalled {

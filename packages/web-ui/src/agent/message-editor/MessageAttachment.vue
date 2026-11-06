@@ -14,7 +14,7 @@ import { useTransfers, type MessageCapsule } from './capsules'
  * through its node view, and in a sent message as it is drawn
  * (`SentMessage`). A click in the conversation opens the file: a picture or
  * a video in the page's viewer, at its place among the transcript's, and any
- * other file on the conversation's Host where a plugin opens it.
+ * other file on the conversation's device where a plugin opens it.
  */
 const props = defineProps<{
   /** The file as the message's node carries it. */
@@ -43,12 +43,12 @@ const transcript = useTranscript()
 const files = useMessageFiles()
 const medium = computed(() => (capsule.value && address ? capsuleMedium(capsule.value, address, files()) : null))
 /**
- * Any other file on another device is not on the conversation's Host, so it
+ * Any other file on another device is not on the conversation's device, so it
  * opens nothing.
  */
 const { opens, open: openFile } = useCapsuleOpening(
   () => props.editable || medium.value !== null,
-  () => capsule.value?.host ? null : capsule.value?.path,
+  () => capsule.value?.device ? null : capsule.value?.path,
 )
 
 function open(event: MouseEvent): void {

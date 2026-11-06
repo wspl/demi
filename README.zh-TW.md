@@ -107,7 +107,7 @@ Demi 不是 Claude Code 或 Codex 的外殼，而是由自己的執行環境驅�
 
 ```sh
 T=$(demi browser tab new) && demi browser open $T http://localhost:5173 && demi browser screenshot $T | demi file view
-demi host shell --host windows 'cargo test'
+demi device shell --device windows 'cargo test'
 demi agent spawn --profile research --description "Compare pricing pages" < brief.md
 ```
 

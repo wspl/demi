@@ -4,9 +4,9 @@
 //! - the connection engine ([`Link`], served by its [`LinkDriver`]): replies
 //!   routed by id, liveness, and the plumbing of the rpc calls a job's
 //!   declared commands make;
-//! - [`RemoteHost`], a Host over its device's connection, with job,
+//! - [`RemoteDevice`], a device over its device's connection, with job,
 //!   working-tree, network, log and resident facets, whose file contents
-//!   travel through pipes, and its file watches ([`HostWatch`]), shared by
+//!   travel through pipes, and its file watches ([`DeviceWatch`]), shared by
 //!   the pages that follow the same path;
 //! - pipe records ([`Pipes`]) and their `Send` ends;
 //! - [`RemoteShellEnvironment`], the shell behind the `shell_*` tools over
@@ -32,7 +32,7 @@ mod manifest;
 mod output_records;
 mod pipes;
 mod relay;
-mod remote_host;
+mod remote_device;
 mod offers;
 mod session;
 mod shell_environment;
@@ -43,10 +43,10 @@ mod runner_socket;
 mod stream_pipe;
 
 pub use device_jobs::{CLOUD_RESTARTED, DeviceJobs, Hello, NEVER_RECEIVED, RUNNER_RESTARTED, UPGRADED};
-pub use file_watch::{HostEvent, HostSubscriber};
+pub use file_watch::{DeviceEvent, DeviceSubscriber};
 pub use link::{
     DirectAdmission, DirectAnswer, ForwardEvent, HttpHead, HttpRequest, PackageEvent, PeerEvent, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
-    HostLog, LinkPolicy, SocketEnd,
+    DeviceLog, LinkPolicy, SocketEnd,
     END_GRACE, PING_INTERVAL, WeakLink,
 };
 pub use manifest::{ArtifactResolver, CommandCatalog, CommandSelection};
@@ -59,9 +59,9 @@ pub use pipes::{
     PipeWriter, Pipes, SinkSession, SourceMessage,
 };
 pub use session::{Beginning, DeviceSession};
-pub use remote_host::{
-    Admission, AttachedArtifact, DeviceLink, DirectoryFile, JobStart, Look, LookAt, ConditionalRead, OpenedRead, RemoteHost, RemoteJob,
-    ResidentCallError, ResidentEnd, ResidentRequest, ResidentStream, byte_stream, collect_pipe, host_identity,
+pub use remote_device::{
+    Admission, AttachedArtifact, DeviceLink, DirectoryFile, JobStart, Look, LookAt, ConditionalRead, OpenedRead, RemoteDevice, RemoteJob,
+    ResidentCallError, ResidentEnd, ResidentRequest, ResidentStream, byte_stream, collect_pipe, device_identity,
 };
 #[cfg(feature = "edge")]
 pub use runner_socket::{close_frame, socket_frame};
@@ -69,6 +69,6 @@ pub use runner_socket::{close_frame, socket_frame};
 pub use stream_pipe::{FromSource, ToSource, accept_call_sink, relay_stream_pipe};
 pub use withdrawal::Withdrawal;
 pub use shell_environment::{
-    CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, JobWaiting, KeptStart, RemoteShellEnvironment,
+    CommandKeeper, ContextSource, EnvironmentOptions, DeviceAccess, JobWaiting, KeptStart, RemoteShellEnvironment,
     RemoteShellEnvironmentFactory, edited_file,
 };

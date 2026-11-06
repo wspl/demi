@@ -45,7 +45,7 @@ pub struct Scope {
 }
 
 /// A file's opened range: its size, version and modification time, with
-/// the Host's number before it opened; its bytes follow.
+/// the device's number before it opened; its bytes follow.
 pub struct FileRange {
     pub size: u64,
     pub version: String,
@@ -55,14 +55,14 @@ pub struct FileRange {
 }
 
 /// A file's text and its version, none when the file still has the version
-/// the read named, with the Host's number before it read.
+/// the read named, with the device's number before it read.
 pub struct FileText {
     pub version: String,
     pub text: Option<String>,
     pub read_at: ReadAt,
 }
 
-/// A directory's listing, with the Host's number before it listed.
+/// A directory's listing, with the device's number before it listed.
 pub struct Listing {
     pub path: String,
     pub home: Option<String>,
@@ -345,7 +345,7 @@ async fn carry_out(
             }
             let Some(opened) = ReadOpened::new(range.size, range.version, range.modified, range.read_at) else {
                 let error = ChannelError::new(
-                    ChannelErrorCode::HostOperationFailed,
+                    ChannelErrorCode::DeviceOperationFailed,
                     500,
                     "The file's modification time is out of range",
                 );

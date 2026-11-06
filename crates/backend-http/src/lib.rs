@@ -51,7 +51,7 @@ mod files;
 mod gate;
 mod history;
 mod html_view;
-mod hosts;
+mod attached_devices;
 mod install;
 mod instructions;
 mod lending;
@@ -169,13 +169,13 @@ pub struct Edge {
 /// own.
 ///
 /// The boot record's backend URL still names the backend's origin, which
-/// requests carry as their host:
+/// requests carry as their device:
 ///
 /// - No TLS crosses the socket.
 /// - An artifact URL on that origin goes through it.
 /// - Any other URL, such as an S3 store's, goes over the network.
 ///
-/// A Simple Isolation Cloud, which runs on the host's network, reaches the
+/// A Simple Isolation Cloud, which runs on the device's network, reaches the
 /// backend on an abstract socket named after the file instead
 /// (`demi_runner_protocol::boot::abstract_socket`): a bound file would be
 /// one its programs could remove.
@@ -676,12 +676,12 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(files::raw).put(files::upload),
         )
         .route(
-            "/conversations/{id}/hosts/{device}",
-            delete(hosts::detach),
+            "/conversations/{id}/devices/{device}",
+            delete(attached_devices::detach),
         )
         .route(
-            "/conversations/{id}/hosts/{device}/fs",
-            get(files::list_on_host).post(files::make_directory_on_host),
+            "/conversations/{id}/devices/{device}/fs",
+            get(files::list_on_device).post(files::make_directory_on_device),
         )
         .route("/conversations/{id}/changes", get(files::changes))
         .route("/conversations/{id}/changes/file", get(files::changed_file))

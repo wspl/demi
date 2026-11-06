@@ -16,6 +16,6 @@ labels: bug
 
 - Demi version (Settings › About, or `demi-server status`):
 - Browser and OS:
-- Host: Cloud, or a paired device (OS):
+- Device: Cloud, or a paired device (OS):
 
 **Request ID** (from the error, if one was shown):

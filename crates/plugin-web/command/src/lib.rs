@@ -1,4 +1,4 @@
-//! The `demi.fetch` package: `demi web fetch` reads a URL from the Host, as
+//! The `demi.fetch` package: `demi web fetch` reads a URL from the device, as
 //! `curl` there would, and prints a page as Markdown one part at a time, or
 //! saves a file that is no text.
 //!

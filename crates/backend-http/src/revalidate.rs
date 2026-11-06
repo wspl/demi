@@ -7,7 +7,7 @@
 //! - A JSON answer carries an `ETag` of its content and `Cache-Control:
 //!   private, no-cache`. The browser asks again on every use, with
 //!   `If-None-Match`, and an unchanged answer is a 304 with the headers the
-//!   full answer would have had, such as the Host's number
+//!   full answer would have had, such as the device's number
 //!   (`X-Demi-Read-At`), and no body. The page reads the answer it gets and
 //!   knows nothing of tags.
 //! - An answer that already names its version, such as a file's text or a

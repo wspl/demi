@@ -348,7 +348,7 @@ pub enum ClientContent {
         #[garde(skip)]
         reference: String,
     },
-    /// A file the page uploaded; the backend writes it to the Host before the
+    /// A file the page uploaded; the backend writes it to the device before the
     /// session sees the content.
     Upload {
         /// The upload's attachment id.

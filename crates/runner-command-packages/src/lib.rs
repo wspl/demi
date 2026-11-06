@@ -31,7 +31,7 @@
 //! it is not a performance promise for any command.
 //!
 //! A resident that exits or breaks the protocol fails each call it held with
-//! its exit status and the end of its standard error (which the Host log
+//! its exit status and the end of its standard error (which the device log
 //! holds too). A call is never replayed, since its side effects may have
 //! happened. A new startup catalog makes new pinned bindings; it never swaps
 //! the executable under an existing execution context.

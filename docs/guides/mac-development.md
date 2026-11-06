@@ -21,9 +21,9 @@ Lima VM (Linux, the Mac's architecture)
                                                    (through the runner socket)
 ```
 
-## Hosts in use
+## Devices in use
 
-On an Apple silicon Mac, the Hosts in use are the Mac,
+On an Apple silicon Mac, the devices in use are the Mac,
 `aarch64-apple-darwin`, and the Cloud guest, `aarch64-unknown-linux-musl`.
 Build those two targets with the Mac's own toolchain, cross tools and Apple
 SDK (`crates/xtask/src/native/build.rs`), and assemble a server release of
@@ -45,7 +45,7 @@ the VM, on the VM's Linux disk.
 
 Build the image inside the VM as the
 [guest image build](../../cloud-guest-image/README.md) describes, from the
-server-release root that [Hosts in use](#hosts-in-use) builds, prefixing the
+server-release root that [devices in use](#devices-in-use) builds, prefixing the
 build command with `limactl shell demi-machine-manager --`. The VM sees the
 Mac's home directory at the same path. Its output is the `image/` of the manager's root on the
 VM's Linux disk, such as `/opt/demi/dev-<build>/image`, never a shared Mac
@@ -145,7 +145,7 @@ state directory to make a start succeed.
 ## Backend on the Mac
 
 Follow the Development backend steps (`crates/xtask/src/dev/mod.rs`) with the
-server-release root from [Hosts in use](#hosts-in-use), and start the backend
+server-release root from [devices in use](#devices-in-use), and start the backend
 with the three settings the script printed:
 
 ```sh

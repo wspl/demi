@@ -3,7 +3,7 @@ import { createPinia } from 'pinia'
 import { httpStatusLine } from '@demicodes/utils'
 import { BrowserTabsError } from '@demicodes/plugin-browser/live/tabs'
 import type { OpenUserStream } from '@demicodes/web-ui/plugins/streams'
-import type { HostArtifact, HostDownload } from '@demicodes/web-ui/devices/installed'
+import type { DeviceArtifact, DeviceDownload } from '@demicodes/web-ui/devices/installed'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { workspaceName } from '@demicodes/web-ui/workspaces/workspaces'
 import {
@@ -42,7 +42,7 @@ import type { GalleryBrowserPlugin } from './panel'
 /**
  * The plugins as the gallery's specimens answer them: each over the specimen's own state, so every
  * control of a plugin's page acts on it the way the backend's plugin would, after a beat where the
- * plugin would reach a Host or git.
+ * plugin would reach a device or git.
  */
 export interface GalleryPlugin {
   /** The plugin's user state, read reactively. */
@@ -54,10 +54,10 @@ export interface GalleryPlugin {
   call(method: string, params: object, conversation: string | null): Promise<unknown>
   /** Its user streams, by name. */
   streams?: Record<string, OpenUserStream>
-  /** What the specimen's Host holds of its packages, read reactively. */
-  installed?(): readonly HostArtifact[]
-  /** What the specimen's Host downloads of its packages now, read reactively. */
-  downloading?(): readonly HostDownload[]
+  /** What the specimen's device holds of its packages, read reactively. */
+  installed?(): readonly DeviceArtifact[]
+  /** What the specimen's device downloads of its packages now, read reactively. */
+  downloading?(): readonly DeviceDownload[]
   /** Where its reply block `tag` of `id` loads, as the backend's route would serve it. */
   blockDocument?(tag: string, id: string): string
 }
@@ -71,8 +71,8 @@ export interface GalleryShell {
   files?: ConversationFileService
   panel?: PageHost['panel']
   intents?: IntentService
-  /** Whether the specimen's Host is a Cloud that is starting; never, unless the specimen says. */
-  hostStarting?(): boolean
+  /** Whether the specimen's device is a Cloud that is starting; never, unless the specimen says. */
+  deviceStarting?(): boolean
   /** What the specimen says the product would do with a page it opens in a new tab. */
   openLink?: PageHost['openLink']
   /** Whether the user has `plugin` on, read reactively; every plugin is, unless the specimen says. */
@@ -147,7 +147,7 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
     },
     installed: (plugin) => plugins[plugin]?.installed?.() ?? [],
     downloading: (plugin) => plugins[plugin]?.downloading?.() ?? [],
-    hostStarting: () => shell.hostStarting?.() ?? false,
+    deviceStarting: () => shell.deviceStarting?.() ?? false,
     files: () => {
       if (!shell.files) {
         throw new Error('The specimen shows no conversation files')

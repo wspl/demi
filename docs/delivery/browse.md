@@ -275,8 +275,8 @@ The following helpers drive the product itself:
   - `demi.runner.stop()` and `.start()` stop and start that same runner, as a
     device that goes away and comes back.
   - `demi.runner({ fresh: true })` pairs a new one.
-  - `demi.host(name)` has the open conversation run on that device, through the
-    header's Host menu, before its first message. Without it a conversation
+  - `demi.device(name)` has the open conversation run on that device, through the
+    header's device menu, before its first message. Without it a conversation
     runs on the Cloud, which the development setup stands in with a scripted
     machine whose home is a temporary folder: no `ANDROID_*`, no Android
     virtual devices, no simulators of the person's machine. A conversation that

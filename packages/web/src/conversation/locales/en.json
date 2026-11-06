@@ -51,7 +51,7 @@
     "cloudResetting": "The Cloud is resetting."
   },
   "workflows": {
-    "hostSilent": "The Host didn’t answer."
+    "deviceSilent": "The device didn’t answer."
   },
   "uploads": {
     "notUploaded": "{name} did not upload. {reason}",

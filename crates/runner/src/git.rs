@@ -15,7 +15,7 @@
 //! runner for it (`demi-runner git`) before it installs Git for Windows itself
 //! (`crates/backend-runners/src/install.rs`).
 //!
-//! The device environment has the folder's `usr\bin` in `PATH`: where the Host's
+//! The device environment has the folder's `usr\bin` in `PATH`: where the device's
 //! `PATH` holds it already it stays there, and where not it is added at the end,
 //! so Windows' own programs, such as `tar` or the `find` a batch file calls, keep
 //! their names. It is found when the runner starts: one installed since is used

@@ -23,7 +23,7 @@ demi-shared-artifacts = { path = "../../shared-artifacts" }
 tokio-util.workspace = true
 demi-command-sdk = { path = "../../command-sdk" }
 demi-command-package-fetch-protocol = { path = "../protocol" }
-demi-shared-cli = { path = "../../shared-cli", features = ["host-allocator"] }
+demi-shared-cli = { path = "../../shared-cli", features = ["device-allocator"] }
 demi-shared-types = { path = "../../shared-types" }
 # A body's charset, which the page names in its Content-Type.
 encoding_rs = "0.8"
@@ -38,7 +38,7 @@ mime = "0.3"
 # The extension of a saved file whose URL names none.
 mime_guess = "2"
 percent-encoding = "2"
-# Redirects, the Host's proxies and trust store, and compressed bodies; no
+# Redirects, the device's proxies and trust store, and compressed bodies; no
 # cookies, so the fetch sends none.
 reqwest = { workspace = true, features = ["brotli", "deflate", "gzip", "http2", "rustls", "stream", "system-proxy", "zstd"] }
 serde.workspace = true

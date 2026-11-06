@@ -11,7 +11,7 @@ import MenuItem from '../ui/MenuItem.vue'
 import type { Action } from '../ui/operations'
 import SettingsRow from '../settings/SettingsRow.vue'
 import { conversationTitle } from '../agent/conversation-title'
-import { projectTarget } from './project-hosts'
+import { projectTarget } from './project-devices'
 
 /**
  * The question before a project that keeps one list of saved messages goes back to a list per

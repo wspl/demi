@@ -37,7 +37,7 @@ pub struct PortForwardRecord {
 pub struct PortForwardChange {
     pub listen_device: Option<DeviceId>,
     pub listen_port: Option<u16>,
-    /// `Some(None)` leaves the Connect To Host to be chosen.
+    /// `Some(None)` leaves the Connect To Device to be chosen.
     pub connect_device: Option<Option<DeviceId>>,
     pub connect_address: Option<ForwardAddress>,
     pub enabled: Option<bool>,
@@ -48,9 +48,9 @@ pub struct PortForwardChange {
 pub enum PortForwardRefusal {
     #[error("No such port forward")]
     NotFound,
-    /// A device that is not one of the user's Hosts.
-    #[error("No such Host")]
-    NoSuchHost,
+    /// A device that is not one of the user's devices.
+    #[error("No such device")]
+    NoSuchDevice,
 }
 
 /// What a change answers: the forward as stored, or why it was not.
@@ -97,9 +97,9 @@ fn by_id(
         .transpose()
 }
 
-/// Whether `device` is one of `user`'s Hosts: a device they paired or their
+/// Whether `device` is one of `user`'s devices: a device they paired or their
 /// Cloud, never the Claude Code machine.
-pub(crate) fn is_host(transaction: &Transaction<'_>, user: &UserId, device: &DeviceId) -> Result<bool, StorageError> {
+pub(crate) fn is_device(transaction: &Transaction<'_>, user: &UserId, device: &DeviceId) -> Result<bool, StorageError> {
     Ok(transaction.query_row(
         "SELECT EXISTS (SELECT 1 FROM devices WHERE id = ?1 AND user_id = ?2
            AND (machine IS NULL OR machine = 'cloud'))",
@@ -126,18 +126,18 @@ impl ControlService {
     }
 
     /// Makes a forward for `user` from its defaults, on, listening on
-    /// `first_host` on port 8080 or the next port none of the user's
-    /// forwards there uses, connecting to `localhost:11434` on no Host yet,
+    /// `first_device` on port 8080 or the next port none of the user's
+    /// forwards there uses, connecting to `localhost:11434` on no device yet,
     /// with `change` over them.
     pub async fn create_port_forward(
         &self,
         user: UserId,
-        first_host: DeviceId,
+        first_device: DeviceId,
         change: PortForwardChange,
     ) -> Result<Stored, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            let listen_device = change.listen_device.clone().unwrap_or(first_host);
+            let listen_device = change.listen_device.clone().unwrap_or(first_device);
             let listen_port = match change.listen_port {
                 Some(port) => port,
                 None => {
@@ -154,8 +154,8 @@ impl ControlService {
             };
             let connect_device = change.connect_device.clone().flatten();
             for device in std::iter::once(&listen_device).chain(connect_device.as_ref()) {
-                if !is_host(&transaction, &user, device)? {
-                    return Ok(Err(PortForwardRefusal::NoSuchHost));
+                if !is_device(&transaction, &user, device)? {
+                    return Ok(Err(PortForwardRefusal::NoSuchDevice));
                 }
             }
             let address = change.connect_address.clone().unwrap_or_else(|| {
@@ -213,8 +213,8 @@ impl ControlService {
                 forward.enabled = enabled;
             }
             for device in std::iter::once(&forward.listen_device).chain(forward.connect_device.as_ref()) {
-                if !is_host(&transaction, &user, device)? {
-                    return Ok(Err(PortForwardRefusal::NoSuchHost));
+                if !is_device(&transaction, &user, device)? {
+                    return Ok(Err(PortForwardRefusal::NoSuchDevice));
                 }
             }
             transaction.execute(

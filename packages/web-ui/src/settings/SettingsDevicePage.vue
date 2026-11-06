@@ -39,7 +39,7 @@ import {
 } from '../devices/direct'
 import { RUNNER_STATE_LABEL, runnerState, systemName, type DeviceReport } from '../devices/report'
 import { DEVICE_STATE_TONE, deviceStatusLabel } from '../devices/state'
-import { hostIcon } from '../hosts/icons'
+import { deviceIcon } from '../targets/icons'
 import DeviceIcon from '../devices/DeviceIcon.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { SentenceText } from '../ui/ui-text'
@@ -51,7 +51,7 @@ import type { SettingsDevice } from './types'
 
 /**
  * A device's own page (`packages/web-ui/src/devices/direct.ts`), which its row in
- * Devices opens. Its header names the device and its state, and an offline
+ * devices opens. Its header names the device and its state, and an offline
  * device's header gives the command that starts its runner.
  *
  * - Connection is one group of rows, as macOS's Wi-Fi settings lay it out: the
@@ -254,7 +254,7 @@ async function revoke(): Promise<void> {
   >
     <template #icon>
       <DeviceIcon v-if="device" :state="device.state" :mark="device.mark" :size="24" />
-      <component :is="hostIcon({ kind: 'cloud' })" v-else :size="24" aria-hidden="true" />
+      <component :is="deviceIcon({ kind: 'cloud' })" v-else :size="24" aria-hidden="true" />
     </template>
     <template #status>
       {{ status.words }}<span v-if="device?.state === 'offline' && device.seen" class="text-fg-subtle"> · {{ t('page.lastSeen') }} <RelativeTime :timestamp="device.seen" /></span>

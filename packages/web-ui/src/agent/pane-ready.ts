@@ -23,7 +23,7 @@ import {
 //                            └── the area that waits: TreeFrame, a browser's
 //                                area, the media's stage (usePaneWaiting)
 //
-// Each part of a view says whether what it needs of the Host is in. While any
+// Each part of a view says whether what it needs of the device is in. While any
 // part says it is not, the area under the view's address stays empty, at its
 // size, and draws once when the last part is in. The click that switched the
 // pane has already changed the tab and the address. After `PANE_WAIT_MS` of

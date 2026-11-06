@@ -67,7 +67,7 @@
 //! native programs just built, assembled into a server release of the targets in
 //! use, which the backend publishes into the local store of its data directory and
 //! serves its runners from itself. For example, on an x86_64 Linux machine that is
-//! also its own Cloud's execution host, the Hosts in use are the machine as a
+//! also its own Cloud's execution host, the devices in use are the machine as a
 //! paired device and the Cloud guest, both `x86_64-unknown-linux-musl`:
 //!
 //! 1. Build the runner, the command programs, the backend and the machine manager

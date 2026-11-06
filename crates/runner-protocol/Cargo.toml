@@ -14,7 +14,7 @@ bench = false
 [dependencies]
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-declarations = { path = "../command-declarations" }
-demi-host-paths = { path = "../host-paths" }
+demi-device-paths = { path = "../device-paths" }
 demi-shared-types = { path = "../shared-types" }
 bytes.workspace = true
 garde.workspace = true

@@ -42,12 +42,12 @@ use std::{
 
 use demi_agent_session::{Continuation, LatestPage, ModelSwitch, SessionEvent, Settle, Status, Subscription};
 use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
-use demi_agent_tools::{HostResolver, shell_status};
+use demi_agent_tools::{DeviceResolver, shell_status};
 use demi_agent_transcript::IdSource;
 use demi_conversation_lane_protocol::{
     AgentCost, AgentCode, AgentRole, CacheChart, RequestOutput, STORED_EPOCH, ServerFrame, ShellStatus, TranscriptPatch, Version,
 };
-use demi_host_interface::{CommandSet, PageState, PageView, RegisterError, ShellEnvironment};
+use demi_device_interface::{CommandSet, PageState, PageView, RegisterError, ShellEnvironment};
 use demi_shared_gates::{ActivityGate, KeyedSerialGate, Reservation};
 use demi_shared_types::{Clock, CommandId, ModelSelection, NodeId, SessionPhase};
 use futures_util::future::join_all;
@@ -67,7 +67,7 @@ use crate::{
 };
 
 /// A conversation's live tree.
-pub struct Tree<H: HostResolver> {
+pub struct Tree<H: DeviceResolver> {
     server: Weak<AgentServer<H>>,
     root: Rc<Node<H>>,
     /// Every live child at any depth, by id; with the root, the agent
@@ -387,7 +387,7 @@ pub(crate) enum OpenError {
 }
 
 /// Where one of the conversation's commands is.
-pub(crate) enum CommandPlace<H: HostResolver> {
+pub(crate) enum CommandPlace<H: DeviceResolver> {
     /// A node's shells hold it.
     Held(Rc<Node<H>>),
     /// The shells of a child that closed while it ran hold it until its
@@ -399,7 +399,7 @@ pub(crate) enum CommandPlace<H: HostResolver> {
     Unknown,
 }
 
-impl<H: HostResolver> Tree<H> {
+impl<H: DeviceResolver> Tree<H> {
     /// The revision of the toolset the tree opened with, which the product
     /// compares with its current one: its nodes' system prompts list those
     /// commands, whichever commands they have now.
@@ -483,7 +483,7 @@ impl<H: HostResolver> Tree<H> {
             server: Rc::downgrade(server),
             runtime,
             providers: deps.providers.clone(),
-            hosts: deps.hosts.clone(),
+            devices: deps.devices.clone(),
             instructions: Instructions {
                 identity: deps.instructions.clone(),
                 added: None,
@@ -695,7 +695,7 @@ impl<H: HostResolver> Tree<H> {
         &self.admission
     }
 
-    /// Interrupts the tree for a transition of a Host it cannot work without,
+    /// Interrupts the tree for a transition of a device it cannot work without,
     /// such as a Cloud reset (`crates/backend-cloud/src/uses.rs`).
     ///
     /// - Its admission is reserved, so no action starts.
@@ -850,7 +850,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Ends every command of the tree's nodes whose start still waits for
-    /// its Host, as the user's Stop does.
+    /// its device, as the user's Stop does.
     pub async fn stop_waiting(&self) {
         let children: Vec<Rc<Node<H>>> = self
             .children
@@ -1159,7 +1159,7 @@ pub(super) fn cut_path(paths: &watch::Sender<u64>, event: &SessionEvent) {
 
 /// Tells the pages, after each cut of a path, which children it moved on
 /// or off the current path.
-async fn follow_paths<H: HostResolver>(tree: Weak<Tree<H>>, mut paths: watch::Receiver<u64>) {
+async fn follow_paths<H: DeviceResolver>(tree: Weak<Tree<H>>, mut paths: watch::Receiver<u64>) {
     while paths.changed().await.is_ok() {
         let Some(live) = tree.upgrade() else {
             return;
@@ -1170,7 +1170,7 @@ async fn follow_paths<H: HostResolver>(tree: Weak<Tree<H>>, mut paths: watch::Re
 
 /// Tells the product, through `status_changed`, that the tree opened, and
 /// each time its conversation starts or stops running.
-async fn report_working<H: HostResolver>(
+async fn report_working<H: DeviceResolver>(
     tree: Weak<Tree<H>>,
     mut status: watch::Receiver<Status>,
     mut changes: watch::Receiver<u64>,
@@ -1202,7 +1202,7 @@ async fn report_working<H: HostResolver>(
 
 /// Waits until the tree has been detached and quiescent for `idle` without
 /// a break, then hands the tree to the server for disposal.
-async fn evict_when_idle<H: HostResolver>(
+async fn evict_when_idle<H: DeviceResolver>(
     tree: Weak<Tree<H>>,
     idle: Duration,
     mut attachments: watch::Receiver<Vec<Attachment>>,

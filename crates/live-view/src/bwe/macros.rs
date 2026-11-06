@@ -1,5 +1,5 @@
 // str0m writes these to stdout for its own analysis under a feature of its
-// test builds; here they compile to nothing, and the estimate is the Host
+// test builds; here they compile to nothing, and the estimate is the device
 // log's when it changes the encoding.
 macro_rules! log_stat {
     ($name:expr, $($arg:expr),+) => {};

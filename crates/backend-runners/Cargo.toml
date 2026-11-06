@@ -20,7 +20,7 @@ demi-command-protocol = { path = "../command-protocol" }
 demi-shared-gates = { path = "../shared-gates" }
 demi-runner-client = { path = "../runner-client", features = ["edge"] }
 demi-runner-protocol = { path = "../runner-protocol" }
-demi-host-interface = { path = "../host-interface" }
+demi-device-interface = { path = "../device-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 # A runner's connection is the WebSocket the edge upgraded.
 axum = { version = "0.8", features = ["ws"] }

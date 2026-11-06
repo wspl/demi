@@ -8,8 +8,8 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_backend_host_access::host_commands::conversation_of;
-use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
+use demi_backend_device_access::device_commands::conversation_of;
+use demi_device_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_shared_types::{
     ScheduleId, Timestamp,
     output::{Cell, Fields, Table, warning},
@@ -121,7 +121,7 @@ pub(crate) fn schedule_group(shard: Weak<Shard>) -> GroupBuilder {
             .describe("every", "An interval of 1 minute or more, such as 10m, 2h or 1d; with --watch, how often the command runs.")
             .describe("cron", "Five cron fields, such as \"0 9 * * 1-5\", for what the others cannot say.")
             .describe("tz", "An IANA time zone such as Asia/Shanghai; the user's own by default.")
-            .describe("watch", "A command whose output change triggers a run, run every --every on this conversation's Host in its directory, as your shell runs it. Its first run only records the output; one over 60 seconds fails.")
+            .describe("watch", "A command whose output change triggers a run, run every --every on this conversation's device in its directory, as your shell runs it. Its first run only records the output; one over 60 seconds fails.")
             .describe("url", "A URL trigger: another system calls its address with its secret, which create prints once; edit --new-secret makes a new one.")
             .describe("max-runs-per-day", "With --watch or --url: at most this many runs a day, counted from midnight in --tz.")
             .describe("no-limit", "Remove the limit on runs a day.")

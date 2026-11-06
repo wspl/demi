@@ -43,7 +43,7 @@
       "allowed": "You allowed this conversation to {action}",
       "denied": "You denied this conversation permission to {action}",
       "reached": "Allowed this conversation to {action}, since another conversation reached it",
-      "moved": "You moved this conversation to {host} · {path}",
+      "moved": "You moved this conversation to {device} · {path}",
       "moveFailed": "Move failed: {reason}",
       "fromMain": "Message from {agent}",
       "mainAgent": "main agent",
@@ -67,7 +67,7 @@
       "failed": "Failed",
       "stopped": "Stopped",
       "stopping": "Stopping…",
-      "waiting": "Waiting for {host}",
+      "waiting": "Waiting for {device}",
       "lost": "Lost",
       "exitCode": "Exit code {code}"
     },
@@ -75,7 +75,7 @@
       "lost": "Lost",
       "lostWhy": "Lost: {reason}",
       "stopping": "Stopping…",
-      "waiting": "Waiting for {host}",
+      "waiting": "Waiting for {device}",
       "running": "Running for {span}",
       "exited": "Exited after {span}",
       "exitedZero": "Exited with 0 after {span}",
@@ -238,7 +238,7 @@
     "tabsOpen": "Tabs, {count} open",
     "closePanel": "Close panel",
     "options": "{title}, conversation options",
-    "hostState": "{name} is {state}",
+    "deviceState": "{name} is {state}",
     "renameTitle": "Rename Conversation",
     "titleLabel": "Conversation title",
     "runsOn": "Runs On",
@@ -281,9 +281,9 @@
     "lastTurnRate": "Last turn: {rate} tok/s"
   },
   "notices": {
-    "hostOffline": "{name} is offline.",
-    "moveHost": "Move to Another Host…",
-    "hostOfflineLastSeen": "{name} is offline. Last seen {time}.",
+    "deviceOffline": "{name} is offline.",
+    "moveDevice": "Move to Another Device…",
+    "deviceOfflineLastSeen": "{name} is offline. Last seen {time}.",
     "pluginsChanged": "Plugins changed"
   },
   "composer": {
@@ -435,7 +435,7 @@
     "nothingOpen": "Nothing open",
     "noFiles": "No files or changes",
     "reading": "Reading {name}",
-    "hostOffline": "{name} is offline.",
-    "hostOfflineDetail": "Files, changes and the browser appear again when it reconnects."
+    "deviceOffline": "{name} is offline.",
+    "deviceOfflineDetail": "Files, changes and the browser appear again when it reconnects."
   }
 }

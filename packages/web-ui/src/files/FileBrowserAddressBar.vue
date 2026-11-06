@@ -19,7 +19,7 @@ import { t } from './locales/text'
 import type { FileBrowserSource } from './types'
 
 /**
- * The whole path as crumbs from the Host's root, each its folder glyph, the root
+ * The whole path as crumbs from the device's root, each its folder glyph, the root
  * and the home their landmark glyphs, in one of two modes.
  *
  * - `navigate` (a file dialog): a crumb jumps there.
@@ -56,7 +56,7 @@ const props = withDefaults(
     /** Where the root and the home are, for their glyphs; `browse` also lists through it. */
     source: Pick<FileBrowserSource, 'platform' | 'home'> & Partial<Pick<FileBrowserSource, 'showListing'>>
     mode?: 'navigate' | 'browse'
-    /** Where a relative path typed into the field starts; without it, the Host's root. */
+    /** Where a relative path typed into the field starts; without it, the device's root. */
     base?: string
     leaf?: 'directory' | 'file'
   }>(),

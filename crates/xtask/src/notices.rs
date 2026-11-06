@@ -83,8 +83,8 @@ struct Library {
 /// - idb's libraries and guest bridge, in demi-mobile's iOS helper
 ///   (`crates/plugin-mobile/command/build.rs`).
 /// - openatx's UI automation server, demi-mobile's Android helper.
-/// - Cisco's OpenH264 binary, which the Host's programs download to encode
-///   where the Host has no hardware encoder and to decode a recording's
+/// - Cisco's OpenH264 binary, which the device's programs download to encode
+///   where the device has no hardware encoder and to decode a recording's
 ///   frames, and whose binary license asks the product to credit it
 ///   (`crates/shared-openh264/src/lib.rs`).
 /// - The vendors' marks the web app shows, models.dev's and Simple Icons'

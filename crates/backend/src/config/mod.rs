@@ -51,7 +51,7 @@
 //!
 //! A Cloud does not reach the backend at that URL: its runner connects through
 //! the runner socket, and the URL only names the origin its requests carry.
-//! Either proxy must pass each request's `Origin` and `Host` unchanged (see
+//! Either proxy must pass each request's `Origin` and `Device` unchanged (see
 //! `backend-http`'s `gate`).
 
 pub(crate) mod secret;
@@ -545,7 +545,7 @@ pub struct BackendConfig {
     pub media: MediaTuning,
     /// The command packages the conversations' commands bind to.
     pub native: NativeCatalog,
-    /// When a conversation's Host resources are reclaimed.
+    /// When a conversation's device resources are reclaimed.
     pub lifecycle: LifecycleTuning,
     /// How the Cloud is run.
     pub cloud: CloudTuning,

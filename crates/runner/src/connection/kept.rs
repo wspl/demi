@@ -43,7 +43,7 @@ use demi_runner_jobs::{
     job_directories::JobDirectories,
     tasks::{Commands, JobConfig, JobTable, WorkId},
 };
-use demi_runner_host::worktrees::Worktrees;
+use demi_runner_device::worktrees::Worktrees;
 use demi_runner_protocol::wire;
 use tokio::{
     sync::{mpsc, watch},

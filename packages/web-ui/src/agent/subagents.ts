@@ -26,13 +26,13 @@ export interface AgentRun {
   startedAt: string
   endedAt?: string
   /**
-   * Where its `shell` calls start now, on its own Host
+   * Where its `shell` calls start now, on its own device
    * (`crates/agent-server/src/node/mod.rs`).
    */
   cwd: string
   /**
-   * The device of its Host when that is not the conversation's, which a move
-   * of the conversation left it on; null on the conversation's Host.
+   * The device of its device when that is not the conversation's, which a move
+   * of the conversation left it on; null on the conversation's device.
    */
   device: string | null
 }

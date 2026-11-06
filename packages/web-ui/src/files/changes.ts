@@ -5,7 +5,7 @@ import type { Showing } from './file-cache'
 import type { TreeRow } from './tree'
 import type { RequestChangeSource, RequestFile } from './request-changes'
 import type { CommitHistorySource } from './history'
-import { relativePath, resolveHostPath } from './paths'
+import { relativePath, resolveDevicePath } from './paths'
 import type { FileContents } from './types'
 import { t } from './locales/text'
 
@@ -25,7 +25,7 @@ export interface ChangeFile {
 
 /**
  * A path of the working tree that `git status` lists: how it differs from
- * the last commit, and git's two status letters for it (`crates/runner-host/src/git.rs`), which mark it the way VS Code's Git does (`gitMark`).
+ * the last commit, and git's two status letters for it (`crates/runner-device/src/git.rs`), which mark it the way VS Code's Git does (`gitMark`).
  */
 export interface WorkingTreeChange extends ChangeFile {
   status: string
@@ -50,7 +50,7 @@ export interface ChangeSetSource {
   /** Lists the working tree again. */
   refresh?(): void
   /**
-   * Why the Host does not watch the list, while it says so: the view shows
+   * Why the device does not watch the list, while it says so: the view shows
    * it as last read, with Refresh; null or absent while it watches.
    */
   readonly unwatched?: string | null
@@ -84,7 +84,7 @@ export function emptyChangeSetText(source: ChangeSetSource): string {
     return t('changes.notGit')
   }
   if (source.failure) {
-    // The Host's own reason follows the heading, as everywhere a list failed.
+    // The Device's own reason follows the heading, as everywhere a list failed.
     const heading = t('changes.listFailed')
     return source.failure === heading ? heading : t('tree.withReason', { heading, reason: source.failure })
   }
@@ -145,13 +145,13 @@ export interface ChangeTreeFile {
 
 /**
  * A request's files as the change tree shows them: each by its path from
- * `root`, the tree's root, in the spelling of the root's Host, so a Windows
+ * `root`, the tree's root, in the spelling of the root's device, so a Windows
  * file `C:\Users\u\shop\src\cart.ts` under `C:\Users\u\shop` is in `src`.
  */
 export function requestTreeFiles(root: string, files: readonly RequestFile[]): ChangeTreeFile[] {
   return files.map((file) => ({
     key: file.path,
-    path: relativePath(root, resolveHostPath(root, file.path)),
+    path: relativePath(root, resolveDevicePath(root, file.path)),
     kind: file.kind,
     ...(file.from ? { from: file.from } : {}),
     ...(file.lines ? { lines: file.lines } : {}),

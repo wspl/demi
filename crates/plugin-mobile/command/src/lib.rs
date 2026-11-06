@@ -1,4 +1,4 @@
-//! The `demi.mobile` package: the Host's simulators for the conversations that
+//! The `demi.mobile` package: the device's simulators for the conversations that
 //! open them, as a resident, with a driver per platform behind
 //! one interface (`crates/plugin-mobile/command/src/driver.rs`).
 //!
@@ -7,7 +7,7 @@
 //! operates the same simulator live in the work panel:
 //!
 //! ```text
-//! web page                    backend             Host (a paired device)
+//! web page                    backend             device (paired or Cloud)
 //!   device tabs, toolbar  <-- plugin-mobile --> demi-mobile (this crate)
 //!   live view  <------- `mobile` user stream --->   Devices: who has what
 //!                                                   Driver, one per platform
@@ -39,7 +39,7 @@
 //! - Xcode and the Android SDK are the user's. Demi's own helpers, the iOS one
 //!   and the Android one, ship with the runner.
 //!
-//! The package is a program of its own: it hosts no runner connection, defines
+//! The package is a program of its own: it devices no runner connection, defines
 //! no part of the agent's command tree, stores no conversation, and is never
 //! linked into the runner.
 
@@ -95,14 +95,14 @@ pub struct DemiMobile {
 }
 
 impl DemiMobile {
-    /// The resident with this Host's drivers.
+    /// The resident with this device's drivers.
     pub fn new() -> Self {
         // The installation's `mobile/`, where the simulators Demi booted
         // and the open devices are kept across the program's ends (`crates/plugin-mobile/command/src/devices.rs`).
         let home = std::env::var_os("DEMI_HOME").map(std::path::PathBuf::from);
         let codec: Arc<dyn Codec> = Arc::new(Cisco::in_installation(home.as_deref()));
         Self::with_drivers(
-            host_drivers(home.as_deref(), codec.clone()),
+            device_drivers(home.as_deref(), codec.clone()),
             home.as_deref(),
             demi_command_protocol::scratch_root(),
             codec,
@@ -119,7 +119,7 @@ impl DemiMobile {
         codec: Arc<dyn Codec>,
     ) -> Self {
         let mobile = home.map(|home| home.join("mobile"));
-        // A conversation is still on this Host while its scratch directory
+        // A conversation is still on this device while its scratch directory
         // is: the runner removes the directories of the conversations the
         // backend no longer lists as it connects
         // (`crates/runner-jobs/src/scratch.rs`).
@@ -138,13 +138,13 @@ impl DemiMobile {
         }
     }
 
-    /// `conversation`'s scratch directory on this Host, or the system's
+    /// `conversation`'s scratch directory on this device, or the system's
     /// temporary directory's for a resident without an installation.
     fn scratch(&self, conversation: &str) -> std::path::PathBuf {
         demi_command_protocol::scratch_directory(self.scratch_root.as_deref(), conversation)
     }
 
-    /// `conversation`'s recordings on this Host.
+    /// `conversation`'s recordings on this device.
     fn library(&self, conversation: &str) -> Arc<Library> {
         self.libraries
             .lock()
@@ -170,10 +170,10 @@ impl Default for DemiMobile {
     }
 }
 
-/// The drivers this Host has: iOS on a Mac, Android where its SDK is. An
+/// The drivers this device has: iOS on a Mac, Android where its SDK is. An
 /// emulator Demi boots writes its log into the installation's
 /// `mobile/android`.
-fn host_drivers(home: Option<&std::path::Path>, codec: Arc<dyn Codec>) -> Vec<Arc<dyn Driver>> {
+fn device_drivers(home: Option<&std::path::Path>, codec: Arc<dyn Codec>) -> Vec<Arc<dyn Driver>> {
     vec![
         #[cfg(target_os = "macos")]
         Arc::new(ios::Ios::new()),

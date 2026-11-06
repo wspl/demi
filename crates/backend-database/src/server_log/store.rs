@@ -25,15 +25,15 @@ CREATE TABLE events (
     user_id TEXT,
     conversation_id TEXT,
     turn_id TEXT,
-    host_id TEXT,
+    device_id TEXT,
     page_id TEXT,
     seq INTEGER,
     fields TEXT NOT NULL
 );
 CREATE INDEX events_request ON events (request_id) WHERE request_id IS NOT NULL;
 CREATE INDEX events_conversation ON events (conversation_id, at) WHERE conversation_id IS NOT NULL;
-CREATE INDEX events_host ON events (host_id, at) WHERE host_id IS NOT NULL;
-CREATE INDEX events_host_seq ON events (host_id, seq) WHERE seq IS NOT NULL;
+CREATE INDEX events_device ON events (device_id, at) WHERE device_id IS NOT NULL;
+CREATE INDEX events_device_seq ON events (device_id, seq) WHERE seq IS NOT NULL;
 CREATE INDEX events_page ON events (page_id, at) WHERE page_id IS NOT NULL;
 CREATE INDEX events_at ON events (at);
 ";
@@ -347,7 +347,7 @@ fn insert(connection: &mut Connection, rows: &[Row]) -> Result<(), StorageError>
     let transaction = connection.transaction()?;
     {
         let mut statement = transaction.prepare_cached(
-            "INSERT INTO events (at, origin, level, event, request_id, user_id, conversation_id, turn_id, host_id, page_id, seq, fields)
+            "INSERT INTO events (at, origin, level, event, request_id, user_id, conversation_id, turn_id, device_id, page_id, seq, fields)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         )?;
         for Row { line, seq } in rows {
@@ -360,7 +360,7 @@ fn insert(connection: &mut Connection, rows: &[Row]) -> Result<(), StorageError>
                 line.user_id,
                 line.conversation_id,
                 line.turn_id,
-                line.host_id,
+                line.device_id,
                 line.page_id,
                 seq.map(|seq| i64::try_from(seq).unwrap_or(i64::MAX)),
                 serde_json::Value::Object(line.fields.clone()).to_string(),
@@ -412,9 +412,9 @@ fn trim_batch(connection: &mut Connection, limits: Limits) -> Result<Step, Stora
     Ok(Step::Done)
 }
 
-/// The highest `seq` of the Host's lines, from a connection of its own: the
+/// The highest `seq` of the device's lines, from a connection of its own: the
 /// writer's next commit does not wait for it.
-pub(super) fn last_seq(path: &Path, host_id: &str) -> Result<Option<u64>, StorageError> {
+pub(super) fn last_seq(path: &Path, device_id: &str) -> Result<Option<u64>, StorageError> {
     let connection = match Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -431,8 +431,8 @@ pub(super) fn last_seq(path: &Path, host_id: &str) -> Result<Option<u64>, Storag
     connection.busy_timeout(sqlite::BUSY_TIMEOUT)?;
     let seq: Option<i64> = connection
         .query_row(
-            "SELECT max(seq) FROM events WHERE host_id = ?1 AND seq IS NOT NULL",
-            [host_id],
+            "SELECT max(seq) FROM events WHERE device_id = ?1 AND seq IS NOT NULL",
+            [device_id],
             |row| row.get(0),
         )
         .optional()?

@@ -1,5 +1,5 @@
 //! `xtask browser-release <version> --runtime <release>` pins a Chrome for
-//! Testing version and the Chrome runtime release Linux Hosts start it with.
+//! Testing version and the Chrome runtime release Linux devices start it with.
 //!
 //! The command:
 //!

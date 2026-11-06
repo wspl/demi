@@ -7,12 +7,12 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
 import FileBrowserAddressBar from '@demicodes/web-ui/files/FileBrowserAddressBar.vue'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
-import ProjectDialog from '@demicodes/web-ui/hosts/ProjectDialog.vue'
+import ProjectDialog from '@demicodes/web-ui/targets/ProjectDialog.vue'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import { useDevicePairing, type PairingResult } from '@demicodes/web-ui/devices/pairing'
 import { baseName, delay } from '@demicodes/utils'
 import { demoInstallCommands } from '../fixtures/device-installation'
-import type { ProjectDevice, ProjectDraft, ProjectHostChoice, ProjectProject } from '@demicodes/web-ui/hosts/project'
+import type { ProjectDevice, ProjectDraft, ProjectDeviceChoice, ProjectProject } from '@demicodes/web-ui/targets/project'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import FileTree from '@demicodes/web-ui/files/FileTree.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
@@ -27,7 +27,7 @@ import GalleryDialogFrame from '../components/GalleryDialogFrame.vue'
 import { productWould } from '../product-would'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
-import { createGalleryRemoteFileHosts, GALLERY_FILE_HOST_MARKS, laptopTree } from '../fixtures/files'
+import { createGalleryRemoteFileDevices, GALLERY_FILE_DEVICE_MARKS, laptopTree } from '../fixtures/files'
 import { createGalleryProject } from '../fixtures/project'
 import { useGalleryView } from '../gallery-views'
 
@@ -62,7 +62,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'New project',
-    'The working-environment dialog: Cloud or Device as two cards, Cloud first and chosen the first time, then the kind and device chosen last; a device asks which one, with Add Device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Moving a conversation between projects is the header’s menus, not a dialog.'
+    'The working-environment dialog: Cloud or device as two cards, Cloud first and chosen the first time, then the kind and device chosen last; a device asks which one, with Add Device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Moving a conversation between projects is the header’s menus, not a dialog.'
   ],
   [
     'New folder',
@@ -80,17 +80,17 @@ const iconSamples: [string, boolean][] = [
   ['main.rs', false], ['main.go', false], ['app.py', false], ['config.yaml', false], ['logo.png', false], ['LICENSE', false], ['notes', false],
 ]
 
-const hosts = createGalleryRemoteFileHosts()
-const pairedHosts = hosts.filter((host) => !host.canWake)
+const devices = createGalleryRemoteFileDevices()
+const pairedDevices = devices.filter((each) => !each.canWake)
 const { view } = useGalleryView()
 
-// New project: the working-environment dialog over the same hosts; a created project joins the list.
+// New project: the working-environment dialog over the same devices; a created project joins the list.
 const projectDevices = ref<ProjectDevice[]>(
-  pairedHosts.map(({ id, label, state }) => ({
+  pairedDevices.map(({ id, label, state }) => ({
     id,
     name: label,
     state,
-    mark: GALLERY_FILE_HOST_MARKS[id] ?? null,
+    mark: GALLERY_FILE_DEVICE_MARKS[id] ?? null,
   })),
 )
 /** The list as the dialog shows it: a Mac paired beside alex-mbp gives both their numbers. */
@@ -111,7 +111,7 @@ async function claimProjectDevice(_code: string, signal?: AbortSignal): Promise<
   const apple = projectDevices.value.filter((device) => device.mark?.logo === 'apple')
   const device: ProjectDevice = {
     id: `device-${Date.now()}`,
-    name: `host-${projectDevices.value.length + 1}`,
+    name: `device-${projectDevices.value.length + 1}`,
     state: 'online',
     mark: { logo: 'apple', number: Math.max(0, ...apple.map((device) => device.mark?.number ?? 0)) + 1 },
   }
@@ -125,19 +125,19 @@ const knownProjects = ref<ProjectProject[]>([
   {
     id: 'demi',
     name: 'demi',
-    host: 'alex-mbp',
+    device: 'alex-mbp',
     path: '/Users/alex/Projects/shop'
   },
   {
     id: 'assets',
     name: 'renderfarm',
-    host: 'build-01',
+    device: 'build-01',
     path: '/srv/renderfarm'
   },
 ])
 const projectMessage = ref<ShownError | null>(null)
 /** The kind and device chosen last, which the product keeps as a preference. */
-const projectLastHost = ref<ProjectHostChoice>()
+const projectLastDevice = ref<ProjectDeviceChoice>()
 const projectKey = ref(0)
 const cloudSource = createMemoryFileSource(
   {
@@ -153,13 +153,13 @@ const cloudSource = createMemoryFileSource(
 const sourceFor = (id: string) =>
   (id === 'cloud'
   ? cloudSource
-  : (hosts.find((host) => host.id === id) ?? hosts[0]!).source)
+  : (devices.find((each) => each.id === id) ?? devices[0]!).source)
 const placesFor = (id: string): FileBrowserPlaceGroup[] => (id === 'cloud' ? [
   {
     label: 'Quick Access',
     places: [{ path: '/home/demi', label: 'Home' }]
   }
-] : (hosts.find((host) => host.id === id) ?? hosts[0]!).places)
+] : (devices.find((each) => each.id === id) ?? devices[0]!).places)
 function createProject(draft: ProjectDraft) {
   const name = draft.kind === 'cloud'
     ? draft.name
@@ -169,7 +169,7 @@ function createProject(draft: ProjectDraft) {
     return
   }
   projectMessage.value = null
-  const host = draft.kind === 'cloud'
+  const device = draft.kind === 'cloud'
     ? 'Cloud'
     : projectDevices.value.find((device) => device.id === draft.deviceId)?.name ??
     draft.deviceId
@@ -177,7 +177,7 @@ function createProject(draft: ProjectDraft) {
     {
       id: `p-${Date.now()}`,
       name,
-      host,
+      device,
       path: draft.kind === 'cloud' ? `/home/demi/${name}` : draft.path
     }
   )
@@ -186,15 +186,15 @@ function createProject(draft: ProjectDraft) {
 }
 
 // Select folder: the project picker's use, opening on the laptop's projects.
-const folderHostId = ref('mac')
-const folderHost = computed(() => hosts.find((host) => host.id === folderHostId.value)!)
+const folderDeviceId = ref('mac')
+const folderDevice = computed(() => devices.find((each) => each.id === folderDeviceId.value)!)
 const folderChosen = ref<string | null>(null)
 const folderKey = ref(0)
 
 // Open file: the composer's remote attachment, opening inside a project.
-const fileHostId = ref('mac')
-const fileHost = computed(() => hosts.find((host) => host.id === fileHostId.value)!)
-// The address bar at shrinking widths: a file deep in the project, its whole path from the Host's root, as the File view shows it.
+const fileDeviceId = ref('mac')
+const fileDevice = computed(() => devices.find((each) => each.id === fileDeviceId.value)!)
+// The address bar at shrinking widths: a file deep in the project, its whole path from the device's root, as the File view shows it.
 const addressProject = createGalleryProject()
 const addressPath = `${addressProject.root}/packages/web-ui/src/files/FileBrowserAddressBar.vue`
 const addressWidths = [
@@ -205,8 +205,8 @@ const addressWidths = [
   { variant: 'the last name cut short', width: '13rem' },
   { variant: 'the ellipsis and the file', width: '5rem' },
 ] as const
-const narrowHostId = ref(hosts[0]!.id)
-const narrowHost = computed(() => hosts.find((host) => host.id === narrowHostId.value)!)
+const narrowDeviceId = ref(devices[0]!.id)
+const narrowDevice = computed(() => devices.find((device) => device.id === narrowDeviceId.value)!)
 const fileChosen = ref<string | null>(null)
 const fileKey = ref(0)
 // A path whose names all fit the dialog's address bar, and one too long for it, on the laptop.
@@ -264,7 +264,7 @@ const stateSources: Record<StateOption, {
     }),
     path: '/Users/alex/Projects/gone'
   },
-  offline: { source: hosts[2]!.source, path: '/home/alex' },
+  offline: { source: devices[2]!.source, path: '/home/alex' },
   readonly: {
     source: (() => {
       const { createDirectory: _omit, ...rest } = createMemoryFileSource(
@@ -291,12 +291,12 @@ const modeOptions = [
   { value: 'file', label: 'File' },
 ] as const satisfies readonly SegmentedOption<FileBrowserMode>[]
 
-function selectHost(target: 'folder' | 'file', id: string) {
+function selectDevice(target: 'folder' | 'file', id: string) {
   if (target === 'folder') {
-    folderHostId.value = id
+    folderDeviceId.value = id
     folderKey.value += 1
   } else {
-    fileHostId.value = id
+    fileDeviceId.value = id
     fileKey.value += 1
   }
 }
@@ -328,7 +328,7 @@ const searchViews: Record<'live' | 'limited' | 'searching', InstanceType<typeof 
 const linkFilePath = ref<string>(LINKS.file)
 const missingLinks = linksSource()
 const missingLinkPath = ref<string>(LINKS.missing)
-/** Puts the missing link's target back on the simulated Host, as another program would: the row and the sentence stay until the link is opened or Retry is used. */
+/** Puts the missing link's target back on the simulated device, as another program would: the row and the sentence stay until the link is opened or Retry is used. */
 function restoreGoneTarget(): void {
   missingLinks.change(LINKS.gone, 'Build finished.\n')
 }
@@ -703,7 +703,7 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Drag and Drop"
-        note="Files and folders dragged in from the desktop upload where they drop, and that place lights under a dashed line while the drag is over it: a folder with the rows it holds, the folder a file sits in, or the whole project over the empty space and over a file at the top. A folder whose row has scrolled under the pinned path lights there too. A drag resting on a closed folder opens it after a moment, to drop deeper. Only a host that takes uploads takes drops. These trees hold each state still and take no drops; the project under Upload and Download takes real ones."
+        note="Files and folders dragged in from the desktop upload where they drop, and that place lights under a dashed line while the drag is over it: a folder with the rows it holds, the folder a file sits in, or the whole project over the empty space and over a file at the top. A folder whose row has scrolled under the pinned path lights there too. A drag resting on a closed folder opens it after a moment, to drop deeper. Only a device that takes uploads takes drops. These trees hold each state still and take no drops; the project under Upload and Download takes real ones."
       >
         <div class="flex flex-wrap gap-6">
           <GallerySpecimen variant="over the empty space: the project">
@@ -741,7 +741,7 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Upload and Download"
-        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the project itself, takes files uploaded into it. Names the folder already has wait on a question: Replace puts what came in place of what is there, Skip uploads the rest, closing uploads nothing; once a folder meets a folder, Merge adds its files to the one there, writing over files with the same names. The uploads list under the tree, fitting its rows until the divider above it sets its height, up to four writes on their way at once and the rest waiting, a folder as one row whose files go several at a time. Each row is its name and one line of facts, one on its way with a bar between them: how much has gone and how fast, and of a folder how many files; “Completed” once one has landed; why one failed, or of a folder how many of its files did. A line too long for the list is cut and its tooltip shows it whole; the name’s shows where it goes, and a folder’s failures list in theirs. Cancel stops one, and a folder keeps the files that landed; Retry sends what failed again; Clear drops the finished ones. A file that lands, and a folder its files make, show in the tree from the upload’s answer, without the folder being listed again; a folder writes its files, which make its folders, and makes only its empty folders itself. The first specimen is a project seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and the drop buttons hand its tree what a drop from the desktop would. Files and folders dropped on its tree, or right-clicked in, upload at a pace slow enough to watch, as they do in the File view (Session, Panel)."
+        note="A right-click offers what the device can do there: a file downloads; a folder, or the empty space for the project itself, takes files uploaded into it. Names the folder already has wait on a question: Replace puts what came in place of what is there, Skip uploads the rest, closing uploads nothing; once a folder meets a folder, Merge adds its files to the one there, writing over files with the same names. The uploads list under the tree, fitting its rows until the divider above it sets its height, up to four writes on their way at once and the rest waiting, a folder as one row whose files go several at a time. Each row is its name and one line of facts, one on its way with a bar between them: how much has gone and how fast, and of a folder how many files; “Completed” once one has landed; why one failed, or of a folder how many of its files did. A line too long for the list is cut and its tooltip shows it whole; the name’s shows where it goes, and a folder’s failures list in theirs. Cancel stops one, and a folder keeps the files that landed; Retry sends what failed again; Clear drops the finished ones. A file that lands, and a folder its files make, show in the tree from the upload’s answer, without the folder being listed again; a folder writes its files, which make its folders, and makes only its empty folders itself. The first specimen is a project seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and the drop buttons hand its tree what a drop from the desktop would. Files and folders dropped on its tree, or right-clicked in, upload at a pace slow enough to watch, as they do in the File view (Session, Panel)."
       >
         <div class="flex flex-wrap items-start gap-6">
           <GallerySpecimen variant="uploads · every state, live">
@@ -800,13 +800,13 @@ onMounted(() => {
             :is-open="open"
             :overlay-store="appOverlayStore"
             mode="directory"
-            :source="folderHost.source"
-            :initial-path="folderHostId === 'mac' ? '/Users/alex/Projects' : undefined"
-            :places="folderHost.places"
-            :hosts="pairedHosts"
-            :host-id="folderHostId"
+            :source="folderDevice.source"
+            :initial-path="folderDeviceId === 'mac' ? '/Users/alex/Projects' : undefined"
+            :places="folderDevice.places"
+            :devices="pairedDevices"
+            :device-id="folderDeviceId"
             @select="folderChosen = $event"
-            @update:host-id="selectHost('folder', $event)"
+            @update:device-id="selectDevice('folder', $event)"
             @close="close"
           />
         </GalleryDialogFrame>
@@ -826,9 +826,9 @@ onMounted(() => {
                 :is-open="open"
                 :overlay-store="appOverlayStore"
                 mode="directory"
-                :source="hosts[0]!.source"
+                :source="devices[0]!.source"
                 :initial-path="nestedPath"
-                :places="hosts[0]!.places"
+                :places="devices[0]!.places"
                 @select="productWould(`Use ${$event} as the Project’s Folder`)"
                 @close="close"
               />
@@ -840,9 +840,9 @@ onMounted(() => {
                 :is-open="open"
                 :overlay-store="appOverlayStore"
                 mode="directory"
-                :source="hosts[0]!.source"
+                :source="devices[0]!.source"
                 :initial-path="deepPath"
-                :places="hosts[0]!.places"
+                :places="devices[0]!.places"
                 @select="productWould(`Use ${$event} as the Project’s Folder`)"
                 @close="close"
               />
@@ -861,13 +861,13 @@ onMounted(() => {
             :is-open="open"
             :overlay-store="appOverlayStore"
             mode="file"
-            :source="fileHost.source"
-            :initial-path="fileHostId === 'mac' ? '/Users/alex/Projects/shop' : undefined"
-            :places="fileHost.places"
-            :hosts="hosts"
-            :host-id="fileHostId"
+            :source="fileDevice.source"
+            :initial-path="fileDeviceId === 'mac' ? '/Users/alex/Projects/shop' : undefined"
+            :places="fileDevice.places"
+            :devices="devices"
+            :device-id="fileDeviceId"
             @select="fileChosen = $event"
-            @update:host-id="selectHost('file', $event)"
+            @update:device-id="selectDevice('file', $event)"
             @close="close"
           />
         </GalleryDialogFrame>
@@ -886,12 +886,12 @@ onMounted(() => {
             :is-open="open"
             :overlay-store="appOverlayStore"
             :devices="shownProjectDevices"
-            :last-host="projectLastHost"
+            :last-device="projectLastDevice"
             :message="projectMessage"
             :source-for="sourceFor"
             :places-for="placesFor"
             @create="createProject"
-            @choose="projectLastHost = $event"
+            @choose="projectLastDevice = $event"
             @connect-device="projectPairing.open"
             @close="close"
           />
@@ -938,7 +938,7 @@ onMounted(() => {
 
       <GallerySection
         title="Address Bar"
-        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the widest name still shown is cut short with an ellipsis rather than leave the bar half empty, the file’s crumb keeps its name longest. When even the glyphs do not fit, the middle folders go behind one ellipsis item, as in Finder’s path bar, so the first and the last crumbs stay whole and no crumb is ever cut at an edge; then the file’s name is cut short, and in the narrowest bar only the ellipsis and the file remain. The ellipsis lists the folders it stands for, and one picked opens the entries beside it, as its crumb would. The last frame resizes from its corner. A crumb opens the entries beside it; the menu takes the keyboard, so typing a name moves to the first entry that starts with it and Enter opens it. The crumbs start at the Host’s root, the root and the home wearing their glyphs. A click beside the crumbs turns the bar into a field with the whole path that completes as it is typed, a relative path starting at the project and ~ naming the home."
+        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the widest name still shown is cut short with an ellipsis rather than leave the bar half empty, the file’s crumb keeps its name longest. When even the glyphs do not fit, the middle folders go behind one ellipsis item, as in Finder’s path bar, so the first and the last crumbs stay whole and no crumb is ever cut at an edge; then the file’s name is cut short, and in the narrowest bar only the ellipsis and the file remain. The ellipsis lists the folders it stands for, and one picked opens the entries beside it, as its crumb would. The last frame resizes from its corner. A crumb opens the entries beside it; the menu takes the keyboard, so typing a name moves to the first entry that starts with it and Enter opens it. The crumbs start at the device’s root, the root and the home wearing their glyphs. A click beside the crumbs turns the bar into a field with the whole path that completes as it is typed, a relative path starting at the project and ~ naming the home."
       >
         <GallerySpecimen v-for="entry in addressWidths" :key="entry.variant" :variant="entry.variant" wide>
           <div class="flex" :style="{ width: entry.width }">
@@ -979,12 +979,12 @@ onMounted(() => {
             :is-open="open"
             :overlay-store="appOverlayStore"
             mode="directory"
-            :source="narrowHost.source"
-            :initial-path="narrowHostId === 'mac' ? deepPath : undefined"
-            :places="narrowHost.places"
-            :hosts="hosts"
-            :host-id="narrowHostId"
-            @update:host-id="narrowHostId = $event"
+            :source="narrowDevice.source"
+            :initial-path="narrowDeviceId === 'mac' ? deepPath : undefined"
+            :places="narrowDevice.places"
+            :devices="devices"
+            :device-id="narrowDeviceId"
+            @update:device-id="narrowDeviceId = $event"
             @select="productWould(`Use ${$event} as the Project’s Folder`)"
             @close="close"
           />

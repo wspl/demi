@@ -1,5 +1,5 @@
 import { computed, inject, provide, ref, shallowRef, toRaw, watch, type ComputedRef, type InjectionKey, type Ref, type ShallowRef } from 'vue'
-import { hostImage } from './host-image'
+import { deviceImage } from './device-image'
 import { useShowing } from './showing'
 import {
   windowRectAround,
@@ -10,7 +10,7 @@ import {
 import type { PixelSize } from './thumbnail'
 import type { FileContents } from './types'
 
-/** A Host file a medium shows, which the viewer shows at the version the page keeps of it and follows while it shows it. */
+/** A Device file a medium shows, which the viewer shows at the version the page keeps of it and follows while it shows it. */
 export interface MediumFile {
   path: string
   contents: FileContents
@@ -18,7 +18,7 @@ export interface MediumFile {
 
 /**
  * An image or a video shown large over the page: what it is, where it loads
- * from, its address or, for a Host image, its file, what it is called, and
+ * from, its address or, for a device image, its file, what it is called, and
  * what the page knows of it before it loads.
  */
 export type ShownMedium = {
@@ -26,7 +26,7 @@ export type ShownMedium = {
   name: string
   /** Its pixel size, when its reference or its thumbnail knows it. */
   size?: PixelSize | null
-  /** Its size in bytes, when its reference knows it; a Host file's comes from the file. */
+  /** Its size in bytes, when its reference knows it; a device file's comes from the file. */
   bytes?: number | null
   /** The transcript row it stands in, which tells apart the same picture standing in two rows (`transcriptRowOf`). */
   row?: string
@@ -88,22 +88,22 @@ export function arrowStep(event: KeyboardEvent): -1 | 1 | null {
   return event.target instanceof HTMLInputElement ? null : step
 }
 
-/** What tells a medium from another: its address, or a Host image's file, whatever version shows. */
+/** What tells a medium from another: its address, or a device image's file, whatever version shows. */
 export function mediumKey(medium: ShownMedium): string {
   return medium.file ? `file:${medium.file.path}` : medium.src
 }
 
 /**
  * Where the viewer loads `medium` from while it is `open`: its address, or for a
- * Host image the version of its file the page keeps.
+ * device image the version of its file the page keeps.
  *
- * A Host image shows from the kept files while the viewer is open, so it is the
+ * A device image shows from the kept files while the viewer is open, so it is the
  * picture the message shows and the file's next version replaces it in place.
- * Until a medium first shows, a description the Host reported changed is not
+ * Until a medium first shows, a description the device reported changed is not
  * shown: the viewer waits for its new reading, so an outdated picture never
  * shows first.
- * `gone` says a Host image's file is not there. Closed, the last stays for the
- * window's leave. `bytes` is the size of what shows: a Host image's file's, or
+ * `gone` says a device image's file is not there. Closed, the last stays for the
+ * window's leave. `bytes` is the size of what shows: a device image's file's, or
  * the one its reference knows.
  */
 export function useMediumSource(
@@ -126,14 +126,14 @@ export function useMediumSource(
   watch(() => {
     const shownFile = medium()?.file
     return shownFile && open()
-      ? { image: hostImage(file.entry.value, shownFile.contents, shownFile.path), outdated: file.entry.value?.outdated ?? false }
+      ? { image: deviceImage(file.entry.value, shownFile.contents, shownFile.path), outdated: file.entry.value?.outdated ?? false }
       : null
   }, (shown) => {
     // Closed, or a medium that is no file: what shows stays.
     if (shown === null)
       return
     const { image, outdated } = shown
-    // Nothing shown yet of this medium: a description the Host reported
+    // Nothing shown yet of this medium: a description the device reported
     // changed waits for its new reading.
     if (image.state === 'shown' && !(src.value === '' && outdated)) {
       src.value = image.src

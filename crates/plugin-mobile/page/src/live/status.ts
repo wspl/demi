@@ -1,5 +1,5 @@
 import { computed } from 'vue'
-import { downloadProgress, formatByteRatio, type HostDownload } from '@demicodes/plugin-sdk'
+import { downloadProgress, formatByteRatio, type DeviceDownload } from '@demicodes/plugin-sdk'
 import type { DeviceWait, LiveConnection, PicturelessReason } from './session'
 import { t } from '../locales/text'
 
@@ -18,13 +18,13 @@ export interface ShownPictures {
 
 /**
  * What a device's view says of its stream, in every view of a device: what
- * it waits for before the first picture, how far the Host's download of the
+ * it waits for before the first picture, how far the runner's download of the
  * plugin's program came meanwhile, and a stream that stalls or opens again
  * while the last picture shows.
  */
-export function deviceStatus(props: { session: ShownPictures; downloads: readonly HostDownload[] }) {
+export function deviceStatus(props: { session: ShownPictures; downloads: readonly DeviceDownload[] }) {
   const look = computed(() => props.session.state.look)
-  /** How far the Host's download came, while the stream waits for it; null when there is none. */
+  /** How far the runner's download came, while the stream waits for it; null when there is none. */
   const progress = computed(() => downloadProgress(props.downloads))
   /** How far the download came, in words, or a blank line that keeps its room. */
   const progressText = computed(() => progress.value ? formatByteRatio(progress.value.received, progress.value.size) : ' ')

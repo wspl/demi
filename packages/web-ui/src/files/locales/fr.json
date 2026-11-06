@@ -119,9 +119,9 @@
     "files": "{count} fichier | {count} fichiers",
     "failedOf": "{failed} / {files} en échec",
     "more": "et {count} de plus",
-    "cannotRemove": "Cet hôte ne peut pas supprimer de fichiers.",
-    "cannotCreateFolder": "Cet hôte ne peut pas créer de dossiers.",
-    "cannotTake": "Cet hôte ne peut pas recevoir d’envois.",
+    "cannotRemove": "Cet appareil ne peut pas supprimer de fichiers.",
+    "cannotCreateFolder": "Cet appareil ne peut pas créer de dossiers.",
+    "cannotTake": "Cet appareil ne peut pas recevoir d’envois.",
     "nameTaken": "Un fichier portant ce nom existe désormais."
   },
   "conflict": {

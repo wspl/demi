@@ -62,7 +62,7 @@
   "permissions": {
     "skills_manage": {
       "action": "administrar habilidades",
-      "description": "Permite que los agentes de este chat agreguen, actualicen y eliminen fuentes de habilidades, y que activen o desactiven habilidades. Las habilidades globales llegan a todos los chats y las de un espacio de trabajo a los chats de ese espacio, y las habilidades activadas se instalan en los hosts que usan esos chats."
+      "description": "Permite que los agentes de este chat agreguen, actualicen y eliminen fuentes de habilidades, y que activen o desactiven habilidades. Las habilidades globales llegan a todos los chats y las de un espacio de trabajo a los chats de ese espacio, y las habilidades activadas se instalan en los dispositivos que usan esos chats."
     }
   },
   "problems": {

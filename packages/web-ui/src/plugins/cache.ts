@@ -3,7 +3,7 @@
  * in the page's IndexedDB, kept across reloads up to a size per plugin, the
  * least recently used going first. It is a cache: nothing ties it to whether
  * the plugin is on, and a page shows what it read from it only until the
- * Host's own answer replaces it.
+ * device's own answer replaces it.
  */
 import { z } from 'zod'
 import { IndexedDatabase } from '../infra/indexed-db'
@@ -38,7 +38,7 @@ const entrySchema = z.object({
 type Entry = z.infer<typeof entrySchema>
 
 /**
- * Empties every plugin's cache, which holds what the signed-in account's Hosts
+ * Empties every plugin's cache, which holds what the signed-in account's devices
  * showed: the browser forgets it with the account.
  */
 export async function clearPluginCaches(): Promise<void> {

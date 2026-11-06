@@ -2,32 +2,32 @@
 //!
 //! The module serves:
 //!
-//! - what Settings › Port Forwarding and `demi host forward` read and change;
+//! - what Settings › Port Forwarding and `demi device forward` read and change;
 //! - what each runner is told of the forwards it is an end of, and what the
 //!   Listen On runners announce of them;
 //! - the backend's part in a connection: the relay's pipes from one runner to the
 //!   other, and the introduction of two runners to each other, as a page is
 //!   introduced to a runner (`crates/runner-direct/src/lib.rs`).
 //!
-//! Every way to the two Hosts is device access: a stopped Cloud is not woken, and
-//! a connection to an offline Host is refused at once
-//! (`crates/backend-host-access/src/lib.rs`).
+//! Every way to the two devices is device access: a stopped Cloud is not woken, and
+//! a connection to an offline device is refused at once
+//! (`crates/backend-device-access/src/lib.rs`).
 //!
 //! # What a forward is
 //!
-//! A forward is `ssh -L` between the user's own Hosts, a paired device or their
+//! A forward is `ssh -L` between the user's own devices, a paired device or their
 //! Cloud: a program on the Cloud that connects to `127.0.0.1:11434` talks to the
 //! Ollama on the user's Mac.
 //!
-//! - It connects Hosts to each other; nothing listens on the backend's server,
+//! - It connects devices to each other; nothing listens on the backend's server,
 //!   where on a shared instance every user's programs could connect.
-//! - It belongs to the user and runs whenever its Listen On Host's runner runs,
+//! - It belongs to the user and runs whenever its Listen On Device's runner runs,
 //!   so it runs again after any restart with no one asking.
-//! - A forward between one Host and itself joins its connections on that Host,
+//! - A forward between one device and itself joins its connections on that device,
 //!   without a runner or the backend between them, and counts them as Direct.
 //!
 //! ```text
-//! program -> 127.0.0.1:11434 on Host A -> A's runner == direct ==> B's runner
+//! program -> 127.0.0.1:11434 on device A -> A's runner == direct ==> B's runner
 //!                                              |                       |
 //!                                              +-- relay (backend) ----+
 //!                                                  -> localhost:11434 on B
@@ -36,10 +36,10 @@
 //! # Connections
 //!
 //! The Listen On runner listens on `127.0.0.1` only, so only programs on that
-//! Host connect.
+//! device connect.
 //!
 //! - A connection opens direct while the pair's peer is connected and neither
-//!   Host's route is Relay Only, the relay otherwise, and always the relay
+//!   device's route is Relay Only, the relay otherwise, and always the relay
 //!   when an end is a Cloud, which runs beside the backend.
 //! - A connection on the relay moves to the pair's peer once it is up, and
 //!   back to the relay when the peer fails, losing no byte
@@ -52,11 +52,11 @@
 //! - A forward that is turned off, removed, or changed in where it listens or
 //!   connects ends its listener and open connections, and new ones follow the
 //!   change.
-//! - Removing a Host removes the forwards that name it.
+//! - Removing a device removes the forwards that name it.
 //!
 //! # Scope
 //!
-//! Forwarding is TCP between the user's Hosts only: no other listen address, no
+//! Forwarding is TCP between the user's devices only: no other listen address, no
 //! publishing a port to the internet, no UDP and no end in the user's browser.
 
 use std::collections::HashMap;
@@ -87,7 +87,7 @@ const ANSWER_TIMEOUT: Duration = CONNECT_TIMEOUT;
 pub(crate) struct ForwardsHeld {
     /// What each runner announced of each forward, by the forward and the
     /// runner: a forward shows what its current Listen On said, so a late
-    /// word of the Host it listened on before changes nothing.
+    /// word of the device it listened on before changes nothing.
     states: std::cell::RefCell<HashMap<(String, DeviceId), ForwardRunState>>,
     /// Each introduced peer: what ends its relay of candidates, and its
     /// offering and answering devices, the only ones that may close it.
@@ -153,12 +153,12 @@ impl Shard {
         }
     }
 
-    /// `POST /port-forwards` and `demi host forward add`: a forward from its
+    /// `POST /port-forwards` and `demi device forward add`: a forward from its
     /// defaults with `patch` over them, listening by default on the first
-    /// of the user's Hosts as the devices list orders them, or on the
-    /// Cloud, which every user has, for one who has no Host yet.
+    /// of the user's devices as the devices list orders them, or on the
+    /// Cloud, which every user has, for one who has no device yet.
     pub async fn create_port_forward(&self, patch: PortForwardPatch) -> Result<PortForwardDto, PortForwardError> {
-        let first = match self.host_records().await?.into_iter().next() {
+        let first = match self.device_records().await?.into_iter().next() {
             Some(device) => device.id,
             None => self.cloud_shard().cloud_device().await?.id,
         };
@@ -186,7 +186,7 @@ impl Shard {
         Ok(self.forward_dto(stored))
     }
 
-    /// `DELETE /port-forwards/:id` and `demi host forward remove`: its
+    /// `DELETE /port-forwards/:id` and `demi device forward remove`: its
     /// listener closes and its connections end.
     pub async fn remove_port_forward(&self, id: PortForwardId) -> Result<(), PortForwardError> {
         let removed = self
@@ -217,22 +217,22 @@ impl Shard {
         Ok(())
     }
 
-    /// The user's Hosts in the devices list's order: the paired devices
+    /// The user's devices in the devices list's order: the paired devices
     /// oldest first, then the Cloud.
-    pub(crate) async fn host_records(&self) -> Result<Vec<DeviceRecord>, StorageError> {
+    pub(crate) async fn device_records(&self) -> Result<Vec<DeviceRecord>, StorageError> {
         let control = &self.services().control;
         let mut devices = control.paired_devices(self.user().clone()).await?;
         devices.extend(control.managed_device(self.user().clone()).await?);
         Ok(devices)
     }
 
-    /// The user's forwards or Hosts changed: every page receives the
+    /// The user's forwards or devices changed: every page receives the
     /// forwards, and every connected runner the forwards it is an end of.
     pub(crate) async fn forwards_changed(&self) {
         self.mark(Part::PortForwards);
         let (records, devices) = match (
             self.services().control.port_forwards(self.user().clone()).await,
-            self.host_records().await,
+            self.device_records().await,
         ) {
             (Ok(records), Ok(devices)) => (records, devices),
             (Err(error), _) | (_, Err(error)) => {
@@ -357,7 +357,7 @@ impl Shard {
         let Some(link) = self.devices().link(&device) else {
             return;
         };
-        let (records, devices) = match (self.services().control.port_forwards(self.user().clone()).await, self.host_records().await) {
+        let (records, devices) = match (self.services().control.port_forwards(self.user().clone()).await, self.device_records().await) {
             (Ok(records), Ok(devices)) => (records, devices),
             (Err(error), _) => {
                 link.forward_opened(id, Err(error.to_string()));
@@ -379,7 +379,7 @@ impl Shard {
             return;
         };
         let Some(other) = self.devices().link(&connect) else {
-            link.forward_opened(id, Err("The Host it connects to is offline".into()));
+            link.forward_opened(id, Err("The device it connects to is offline".into()));
             return;
         };
         // Both runners have the forward's deadline to open both pipes.
@@ -411,10 +411,10 @@ impl Shard {
         };
         let refuse = |code: DialRefusal, message: &str| link.direct_dialed(id.clone(), Err((code, message.to_owned())));
         let Ok(other) = DeviceId::try_from(other) else {
-            refuse(DialRefusal::Unavailable, "No such Host");
+            refuse(DialRefusal::Unavailable, "No such device");
             return;
         };
-        let route = match (self.services().control.port_forwards(self.user().clone()).await, self.host_records().await) {
+        let route = match (self.services().control.port_forwards(self.user().clone()).await, self.device_records().await) {
             (Ok(records), Ok(devices)) => {
                 let find = |id: &DeviceId| devices.iter().find(|device| device.id == *id);
                 // Either runner opens the pair's peer, for a forward between
@@ -435,11 +435,11 @@ impl Shard {
             _ => PairRoute::Relay,
         };
         if route == PairRoute::Relay {
-            refuse(DialRefusal::Unavailable, "The two Hosts do not talk directly");
+            refuse(DialRefusal::Unavailable, "The two devices do not talk directly");
             return;
         }
         let Some(answering) = self.devices().link(&other) else {
-            refuse(DialRefusal::Unavailable, "The Host it connects to is offline");
+            refuse(DialRefusal::Unavailable, "The device it connects to is offline");
             return;
         };
         let closed = CancellationToken::new();
@@ -448,7 +448,7 @@ impl Shard {
             // A peer id is its offering runner's: another's is refused.
             if peers.get(&peer).is_some_and(|introduced| introduced.offering != device) {
                 drop(peers);
-                refuse(DialRefusal::Unavailable, "The peer belongs to another Host");
+                refuse(DialRefusal::Unavailable, "The peer belongs to another device");
                 return;
             }
             let introduced = IntroducedPeer {

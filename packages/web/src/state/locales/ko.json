@@ -3,7 +3,7 @@
     "turnStopped": "턴이 오류로 중지되었습니다.",
     "saveCredential": "“{name}” 자격 증명을 저장하시겠습니까?"
   },
-  "hosts": {
+  "devices": {
     "unavailableDevice": "사용할 수 없는 기기"
   },
   "failures": {

@@ -1,4 +1,4 @@
-//! The simulators' live view on the Host: one invocation of `mobile.live` per
+//! The simulators' live view on the device: one invocation of `mobile.live` per
 //! device a page shows.
 //!
 //! The stream's only state is whether it is looked at. While it is, the
@@ -86,7 +86,7 @@ pub struct Layout {
     pub points: Points,
 }
 
-/// The captures of the Host's looked-at devices, one per device and display
+/// The captures of the device's looked-at simulators, one per simulator and display
 /// a view shows, shared by its viewers: a device's lit display, and a hinged
 /// foldable's outer and inner displays that its 3D view shows on their
 /// faces.

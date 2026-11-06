@@ -119,9 +119,9 @@
     "files": "파일 {count}개",
     "failedOf": "{failed} / {files} 실패",
     "more": "외 {count}개",
-    "cannotRemove": "이 호스트에서는 파일을 삭제할 수 없습니다.",
-    "cannotCreateFolder": "이 호스트에서는 폴더를 만들 수 없습니다.",
-    "cannotTake": "이 호스트에서는 업로드를 받을 수 없습니다.",
+    "cannotRemove": "이 기기에서는 파일을 삭제할 수 없습니다.",
+    "cannotCreateFolder": "이 기기에서는 폴더를 만들 수 없습니다.",
+    "cannotTake": "이 기기에서는 업로드를 받을 수 없습니다.",
     "nameTaken": "같은 이름의 파일이 이미 있습니다."
   },
   "conflict": {

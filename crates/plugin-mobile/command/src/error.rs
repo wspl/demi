@@ -11,12 +11,12 @@ use crate::driver::DriverError;
 pub enum MobileError {
     #[error("{0}")]
     Usage(String),
-    #[error("{0} is not open in this conversation on this Host; demi mobile list shows what is")]
+    #[error("{0} is not open in this conversation on this device; demi mobile list shows what is")]
     NotOpen(DeviceId),
     #[error("{}", no_simulator(.query, .unavailable))]
     NoSimulator {
         query: String,
-        /// The platforms the Host cannot run, with why.
+        /// The platforms the device cannot run, with why.
         unavailable: Vec<String>,
     },
     #[error("{}", ambiguous(.name, .candidates))]
@@ -52,7 +52,7 @@ pub enum MobileError {
 }
 
 fn no_simulator(query: &str, unavailable: &[String]) -> String {
-    let mut message = format!("no simulator named {query:?} on this Host; demi mobile list shows them");
+    let mut message = format!("no simulator named {query:?} on this device; demi mobile list shows them");
     for reason in unavailable {
         message.push_str("; ");
         message.push_str(reason);

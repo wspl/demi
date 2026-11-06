@@ -13,7 +13,7 @@ import type { ReadAt } from './watch-channel'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 import type { DeviceMark } from '../devices/mark'
 import type { DeviceState } from '../devices/state'
-import type { HostKind } from '../hosts/types'
+import type { TargetKind } from '../targets/types'
 
 export type { Showing, ShownEntry } from './file-cache'
 
@@ -55,7 +55,7 @@ export type FileBrowserLinkBreak = { kind: 'missing' } | { kind: 'unreadable'; r
  *
  * - `exists`: a file an upload was not to replace.
  * - `not-repository`: a history read of a folder outside any Git repository.
- * - `not-found`, `binary` and `too-large`: what the Host answered of the path,
+ * - `not-found`, `binary` and `too-large`: what the device answered of the path,
  *   respectively nothing there, a file that is not text, and one too large to
  *   read as text. The kept files keep each as an answer, never as a failure.
  */
@@ -66,19 +66,19 @@ export interface FileBrowserFailure {
   requestId?: string | null
 }
 
-/** What a refusal that is the Host's answer carries: the file's version, and the Host's number before it read. */
+/** What a refusal that is the device's answer carries: the file's version, and the device's number before it read. */
 export interface AnswerFacts {
   version?: string | null
   readAt?: ReadAt | null
-  /** The request the Host's refusal answered. */
+  /** The request the device's refusal answered. */
   requestId?: string | null
 }
 
 export class FileBrowserError extends Error {
   readonly kind: FileBrowserFailure['kind']
-  /** The version of the file the Host answered of; null when it named none. */
+  /** The version of the file the device answered of; null when it named none. */
   readonly version: string | null
-  /** The Host's number before it read; null when it named none. */
+  /** The Device's number before it read; null when it named none. */
   readonly readAt: ReadAt | null
   /** The request that was refused, which the page shows with the failure. */
   readonly requestId: string | null
@@ -141,7 +141,7 @@ export type FileBrowserPlatform = 'macos' | 'linux' | 'windows'
  *
  * It keeps what it read (`keptSource`). A view shows an entry with `showListing`,
  * `showText` or `showDescription` and sees it replaced in place when it is read
- * again. A one-shot read answers from what is kept while the Host confirms it.
+ * again. A one-shot read answers from what is kept while the device confirms it.
  */
 export interface FileBrowserSource {
   platform: FileBrowserPlatform
@@ -183,9 +183,9 @@ export interface FileBrowserSource {
   remove?(path: string, signal?: AbortSignal): Promise<void>
   /**
    * Searches the names and the text of the files under `root`, an absolute
-   * path, for `text`, letter case aside, and yields what it finds as the Host
+   * path, for `text`, letter case aside, and yields what it finds as the device
    * finds it (`FileSearchEvent`). Aborting `signal` stops the search on the
-   * Host. Absent when the source cannot search; Files then offers no search.
+   * device. Absent when the source cannot search; Files then offers no search.
    */
   search?(root: string, text: string, signal: AbortSignal): AsyncIterable<FileSearchEvent>
 }
@@ -240,14 +240,14 @@ export interface FileBrowserPlaceGroup {
 }
 
 /** A machine the sidebar can switch the file browser to. The caller swaps the source when one is chosen. */
-export interface FileBrowserHost {
+export interface FileBrowserDevice {
   id: string
   label: string
   state: DeviceState
-  /** A stopped host can be selected when its source wakes it on access. */
+  /** A stopped device can be selected when its source wakes it on access. */
   canWake?: boolean
-  /** Which kind of host it is, for its glyph; a device when omitted. */
-  kind?: HostKind
+  /** Which kind of device it is, for its glyph; a paired device when omitted. */
+  kind?: TargetKind
   /** A device's mark, with the number it shows (`shownMark`); none for the Cloud. */
   mark?: DeviceMark | null
 }

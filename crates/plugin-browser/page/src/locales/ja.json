@@ -39,14 +39,14 @@
     "conversation_not_found": "このチャットは存在しなくなりました。",
     "conversation_archived": "このチャットはアーカイブされています。",
     "conversation_busy": "チャットは処理中です。しばらくしてからもう一度お試しください。",
-    "host_stopped": "クラウドは停止しています。",
+    "device_stopped": "クラウドは停止しています。",
     "device_offline": "デバイスはオフラインです。",
     "device_not_found": "デバイスはアカウントから削除されました。",
     "cloud_unavailable": "クラウドは現在利用できません。",
     "cloud_resetting": "クラウドをリセットしています。",
     "cloud_capacity": "サーバーにクラウドを起動する余裕がありません。",
     "cloud_crash_loop": "クラウドの起動に何度も失敗したため、停止しました。",
-    "host_operation_failed": "デバイスとの接続が切断されました。",
+    "device_operation_failed": "デバイスとの接続が切断されました。",
     "unknown_plugin_method": "このサーバーではブラウザーを実行できません。",
     "plugin_disabled": "ブラウザープラグインはオフです。"
   },
@@ -73,13 +73,13 @@
     "stopLoading": "読み込みを停止できませんでした",
     "openPage": "ページを開けませんでした",
     "saveDownload": "ダウンロードを保存できませんでした",
-    "hostFilesUnreachable": "ホストのファイルにアクセスできません。"
+    "deviceFilesUnreachable": "デバイスのファイルにアクセスできません。"
   },
   "region": {
     "couldntOpen": "このページを開けませんでした。",
     "couldntShow": "このページを表示できませんでした。",
     "noH264": "このブラウザーは H.264 ビデオをデコードできません。",
-    "waiting": "ホストを待っています…"
+    "waiting": "デバイスを待っています…"
   },
   "menu": {
     "copyLink": "リンクアドレスをコピー",
@@ -108,7 +108,7 @@
   },
   "dialog": {
     "leavePage": "このページを離れますか？",
-    "says": "{host} の内容",
+    "says": "{device} の内容",
     "thisPageSays": "このページの内容",
     "answer": "回答",
     "stay": "このページにとどまる",

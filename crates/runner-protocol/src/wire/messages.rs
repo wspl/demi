@@ -8,8 +8,8 @@ use demi_command_protocol::{
     ArtifactLocation, CommandContext, EditCopies, EditKind, MediumFacts, PackageDescriptor,
     ResidentSequence, Viewable, conversation_name, digest, without_nul,
 };
-use demi_host_paths::HostPaths;
-use demi_shared_types::{BlobRef, HostLogLine};
+use demi_device_paths::DevicePaths;
+use demi_shared_types::{BlobRef, DeviceLogLine};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
@@ -210,7 +210,7 @@ pub enum Inbound {
     ///
     /// - Its declared commands receive `context` and may show the model the
     ///   media types `viewable` names, none for a job whose media reach no
-    ///   model, as one `demi host shell` runs.
+    ///   model, as one `demi device shell` runs.
     /// - `stdin` and `stdout` attach the job's fd 0 and fd 1 to pipes whose
     ///   other ends are elsewhere.
     JobStart {
@@ -308,7 +308,7 @@ pub enum Inbound {
         call_id: String,
         bytes: WireBytes,
     },
-    /// A medium the call hands its job (`crates/host-interface/src/rpc.rs`),
+    /// A medium the call hands its job (`crates/device-interface/src/rpc.rs`),
     /// whose bytes the pipe `bytes` carries; the runner reads them before
     /// the call's next message, so the medium stays in order with its
     /// standard error and before its exit.
@@ -361,9 +361,9 @@ pub enum Inbound {
     ResidentClose {
         stream_id: String,
     },
-    /// Send the Host's log lines after `since`, then each new line as it is
-    /// written: the highest `seq` the backend stored for this Host, none for
-    /// a Host it has no line of.
+    /// Send the device's log lines after `since`, then each new line as it is
+    /// written: the highest `seq` the backend stored for this device, none for
+    /// a device it has no line of.
     LogFollow {
         #[serde(
             default,
@@ -416,7 +416,7 @@ pub enum Inbound {
     /// A request whose `version` names the versions it holds, as an
     /// `If-None-Match` header names them, streams nothing while the file
     /// still has one of them: the reply says it is unchanged
-    /// (`crates/runner-host/src/files.rs`).
+    /// (`crates/runner-device/src/files.rs`).
     #[serde(rename = "fs_readFile")]
     FsReadFile {
         id: String,
@@ -449,7 +449,7 @@ pub enum Inbound {
     },
     /// The file's size and SHA-256, and none of its bytes, so the backend
     /// can tell whether it holds them already; a file over `limit` bytes
-    /// answers its size alone, before a byte is read (`crates/runner-host/src/files.rs`).
+    /// answers its size alone, before a byte is read (`crates/runner-device/src/files.rs`).
     #[serde(rename = "fs_hashFile")]
     FsHashFile {
         id: String,
@@ -498,7 +498,7 @@ pub enum Inbound {
         exists: WriteExists,
         source: FileOffer,
     },
-    /// Writes the directory `path` whole (`crates/runner-host/src/lib.rs`).
+    /// Writes the directory `path` whole (`crates/runner-device/src/lib.rs`).
     ///
     /// - `files` lists its files, each by its path inside it, with `/` between
     ///   the parts, and its mode.
@@ -524,7 +524,7 @@ pub enum Inbound {
         #[garde(length(min = 1))]
         paths: Vec<String>,
     },
-    /// Reads several files at once (`crates/runner-host/src/lib.rs`): the
+    /// Reads several files at once (`crates/runner-device/src/lib.rs`): the
     /// answer says of each whether it is read, and `output` carries the
     /// read ones' contents, each after its length, in the request's order.
     /// A file over `limit` bytes is not read.
@@ -543,7 +543,7 @@ pub enum Inbound {
         output: PipeRef,
     },
     /// Searches the text of the files under `root`
-    /// (`crates/runner-host/src/search.rs`). The reply comes once the query is
+    /// (`crates/runner-device/src/search.rs`). The reply comes once the query is
     /// read and `root` is a directory; then `output` carries what the search
     /// finds, one [`crate::search::SearchLine`] per line, until it ends or the
     /// pipe closes.
@@ -555,7 +555,7 @@ pub enum Inbound {
         query: crate::search::SearchQuery,
         output: PipeRef,
     },
-    /// Looks at several paths at once (`crates/runner-host/src/lib.rs`):
+    /// Looks at several paths at once (`crates/runner-device/src/lib.rs`):
     /// each answers whether it exists, its kind, a directory's entries, or a
     /// file's size with its first bytes, up to the path's `limit`, which go
     /// into `output` one file after another in the request's order. Without
@@ -737,8 +737,8 @@ pub enum Inbound {
         )]
         cwd: Option<String>,
     },
-    /// The directory at `path` as its Host names it, in one exchange
-    /// (`crates/backend-host-access/src/directories.rs`): its real path, or
+    /// The directory at `path` as its device names it, in one exchange
+    /// (`crates/backend-device-access/src/directories.rs`): its real path, or
     /// `ENOTDIR` when it is no directory. With `create`, a directory that
     /// does not exist is made first, with its parents, and a path that cannot
     /// be one fails with a reason the runner words from the part of it that
@@ -824,7 +824,7 @@ pub enum Inbound {
         root: String,
         commit: String,
     },
-    /// Subscribes `id` to what `kind` says of `path` (`crates/runner-host/src/subscriptions.rs`): `fs_live` answers once the watch behind it runs, or
+    /// Subscribes `id` to what `kind` says of `path` (`crates/runner-device/src/subscriptions.rs`): `fs_live` answers once the watch behind it runs, or
     /// `fs_failed` when it cannot, and `fs_changed` names it when its
     /// subject changed. Its lease runs 10 minutes from now; a subscription
     /// under an id that runs already is replaced.
@@ -922,11 +922,11 @@ pub enum Inbound {
         #[garde(length(max = crate::direct::MAX_STUN_URLS))]
         stun: Vec<crate::direct::StunUrl>,
     },
-    /// The directories of the projects on this runner's Host, as the
+    /// The directories of the projects on this runner's device, as the
     /// backend stores them, as the connection begins and whenever one is
     /// added, removed or named otherwise. The runner reports each one's
     /// linked worktrees (`worktrees`) and keeps them current
-    /// (`crates/runner-host/src/worktrees.rs`).
+    /// (`crates/runner-device/src/worktrees.rs`).
     Projects {
         #[garde(inner(length(min = 1)))]
         directories: Vec<String>,
@@ -953,7 +953,7 @@ pub enum Inbound {
         input: PipeRef,
         output: PipeRef,
     },
-    /// The connection is refused at once: the Connect To Host is offline or
+    /// The connection is refused at once: the Connect To Device is offline or
     /// stopped, or the forward no longer runs.
     ForwardRefused {
         id: String,
@@ -1006,7 +1006,7 @@ impl Inbound {
     /// (`crates/runner-protocol/src/wire/session.rs`): a message of the
     /// connection's own, one that goes on across a drop, such as a command's
     /// stdin, a stop or a call's reply, or one that asks something of the
-    /// connection it was written to, such as a Host request, which a new
+    /// connection it was written to, such as a device request, which a new
     /// connection must not run late. A job's start is the connection's too:
     /// the backend sends it again itself when the runner's hello does not list
     /// the job, and a second start would run the command twice.
@@ -1269,7 +1269,7 @@ pub enum Outbound {
     },
     FsOk(FsOk),
     /// A failed fs call; `code` is the errno-style code when there is one,
-    /// and `readAt` the Host's number as the runner received the call.
+    /// and `readAt` the device's number as the runner received the call.
     FsError {
         id: String,
         #[garde(dive)]
@@ -1485,7 +1485,7 @@ pub enum Outbound {
         pipe_id: String,
     },
     /// Subscription `id` is watched: a change at a number above `since` is
-    /// reported, numbers of `epoch` (`crates/runner-host/src/numbers.rs`).
+    /// reported, numbers of `epoch` (`crates/runner-device/src/numbers.rs`).
     FsLive {
         id: String,
         since: u64,
@@ -1524,11 +1524,11 @@ pub enum Outbound {
         #[garde(custom(answer_fits))]
         stdout: WireBytes,
     },
-    /// Lines of the Host's log in `seq` order, on the lowest-priority queue.
-    /// `missed` counts the lines the Host's files no longer held since the
+    /// Lines of the device's log in `seq` order, on the lowest-priority queue.
+    /// `missed` counts the lines the device's files no longer held since the
     /// last frame.
     LogLines {
-        lines: Vec<HostLogLine>,
+        lines: Vec<DeviceLogLine>,
         missed: u64,
     },
     /// The runner's answer to a `direct_offer`, with its candidates.
@@ -1623,7 +1623,7 @@ pub enum Outbound {
     /// project directory `directory`, named as the backend's `projects`
     /// named it; none for a directory that is no repository's main worktree.
     /// It goes before any message that could follow a change of them
-    /// (`crates/runner-host/src/worktrees.rs`).
+    /// (`crates/runner-device/src/worktrees.rs`).
     Worktrees {
         #[garde(length(min = 1))]
         directory: String,
@@ -1657,25 +1657,25 @@ pub enum Outbound {
     /// (`crates/runner-command-packages/src/cache.rs`).
     Installed {
         #[garde(dive)]
-        artifacts: Vec<HostArtifact>,
+        artifacts: Vec<DeviceArtifact>,
     },
     /// The artifacts this runner's cache is downloading and how far each
     /// came, once the connection is online and as they change, at most four
     /// times a second (`crates/runner-command-packages/src/cache.rs`).
     Downloading {
         #[garde(dive)]
-        downloads: Vec<HostDownload>,
+        downloads: Vec<DeviceDownload>,
     },
 }
 
-/// One artifact a Host holds: its package, its line's name and its
+/// One artifact a device holds: its package, its line's name and its
 /// version, such as `demi.browser`, `Chrome for Testing` and
 /// `153.0.8010.36`.
 #[derive(
     Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, garde::Validate, JsonSchema,
 )]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HostArtifact {
+pub struct DeviceArtifact {
     #[garde(length(min = 1, max = 200))]
     pub package: String,
     #[garde(length(min = 1, max = 100))]
@@ -1684,12 +1684,12 @@ pub struct HostArtifact {
     pub version: String,
 }
 
-/// An artifact a Host is downloading into its cache: its package, line and
-/// version, as a [`HostArtifact`] names them, and how many of its `size`
+/// An artifact a device is downloading into its cache: its package, line and
+/// version, as a [`DeviceArtifact`] names them, and how many of its `size`
 /// bytes arrived.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HostDownload {
+pub struct DeviceDownload {
     #[garde(length(min = 1, max = 200))]
     pub package: String,
     #[garde(length(min = 1, max = 100))]
@@ -1713,7 +1713,7 @@ pub enum HelloErrorCode {
     Internal,
 }
 
-/// A signal a kill request names (`crates/runner-host/src/lib.rs`): one
+/// A signal a kill request names (`crates/runner-device/src/lib.rs`): one
 /// closed set that raw processes and jobs share.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Signal {
@@ -1843,8 +1843,8 @@ pub struct StreamArtifactOwner {
 pub struct RunnerInfo {
     pub name: String,
     pub platform: RunnerPlatform,
-    /// The Host's operating system, which the agent reads in its context
-    /// block (`crates/backend-host-access/src/transition.rs`).
+    /// The device's operating system, which the agent reads in its context
+    /// block (`crates/backend-device-access/src/transition.rs`).
     #[garde(dive)]
     pub os: OperatingSystem,
     /// The runner's release, such as `0.1.16`, which Settings shows.
@@ -1857,8 +1857,8 @@ pub struct RunnerInfo {
     )]
     #[garde(inner(custom(demi_command_protocol::target)))]
     pub native_target: Option<String>,
-    /// Read at shell creation, so it arrives before any Host use.
-    pub identity: HostIdentity,
+    /// Read at shell creation, so it arrives before any device use.
+    pub identity: DeviceIdentity,
     /// The kernel a process the runner starts runs on, which the Claude
     /// Code CLI describes its machine by
     /// (`crates/provider-claude-code/src/session.rs`); none on Windows, which
@@ -1870,7 +1870,7 @@ pub struct RunnerInfo {
     )]
     #[garde(dive)]
     pub kernel: Option<Kernel>,
-    /// The Host's physical memory in bytes, which bounds how many idle Claude
+    /// The device's physical memory in bytes, which bounds how many idle Claude
     /// Code processes its machine keeps
     /// (`crates/provider-claude-code/src/idle.rs`).
     pub memory: u64,
@@ -1883,7 +1883,7 @@ pub struct RunnerInfo {
     )]
     #[garde(inner(length(chars, min = 1, max = 4096)))]
     pub shell: Option<String>,
-    /// A runner booted as a managed host's init: it presents its token or is
+    /// A runner booted as a managed device's init: it presents its token or is
     /// refused, never paired.
     #[serde(
         default,
@@ -1915,7 +1915,7 @@ pub struct RunnerInfo {
 
 /// Why a device will not start its runner by itself after a restart
 /// (`crates/runner/src/autostart.rs`): its cause, with what the
-/// system said, so that Devices says it in the user's language and the
+/// system said, so that devices says it in the user's language and the
 /// runner's log and installer in English ([`AutostartUnavailable::sentence`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
@@ -1980,7 +1980,7 @@ impl AutostartUnavailable {
 
     /// The cause in English, as the runner's log and the installers say it
     /// after [`crate::console::NO_AUTOSTART`]; a path under `home`, on a
-    /// Host of `platform`, is written from `~`.
+    /// device of `platform`, is written from `~`.
     pub fn sentence(&self, platform: RunnerPlatform, home: &str) -> String {
         match self {
             Self::NoSystemd => "this system does not run systemd".into(),
@@ -2017,16 +2017,16 @@ pub enum RunnerPlatform {
 }
 
 impl RunnerPlatform {
-    /// How a Host of this platform writes its paths.
-    pub fn paths(self) -> HostPaths {
+    /// How a device of this platform writes its paths.
+    pub fn paths(self) -> DevicePaths {
         match self {
-            Self::Win32 => HostPaths::Windows,
-            Self::Darwin | Self::Linux => HostPaths::Posix,
+            Self::Win32 => DevicePaths::Windows,
+            Self::Darwin | Self::Linux => DevicePaths::Posix,
         }
     }
 }
 
-/// A Host's operating system as its runner reports it in its hello and a
+/// A device's operating system as its runner reports it in its hello and a
 /// device keeps it: its name with its release, on Linux its distribution,
 /// and the machine's architecture.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -2048,7 +2048,7 @@ pub struct OperatingSystem {
     pub arch: String,
 }
 
-/// A Host's kernel as `uname -s` and `uname -r` print it, read once when
+/// A device's kernel as `uname -s` and `uname -r` print it, read once when
 /// the runner starts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -2064,7 +2064,7 @@ pub struct Kernel {
 /// The account the runner works as.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HostIdentity {
+pub struct DeviceIdentity {
     pub uid: u32,
     pub gid: u32,
     pub hostname: String,
@@ -2131,7 +2131,7 @@ pub struct FileStat {
 
 /// A file an `fs_readFile` opened: its metadata then, its version, and
 /// whether that is the version the request named, in which case nothing
-/// streams (`crates/runner-host/src/files.rs`).
+/// streams (`crates/runner-device/src/files.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OpenedFile {
@@ -2142,7 +2142,7 @@ pub struct OpenedFile {
 
 /// What `fs_hashFile` answers: the bytes hashed, their SHA-256, which names
 /// their blob, and the full path of the file read, its symbolic links and
-/// `..` resolved by the Host's file system as that Host writes it; or, for a
+/// `..` resolved by the device's file system as that device writes it; or, for a
 /// file over the request's limit, its size alone (`too_large`), none of its
 /// bytes read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2211,7 +2211,7 @@ pub struct DirEntry {
     pub link: Option<SymbolicLink>,
 }
 
-/// Where a symbolic link of a listing points (`crates/runner-host/src/lib.rs`): its target as written, and what is there once every link
+/// Where a symbolic link of a listing points (`crates/runner-device/src/lib.rs`): its target as written, and what is there once every link
 /// on the way is followed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -2246,7 +2246,7 @@ pub struct DirectoryFile {
     pub mode: u32,
 }
 
-/// What a write does when its path is taken (`crates/runner-host/src/lib.rs`). A directory at the path is never written over: the write
+/// What a write does when its path is taken (`crates/runner-device/src/lib.rs`). A directory at the path is never written over: the write
 /// fails with `EISDIR`, unless it takes another name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2378,7 +2378,7 @@ pub struct GitChange {
     pub removed: u64,
 }
 
-/// A repository's local branches (`crates/runner-host/src/git.rs`): by name,
+/// A repository's local branches (`crates/runner-device/src/git.rs`): by name,
 /// most recently committed first; the one checked out, or null with `head`
 /// when HEAD is detached.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
@@ -2396,7 +2396,7 @@ pub struct GitBranches {
     pub head: Option<String>,
 }
 
-/// The repositories around a directory (`crates/runner-host/src/repositories.rs`).
+/// The repositories around a directory (`crates/runner-device/src/repositories.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[garde(allow_unvalidated)]
@@ -2638,7 +2638,7 @@ impl Outbound {
     /// (`crates/runner-protocol/src/wire/session.rs`): a message of the
     /// connection's own, one that goes on across a drop, such as a job's output
     /// and exit or a call's, or an answer or event of the connection it was
-    /// written on, such as a Host request's reply, which the backend no longer
+    /// written on, such as a device request's reply, which the backend no longer
     /// waits for.
     pub fn carriage(&self) -> Carriage {
         // Every message is named, so a new one is classified when it is added.
