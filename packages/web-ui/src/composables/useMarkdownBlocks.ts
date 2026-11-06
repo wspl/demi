@@ -1,4 +1,4 @@
-import { computed, effectScope, onScopeDispose, shallowRef, watch, type ComputedRef, type EffectScope } from 'vue'
+import { computed, effectScope, onMounted, onScopeDispose, shallowRef, watch, type ComputedRef, type EffectScope } from 'vue'
 import { messageBlockEnds } from '../markdown/render'
 import { fadesIn, wrapSteps, type RevealStep } from '../ui/stream-reveal'
 
@@ -218,7 +218,12 @@ export function useMarkdownBlocks<T>(options: MarkdownBlocksOptions<T>): void {
   }
 
   watch([options.text, options.streaming], update, { immediate: true })
-  watch([options.root, () => blocks.value.map((entry) => entry.html.value)], sync, { flush: 'post', immediate: true })
+  // The reply is in the page once its component is mounted, as a parent that
+  // measures it in its own mounted hook expects: a long message folds by its
+  // height there. A watch on the root would fill it later in the same update,
+  // after every mounted hook, since the root is set in it.
+  onMounted(sync)
+  watch(() => blocks.value.map((entry) => entry.html.value), sync, { flush: 'post' })
   onScopeDispose(() => replace([]))
 }
 
