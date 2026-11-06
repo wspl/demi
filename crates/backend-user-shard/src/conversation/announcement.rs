@@ -1,6 +1,6 @@
 //! The context block a node reads before its first request, and before its next
 //! one once the conversation's execution context changed
-//! (`crates/backend-host-access/src/transition.rs`).
+//! (`crates/core-host-access/src/transition.rs`).
 //!
 //! A block holds, in order:
 //!
@@ -25,8 +25,8 @@ use demi_web_api_protocol::devices::DeviceKind;
 use demi_agent_store::Placement;
 use demi_conversation_lane_protocol::{AgentEntry, Version};
 use demi_agent_tools::NodeContext;
-use demi_backend_host_access::access::HostAccessError;
-use demi_backend_host_access::{conversation_of, root_of};
+use demi_core_host_access::access::HostAccessError;
+use demi_core_host_access::{conversation_of, root_of};
 use demi_host_paths::HostPaths;
 use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};

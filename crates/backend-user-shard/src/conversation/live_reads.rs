@@ -15,7 +15,7 @@ use demi_web_api_protocol::conversations::TranscriptPage;
 use demi_web_api_protocol::ids::ConversationId;
 
 use crate::shard::Shard;
-use demi_backend_host_access::root_of;
+use demi_core_host_access::root_of;
 
 impl Shard {
     /// The latest `count` blocks, a page at most, of the live node `node` of

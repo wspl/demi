@@ -67,7 +67,7 @@ use std::future::Future;
 use std::rc::Rc;
 
 use demi_core_blobs::ObjectError;
-use demi_backend_cloud::machine::{CloudAdmission, CloudError};
+use crate::cloud::{CloudAdmission, CloudError};
 use demi_core_store::StorageError;
 use demi_core_store::conversation_index::{ConversationRecord, ExecutionTarget};
 use demi_core_store::devices::DeviceRecord;
@@ -178,7 +178,7 @@ impl Drop for HeldWait {
 /// A running job, held until the job ends: its admission, unless a move
 /// away from the job's offline Host leaves the job to that Host's runner
 /// without it, or the job holds none of its own, and the request that ends it
-/// when its Host is detached (`crates/backend-host-access/src/transition.rs`).
+/// when its Host is detached (`crates/core-host-access/src/transition.rs`).
 struct JobAdmission {
     device: DeviceId,
     /// Whether the job's agent works where the conversation does, the root
@@ -962,7 +962,7 @@ impl dyn HostShard + '_ {
     /// Takes the Cloud's admission: it wakes a stopped Cloud, joins a boot
     /// under way, or waits for a running reset to finish (`managed`).
     async fn enter_cloud(&self, device: &DeviceRecord) -> Result<CloudAdmission, CloudError> {
-        self.cloud_shard().admit_cloud(device).await
+        self.cloud_host().admit_cloud(device).await
     }
 
     /// The Host an operation reaches and where its work starts, found
@@ -995,7 +995,7 @@ impl dyn HostShard + '_ {
         let found = match (&named, &target) {
             (Some(host), _) => store.device(host.device.clone()).await?,
             (None, ExecutionTarget::Cloud { .. }) if allocate => {
-                Some(self.cloud_shard().cloud_device().await?)
+                Some(self.cloud_host().cloud_device().await?)
             }
             (None, ExecutionTarget::Cloud { .. }) => Some(
                 store

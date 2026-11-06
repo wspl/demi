@@ -54,7 +54,7 @@ use demi_provider_registry::store::StoreError;
 use demi_provider_registry::registry::{RegistryError, MakerOf};
 use demi_provider_registry::rotation::{Choice, USED_UP_FOR_MS};
 use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
-use demi_backend_host_access::root_of;
+use demi_core_host_access::root_of;
 use demi_host_interface::{JobCaller, PortError};
 use demi_plugin_interface::{
     AskedVideo, AudioAsk, AudioFacts, AudioFileFormat, AudioOption, AudioVoices, MadeAudio, PcmShape, VoiceInfo,

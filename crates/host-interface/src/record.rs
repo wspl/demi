@@ -109,7 +109,7 @@ pub struct PageView {
 pub enum PageState {
     Running,
     /// It waits to start until its Host, the paired device `host` names,
-    /// is back (`crates/backend-host-access/src/access.rs`): the pages show
+    /// is back (`crates/core-host-access/src/access.rs`): the pages show
     /// *Waiting for MacBook Pro*, and it counts as running.
     Waiting { host: String },
     /// It runs while a stop waits for its runner to say that it ended

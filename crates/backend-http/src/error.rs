@@ -26,8 +26,8 @@ use demi_core_hosts::files::{TextError, TextRefusal};
 use demi_host_interface::HostError;
 use demi_shared_types::ReadAt;
 
-use demi_backend_host_access::access::{HostAccessError, host_error_code};
-use demi_backend_host_access::stream::StreamError;
+use demi_core_host_access::access::{HostAccessError, host_error_code};
+use demi_core_host_access::stream::StreamError;
 use demi_backend_user_shard::shard::ShardUnavailable;
 
 /// The header that carries the Host's number a read answer was read at.

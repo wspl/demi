@@ -31,7 +31,7 @@ use futures_util::future::try_join_all;
 use tokio_util::sync::CancellationToken;
 
 use crate::shard::Shard;
-use demi_backend_host_access::root_of;
+use demi_core_host_access::root_of;
 
 impl Shard {
     /// The entries of the user's conversations that are archived, the last

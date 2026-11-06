@@ -57,7 +57,7 @@
 //! The server fetches a source with gix on the blocking pool, and sends no
 //! credential. A source may instead name one of the user's paired devices,
 //! which fetches it with its own `git`, as its user, with that user's keys,
-//! credential helpers and network (`crates/backend-host-access/src/device_git.rs`):
+//! credential helpers and network (`crates/core-host-access/src/device_git.rs`):
 //! the one way to an SSH address, or a repository only a company network
 //! reaches. What either fetch answers is read by the same rules, and the
 //! server keeps the files for every Host. An offline device fetches and

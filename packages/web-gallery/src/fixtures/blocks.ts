@@ -1511,7 +1511,7 @@ export const WAITING_SHELL_SCRIPT = 'cargo test'
 
 /**
  * A `shell` call whose command waits for the conversation's offline device
- * (`crates/backend-host-access/src/access.rs`): the call runs, and its
+ * (`crates/core-host-access/src/access.rs`): the call runs, and its
  * command starts once the device's runner is back.
  */
 export function waitingShellCall(): ToolCallBlock {

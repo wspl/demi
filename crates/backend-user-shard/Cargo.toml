@@ -21,7 +21,7 @@ demi-agent-tools = { path = "../agent-tools" }
 demi-agent-transcript = { path = "../agent-transcript" }
 demi-backend-accounts = { path = "../backend-accounts" }
 demi-backend-cloud = { path = "../backend-cloud" }
-demi-backend-host-access = { path = "../backend-host-access" }
+demi-core-host-access = { path = "../core-host-access" }
 demi-core-idle-watch = { path = "../core-idle-watch" }
 demi-core-blobs = { path = "../core-blobs" }
 demi-core-providers = { path = "../core-providers" }

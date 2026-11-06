@@ -1076,7 +1076,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 // until it is back: the silence is the connection's
                 // (`crates/agent-session/src/reports.rs`). So does one whose
                 // start waits for its Host, which never ran
-                // (`crates/backend-host-access/src/access.rs`).
+                // (`crates/core-host-access/src/access.rs`).
                 if environment.unreachable(command).is_some() {
                     dropped("silence", "host_away");
                     return None;

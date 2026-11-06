@@ -16,9 +16,9 @@ use std::rc::{Rc, Weak};
 
 use demi_agent_server::instructions::{self, NONE_LEFT, ProjectFile, WorkflowText, render};
 use demi_agent_tools::{ContextAnswer, ContextSource, NodeContext, WORKFLOW_EXTENSION};
-use demi_backend_host_access::conversation_of;
-use demi_backend_host_access::kept::Found;
-use demi_backend_host_access::plugin_files::ReadFilesError;
+use demi_core_host_access::conversation_of;
+use demi_core_host_access::kept::Found;
+use demi_core_host_access::plugin_files::ReadFilesError;
 use demi_runner_protocol::files::{Subject, SubscriptionKind};
 use demi_shared_types::{INSTRUCTIONS_SOURCE, TurnId, WorkflowChoice};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};

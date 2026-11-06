@@ -1,5 +1,5 @@
 //! The product's `demi conversation` group
-//! (`crates/backend-host-access/src/host_commands.rs`).
+//! (`crates/core-host-access/src/host_commands.rs`).
 //!
 //! The group asks no permission. An agent renames its conversation at once:
 //! the title is the conversation's own, and the user renames it back as
@@ -24,8 +24,8 @@ use demi_core_store::conversation_index::{ConversationRecord, ConversationStart,
 use demi_conversation_lane_protocol::ClientContent;
 use demi_shared_types::WorkflowChoice;
 use demi_web_api_protocol::conversations::{ConversationPatch, ConversationTarget, FieldResult};
-use demi_backend_host_access::host_commands::conversation_of;
-use demi_backend_host_access::root_of;
+use demi_core_host_access::host_commands::conversation_of;
+use demi_core_host_access::root_of;
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_shared_types::output::{self, Cell, Table};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, Sender as AgentSender, SenderConversation, Timestamp};

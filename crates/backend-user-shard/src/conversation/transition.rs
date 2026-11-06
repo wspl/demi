@@ -1,4 +1,4 @@
-//! Changes of a conversation (`crates/backend-host-access/src/transition.rs`, §
+//! Changes of a conversation (`crates/core-host-access/src/transition.rs`, §
 //! Lifecycle access).
 //!
 //! Every change goes through one entry, `Shard::transition`.
@@ -23,7 +23,7 @@
 //!
 //! A transition waits for no other work: a conversation that is busy refuses
 //! it. The shard reserves the idle tree; host access holds the rest and runs the
-//! transition's steps (`demi_backend_host_access::transition`).
+//! transition's steps (`demi_core_host_access::transition`).
 
 use demi_core_store::projects::ProjectDeletion;
 use demi_core_store::Selection;
@@ -31,9 +31,9 @@ use demi_core_store::StorageError;
 use demi_core_store::conversation_index::{
     ConversationChange, ConversationRecord, RecordChange, SettingsChange,
 };
-use demi_backend_host_access::access::Leaving;
-use demi_backend_host_access::root_of;
-use demi_backend_host_access::transition::{ChangeRefusal, Switched};
+use demi_core_host_access::access::Leaving;
+use demi_core_host_access::root_of;
+use demi_core_host_access::transition::{ChangeRefusal, Switched};
 use demi_core_sync::Part;
 use demi_shared_gates::{Purpose, Reservation};
 use demi_web_api_protocol::conversations::{
@@ -146,7 +146,7 @@ impl Shard {
             ConversationChange::Record(RecordChange::Detach(device)) => {
                 // A detach holds nothing and waits for no work: it ends the
                 // conversation's jobs on the Host
-                // (`crates/backend-host-access/src/transition.rs`).
+                // (`crates/core-host-access/src/transition.rs`).
                 let removed = host.detach(&record, device.clone()).await?;
                 if removed {
                     self.release_detached(&record.id, device);
@@ -304,7 +304,7 @@ impl Shard {
             return Ok(None);
         }
         // Commands still running on an offline device it leaves let go of
-        // the conversation (`crates/backend-host-access/src/transition.rs`).
+        // the conversation (`crates/core-host-access/src/transition.rs`).
         let leaving = self.leaving_offline(record).await?;
         if let Some(device) = &leaving {
             slot.leave_jobs_on(device, Leaving::Following);
@@ -485,7 +485,7 @@ impl Shard {
     /// Fails the jobs that wait for `device`, the offline device the move
     /// of `record` left, with what the agent reads of them: where the
     /// conversation runs now, and that the command did not run
-    /// (`crates/backend-host-access/src/access.rs`).
+    /// (`crates/core-host-access/src/access.rs`).
     async fn fail_waiting_for(&self, record: &ConversationRecord, device: &DeviceId) -> Result<(), ChangeRefusal> {
         let store = self.store();
         let left = store.device(device.clone())

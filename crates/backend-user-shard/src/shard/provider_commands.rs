@@ -23,8 +23,8 @@ use demi_core_providers::vault::accounts as vault_accounts;
 use demi_core_providers::vault::entries::Vault;
 use std::rc::Rc;
 
-use demi_backend_host_access::host_commands::conversation_of;
-use demi_backend_host_access::root_of;
+use demi_core_host_access::host_commands::conversation_of;
+use demi_core_host_access::root_of;
 use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc};
 use demi_agent_tools::EFFORT_OFF;

@@ -93,7 +93,7 @@ pub trait HostAccess {
     ) -> LocalBoxFuture<'a, Option<Box<dyn std::any::Any>>>;
 }
 
-/// How a job whose start may wait for its Host (`crates/backend-host-access/src/access.rs`) shows it: waiting for the device it names, and no
+/// How a job whose start may wait for its Host (`crates/core-host-access/src/access.rs`) shows it: waiting for the device it names, and no
 /// longer waiting with `None`, which the wait awaits before it goes on.
 #[derive(Clone, Copy)]
 pub struct JobWaiting<'a> {
@@ -118,7 +118,7 @@ pub trait CommandKeeper {
     /// Records that `command` waits to start as the job `job` until its
     /// Host, a paired device whose runner is away, is back, with what it
     /// will send then, so a backend that starts again keeps it waiting and
-    /// sends it once the runner connects (`crates/backend-host-access/src/access.rs`). A failure to record it is the keeper's to log.
+    /// sends it once the runner connects (`crates/core-host-access/src/access.rs`). A failure to record it is the keeper's to log.
     fn waiting<'a>(
         &'a self,
         command: &'a CommandId,
@@ -405,7 +405,7 @@ impl RemoteShellEnvironment {
     /// seen. Its runner's next hello says whether it went on, ended or was
     /// lost. One whose start was never sent waits for its Host again and is
     /// sent once its runner connects
-    /// (`crates/backend-host-access/src/access.rs`). A command the environment
+    /// (`crates/core-host-access/src/access.rs`). A command the environment
     /// holds already stays as it is.
     pub fn adopt(&self, taken: TakenUp) {
         let TakenUp {

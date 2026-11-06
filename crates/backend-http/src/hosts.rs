@@ -14,7 +14,7 @@ use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use super::AppState;
 use super::error::ApiError;
 use super::gate::AuthUser;
-use demi_backend_host_access::transition::ChangeRefusal;
+use demi_core_host_access::transition::ChangeRefusal;
 
 /// Detaches a device: answers once it has left the conversation and the
 /// conversation's commands there were asked to stop, waiting for no Host; the

@@ -15,7 +15,7 @@
 use demi_backend_accounts::subagents::{self, ContextRefusal, ProfileTextError};
 use demi_core_store::StorageError;
 use demi_core_store::subagents::ProfileRefusal as Stored;
-use demi_backend_host_access::transition::ChangeRefusal;
+use demi_core_host_access::transition::ChangeRefusal;
 use demi_core_sync::Part;
 use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::ProfileId;

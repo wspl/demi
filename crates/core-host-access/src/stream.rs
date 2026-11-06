@@ -34,7 +34,7 @@ use demi_runner_client::{
     Pipe, PipeReader, PipeWriter, ResidentCallError, ResidentRequest, ResidentStream,
 };
 use demi_core_hosts::command_context::command_context;
-use demi_backend_runners::native::NativeCatalog;
+use demi_core_hosts::packages::Packages;
 use demi_command_declarations::NativeOperation;
 use demi_command_protocol::CommandCaller;
 use demi_host_interface::HostErrorKind;
@@ -66,7 +66,7 @@ impl UserStreams {
     /// nothing.
     pub fn new<'a>(
         declared: impl IntoIterator<Item = (&'a str, &'a NativeOperation)>,
-        native: &NativeCatalog,
+        native: &dyn Packages,
     ) -> Self {
         let bound = declared.into_iter().filter_map(|(name, binding)| {
             if !native.serves(&binding.package, &[binding.operation.as_str()]) {
@@ -276,7 +276,7 @@ impl dyn HostShard + '_ {
 
     /// Runs `operation`, a look of the user's at the conversation's primary
     /// Host, such as which paths a message names are files
-    /// (`crates/backend-host-access/src/access.rs`).
+    /// (`crates/core-host-access/src/access.rs`).
     ///
     /// The look is admitted as a user stream is: a stopped Cloud is refused
     /// rather than woken, the look is no activity, and a transition ends it
@@ -367,7 +367,7 @@ impl dyn HostShard + '_ {
             args: args.cloned(),
             json: args.map(|_| true),
             cwd: host.root.clone(),
-            resolver: self.native().resolver(self.public_url()),
+            resolver: self.packages().resolver(),
             attached: Vec::new(),
         })
     }
@@ -425,7 +425,7 @@ struct Watching {
 impl Watching {
     /// Takes and lets go of the lease as the page says, until the edge lets
     /// go of the stream. The gate is never reserved
-    /// (`crates/backend-host-access/src/access.rs`), so a lease comes at
+    /// (`crates/core-host-access/src/access.rs`), so a lease comes at
     /// once.
     async fn follow(&mut self) {
         while self.watched.changed().await.is_ok() {

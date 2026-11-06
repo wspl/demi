@@ -17,7 +17,7 @@ use super::AppState;
 use super::connection::Opened;
 use super::conversations::owned;
 use super::error::ApiError;
-use demi_backend_host_access::stream::UserStream;
+use demi_core_host_access::stream::UserStream;
 use demi_runner_protocol::direct::StreamWatched;
 
 /// The stream `name` of the caller's conversation `id`: everything that can

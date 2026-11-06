@@ -40,7 +40,7 @@ export interface IntentPayloads {
    */
   branch: { root: string; branch: string | null }
   /**
-   * An attachment of the conversation (`crates/backend-host-access/src/attachment_commands.rs`) that is no image, video or audio, as its block's card opens
+   * An attachment of the conversation (`crates/core-host-access/src/attachment_commands.rs`) that is no image, video or audio, as its block's card opens
    * it: its number, its file's name and size in bytes, and where its stored
    * copy loads from.
    */

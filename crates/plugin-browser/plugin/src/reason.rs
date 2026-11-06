@@ -52,7 +52,7 @@ pub enum PanelReason {
     CaptureUnavailable,
     CaptureFailed,
     CaptureStopped,
-    // The conversation's host access (`crates/backend-host-access/src/access.rs`).
+    // The conversation's host access (`crates/core-host-access/src/access.rs`).
     ConversationNotFound,
     ConversationArchived,
     ConversationBusy,

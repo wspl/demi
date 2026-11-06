@@ -1865,7 +1865,6 @@ dependencies = [
  "demi-backend-accounts",
  "demi-backend-cloud",
  "demi-backend-database",
- "demi-backend-host-access",
  "demi-backend-http",
  "demi-backend-runners",
  "demi-backend-user-shard",
@@ -1873,6 +1872,7 @@ dependencies = [
  "demi-command-package-browser-protocol",
  "demi-command-protocol",
  "demi-core-blobs",
+ "demi-core-host-access",
  "demi-core-providers",
  "demi-core-store",
  "demi-host-interface",
@@ -1966,6 +1966,7 @@ version = "0.1.65"
 dependencies = [
  "demi-backend-database",
  "demi-backend-runners",
+ "demi-core-host-access",
  "demi-core-hosts",
  "demi-core-idle-watch",
  "demi-core-providers",
@@ -2032,43 +2033,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-backend-host-access"
-version = "0.1.65"
-dependencies = [
- "bytes",
- "demi-agent-store",
- "demi-agent-tools",
- "demi-backend-cloud",
- "demi-backend-database",
- "demi-backend-runners",
- "demi-command-declarations",
- "demi-command-protocol",
- "demi-core-blobs",
- "demi-core-hosts",
- "demi-core-store",
- "demi-host-interface",
- "demi-host-paths",
- "demi-plugin-interface",
- "demi-runner-client",
- "demi-runner-protocol",
- "demi-shared-gates",
- "demi-shared-types",
- "demi-web-api-protocol",
- "futures-util",
- "garde",
- "http",
- "schemars",
- "serde",
- "serde_json",
- "shlex",
- "thiserror 2.0.20",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "demi-backend-http"
 version = "0.1.65"
 dependencies = [
@@ -2082,12 +2046,12 @@ dependencies = [
  "demi-backend-accounts",
  "demi-backend-cloud",
  "demi-backend-database",
- "demi-backend-host-access",
  "demi-backend-runners",
  "demi-backend-user-shard",
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
  "demi-core-blobs",
+ "demi-core-host-access",
  "demi-core-hosts",
  "demi-core-permissions",
  "demi-core-providers",
@@ -2140,6 +2104,7 @@ dependencies = [
  "demi-backend-database",
  "demi-command-protocol",
  "demi-core-blobs",
+ "demi-core-hosts",
  "demi-core-store",
  "demi-host-interface",
  "demi-runner-client",
@@ -2181,13 +2146,13 @@ dependencies = [
  "demi-backend-accounts",
  "demi-backend-cloud",
  "demi-backend-database",
- "demi-backend-host-access",
  "demi-backend-runners",
  "demi-command-declarations",
  "demi-command-package-claude-code-protocol",
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
  "demi-core-blobs",
+ "demi-core-host-access",
  "demi-core-hosts",
  "demi-core-idle-watch",
  "demi-core-permissions",
@@ -2465,6 +2430,40 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
+ "url",
+]
+
+[[package]]
+name = "demi-core-host-access"
+version = "0.1.65"
+dependencies = [
+ "bytes",
+ "demi-agent-store",
+ "demi-agent-tools",
+ "demi-command-declarations",
+ "demi-command-protocol",
+ "demi-core-blobs",
+ "demi-core-hosts",
+ "demi-core-store",
+ "demi-host-interface",
+ "demi-host-paths",
+ "demi-plugin-interface",
+ "demi-runner-client",
+ "demi-runner-protocol",
+ "demi-shared-gates",
+ "demi-shared-types",
+ "demi-web-api-protocol",
+ "futures-util",
+ "garde",
+ "http",
+ "schemars",
+ "serde",
+ "serde_json",
+ "shlex",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
  "url",
 ]
 

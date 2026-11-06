@@ -44,7 +44,7 @@ use std::rc::Rc;
 
 use demi_agent_transcript::INTERRUPTED_CODE;
 use demi_core_store::StorageError;
-use demi_backend_host_access::{conversation_of, root_of};
+use demi_core_host_access::{conversation_of, root_of};
 use demi_core_sync::Part;
 use demi_shared_types::{ErrorBlock, SessionPhase};
 use demi_web_api_protocol::ids::ConversationId;

@@ -67,8 +67,6 @@ use demi_shared_types::{
     StreamKind,
     output::{Cell, Fields, Table, warning},
 };
-use demi_backend_runners::claims::ClaimRefusal;
-use demi_backend_runners::install::install_commands;
 use demi_web_api_protocol::devices::{DeviceKind, DeviceState};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
@@ -323,7 +321,7 @@ async fn devices_named(
     }
     let cloud = match cloud {
         Some(cloud) if cloud.id.as_str() == wanted => Some(cloud),
-        _ if wanted == "Cloud" => Some(shard.cloud_shard().cloud_device().await.map_err(failed)?),
+        _ if wanted == "Cloud" => Some(shard.cloud_host().cloud_device().await.map_err(failed)?),
         _ => None,
     };
     if let Some(cloud) = cloud {
@@ -642,11 +640,9 @@ async fn install_command(
     call: Call<InstallCommandArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
-    let backend = shard
-        .public_url()
-        .get()
+    let commands = shard
+        .install_commands()
         .ok_or_else(|| RpcError::Failed("the backend is not listening yet".into()))?;
-    let commands = install_commands(backend.url());
     let text = match call.args.system {
         Some(System::Linux) => commands.linux,
         Some(System::Macos) => commands.macos,
@@ -666,20 +662,7 @@ async fn pair(shard: Rc<dyn HostShard>, call: Call<PairArgs>, port: RpcPort) -> 
         invocation,
     } = call;
     let conversation = conversation_of(&invocation)?;
-    let device = match shard.claims().claim(shard.store(), shard.user(), &code).await {
-        Ok(device) => device,
-        Err(ClaimRefusal::UnknownCode) => {
-            return Err(RpcError::Failed(format!(
-                "{code}: no computer waits under this pairing code; it expired or was never issued. The installer shows a new code when one expires: read the newest one it shows and pass that."
-            )));
-        }
-        Err(ClaimRefusal::TooManyAttempts) => {
-            return Err(RpcError::Failed(
-                "Too many pairing codes were tried in the last minute; wait a minute, then pass the newest code the installer shows.".into(),
-            ));
-        }
-        Err(ClaimRefusal::Storage(error)) => return Err(RpcError::Failed(error.to_string())),
-    };
+    let device = shard.pair(&code).await.map_err(RpcError::Failed)?;
     let attached = attach_device(&*shard, &conversation, &device.id, &device.name)
         .await
         .map_err(|error| {

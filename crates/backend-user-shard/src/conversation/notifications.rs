@@ -56,7 +56,7 @@ use std::time::Duration;
 use demi_agent_session::{EndedTurn, TurnOutcome};
 use demi_core_store::StorageError;
 use demi_backend_database::push::StoredPushSubscription;
-use demi_backend_host_access::root_of;
+use demi_core_host_access::root_of;
 use demi_shared_types::BlockId;
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::permissions::PermissionRequestId;

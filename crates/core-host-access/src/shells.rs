@@ -1,5 +1,5 @@
 //! Each agent node's Host and shell environments
-//! (`crates/backend-host-access/src/access.rs`,
+//! (`crates/core-host-access/src/access.rs`,
 //! `crates/host-interface/src/rpc.rs`).
 //!
 //! A node's Host is the conversation's current primary Host for the root, and
@@ -68,7 +68,7 @@ impl dyn HostShard + '_ {
 
     /// A subagent's own Host on `device`, which the conversation reaches as
     /// its primary Host, an attached one, or the Host a live subagent works
-    /// on (`crates/backend-host-access/src/access.rs`), and whose shells start
+    /// on (`crates/core-host-access/src/access.rs`), and whose shells start
     /// where the device's do, whichever it is. The host access admits it and
     /// lets it go at once, as [`Self::conversation_host`].
     pub async fn agent_host(&self, id: &ConversationId, device: &DeviceId) -> Result<Rc<RemoteHost>, HostError> {
@@ -118,7 +118,7 @@ impl dyn HostShard + '_ {
             .map_err(|error| HostError::failed(None, error.to_string()))?;
         let admission = match device_record {
             Some(record) if record.kind == demi_web_api_protocol::devices::DeviceKind::Managed => self
-                .cloud_shard()
+                .cloud_host()
                 .operation_admission(&record)
                 .await
                 .map_err(|error| HostError::failed(None, error.to_string()))?,
@@ -139,7 +139,7 @@ impl dyn HostShard + '_ {
     /// `host` is not the Host the conversation reaches on that device, as after
     /// a target switch. While the conversation's primary Host is a paired
     /// device without a live runner, the job waits for it as `wait` says
-    /// (`crates/backend-host-access/src/access.rs`).
+    /// (`crates/core-host-access/src/access.rs`).
     pub async fn run_job(
         &self,
         id: &ConversationId,
@@ -750,7 +750,7 @@ struct Registered {
 
 impl ShellEnvironment for Registered {
     /// Starts the command; a job whose Host is the conversation's offline
-    /// device waits for it in its admission (`crates/backend-host-access/src/access.rs`).
+    /// device waits for it in its admission (`crates/core-host-access/src/access.rs`).
     fn start(
         &self,
         request: ExecRequest,

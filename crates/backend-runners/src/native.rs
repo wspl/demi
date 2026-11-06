@@ -43,6 +43,8 @@ use object_store::signer::Signer;
 use object_store::{GetOptions, GetRange, GetResult, ObjectStore, ObjectStoreExt as _};
 use tokio_util::sync::CancellationToken;
 
+use demi_core_hosts::packages::Packages;
+
 use crate::install::read_runner_release;
 use crate::prefetch::NextRelease;
 use crate::public_url::PublicUrl;
@@ -281,21 +283,26 @@ impl NativeCatalog {
         Ok(NextRelease::new(record, sourcing, programs))
     }
 
-    /// The loaded package `id`.
-    pub fn package(&self, id: &str) -> Option<&PackageDescriptor> {
-        self.packages.iter().find(|descriptor| descriptor.id == id)
+}
+
+/// The packages a server's cores run: the published catalog, whose
+/// executables a local store serves at the server's address.
+pub struct ServedPackages {
+    pub native: NativeCatalog,
+    pub backend: PublicUrl,
+}
+
+impl Packages for ServedPackages {
+    fn package(&self, id: &str) -> Option<&PackageDescriptor> {
+        self.native.packages.iter().find(|descriptor| descriptor.id == id)
     }
 
-    /// Whether `package` serves every one of `operations`.
-    pub fn serves(&self, package: &str, operations: &[&str]) -> bool {
-        self.package(package).is_some_and(|descriptor| {
-            operations.iter().all(|operation| {
-                descriptor
-                    .operations
-                    .iter()
-                    .any(|served| served == operation)
-            })
-        })
+    fn resolver(&self) -> Rc<dyn ArtifactResolver> {
+        self.native.resolver(&self.backend)
+    }
+
+    fn catalog(&self) -> CommandCatalog {
+        self.native.catalog(&self.backend)
     }
 }
 

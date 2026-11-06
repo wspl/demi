@@ -1,4 +1,4 @@
-//! The file watch (`crates/backend-host-access/src/lib.rs`): a page's
+//! The file watch (`crates/core-host-access/src/lib.rs`): a page's
 //! subscriptions to what it keeps of a Host's files, and the Host's word that
 //! one of them changed.
 //!
@@ -97,7 +97,7 @@ impl dyn HostShard + '_ {
     }
 
     /// Opens a device's folder dialog's file watch through device access
-    /// (`crates/backend-host-access/src/lib.rs`): every
+    /// (`crates/core-host-access/src/lib.rs`): every
     /// subscription of it is outside a working tree. A device whose runner
     /// is not connected, once a returning one's wait is over, is out of
     /// reach.

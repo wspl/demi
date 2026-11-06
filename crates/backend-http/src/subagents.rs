@@ -9,7 +9,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_core_store::subagents::ProfileRefusal as Stored;
-use demi_backend_host_access::transition::ChangeRefusal;
+use demi_core_host_access::transition::ChangeRefusal;
 use demi_backend_user_shard::shard::subagents::ProfileRefusal;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ProfileId;

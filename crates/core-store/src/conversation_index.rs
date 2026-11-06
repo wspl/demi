@@ -92,7 +92,7 @@ pub enum ConversationChange {
     /// A change of the conversation's model settings, which the
     /// conversation's settings order applies against the catalog.
     Settings(SettingsChange),
-    /// A switch of the primary target (`crates/backend-host-access/src/transition.rs`), which the target compare-and-set commits.
+    /// A switch of the primary target (`crates/core-host-access/src/transition.rs`), which the target compare-and-set commits.
     Target(ConversationTarget),
 }
 

@@ -111,7 +111,7 @@ pub trait ShellEnvironment {
 
     /// Ends each of its commands whose start still waits for its Host, as
     /// the user's Stop does, whatever turn started it: none of them ever
-    /// runs (`crates/backend-host-access/src/access.rs`). A command that
+    /// runs (`crates/core-host-access/src/access.rs`). A command that
     /// started runs on.
     fn stop_waiting(&self) -> LocalBoxFuture<'_, ()>;
 
@@ -221,14 +221,14 @@ pub struct TakenUp {
     pub running: Duration,
     pub seen: Seen,
     /// What it was asked to start, while its start still waits for its
-    /// Host and was never sent (`crates/backend-host-access/src/access.rs`): it waits again, and is sent once its runner connects.
+    /// Host and was never sent (`crates/core-host-access/src/access.rs`): it waits again, and is sent once its runner connects.
     pub unsent: Option<UnsentStart>,
 }
 
 /// What a command whose start waits for its Host, a paired device whose
 /// runner is away, was asked to run, which its record keeps until the start
 /// is sent, so a backend that starts again sends it once the runner
-/// connects (`crates/backend-host-access/src/access.rs`).
+/// connects (`crates/core-host-access/src/access.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UnsentStart {

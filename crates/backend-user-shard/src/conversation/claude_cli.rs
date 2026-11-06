@@ -1754,9 +1754,9 @@ async fn call<T: DeserializeOwned>(
     };
     let served = Operation::ALL.map(Operation::name);
     let Some(package) = services
-        .native
+        .packages
         .package(PACKAGE)
-        .filter(|_| services.native.serves(PACKAGE, &served))
+        .filter(|_| services.packages.serves(PACKAGE, &served))
     else {
         return Err(failed(
             "this deployment does not carry the demi.claude-code package, which installs it".into(),
@@ -1769,7 +1769,7 @@ async fn call<T: DeserializeOwned>(
         args: None,
         json: None,
         cwd: target.home.clone(),
-        resolver: services.native.resolver(&services.public_url),
+        resolver: services.packages.resolver(),
         attached,
     };
     let (output, exit) = match target

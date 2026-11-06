@@ -12,7 +12,7 @@ use demi_core_store::StorageError;
 use demi_core_store::store::CoreStore;
 use demi_core_store::credentials::CredentialSeal;
 use demi_core_store::permissions::AskingAgent;
-use demi_backend_host_access::root_of;
+use demi_core_host_access::root_of;
 use demi_core_sync::UserMarks;
 use demi_core_sync::Revisions;
 use demi_core_permissions::{PermissionShard, Waits, deliver};

@@ -1,6 +1,6 @@
 //! The conversation's attachments, the files its messages sent and those the
 //! agent uploaded
-//! (`crates/backend-host-access/src/attachment_commands.rs`).
+//! (`crates/core-host-access/src/attachment_commands.rs`).
 //!
 //! A sent file's bytes, and those `demi attachment upload` stores, are a blob of
 //! the conversation owner's namespace. The conversation's `attachments` table

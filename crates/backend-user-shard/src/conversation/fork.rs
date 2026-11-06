@@ -67,7 +67,7 @@ use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::ids::ConversationId;
 
 use crate::shard::Shard;
-use demi_backend_host_access::root_of;
+use demi_core_host_access::root_of;
 
 /// A Fork's destination, and whether this request created it.
 pub struct Forked {
@@ -224,7 +224,7 @@ impl Shard {
                 .await?;
         }
         // The attachments its messages name are its too, with the blobs shared
-        // (`crates/backend-host-access/src/attachment_commands.rs`). They are read
+        // (`crates/core-host-access/src/attachment_commands.rs`). They are read
         // before the sequences, so every number copied lies below the next one.
         //
         // The source's root uploaded what the destination's root, which holds its

@@ -1,6 +1,6 @@
 //! A directory as the user types it, which a move, a new conversation and a
 //! new project store at once, and as its Host first names it
-//! (`crates/backend-host-access/src/access.rs`).
+//! (`crates/core-host-access/src/access.rs`).
 //!
 //! A destination is stored as typed, with `~` expanded to the Host's home and a
 //! trailing separator dropped, and the move or the creation answers without
@@ -75,7 +75,7 @@ impl dyn HostShard + '_ {
                 Ok(ConversationTarget::Project { project_id })
             }
             ConversationTarget::Cloud { path: Some(path) } => {
-                let device = self.cloud_shard().cloud_device().await?;
+                let device = self.cloud_host().cloud_device().await?;
                 let path = typed_directory(&device, &path)?;
                 Ok(ConversationTarget::Cloud { path: Some(path) })
             }

@@ -48,7 +48,6 @@ use demi_machine_manager_protocol::{
 use demi_runner_protocol::boot::ManagedBoot;
 use demi_shared_gates::{ActivityGate, GateLease, Purpose};
 use demi_web_api_protocol::cloud::CloudState;
-use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{DeviceId, OperationId, UserId};
 use demi_web_api_protocol::users::CloudStorage;
 use futures_util::FutureExt as _;
@@ -95,62 +94,11 @@ pub(crate) async fn capacity(
     })
 }
 
-/// Why the Cloud admits no operation, or why one of its transitions failed.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum CloudError {
-    #[error("Cloud is shutting down")]
-    Closed,
-    /// Its runtime was lost too often in a short time.
-    #[error("Cloud repeatedly failed; reset the environment to recover")]
-    CrashLoop,
-    #[error("Cloud capacity is currently full; retry later")]
-    Capacity,
-    /// Another reset holds the Cloud.
-    #[error("Another reset is in progress")]
-    Resetting,
-    /// A boot, a save or a reset failed, or the machine manager did.
-    #[error("{0}")]
-    Failed(String),
-}
+pub use demi_core_host_access::cloud::{CloudAdmission, CloudError};
 
-impl CloudError {
-    /// The code and HTTP status an operation refused this way answers with.
-    pub fn code(&self) -> (ErrorCode, u16) {
-        match self {
-            Self::Closed => (ErrorCode::BackendClosing, 503),
-            Self::CrashLoop => (ErrorCode::CloudCrashLoop, 503),
-            Self::Capacity => (ErrorCode::CloudCapacity, 503),
-            Self::Resetting => (ErrorCode::CloudResetting, 409),
-            Self::Failed(_) => (ErrorCode::CloudUnavailable, 503),
-        }
-    }
-}
-
-impl From<MachinesError> for CloudError {
-    fn from(error: MachinesError) -> Self {
-        Self::Failed(error.to_string())
-    }
-}
-
-impl From<StorageError> for CloudError {
-    fn from(error: StorageError) -> Self {
-        tracing::error!(
-            event = "cloud_records.failed",
-            error = &error as &dyn std::error::Error,
-            "the Cloud's records failed"
-        );
-        Self::Failed(format!(
-            "The Cloud's records could not be read or written: {error}"
-        ))
-    }
-}
-
-/// A hold of the Cloud's admission: the Cloud keeps running while it is
-/// held, and each operation of a Host made under it takes `per_operation`.
-pub struct CloudAdmission {
-    pub device: DeviceId,
-    pub per_operation: Admission,
-    _held: GateLease,
+/// A failure of the machine manager, as the Cloud's.
+pub(crate) fn machines_failed(error: MachinesError) -> CloudError {
+    CloudError::Failed(error.to_string())
 }
 
 /// A transition joiners await; the task behind it runs to its end whoever
@@ -473,7 +421,7 @@ impl dyn CloudShard {
     }
 
     /// Takes the Cloud's admission
-    /// (`crates/backend-host-access/src/access.rs`).
+    /// (`crates/core-host-access/src/access.rs`).
     ///
     /// The admission wakes a stopped Cloud, joins a boot under way, or waits
     /// for a running reset to finish, holding nothing while it waits, since a
@@ -499,11 +447,7 @@ impl dyn CloudShard {
                         let machine = machine.clone();
                         Admission::Leased(Rc::new(move || machine.admit()))
                     };
-                    return Ok(CloudAdmission {
-                        device: device.id.clone(),
-                        per_operation,
-                        _held: lease,
-                    });
+                    return Ok(CloudAdmission::new(device.id.clone(), per_operation, lease));
                 }
                 Ready::Resetting => drop(lease),
             }
@@ -648,7 +592,7 @@ impl dyn CloudShard {
             machine: sandbox_machine(&machine.device),
         };
         let cloud = self.cloud_services();
-        cloud.machines.call(wake).await?;
+        cloud.machines.call(wake).await.map_err(machines_failed)?;
         let connection = cloud.tuning.runner_connection;
         tokio::select! {
             biased;
@@ -725,7 +669,7 @@ impl dyn CloudShard {
             .call(RuntimeStateParams {
                 device_id: device.to_string(),
             })
-            .await?;
+            .await.map_err(machines_failed)?;
         if state == RuntimeState::Running {
             let connection = self.cloud_services().tuning.runner_connection;
             return tokio::time::timeout(connection, self.devices().until_online(device))
@@ -841,7 +785,7 @@ impl dyn CloudShard {
         self.devices().disconnect(device, "Cloud stopped");
         self.packages_lost(device);
         operation_ended(device, "save", started, saved.is_ok());
-        Ok(saved?)
+        Ok(saved.map_err(machines_failed)?)
     }
 
     /// Asks the Cloud's runner to flush its writable filesystems, within the
@@ -926,7 +870,7 @@ impl dyn CloudShard {
             device_id: device.id.to_string(),
             machine: sandbox_machine(device),
         };
-        self.cloud_services().machines.call(hibernate).await?;
+        self.cloud_services().machines.call(hibernate).await.map_err(machines_failed)?;
         Ok(())
     }
 }

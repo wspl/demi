@@ -19,9 +19,9 @@ use demi_agent_server::instructions::ProjectFile;
 use demi_agent_store::Placement;
 use demi_core_store::Selection;
 use demi_core_store::conversation_index::ExecutionTarget;
-use demi_backend_host_access::access::HostAccessError;
-use demi_backend_host_access::conversation_of;
-use demi_backend_host_access::kept::{Found, Kept, SearchError, Shown, Subscribe};
+use demi_core_host_access::access::HostAccessError;
+use demi_core_host_access::conversation_of;
+use demi_core_host_access::kept::{Found, Kept, SearchError, Shown, Subscribe};
 use demi_core_sync::Part;
 use demi_plugin_interface::{PluginId, WatchSubject};
 use demi_runner_protocol::files::Subject;
@@ -187,7 +187,7 @@ impl Shard {
             directory: target.path().to_owned(),
             project_directory,
             in_project: matches!(target, ExecutionTarget::Project { .. }),
-            loaded: self.agent().tree(&demi_backend_host_access::root_of(id)).is_some(),
+            loaded: self.agent().tree(&demi_core_host_access::root_of(id)).is_some(),
         })
     }
 

@@ -1,5 +1,5 @@
 //! The workflows of each Host directory as the backend last read them
-//! (`crates/backend-host-access/src/kept.rs`).
+//! (`crates/core-host-access/src/kept.rs`).
 //!
 //! A page reads them from here at once, with when they were read, never
 //! waiting on the Host, and also after a restart of the backend while the

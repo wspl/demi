@@ -13,15 +13,15 @@ use std::rc::Weak;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_backend_host_access::HostShard;
-use demi_backend_host_access::device_git::DeviceGitError;
+use demi_core_host_access::HostShard;
+use demi_core_host_access::device_git::DeviceGitError;
 use demi_plugin_interface::{DeviceName, GitEntry, GitFile, GitRefusal, GitTree};
 use demi_web_api_protocol::devices::DeviceKind;
-use demi_backend_host_access::access::HostAccessError;
-use demi_backend_host_access::plugin_files::ReadFilesError;
-use demi_backend_host_access::stream::{ResidentBinding, ResidentCall, UserCallError, UserCallKind};
+use demi_core_host_access::access::HostAccessError;
+use demi_core_host_access::plugin_files::ReadFilesError;
+use demi_core_host_access::stream::{ResidentBinding, ResidentCall, UserCallError, UserCallKind};
 use demi_core_sync::Part;
-use demi_backend_host_access::host_commands::reachable;
+use demi_core_host_access::host_commands::reachable;
 use demi_plugin_host::{Lost, MediaCall, ProductPort, ReadOn, VideoJob};
 use demi_core_providers::vault::seal::Row;
 use demi_runner_client::ResidentCallError;
@@ -78,7 +78,7 @@ impl ProductPort for ShardPort {
             let shard = self.shard()?;
             let package = shard
                 .services()
-                .native
+                .packages
                 .package(&operation.package)
                 .ok_or_else(|| failed("the catalog serves no such package"))?
                 .clone();
@@ -406,7 +406,7 @@ impl Shard {
         let marks = self.services().sync.of(self.user());
         for root in self.agent().live_roots() {
             marks.mark(Part::Metadata(
-                demi_backend_host_access::conversation_of(&root),
+                demi_core_host_access::conversation_of(&root),
             ));
         }
         Ok(())
@@ -430,7 +430,7 @@ impl Shard {
         let marks = self.services().sync.of(self.user());
         for root in self.agent().live_roots() {
             marks.mark(Part::Metadata(
-                demi_backend_host_access::conversation_of(&root),
+                demi_core_host_access::conversation_of(&root),
             ));
         }
         Ok(())
@@ -445,7 +445,7 @@ impl Shard {
             return Err(ReloadRefusal::Archived);
         }
         self.agent()
-            .reload(&demi_backend_host_access::root_of(&record.id))
+            .reload(&demi_core_host_access::root_of(&record.id))
             .await
             .map_err(|_| ReloadRefusal::Working)
     }

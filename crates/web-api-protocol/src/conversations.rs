@@ -305,7 +305,7 @@ pub struct ConversationMetadata {
     /// detach or a rename raises.
     pub hosts: ConversationHosts,
     /// The number of the conversation's latest attachment, 3 for `a3`, 0
-    /// before its first (`crates/backend-host-access/src/attachment_commands.rs`): a message
+    /// before its first (`crates/core-host-access/src/attachment_commands.rs`): a message
     /// that names a higher number names one still to come, whose description
     /// the socket sends once it is uploaded.
     #[garde(range(max = MAX_SAFE_INTEGER))]

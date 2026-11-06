@@ -114,7 +114,7 @@ transcript.
 
 Two files own the rules around a target:
 
-- Sessions and targets (`crates/backend-host-access/src/lib.rs`) owns switching
+- Sessions and targets (`crates/core-host-access/src/lib.rs`) owns switching
   and attachment rules.
 - Execution coordination (`crates/backend-cloud/src/uses.rs`) owns admission
   while agent nodes or device operations are active.
@@ -165,7 +165,7 @@ The following table defines the terms this page uses:
 | Execution target | The conversation's selection of Cloud, a device directory, or a project. |
 | Device | A registered execution device, either user-paired or managed. |
 | Host | The filesystem and process abstraction used to execute on a device. |
-| Host access | The one way the backend reaches a conversation's Host: it resolves the target, wakes a stopped Cloud and holds the conversation's file gate (`crates/backend-host-access/src/access.rs`). |
+| Host access | The one way the backend reaches a conversation's Host: it resolves the target, wakes a stopped Cloud and holds the conversation's file gate (`crates/core-host-access/src/access.rs`). |
 | Guest | A managed gVisor/systrap sandbox running a runner. |
 | User shard | The part of the backend that holds everything belonging to one user, such as conversations, runner connections and Cloud state, on a single thread ([The user shard](../crates/backend-user-shard/src/lib.rs)). |
 | Backend machine | The machine that runs the backend or the machine manager. |

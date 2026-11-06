@@ -414,7 +414,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             Ok(command) => command,
             // A Host that is offline to the environment runs nothing now:
             // the call's result is its offline error as it is, worded for
-            // the model (`crates/backend-host-access/src/access.rs`).
+            // the model (`crates/core-host-access/src/access.rs`).
             Err(ShellError::Host(error)) if error.kind == HostErrorKind::Offline => {
                 ended(None, "failed_to_start", None, None);
                 return Ok(ToolOutcome::error(error.message));

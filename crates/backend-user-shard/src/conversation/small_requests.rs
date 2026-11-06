@@ -12,7 +12,7 @@ use std::sync::Arc;
 use demi_agent_server::ProviderResolver as _;
 use demi_agent_server::small_request::{SmallRequest, SmallRequestError, run_small_request};
 use demi_core_store::StorageError;
-use demi_backend_host_access::root_of;
+use demi_core_host_access::root_of;
 use demi_provider_registry::small_model::small_model;
 use demi_shared_types::ModelSelection;
 use demi_web_api_protocol::ids::{ConversationId, UserId};

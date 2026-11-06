@@ -12,6 +12,7 @@ doctest = false
 bench = false
 
 [dependencies]
+demi-core-hosts = { path = "../core-hosts" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-core-blobs = { path = "../core-blobs" }
 demi-backend-database = { path = "../backend-database" }

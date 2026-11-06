@@ -27,4 +27,5 @@ pub mod devices;
 pub mod file_gate;
 pub mod files;
 pub mod host_key;
+pub mod packages;
 pub mod router;

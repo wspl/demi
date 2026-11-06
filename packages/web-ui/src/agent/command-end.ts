@@ -26,7 +26,7 @@ export interface CommandEnd {
  * - that a stop waits for its runner to end it
  *   (`crates/runner-shell/src/job.rs`)
  * - that its start waits for its Host, an offline device
- *   (`crates/backend-host-access/src/access.rs`)
+ *   (`crates/core-host-access/src/access.rs`)
  *
  * A row marks only what is not going as planned, and a call's row and its
  * notice mark it alike.
@@ -87,7 +87,7 @@ export function runningTime(elapsedMs: number | null): string | null {
  * - for one a stop waits for, that it does, as its tag does
  *   (`crates/runner-shell/src/job.rs`)
  * - for one whose start waits for its Host, that it does
- *   (`crates/backend-host-access/src/access.rs`)
+ *   (`crates/core-host-access/src/access.rs`)
  *
  * It is none while the time is unknown.
  */

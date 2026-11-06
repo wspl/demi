@@ -20,12 +20,12 @@ use demi_conversation_lane_protocol::{CacheChart, JobModel};
 use demi_shared_types::{ModelSelection, NodeId, PictureFailure, WorkflowChoice};
 
 use super::runs_on::runs_on;
-use demi_backend_host_access::attachment_commands::attachment_group;
-use demi_backend_host_access::host_commands::host_group;
+use demi_core_host_access::attachment_commands::attachment_group;
+use demi_core_host_access::host_commands::host_group;
 
 use super::organize::conversation_group;
 use crate::shard::provider_commands::providers_group;
-use demi_backend_host_access::{HostShard, conversation_of};
+use demi_core_host_access::{HostShard, conversation_of};
 use demi_plugin_host::ContextAsk;
 use demi_runner_client::RemoteHost;
 use demi_agent_store::Placement;
@@ -429,7 +429,7 @@ impl demi_agent_server::AgentsSource for ShardAgents {
     fn resuming(&self, root: &NodeId) -> bool {
         self.shard
             .upgrade()
-            .is_some_and(|shard| shard.restart_resumes().contains(&demi_backend_host_access::conversation_of(root)))
+            .is_some_and(|shard| shard.restart_resumes().contains(&demi_core_host_access::conversation_of(root)))
     }
 
     fn kept<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, demi_agent_server::KeptAgents> {
@@ -438,7 +438,7 @@ impl demi_agent_server::AgentsSource for ShardAgents {
             let Some(shard) = self.shard.upgrade() else {
                 return kept;
             };
-            let conversation = demi_backend_host_access::conversation_of(root);
+            let conversation = demi_core_host_access::conversation_of(root);
             match shard.store().conversation_costs(conversation.clone()).await {
                 Ok(costs) => {
                     kept.costs = costs
@@ -489,7 +489,7 @@ impl demi_agent_server::AgentsSource for ShardAgents {
             let Some(shard) = self.shard.upgrade() else {
                 return std::collections::HashMap::new();
             };
-            let conversation = demi_backend_host_access::conversation_of(root);
+            let conversation = demi_core_host_access::conversation_of(root);
             match shard.store().conversation_charts(conversation.clone()).await {
                 Ok(charts) => charts.into_iter().collect(),
                 // The cards show no rate and no chart until the agent's next
@@ -511,7 +511,7 @@ impl demi_agent_server::AgentsSource for ShardAgents {
 
 /// Which paths a complete reply names are files on its conversation's primary
 /// Host: one look for them all, admitted as a user's look is, which never
-/// wakes a stopped Cloud (`crates/backend-host-access/src/stream.rs`).
+/// wakes a stopped Cloud (`crates/core-host-access/src/stream.rs`).
 pub(crate) struct ShardReplyFiles {
     /// Weak: the shard owns the agent server that holds the source.
     pub(crate) shard: Weak<Shard>,
@@ -604,7 +604,7 @@ impl demi_agent_server::ReplyFiles for ShardReplyFiles {
                 }
                 None => path.to_owned(),
             };
-            demi_backend_host_access::attachment_commands::copy_picture(
+            demi_core_host_access::attachment_commands::copy_picture(
                 shard.host_shard(),
                 &conversation,
                 &device,

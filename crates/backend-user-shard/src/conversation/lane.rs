@@ -95,8 +95,8 @@ use super::attachment_facts::StreamedText;
 use super::failure_facts;
 use crate::sync::etag_of;
 use crate::shard::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader, Shard};
-use demi_backend_host_access::remote_files::{RemoteFile, RemoteFileRefusal};
-use demi_backend_host_access::root_of;
+use demi_core_host_access::remote_files::{RemoteFile, RemoteFileRefusal};
+use demi_core_host_access::root_of;
 
 /// The close code of a lane whose page fell a full outbox behind; the page
 /// reconnects and adopts the running tree.
@@ -613,7 +613,7 @@ impl Shard {
         // The frame is handled under the conversation's file gate, which a
         // transition holding the conversation makes it wait for, never refuse
         // (`crates/backend-cloud/src/uses.rs`). Its uploads go to no Host
-        // (`crates/backend-host-access/src/uploads.rs`).
+        // (`crates/core-host-access/src/uploads.rs`).
         let files = self
             .conversations()
             .slot(conversation)

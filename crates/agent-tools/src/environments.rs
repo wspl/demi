@@ -135,7 +135,7 @@ impl Environments {
 
     /// Ends each command whose start still waits for its Host, in every
     /// environment made so far, as the user's Stop does
-    /// (`crates/backend-host-access/src/access.rs`).
+    /// (`crates/core-host-access/src/access.rs`).
     pub async fn stop_waiting(&self) {
         let made: Vec<Rc<dyn ShellEnvironment>> = self
             .slots

@@ -2,7 +2,7 @@
 //! file's bytes in both directions, and the working tree's changes.
 //!
 //! Each reaches the conversation's Host through its host access
-//! (`crates/backend-host-access/src/access.rs`), in the user's shard, which
+//! (`crates/core-host-access/src/access.rs`), in the user's shard, which
 //! also checks that the conversation is the caller's. The bytes of a download
 //! or an upload move here while the shard holds their admission.
 
@@ -37,8 +37,8 @@ use super::gate::AuthUser;
 use super::listener::Peer;
 use super::query::QueryParams;
 use super::transfer::{TRANSFER_IDLE, UploadEnd, copy_upload, paced_body};
-use demi_backend_host_access::access::{ConversationHost, HostAccessError, Refusal};
-use demi_backend_host_access::transfer::{
+use demi_core_host_access::access::{ConversationHost, HostAccessError, Refusal};
+use demi_core_host_access::transfer::{
     Download, DownloadPath, DownloadRequest, OpenSearch, RangeAnswer,
 };
 

@@ -12,7 +12,7 @@
 //! It commits, then tells the connected Hosts it leaves to let go of the
 //! conversation and answers: nothing waits for them and nothing is stored, as
 //! the Hosts hold what the records say after their next `hello`
-//! (`crates/backend-host-access/src/access.rs`). The shard's `transition` is
+//! (`crates/core-host-access/src/access.rs`). The shard's `transition` is
 //! the one entry every change of a conversation goes through.
 //!
 //! A detach holds nothing and waits for no work and no Host, whatever the

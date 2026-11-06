@@ -77,6 +77,7 @@
 //! to a conversation's Host exists.
 
 pub mod access;
+pub mod cloud;
 pub mod attachment_commands;
 pub mod device_git;
 pub mod directories;
@@ -98,15 +99,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_core_blobs::blobs::UserBlobs;
-use demi_backend_cloud::CloudShard;
 use demi_core_store::store::CoreStore;
 use demi_core_store::conversations::ConversationDb;
 use demi_core_store::projects::DirectoryNamed;
 use demi_runner_client::Pipes;
-use demi_backend_runners::claims::PendingClaims;
 use demi_core_hosts::devices::Devices;
-use demi_backend_runners::native::NativeCatalog;
-use demi_backend_runners::public_url::PublicUrl;
+use demi_core_hosts::packages::Packages;
+use demi_web_api_protocol::devices::{DeviceDto, InstallCommands};
 use demi_core_hosts::router::CommandRouter;
 use demi_core_store::conversation_index::ConversationChange;
 use demi_web_api_protocol::conversations::ConversationTarget;
@@ -142,16 +141,21 @@ pub trait HostShard {
     /// The database of the user's conversation `conversation`.
     fn conversation_db(&self, conversation: &ConversationId) -> ConversationDb;
     /// The command packages the conversations' commands bind to.
-    fn native(&self) -> &NativeCatalog;
-    /// Where runners fetch the packages' executables from.
-    fn public_url(&self) -> &PublicUrl;
-    /// The runners waiting to be paired, which `demi host pair` claims.
-    fn claims(&self) -> &PendingClaims;
+    fn packages(&self) -> &dyn Packages;
+
+    /// Pairs the runner waiting under the pairing code `code` with the user,
+    /// as `demi host pair` asks; a refusal says why in the words the agent
+    /// reads.
+    fn pair<'a>(&'a self, code: &'a str) -> LocalBoxFuture<'a, Result<DeviceDto, String>>;
+    /// The commands that install a runner that connects here, which
+    /// `demi host install-command` prints; none while nothing serves the
+    /// installers.
+    fn install_commands(&self) -> Option<InstallCommands>;
     /// Every task the shard spawns, which its close waits for.
     fn tasks(&self) -> &TaskTracker;
     /// The shard as the user's Cloud sees it, whose admission an operation
     /// on the Cloud takes.
-    fn cloud_shard(&self) -> &(dyn CloudShard + 'static);
+    fn cloud_host(&self) -> &dyn cloud::CloudHost;
     /// The shard, for a task that outlives the call that starts it.
     fn this(&self) -> Rc<dyn HostShard>;
     /// The placements of the conversation's live subagents, each a Host and
@@ -180,7 +184,7 @@ pub trait HostShard {
     fn summary_changed(&self, conversation: &ConversationId);
     /// Moves the conversation to `to` at once, through the one operation a
     /// page's move takes too; answers the move made, none when it runs there
-    /// already (`crates/backend-host-access/src/transition.rs`). `cancel`
+    /// already (`crates/core-host-access/src/transition.rs`). `cancel`
     /// ends it until its commit starts.
     fn move_conversation<'a>(
         &'a self,

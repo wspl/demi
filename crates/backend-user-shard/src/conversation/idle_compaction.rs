@@ -40,7 +40,7 @@ use std::time::Duration;
 use demi_agent_session::IdleCompactionDue;
 use demi_core_store::StorageError;
 use demi_core_store::idle_compactions::IdleCompaction;
-use demi_backend_host_access::root_of;
+use demi_core_host_access::root_of;
 use demi_core_sync::Part;
 use demi_shared_types::{IDLE_COMPACTION_CONTEXT, SessionPhase};
 use demi_web_api_protocol::ids::ConversationId;

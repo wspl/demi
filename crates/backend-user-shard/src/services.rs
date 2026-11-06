@@ -22,7 +22,7 @@ use demi_core_store::schema::ReadBlob;
 use demi_backend_database::server_log::ServerLog;
 use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::UserId;
-use demi_backend_host_access::stream::UserStreams;
+use demi_core_host_access::stream::UserStreams;
 use demi_core_sync::SyncRegistry;
 use demi_plugin_host::{Registry, RegistryError};
 use demi_provider_registry::registry::ProviderRegistry;
@@ -43,7 +43,8 @@ use demi_provider_registry::store::RegistryStore;
 use demi_core_providers::vault::seal::VaultKey;
 use demi_backend_runners::claims::PendingClaims;
 use demi_core_hosts::devices::Returning;
-use demi_backend_runners::native::NativeCatalog;
+use demi_backend_runners::native::{NativeCatalog, ServedPackages};
+use demi_core_hosts::packages::Packages;
 use demi_backend_runners::install::RunnerReleases;
 use demi_backend_runners::prefetch::Prefetches;
 use demi_backend_runners::public_url::PublicUrl;
@@ -104,6 +105,8 @@ pub struct Services {
     pub media_tuning: MediaTuning,
     /// The command packages each shard's catalog is built from.
     pub native: NativeCatalog,
+    /// The same packages as the shards run them, at this backend's address.
+    pub packages: Arc<dyn Packages>,
     /// The backend's plugins, checked at startup (`crates/plugin-host/src/lib.rs`).
     pub plugins: Arc<Registry>,
     /// The user streams a page may open.
@@ -395,9 +398,12 @@ impl Services {
             stores,
             blobs,
         } = storage;
-        let native = &settings.native;
+        let packages: Arc<dyn Packages> = Arc::new(ServedPackages {
+            native: settings.native.clone(),
+            backend: settings.public_url.clone(),
+        });
         let plugins = Registry::new(settings.plugins, |operation| {
-            native.serves(&operation.package, &[operation.operation.as_str()])
+            packages.serves(&operation.package, &[operation.operation.as_str()])
         })?;
         let hasher = PasswordHasher::new().await?;
         let clock = providers.clock.clone();
@@ -536,9 +542,10 @@ impl Services {
                 plugins
                     .streams()
                     .map(|stream| (stream.name.as_str(), &stream.operation)),
-                &settings.native,
+                packages.as_ref(),
             ),
             native: settings.native,
+            packages,
             plugins: Arc::new(plugins),
             cloud: settings.cloud,
             public_url: settings.public_url,

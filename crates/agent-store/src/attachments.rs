@@ -1,4 +1,4 @@
-//! What an uploaded file becomes (`crates/backend-host-access/src/uploads.rs`).
+//! What an uploaded file becomes (`crates/core-host-access/src/uploads.rs`).
 //!
 //! This module decides the media type and, for a text file, the opening the
 //! upload is recorded with. It also decides the blocks the upload becomes in a

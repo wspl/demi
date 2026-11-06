@@ -22,7 +22,7 @@
 //! ```
 //!
 //! A Host handle is made here only for one of the ways to a Host
-//! (`crates/backend-host-access/src/lib.rs`):
+//! (`crates/core-host-access/src/lib.rs`):
 //!
 //! - A conversation's, against a lease of its file gate.
 //! - Device access, while the runner is connected.
@@ -682,7 +682,7 @@ impl Devices {
 
     /// The conversation's Host on the device, starting work in `cwd`, for
     /// the operation that holds `files`, a lease of the conversation's file
-    /// gate (`crates/backend-host-access/src/access.rs`): the handle is the
+    /// gate (`crates/core-host-access/src/access.rs`): the handle is the
     /// conversation's the lease names.
     pub fn conversation_host(
         &self,
@@ -711,7 +711,7 @@ impl Devices {
         self.host(device, key, cwd, admission)
     }
 
-    /// Machine access (`crates/backend-host-access/src/lib.rs`): the
+    /// Machine access (`crates/core-host-access/src/lib.rs`): the
     /// Cloud's Host starting in `home`, whose operations take `admission`,
     /// the Cloud's; it touches no conversation's files.
     pub fn machine_host(
@@ -724,7 +724,7 @@ impl Devices {
         self.host(device, key, home, admission)
     }
 
-    /// Device access (`crates/backend-host-access/src/lib.rs`): the
+    /// Device access (`crates/core-host-access/src/lib.rs`): the
     /// device's Host for work that touches no conversation's files, while
     /// its runner is connected, once a returning device's runner is back.
     /// It takes nothing and wakes nothing.
@@ -917,7 +917,7 @@ pub struct Reported {
     pub target: Option<String>,
 }
 
-/// Device access (`crates/backend-host-access/src/lib.rs`) to `device`,
+/// Device access (`crates/core-host-access/src/lib.rs`) to `device`,
 /// whose slot is `slot`.
 fn device_access(device: &DeviceId, slot: &DeviceSlot) -> RemoteHost {
     let key = host_key(device, HostOwner::DeviceAccess, "/");
@@ -968,7 +968,7 @@ pub struct Serving {
 }
 
 impl Serving {
-    /// Device access (`crates/backend-host-access/src/lib.rs`) over the
+    /// Device access (`crates/core-host-access/src/lib.rs`) over the
     /// device's connections, this one first.
     pub fn device_access(&self) -> RemoteHost {
         device_access(&self.device, &self.slot)

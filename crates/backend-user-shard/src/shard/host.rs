@@ -1,5 +1,5 @@
 //! The shard's side of the conversations' host access
-//! (`crates/backend-host-access/src/access.rs`).
+//! (`crates/core-host-access/src/access.rs`).
 //!
 //! It holds what host access needs of the shard (`HostShard`), whose operations
 //! the edge and the shard's own work reach through `host_shard`.
@@ -9,22 +9,23 @@ use std::sync::Arc;
 
 use demi_agent_store::Placement;
 use demi_core_blobs::blobs::UserBlobs;
-use demi_backend_cloud::CloudShard;
+use demi_core_host_access::cloud::CloudHost;
 use demi_core_store::store::CoreStore;
 use demi_core_store::conversation_index::ConversationChange;
 use demi_core_store::conversations::ConversationDb;
 use demi_core_store::projects::DirectoryNamed;
-use demi_backend_host_access::{conversation_of, root_of};
-use demi_backend_host_access::transition::{ChangeRefusal, Switched};
+use demi_core_host_access::{conversation_of, root_of};
+use demi_core_host_access::transition::{ChangeRefusal, Switched};
 use demi_core_sync::Part;
-use demi_backend_host_access::HostShard;
-use demi_backend_host_access::access::Conversations;
-use demi_backend_host_access::plugin_files::{DirectorySets, PluginInstalls};
+use demi_core_host_access::HostShard;
+use demi_core_host_access::access::Conversations;
+use demi_core_host_access::plugin_files::{DirectorySets, PluginInstalls};
 use demi_runner_client::Pipes;
 use demi_core_hosts::devices::Devices;
-use demi_backend_runners::native::NativeCatalog;
-use demi_backend_runners::claims::PendingClaims;
-use demi_backend_runners::public_url::PublicUrl;
+use demi_core_hosts::packages::Packages;
+use demi_backend_runners::claims::ClaimRefusal;
+use demi_backend_runners::install::install_commands;
+use demi_web_api_protocol::devices::{DeviceDto, InstallCommands};
 use demi_core_hosts::router::CommandRouter;
 use demi_shared_types::Clock;
 use demi_web_api_protocol::conversations::ConversationTarget;
@@ -71,24 +72,36 @@ impl HostShard for Shard {
         self.store().databases().db(conversation)
     }
 
-    fn native(&self) -> &NativeCatalog {
-        &self.services.native
+    fn packages(&self) -> &dyn Packages {
+        self.services.packages.as_ref()
     }
 
-    fn public_url(&self) -> &PublicUrl {
-        &self.services.public_url
+    fn pair<'a>(&'a self, code: &'a str) -> LocalBoxFuture<'a, Result<DeviceDto, String>> {
+        Box::pin(async move {
+            match self.services.claims.claim(self.store(), self.user(), code).await {
+                Ok(device) => Ok(device),
+                Err(ClaimRefusal::UnknownCode) => Err(format!(
+                    "{code}: no computer waits under this pairing code; it expired or was never issued. The installer shows a new code when one expires: read the newest one it shows and pass that."
+                )),
+                Err(ClaimRefusal::TooManyAttempts) => Err(
+                    "Too many pairing codes were tried in the last minute; wait a minute, then pass the newest code the installer shows.".into(),
+                ),
+                Err(ClaimRefusal::Storage(error)) => Err(error.to_string()),
+            }
+        })
     }
 
-    fn claims(&self) -> &PendingClaims {
-        &self.services.claims
+    fn install_commands(&self) -> Option<InstallCommands> {
+        let backend = self.services.public_url.get()?;
+        Some(install_commands(backend.url()))
     }
 
     fn tasks(&self) -> &TaskTracker {
         &self.tasks
     }
 
-    fn cloud_shard(&self) -> &(dyn CloudShard + 'static) {
-        Shard::cloud_shard(self)
+    fn cloud_host(&self) -> &dyn CloudHost {
+        self
     }
 
     fn this(&self) -> Rc<dyn HostShard> {

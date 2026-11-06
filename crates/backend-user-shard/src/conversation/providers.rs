@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use demi_agent_server::{ProviderResolver, ResolveError};
 use demi_agent_tools::{ProfileModel, Unavailable};
-use demi_backend_host_access::transition::ChangeRefusal;
+use demi_core_host_access::transition::ChangeRefusal;
 use demi_core_providers::usage::meter::{Ledger, MeteredRuntime, ModelPrices, RetireModel};
 use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
 use demi_provider_common::{
@@ -42,7 +42,7 @@ use crate::conversation::claude_cli::{CrossPlacement, ProcessWork};
 use crate::services::Services;
 use demi_core_store::store::CoreStore;
 use crate::shard::Shard;
-use demi_backend_host_access::conversation_of;
+use demi_core_host_access::conversation_of;
 
 impl Shard {
     /// Follows the entries whose agents may take another account until the

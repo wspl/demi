@@ -10,7 +10,7 @@
 //!
 //! Only a conversation's watch takes a subscription that names a host.
 
-use demi_backend_host_access::file_watch::{FileWatchChannel, OpenedWatch};
+use demi_core_host_access::file_watch::{FileWatchChannel, OpenedWatch};
 use demi_backend_user_shard::shard::lane::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader};
 use demi_web_api_protocol::files::{ConversationWatchRequest, FileWatchMessage, FileWatchRequest};
 use demi_web_api_protocol::ids::UserId;
@@ -41,7 +41,7 @@ pub(super) async fn open(state: &AppState, user: &UserId, id: &str) -> Result<Op
 }
 
 /// A device's folder dialog's watch, through device access
-/// (`crates/backend-host-access/src/lib.rs`). A device that is not the
+/// (`crates/core-host-access/src/lib.rs`). A device that is not the
 /// caller's paired device is refused; one whose runner is not connected is
 /// answered on the lane, with `offline`.
 pub(super) async fn open_device(state: &AppState, user: &UserId, id: &str) -> Result<Opened, ApiError> {

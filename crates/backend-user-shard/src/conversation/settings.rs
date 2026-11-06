@@ -18,8 +18,8 @@ use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 
 use crate::shard::Shard;
-use demi_backend_host_access::root_of;
-use demi_backend_host_access::transition::ChangeRefusal;
+use demi_core_host_access::root_of;
+use demi_core_host_access::transition::ChangeRefusal;
 
 impl Shard {
     /// Applies `change` to the model settings of the user's conversation

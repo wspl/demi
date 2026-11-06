@@ -738,7 +738,7 @@ pub enum Inbound {
         cwd: Option<String>,
     },
     /// The directory at `path` as its Host names it, in one exchange
-    /// (`crates/backend-host-access/src/directories.rs`): its real path, or
+    /// (`crates/core-host-access/src/directories.rs`): its real path, or
     /// `ENOTDIR` when it is no directory. With `create`, a directory that
     /// does not exist is made first, with its parents, and a path that cannot
     /// be one fails with a reason the runner words from the part of it that
@@ -1844,7 +1844,7 @@ pub struct RunnerInfo {
     pub name: String,
     pub platform: RunnerPlatform,
     /// The Host's operating system, which the agent reads in its context
-    /// block (`crates/backend-host-access/src/transition.rs`).
+    /// block (`crates/core-host-access/src/transition.rs`).
     #[garde(dive)]
     pub os: OperatingSystem,
     /// The runner's release, such as `0.1.16`, which Settings shows.

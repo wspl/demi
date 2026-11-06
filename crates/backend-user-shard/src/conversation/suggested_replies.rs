@@ -24,7 +24,7 @@ use demi_agent_server::suggested_replies::{answer_of, suggestion_request, sugges
 use demi_core_store::StorageError;
 use demi_core_store::store::CoreStore;
 use demi_core_store::suggested_replies::AnsweredReplies;
-use demi_backend_host_access::root_of;
+use demi_core_host_access::root_of;
 use demi_core_sync::{Part, UserMarks};
 use demi_shared_types::{BlockId, ModelSelection, Timestamp};
 use demi_web_api_protocol::ids::ConversationId;

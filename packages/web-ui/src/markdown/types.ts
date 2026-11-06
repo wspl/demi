@@ -7,7 +7,7 @@ import type { SettingsCredential } from '../settings/types'
 
 /**
  * An attachment of the conversation, sent in a message or uploaded by the agent
- * (`crates/backend-host-access/src/attachment_commands.rs`), as a message shows
+ * (`crates/core-host-access/src/attachment_commands.rs`), as a message shows
  * it. /
  */
 export interface MessageAttachment {

@@ -334,7 +334,7 @@ pub struct RunningCommand {
     pub started: Timestamp,
     pub place: Seen,
     /// What it starts once its Host is back, while its start waits for it
-    /// and was never sent (`crates/backend-host-access/src/access.rs`).
+    /// and was never sent (`crates/core-host-access/src/access.rs`).
     pub unsent: Option<UnsentStart>,
 }
 

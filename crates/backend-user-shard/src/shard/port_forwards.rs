@@ -11,7 +11,7 @@
 //!
 //! Every way to the two Hosts is device access: a stopped Cloud is not woken, and
 //! a connection to an offline Host is refused at once
-//! (`crates/backend-host-access/src/lib.rs`).
+//! (`crates/core-host-access/src/lib.rs`).
 //!
 //! # What a forward is
 //!

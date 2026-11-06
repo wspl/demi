@@ -19,7 +19,7 @@ use demi_web_api_protocol::ids::DeviceId;
 use futures_util::FutureExt as _;
 use futures_util::future::{LocalBoxFuture, Shared};
 
-use demi_backend_host_access::root_of;
+use demi_core_host_access::root_of;
 use crate::shard::Shard;
 
 /// The shard's part.

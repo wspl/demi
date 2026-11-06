@@ -8,7 +8,7 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_backend_host_access::host_commands::conversation_of;
+use demi_core_host_access::host_commands::conversation_of;
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_shared_types::{
     ScheduleId, Timestamp,

@@ -31,12 +31,12 @@ use demi_agent_tools::{
     WORKFLOW_FILE_MAX_BYTES, WORKFLOWS_DIRECTORY, Workflow, WorkflowChild, WorkflowListing,
     WorkflowProfile, parse_workflow, workflow_id,
 };
-use demi_backend_host_access::plugin_files::ReadFilesError;
-use demi_backend_host_access::transition::ChangeRefusal;
+use demi_core_host_access::plugin_files::ReadFilesError;
+use demi_core_host_access::transition::ChangeRefusal;
 use std::rc::Rc;
 use std::future::Future;
 
-use demi_backend_host_access::plugin_files::look_files;
+use demi_core_host_access::plugin_files::look_files;
 use demi_host_interface::{Host as _, HostError};
 use demi_host_paths::HostPaths;
 use demi_host_interface::project;

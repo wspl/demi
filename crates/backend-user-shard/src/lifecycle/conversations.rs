@@ -12,7 +12,7 @@
 //! # The release
 //!
 //! The release is one generic runner message, sent to each connected Host's
-//! runner (`crates/backend-host-access/src/access.rs`). Telling takes no file
+//! runner (`crates/core-host-access/src/access.rs`). Telling takes no file
 //! gate beyond the transition's own commit, wakes nothing, stores nothing and
 //! waits for no Host. It also goes to the Host a conversation stops using (a
 //! target switch, a detach) and to every Host when the conversation is
@@ -33,7 +33,7 @@
 //! send it only while the backend holds the conversation's file gate, and
 //! every job runs in a lease of that gate; a move and a detach send it once
 //! the jobs of the conversation on the device they left ended
-//! (`crates/backend-host-access/src/transition.rs`). Repeating one is
+//! (`crates/core-host-access/src/transition.rs`). Repeating one is
 //! harmless, and it never starts a resident.
 //!
 //! # What a Host holds
@@ -70,7 +70,7 @@ use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument as _;
 
 use crate::shard::Shard;
-use demi_backend_host_access::root_of;
+use demi_core_host_access::root_of;
 
 /// The idle watch of each conversation that reached a Host.
 #[derive(Default)]

@@ -23,7 +23,7 @@ pub struct RecordedJob {
 impl CoreStore {
     /// Records that the job `job` of a command of `conversation` runs on
     /// `device`, before it starts, or, while it is not `sent`, that it waits
-    /// to start there (`crates/backend-host-access/src/access.rs`).
+    /// to start there (`crates/core-host-access/src/access.rs`).
     pub async fn record_running_job(
         &self,
         job: String,

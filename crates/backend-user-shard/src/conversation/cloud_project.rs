@@ -2,14 +2,14 @@
 //! by the project's name.
 //!
 //! It is made through the Cloud's machine access
-//! (`crates/backend-host-access/src/lib.rs`), which wakes a stopped Cloud.
+//! (`crates/core-host-access/src/lib.rs`), which wakes a stopped Cloud.
 
 use demi_core_store::projects::{ProjectCreation, ProjectRecord, new_project_id};
 use demi_web_api_protocol::ids::WorkspaceId;
 use demi_host_interface::{Host as _, HostErrorKind, HostFs, MkdirOptions};
 
 use crate::shard::Shard;
-use demi_backend_host_access::access::{HostAccessError, Refusal};
+use demi_core_host_access::access::{HostAccessError, Refusal};
 
 /// What a new Cloud project came to.
 #[derive(Debug)]

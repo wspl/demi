@@ -27,7 +27,7 @@ pub enum FileReference {
 }
 
 /// Where the backend resolves the files of one frame's content
-/// (`crates/backend-host-access/src/uploads.rs`).
+/// (`crates/core-host-access/src/uploads.rs`).
 ///
 /// - An upload is written to the conversation's Host and becomes its native
 ///   media block, when it has one, then its attachment record, or the text that

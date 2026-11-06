@@ -461,7 +461,7 @@ pub trait HostResolver: 'static {
 
     /// The Host a node's shell tools reach now: a child's own placement's, and
     /// the conversation's current execution target for the root
-    /// (`crates/backend-host-access/src/access.rs`).
+    /// (`crates/core-host-access/src/access.rs`).
     ///
     /// Two answers for the same target have equal keys, so a node keeps one
     /// shell environment per target it used. By default there is none, and a

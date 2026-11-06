@@ -73,8 +73,8 @@ use crate::conversation::{self, ConversationParts, ShardHosts};
 use crate::lifecycle::collection::BlobCollection;
 use crate::lifecycle::conversations::ConversationWatches;
 use crate::services::Services;
-use demi_backend_host_access::access::Conversations;
-use demi_backend_host_access::plugin_files::PluginInstalls;
+use demi_core_host_access::access::Conversations;
+use demi_core_host_access::plugin_files::PluginInstalls;
 
 /// Where the shards run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

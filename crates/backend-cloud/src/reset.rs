@@ -47,7 +47,7 @@ use demi_web_api_protocol::cloud::ResetPhase;
 use demi_web_api_protocol::ids::{DeviceId, OperationId, UserId};
 use tokio::time::Instant;
 
-use crate::machine::{CloudError, Machine, Phase};
+use crate::machine::{CloudError, Machine, Phase, machines_failed};
 use crate::{CloudServices, CloudShard};
 
 /// What a backend that started records of a reset its disks were recovered
@@ -87,7 +87,7 @@ impl dyn CloudShard {
                 self.cloud_services()
                     .machines
                     .call(CurrentBaseVersionParams {})
-                    .await?
+                    .await.map_err(machines_failed)?
             }
         };
         let operation = ManagedOperation {
@@ -221,7 +221,7 @@ impl dyn CloudShard {
         self.cloud_services()
             .machines
             .call(reset_params(machine, &operation, capacity))
-            .await?;
+            .await.map_err(machines_failed)?;
         self.store().announce_cloud_reset(operation.id.clone()).await?;
         machine.clear_deaths();
         self.record_phase(machine, &operation, ResetPhase::Booting, None)

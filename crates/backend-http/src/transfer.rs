@@ -1,4 +1,4 @@
-//! The bytes of file transfers (`crates/backend-host-access/src/access.rs`).
+//! The bytes of file transfers (`crates/core-host-access/src/access.rs`).
 //!
 //! The edge moves them while the user's shard holds the transfer's admission
 //! through its lease.
@@ -23,8 +23,8 @@ use futures_util::StreamExt as _;
 
 use super::error::ApiError;
 use super::listener::ConnectionWatch;
-use demi_backend_host_access::lease::Lease;
-use demi_backend_host_access::transfer::OpenUpload;
+use demi_core_host_access::lease::Lease;
+use demi_core_host_access::transfer::OpenUpload;
 
 /// How long a transfer waits for the user's browser, and a connection for
 /// any byte, before it ends: the stalled-client timeout web servers use,

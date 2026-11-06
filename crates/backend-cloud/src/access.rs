@@ -1,4 +1,4 @@
-//! Machine access (`crates/backend-host-access/src/lib.rs`): the user's Cloud
+//! Machine access (`crates/core-host-access/src/lib.rs`): the user's Cloud
 //! itself, for work that needs it rather than a conversation's files on it,
 //! such as making a Cloud project's directory.
 //!

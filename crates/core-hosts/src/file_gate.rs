@@ -1,4 +1,4 @@
-//! A conversation's file gate (`crates/backend-host-access/src/access.rs`):
+//! A conversation's file gate (`crates/core-host-access/src/access.rs`):
 //! every operation on the conversation's Hosts holds a lease of it, and a
 //! transition that needs the conversation's files quiet reserves it.
 //!

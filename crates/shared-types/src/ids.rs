@@ -218,7 +218,7 @@ pub enum Sequence {
     Device,
     /// The conversation's attachments, from 1: `a3`. Each file a message
     /// sends and each one `demi attachment upload` stores takes one
-    /// (`crates/backend-host-access/src/attachment_commands.rs`).
+    /// (`crates/core-host-access/src/attachment_commands.rs`).
     Attachment,
 }
 

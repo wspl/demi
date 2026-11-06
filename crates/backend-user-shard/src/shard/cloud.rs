@@ -29,8 +29,12 @@ use tokio_util::task::TaskTracker;
 
 use super::{Shard, Shards};
 use crate::services::Services;
-use demi_backend_host_access::root_of;
-use demi_backend_host_access::transfer::TransfersClosed;
+use demi_core_host_access::root_of;
+use demi_core_host_access::cloud::{CloudAdmission, CloudError, CloudHost};
+use demi_core_host_access::transfer::TransfersClosed;
+use demi_core_store::StorageError;
+use demi_core_store::devices::DeviceRecord;
+use demi_runner_client::Admission;
 
 impl CloudShard for Shard {
     fn user(&self) -> &UserId {
@@ -200,6 +204,20 @@ impl Shard {
     /// The shard as its Cloud sees it, whose operations it is.
     pub fn cloud_shard(&self) -> &(dyn CloudShard + 'static) {
         self
+    }
+}
+
+impl CloudHost for Shard {
+    fn cloud_device(&self) -> LocalBoxFuture<'_, Result<DeviceRecord, StorageError>> {
+        Box::pin(self.cloud_shard().cloud_device())
+    }
+
+    fn admit_cloud<'a>(&'a self, device: &'a DeviceRecord) -> LocalBoxFuture<'a, Result<CloudAdmission, CloudError>> {
+        Box::pin(self.cloud_shard().admit_cloud(device))
+    }
+
+    fn operation_admission<'a>(&'a self, device: &'a DeviceRecord) -> LocalBoxFuture<'a, Result<Admission, StorageError>> {
+        Box::pin(self.cloud_shard().operation_admission(device))
     }
 }
 

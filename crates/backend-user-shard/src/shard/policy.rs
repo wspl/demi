@@ -41,8 +41,8 @@ use std::rc::{Rc, Weak};
 
 use bytes::Bytes;
 use demi_core_store::sequences;
-use demi_backend_host_access::host_commands::{reachable, resolve_host};
-use demi_backend_host_access::root_of;
+use demi_core_host_access::host_commands::{reachable, resolve_host};
+use demi_core_host_access::root_of;
 use demi_plugin_host::Lost;
 use demi_backend_database::server_log::ServerLog;
 use demi_runner_client::{CommandCatalog, DirectAdmission, ForwardEvent, HostLog, JobOrigin, LinkPolicy, PackageEvent};
@@ -124,7 +124,7 @@ impl LinkPolicy for ShardPolicy {
     fn programs(&self) -> Option<CommandCatalog> {
         let shard = self.shard.upgrade()?;
         let services = shard.services();
-        Some(services.native.catalog(&services.public_url))
+        Some(services.packages.catalog())
     }
 
     fn host_log(&self) -> Option<Rc<dyn HostLog>> {
@@ -338,7 +338,7 @@ impl LinkPolicy for ShardPolicy {
             Ok(DirectAdmission {
                 lease,
                 package,
-                resolver: services.native.resolver(&services.public_url),
+                resolver: services.packages.resolver(),
             })
         })
     }

@@ -283,7 +283,7 @@ function subjectKey({ kind, path, suffix }: Subject): string {
  * It holds what was read, its number and the subscriptions it holds. Each view
  * reads it through its own route, as a conversation's views through the
  * conversation's and a device's folder dialog through the device's
- * (`crates/backend-host-access/src/lib.rs`), and every view sees what one of
+ * (`crates/core-host-access/src/lib.rs`), and every view sees what one of
  * them read.
  */
 class Entry<T> {

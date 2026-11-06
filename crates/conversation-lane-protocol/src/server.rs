@@ -19,7 +19,7 @@ use crate::{AgentEntry, CacheChart, ClientFrameKind, Followed, TranscriptPatch, 
 pub type Failures = BTreeMap<BlockId, ProviderFailureFacts>;
 
 /// An attachment of the conversation as a reply shows it
-/// (`crates/backend-host-access/src/attachment_commands.rs`): what its card
+/// (`crates/core-host-access/src/attachment_commands.rs`): what its card
 /// or its picture needs before its bytes. It never changes.
 ///
 /// A frame or a page that carries blocks carries the attachments their texts
@@ -572,7 +572,7 @@ pub enum ShellStatus {
         #[garde(skip)]
         stopping: bool,
         /// The name of the paired device whose runner its start waits for
-        /// (`crates/backend-host-access/src/access.rs`): the pages show
+        /// (`crates/core-host-access/src/access.rs`): the pages show
         /// *Waiting for MacBook Pro*. Present only then.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(skip)]

@@ -110,7 +110,7 @@ pub enum PortMessage {
     Devices,
     /// The commit `url`'s default branch points to, as the user's paired
     /// device `device` reads it with its own `git`
-    /// (`crates/backend-host-access/src/device_git.rs`).
+    /// (`crates/core-host-access/src/device_git.rs`).
     DeviceGitHead {
         device: DeviceId,
         url: String,
@@ -378,7 +378,7 @@ pub struct StoredValue {
 
 /// A directory the plugin keeps on every Host its user's jobs run on, or
 /// only on those the jobs of one workspace's conversations run on
-/// (`crates/backend-host-access/src/plugin_files.rs`).
+/// (`crates/core-host-access/src/plugin_files.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostDirectory {
