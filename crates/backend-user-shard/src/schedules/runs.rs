@@ -117,7 +117,7 @@ impl Shard {
     pub(crate) async fn runnable(&self, schedule: &StoredSchedule) -> Result<(), Unrunnable> {
         let control = &self.services().control;
         let record = match control.conversation(schedule.conversation.clone()).await {
-            Ok(Some(record)) if record.owner == *self.user() && !record.archived => record,
+            Ok(Some(record)) if record.owner == *self.user() && !record.archived() => record,
             _ => return Err(Unrunnable::Gone),
         };
         let device = self

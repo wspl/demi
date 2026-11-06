@@ -742,7 +742,7 @@ impl Shard {
         // Following and unfollowing change nothing of the conversation, and an
         // archived one is followed to hear of its restoring.
         let following = matches!(frame, ClientFrame::Follow(_) | ClientFrame::Unfollow { .. });
-        if record.archived && !following && !matches!(frame, ClientFrame::Close {}) {
+        if record.archived() && !following && !matches!(frame, ClientFrame::Close {}) {
             return Ok(Prepared::Refused(
                 ErrorCode::ConversationArchived,
                 "Restore the conversation before writing to it".into(),

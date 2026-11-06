@@ -205,8 +205,8 @@ export interface SettingsArchivedConversation {
   id: string
   /** Null for the placeholder, which shows as New conversation in the reader's language. */
   title: string | null
-  /** When it was last active, which its row's end shows to the minute. */
-  updatedAt: string
+  /** When it was archived, which its row's end shows to the minute. */
+  archivedAt: string
   /** The name of the project it ran in; null for one in none. */
   project: string | null
 }

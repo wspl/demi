@@ -315,7 +315,7 @@ impl dyn HostShard + '_ {
             .conversation(expected.id.clone())
             .await?
             .ok_or(ChangeRefusal::NotFound)?;
-        if current.archived {
+        if current.archived() {
             return Err(ChangeRefusal::Archived);
         }
         let from = self.resolve_target(expected).await?;

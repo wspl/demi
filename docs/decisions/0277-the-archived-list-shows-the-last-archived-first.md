@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0278
 ---
 
 # The archived list shows the last archived first

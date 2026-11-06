@@ -100,6 +100,8 @@ export const draftSchema = z.object({
       }).extend({
         /** The workspace it was started in; absent in a draft a page kept before workspaces, which the page's own then takes. */
         workspaceId: z.string().optional(),
+        /** When it was archived; absent in a draft a page kept before the page recorded it. */
+        archivedAt: z.string().nullable().optional(),
       }),
     })
     .nullable(),

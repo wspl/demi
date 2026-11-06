@@ -76,7 +76,7 @@ impl Shard {
             .await?
             .filter(|record| record.owner == *self.user())
             .ok_or(SideRefusal::ConversationNotFound)?;
-        if change && record.archived {
+        if change && record.archived() {
             return Err(SideRefusal::Archived);
         }
         Ok(record)

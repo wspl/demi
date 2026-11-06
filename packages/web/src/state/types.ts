@@ -63,6 +63,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   revision: number
   readRevision: number
   archived: boolean
+  /** When it was archived; null while it is not. */
+  archivedAt: string | null
   /** Whether it has schedules, which the sidebar marks. */
   scheduled: boolean
   /**
