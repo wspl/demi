@@ -103,13 +103,12 @@ fn control_from_0_1_65_one_core_per_user(transaction: &Transaction<'_>, steps: &
         let directory = data.join("users").join(user);
         write_core(transaction, user, &directory)?;
         move_conversations(transaction, user, data, &directory)?;
-        move_file(&data.join("search").join(format!("{user}.sqlite")), &directory.join("search.sqlite"))?;
-        for sidecar in ["-wal", "-shm"] {
-            move_file(
-                &data.join("search").join(format!("{user}.sqlite{sidecar}")),
-                &directory.join(format!("search.sqlite{sidecar}")),
-            )?;
-        }
+        move_database(&data.join("search").join(format!("{user}.sqlite")), &directory.join("search.sqlite"))?;
+    }
+    // The directories go once every file has moved; a file no record named
+    // keeps its directory.
+    for left in ["conversations", "search"] {
+        remove_empty_directory(&data.join(left))?;
     }
     transaction.execute_batch(CONTROL_RECORDS)?;
     for (table, _) in TABLES.iter().rev() {
@@ -209,7 +208,12 @@ fn write_core(transaction: &Transaction<'_>, user: &str, directory: &Path) -> ru
     written.pragma_update(None, "user_version", version)?;
     written.commit()?;
     drop(core);
-    std::fs::rename(&writing, directory.join("core.sqlite")).map_err(corrupt)
+    let path = directory.join("core.sqlite");
+    // An earlier run, which a rollback undid, may have left its core's log.
+    for sidecar in ["-wal", "-shm"] {
+        remove_file(&with_suffix(&path, sidecar))?;
+    }
+    std::fs::rename(&writing, path).map_err(corrupt)
 }
 
 /// Copies `table`'s rows that `condition` picks for `user`, in the columns the
@@ -256,13 +260,34 @@ fn move_conversations(transaction: &Transaction<'_>, user: &str, data: &Path, di
     for id in ids {
         // A conversation's file is named by its id in lower case.
         let file = format!("{}.sqlite", id.to_ascii_lowercase());
-        move_file(&from.join(&file), &to.join(&file))?;
-        for sidecar in ["-wal", "-shm"] {
-            let file = format!("{file}{sidecar}");
-            move_file(&from.join(&file), &to.join(&file))?;
-        }
+        move_database(&from.join(&file), &to.join(&file))?;
     }
     Ok(())
+}
+
+/// Moves the database at `from` to `to`, then its log. A database that is
+/// not there has moved already or never was, and only a log a stopped run
+/// left behind follows it; a log at `to` that an earlier run left, which a
+/// rollback undid, goes before the database moves, so it never meets another
+/// database.
+fn move_database(from: &Path, to: &Path) -> rusqlite::Result<()> {
+    if from.exists() {
+        for sidecar in ["-wal", "-shm"] {
+            remove_file(&with_suffix(to, sidecar))?;
+        }
+        move_file(from, to)?;
+    }
+    for sidecar in ["-wal", "-shm"] {
+        move_file(&with_suffix(from, sidecar), &with_suffix(to, sidecar))?;
+    }
+    Ok(())
+}
+
+/// `path` with `suffix` after its file name.
+fn with_suffix(path: &Path, suffix: &str) -> std::path::PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(suffix);
+    name.into()
 }
 
 /// Moves the file at `from` to `to`; one that is not there has moved already
@@ -271,6 +296,19 @@ fn move_file(from: &Path, to: &Path) -> rusqlite::Result<()> {
     match std::fs::rename(from, to) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(corrupt(error)),
+    }
+}
+
+/// Removes the directory at `path` if it is there and empty.
+fn remove_empty_directory(path: &Path) -> rusqlite::Result<()> {
+    match std::fs::remove_dir(path) {
+        Ok(()) => Ok(()),
+        Err(error)
+            if matches!(error.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty) =>
+        {
+            Ok(())
+        }
         Err(error) => Err(corrupt(error)),
     }
 }

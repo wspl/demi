@@ -1,7 +1,8 @@
 //! The backend's databases across a move (`upgrades.md` § Switch, § Rollback):
 //!
 //! - An upgrade keeps a copy of each database its release will migrate in
-//!   `<data>/snapshots/<version>/`.
+//!   `<data>/snapshots/<version>/`, and a hard link to each one it will move
+//!   elsewhere.
 //! - A rollback returns what the snapshot keeps. It moves the databases it
 //!   replaces to `snapshots/abandoned-<version>/` by a rename, and puts a
 //!   copy of the snapshot's in their place, so the snapshot stays whole for a
@@ -147,6 +148,18 @@ pub fn take(
             progress(done, total);
         })?;
         std::fs::File::open(&target)?.sync_all()?;
+    }
+    // A conversation's database where the releases before each user's own
+    // directory kept it moves into its user's directory as the control
+    // database migrates: the snapshot keeps it by a hard link, which costs
+    // no room, so a rollback to such a release puts it back where that
+    // release looks, as the backend last left it.
+    for (database, _) in crate::data::databases(data)? {
+        if database.starts_with("conversations") && !databases.contains(&database) {
+            let target = snapshot.join(&database);
+            std::fs::create_dir_all(target.parent().expect("a database lies in a directory"))?;
+            std::fs::hard_link(data.join(&database), &target)?;
+        }
     }
     if snapshot.exists() {
         sync_tree(&snapshot)?;

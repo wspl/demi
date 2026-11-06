@@ -52,7 +52,16 @@ impl ControlService {
         control
             .call(move |connection, _| {
                 sqlite::configure(connection)?;
-                schema::CONTROL.apply(connection, &path, seals.as_ref())
+                schema::CONTROL.apply(connection, &path, seals.as_ref())?;
+                // A step that moved most records out, as the one that gave
+                // each user a core did, leaves their pages free: the file
+                // gives them back once, rather than staying that size.
+                let free: i64 = connection.pragma_query_value(None, "freelist_count", |row| row.get(0))?;
+                let pages: i64 = connection.pragma_query_value(None, "page_count", |row| row.get(0))?;
+                if free * 2 > pages {
+                    connection.execute_batch("VACUUM")?;
+                }
+                Ok(())
             })
             .await?;
         Ok(control)
