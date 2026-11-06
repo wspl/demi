@@ -126,10 +126,9 @@ server gives each core its user's part of the store.
 
 A runner connects to a core with a token the core issues. The server
 issues one at pairing and hands the runner's socket to the user's core, as
-it adopts it today. A program asks its core for a token and gives it to the
-runner it starts in a sandbox; the core starts a runner on its own machine
-itself. How a runner reaches a core without a server is the subject of the
-next record in this series.
+it adopts it today. A program asks its core for a Host and starts the
+runner where it wants its agents' commands to run. How a runner reaches a
+core without a server is the subject of 0298.
 
 ### The series
 
@@ -139,14 +138,19 @@ before:
 1. This record: the core's boundary and data directory. The backend crates
    that hold the core's parts become core crates, the server runs one core
    per user, and the data moves.
-2. The core's protocol over stdio: the web API's core routes and the page
-   connection, over HTTP/2, and what the core asks of the program that
-   started it.
-3. Runners connect to a core directly.
-4. The TypeScript SDK: the types made from the protocol's schema, and the
-   core and runner binaries of one build version in one package.
-5. The web app's conversation client over any transport, so its components
-   run on a program's page through the program's own connection.
+2. 0297: a program opens cores in a process of its own and drives them
+   with the web API's core routes and the page connection, over HTTP/2 on
+   stdio.
+3. 0298: a program's runners connect to its process, which serves them as
+   the server does.
+4. 0299: a program's plugins run in the program, over a lane of each
+   core's connection.
+5. 0300: a command declares what its output holds and what a failure
+   leaves, which the SDK's commands declare too.
+6. 0301: the TypeScript SDK, over the web app's own clients, with the core
+   and runner binaries of its build.
+7. 0302: a program's page shows a conversation and its work panel with
+   the web app's own views.
 
 ## Spike
 

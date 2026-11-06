@@ -30,9 +30,7 @@ with the same paths, types, refusals and page connection.
 
 ```text
 program                                      demi-core
-  HTTP/2 over the child's stdin and stdout, cleartext, no listener
-  PUT /plugins [the program's plugins] -->
-                               <---------- 204
+  HTTP/2 over the child's stdin and stdout, cleartext
   POST /cores { dir: /srv/bot/a } ------->  locks a, opens its core
                                <---------- 201 { id }
   POST /cores/{id}/api/conversations ---->
@@ -42,10 +40,11 @@ program                                      demi-core
                                <---------- opened, transcript patches
     open lane 2 { starter } ------------->
                                <---------- notify { turn finished }
-    open lane 3 { plugin } -------------->
-                               <---------- command request
   DELETE /cores/{id} -------------------->  closes the core, unlocks a
 ```
+
+The records after this one decide how a program's runners connect to the
+process (0298) and how a program's own plugins run in it (0299).
 
 The wire is the SDK's, not a program's: a program calls the TypeScript
 SDK, whose own interface a later record of this series decides, and the
@@ -56,11 +55,7 @@ generated with (`bun run contracts`).
 
 - The SDK starts `demi-core` with its release's directory, as the server
   is started (`DEMI_RELEASE`); a program sets nothing. The process runs one
-  shard thread, as the server does.
-- The program declares its plugins once, `PUT /plugins`, before its first
-  core opens: the plugin registry is fixed when the process's services
-  start, as the server's is. After a core has opened, `PUT /plugins`
-  answers 409.
+  shard thread, as the server does, and the plugins its release builds in.
 - The process logs to its standard error. The connection's end closes
   every open core, as the server's stop closes its users' cores, and the
   process exits.
@@ -141,15 +136,24 @@ puts the signed-in user's id in the request. The process mounts it under
 ```text
 backend-http: accounts, passkeys, sessions, users, the server's upgrade,
               the instance mode, the Cloud's isolation and network,
-              public shares, pairing, installers, schedule URLs
+              public shares, provider lending, pairing, installers,
+              schedule URLs
    `-- mounts core-api under /api, behind the session gate
-demi-core:    /plugins, /cores, and core-api under /cores/{id}/api
+demi-core:    /cores, and core-api under /cores/{id}/api
 core-api:     conversations, drafts, saved messages, permissions,
               providers and accounts, devices, workspaces, projects,
               schedules, plugins, files, changes, search, cost, usage,
               preferences, attachments and blobs, the product state,
-              the page connection and its lanes
+              the page connection and its lanes; and with no session,
+              the File view's HTML files and the plugins' files
 ```
+
+A page's sandboxed frames load two kinds of files with no session: an HTML
+file the File view shows, by a token in its path, and a file a plugin's
+page loads, such as a library its document runs. Both move into
+`core-api`, and a program's page gets them through the program, as it
+gets the rest. A token of the File view lasts while its core is open in a
+program's process, and while its session lasts on the server, as today.
 
 ### The product state and its channel
 
@@ -169,43 +173,16 @@ program follows its core's changes as a page does.
 | `notify` | sends the notification on the `starter` lane; the program answers how it was shown |
 | `reach`, `agent_reaches` | one receiver while a `starter` lane is open, none otherwise |
 | `cloud`, `cloud_network_limited` | none: a program's core runs no Cloud |
-| `pair`, `install_commands`, `device_removed` | the next record: a program's runners connect to the process |
+| `pair`, `install_commands`, `device_removed` | the process's, as the next record decides (0298) |
 | `host_log` | none |
-| `schedule_called_at_url` | refused: no URL reaches a program's core |
-| `schedule_deleted`, `conversation_deleted`, `provider_deleted` | nothing: the process keeps no record of them |
+| `schedule_called_at_url`, `schedule_deleted` | nothing to keep: the process finds a schedule among its open cores (0298) |
+| `conversation_deleted`, `provider_deleted` | nothing: the process keeps no record of them |
 | `conversation_shares` | none |
-| `closing` | ends the core's `starter` and plugin lanes |
+| `closing` | ends the core's `starter` lane |
 
-A program's process has no public URL, so what needs one is not offered,
-as on a server that has none: a plugin's OAuth, a schedule called at a URL
-and a device's address.
-
-### A program's plugins
-
-A program's plugins are plugins of the plugin contract: the manifest, the
-requests and replies, and the port.
-
-- `PUT /plugins` takes their manifests. For each, the process registers a
-  plugin whose instance in a core passes each request to the program and
-  each of the program's port messages to the core's port.
-- The program opens one lane on each core's connection for each of its
-  plugins, `{ plugin: "<id>" }`. A request while the plugin's lane is not
-  open fails as a plugin that failed (`PluginError::Failed`).
-- Each request, reply and port message is one lane message, of the
-  contract's JSON. A message that holds bytes, such as a blob a plugin puts
-  or a page an HTTP request answered, is a binary lane message: the JSON,
-  in which each value of bytes is replaced by its index, and then the
-  bytes, as VS Code's extension host passes its buffers, under its marker.
-  A message with no bytes is a text lane message of the JSON alone.
-
-```text
-binary lane message
-u32 json length | json: { ..., "bytes": { "$$ref$$": 0 } } | u32 length | bytes
-```
-
-### Runners
-
-The next record decides how a program's runners connect to the process.
+What needs an address that a browser or another system reaches, a
+plugin's OAuth callback, a schedule's URL and a device's address, uses the
+public URL the program gives (0298), as the server's use its own.
 
 ## Built on
 
@@ -223,8 +200,7 @@ The next record decides how a program's runners connect to the process.
 | The provider entries | the vault, isolated or shared | isolated only |
 | The product state and its channel | `backend-user-shard/src/sync/` | moved into `core-api`, server parts added by the server |
 | What the core asks of whoever runs it | `Starter` | the `starter` lane; `principal` removed |
-| A plugin's messages | `plugin-interface`, passed as Rust values | encoded on a lane |
-| The plugin registry | fixed at the services' start | filled by `PUT /plugins` |
+| The files a page's frames load with no session | public routes of `backend-http` | moved into `core-api` |
 
 ## Spike
 
@@ -252,9 +228,6 @@ Not run yet, and run before this record is accepted:
   start a turn in each, close one: the other's turn streams on, a call to
   the closing core is refused, the directory unlocks, and a reopen resumes
   the interrupted turn. Closing a single core has never run.
-- **A plugin outside the process.** A plugin in TypeScript answers a
-  command over its lane and puts a 10 MB blob through its port, with the
-  bytes framed as above. The plugin contract has never crossed a wire.
 - **Windows**, where Tokio reads the standard input on a blocking thread.
 
 ## Prior art
@@ -270,9 +243,6 @@ Not run yet, and run before this record is accepted:
 - **Codex app server** and the **Agent Client Protocol**: JSON-RPC over
   stdio with methods of their own; Codex's own editor extension is a client
   of it, so its programs and its interface share one API too.
-- **VS Code's extension host** (`src/vs/workbench/services/extensions/common/rpcProtocol.ts`):
-  a message's JSON names each buffer it holds by index, and the buffers
-  follow the JSON in the same binary message, so bytes never pass as text.
 
 Demi departs from Codex and ACP in its wire, not in the principle: its
 interface's API is HTTP, so a program gets that API, and HTTP/2 carries
@@ -286,8 +256,6 @@ bytes and concurrent streams that one line of JSON at a time cannot.
 - **One key per process, which the program keeps.** A directory would not
   open without a secret kept elsewhere, and a lost secret would lose every
   core's credentials at once.
-- **Bytes as base64 in the plugin lane's JSON, as MCP passes them.** A
-  third more bytes, and a blob encoded and decoded whole on each side.
 - **JSON-RPC over stdio, as Codex and ACP**: a second set of methods, or
   the web API wrapped in an envelope no one else uses; bytes as base64,
   and a large message holds every message behind it.
