@@ -1,5 +1,5 @@
 //! Where a conversation's work runs
-//! (`crates/backend-database/src/selection.rs`): its selection resolved to a
+//! (`crates/core-store/src/selection.rs`): its selection resolved to a
 //! device and the directory its work starts in there.
 //!
 //! The core store's one rule owns the resolution.

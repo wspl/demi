@@ -14,7 +14,7 @@
 //!   entry stored before.
 //! - A usage ledger row may be a video's or an audio file's, with the seconds
 //!   made and the cost the vendor reported
-//!   (`crates/backend-database/src/usage.rs`), which SQLite's checks let in only
+//!   (`crates/core-store/src/usage.rs`), which SQLite's checks let in only
 //!   on a table made again, its rows as they were with null for both.
 
 use super::super::Migration;

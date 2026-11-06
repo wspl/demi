@@ -108,7 +108,7 @@ impl ProviderQuota {
     /// keeping its plan and label, and answers them.
     ///
     /// The answered windows are what the call's usage ledger row keeps
-    /// (`crates/backend-database/src/usage.rs`). `requested_at` is when the
+    /// (`crates/core-store/src/usage.rs`). `requested_at` is when the
     /// inference request whose response it reads started: a window whose value
     /// comes from a request that started later keeps it. A response the source
     /// cannot read changes nothing and answers none, and observing never fails

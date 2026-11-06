@@ -53,7 +53,7 @@ pub struct CommandRecord {
     whole: Option<Arc<WholeOutput>>,
     /// How many bytes of each stream that the model saw before the command
     /// was taken up again are still to arrive: the model's view passes over
-    /// them (`crates/backend-database/src/command_outputs.rs`).
+    /// them (`crates/core-store/src/command_outputs.rs`).
     seen_before: Seen,
 }
 

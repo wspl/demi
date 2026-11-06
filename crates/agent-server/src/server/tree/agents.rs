@@ -16,7 +16,7 @@
 //! ```
 //!
 //! Each agent's cache chart, which the product counts as its turn calls land
-//! (`crates/backend-database/src/usage.rs`), is kept here beside its cost but
+//! (`crates/core-store/src/usage.rs`), is kept here beside its cost but
 //! is no part of its entry: it goes whole, as `cache_chart`, to the
 //! connections that follow the agent's node as it changes, and the page
 //! reads it by a route when its card opens.

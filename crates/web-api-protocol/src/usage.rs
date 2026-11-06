@@ -1,4 +1,4 @@
-//! The usage ledger's totals (`crates/backend-database/src/usage.rs`): one
+//! The usage ledger's totals (`crates/core-store/src/usage.rs`): one
 //! group per provider entry and model, in the order each pair was first
 //! used, with the number of requests and the sum of each token count.
 

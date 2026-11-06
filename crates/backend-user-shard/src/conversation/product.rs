@@ -419,7 +419,7 @@ impl ContextSource for PluginContext {
 
 /// What the backend keeps of a conversation's agents that the tree shows:
 /// each agent's cost and, read apart, its cache chart, from the usage ledger
-/// (`crates/backend-database/src/usage.rs`), and each side question's card.
+/// (`crates/core-store/src/usage.rs`), and each side question's card.
 pub(crate) struct ShardAgents {
     /// Weak: the shard owns the agent server that holds the source.
     pub(crate) shard: Weak<Shard>,

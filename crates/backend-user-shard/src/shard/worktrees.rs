@@ -1,5 +1,5 @@
 //! What the user's runners report of their projects' linked worktrees
-//! (`crates/backend-database/src/selection.rs` § Worktrees).
+//! (`crates/core-store/src/selection.rs` § Worktrees).
 //!
 //! Each connected runner is told the directories of its Host's projects when
 //! it connects and whenever they change, and reports each one's worktrees

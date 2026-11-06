@@ -38,7 +38,7 @@ pub struct ConversationTuning {
     /// answers only the turns turns it off.
     pub titles: bool,
     /// The least time between two indexings of one conversation for search
-    /// (`crates/backend-database/src/search.rs`); a change within it is
+    /// (`crates/core-store/src/search.rs`); a change within it is
     /// indexed once it has passed.
     pub search_interval: Duration,
     /// The longest a `shell` call watches a command that still runs, in

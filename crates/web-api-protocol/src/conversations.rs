@@ -21,7 +21,7 @@ use crate::shares::ConversationShare;
 use crate::workflows::ConversationWorkflowList;
 use crate::text::Trimmed;
 
-/// Where a conversation's work runs (`crates/backend-database/src/selection.rs`): the user's Cloud, a directory on a paired device, or a
+/// Where a conversation's work runs (`crates/core-store/src/selection.rs`): the user's Cloud, a directory on a paired device, or a
 /// project. A new conversation runs on the Cloud, in its session
 /// directory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -203,7 +203,7 @@ pub struct ConversationSummary {
     pub target: ConversationTarget,
     /// The name git gave the linked worktree of its project it works in,
     /// which the sidebar's row and the header show; null outside one
-    /// (`crates/backend-database/src/selection.rs` § Worktrees).
+    /// (`crates/core-store/src/selection.rs` § Worktrees).
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub worktree: Option<String>,

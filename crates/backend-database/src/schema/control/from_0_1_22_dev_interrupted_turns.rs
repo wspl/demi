@@ -1,6 +1,6 @@
 //! From the control schema that keeps the turns a shutdown interrupted to the one
 //! in which a conversation keeps the hosts it may reach and a request may ask for
-//! one (`crates/backend-database/src/conversation_index.rs`), which replace the
+//! one (`crates/core-store/src/conversation_index.rs`), which replace the
 //! Manage Devices category.
 //!
 //! - Every attached host seeds its conversation's list: a host attached by name

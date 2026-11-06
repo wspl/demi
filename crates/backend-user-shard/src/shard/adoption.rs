@@ -312,7 +312,7 @@ impl Shard {
     /// Publishes a new connection of the device under the shard's policy, with
     /// what records its runner's hello: its system and release, and the advance
     /// of each execution context the report changes
-    /// (`crates/backend-database/src/selection.rs`).
+    /// (`crates/core-store/src/selection.rs`).
     ///
     /// The record answers what settles a paired device's first home, which its
     /// caller runs while the connection serves, since the runner resolves its
@@ -577,9 +577,9 @@ impl Shard {
     /// removes itself. The user's revocation and the runner's own request both
     /// come here.
     pub async fn revoke_device(self: &Rc<Self>, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
-        let removal = self
-            .store().delete_device(device.clone())
-            .await?;
+        let removal = self.store().delete_device(device.clone()).await?;
+        // Its token opens nothing from now on.
+        self.services().control.forget_device_owner(device.clone()).await?;
         self.mark(Part::Devices);
         if !removal.projects.is_empty() {
             self.mark(Part::Projects);

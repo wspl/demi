@@ -189,36 +189,6 @@ CREATE TABLE schedule_owners (
   schedule_id TEXT PRIMARY KEY,
   user_id     TEXT NOT NULL REFERENCES users (id)
 ) STRICT, WITHOUT ROWID;
-  -- null for any other call or when nothing was made.
-  media_seconds         REAL CHECK (media_seconds >= 0),
-  -- What the vendor said the call cost, in the currency it names, never
-  -- converted; null when it said nothing in a documented unit.
-  cost                  REAL CHECK (cost >= 0),
-  cost_currency         TEXT CHECK (cost_currency IN ('usd', 'cny')),
-  -- What each kind of the call's tokens would cost on the vendor's API, in
-  -- dollars, fixed as the row is written; all four null when the model has
-  -- no price for a kind the call used. Their reader refuses a row that
-  -- sets some of them only, since a migration adds no table CHECK.
-  api_price_input       REAL CHECK (api_price_input >= 0),
-  api_price_cache_write REAL CHECK (api_price_cache_write >= 0),
-  api_price_cache_read  REAL CHECK (api_price_cache_read >= 0),
-  api_price_output      REAL CHECK (api_price_output >= 0),
-  -- Hashes of the system prompt and of the tool definitions the request
-  -- sent; null for a request outside a session.
-  system_hash           TEXT,
-  tools_hash            TEXT,
-  -- A turn call's number among its agent's turn calls, from 1, whether its
-  -- agent answered a compaction since its previous one, and why it missed
-  -- the cache, judged as it is written by how much less of the cache it
-  -- read than its previous call; null for every other row.
-  call_number           INTEGER CHECK (call_number >= 1),
-  after_compaction      INTEGER CHECK (after_compaction IN (0, 1)),
-  miss                  TEXT CHECK (miss IN ('model_changed', 'tools_changed', 'system_prompt_changed', 'cache_expired', 'not_cached')),
-  -- The SHA-256 of the video a video call made, in hex; null for any other
-  -- call, and for a video call written before the ledger kept it.
-  media_digest          TEXT,
-  CHECK ((cost IS NULL) = (cost_currency IS NULL))
-) STRICT;
 
 -- The server's own settings, which its master and administrators change:
 -- one row, absent until one is changed. `upgrade_channel` names the releases

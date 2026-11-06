@@ -416,7 +416,7 @@ impl CoreStore {
                     }
                     let mut named = DirectoryNamed { conversations: inside, projects: true, saved };
                     // A directory that is a project's worktree is no project
-                    // of its own (`crates/backend-database/src/selection.rs` § Worktrees).
+                    // of its own (`crates/core-store/src/selection.rs` § Worktrees).
                     if let Some(device) = device_in(&transaction, &project.device)?
                         && let Some(super::Selection::Project { project_id, worktree: Some(worktree), .. }) =
                             super::selection::worktree_at(&transaction, &project.workspace, &device, &canonical)?
@@ -461,7 +461,7 @@ impl CoreStore {
     /// the sidebar keeps nothing. In each workspace, a worktree whose directory is a
     /// project of its own takes that project's conversations into the
     /// workspace's project of `directory`, with the worktree, and deletes it
-    /// (`crates/backend-database/src/selection.rs` § Worktrees).
+    /// (`crates/core-store/src/selection.rs` § Worktrees).
     pub async fn store_worktrees(
         &self,
         device: DeviceId,

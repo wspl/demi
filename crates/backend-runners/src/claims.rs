@@ -121,9 +121,15 @@ impl PendingClaims {
             .create_device(pending.runner.name.clone(), pending.runner.platform)
             .await?;
         let id = device.id.clone();
-        self.control
+        let routed = self
+            .control
             .record_device_owner(id.clone(), user.clone(), Some(TokenHash::of(token.expose())))
-            .await?;
+            .await;
+        if let Err(error) = routed {
+            // A device no runner can reach goes again.
+            store.delete_device(id).await?;
+            return Err(error.into());
+        }
         match pending.grant(user.clone(), device, token).await {
             Ok(device) => Ok(device),
             Err(_) => {

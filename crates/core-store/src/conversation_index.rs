@@ -44,7 +44,7 @@ pub struct ConversationRecord {
     /// The output revision the user last acknowledged; it only moves
     /// forward.
     pub read_revision: u64,
-    /// Where it runs (`crates/backend-database/src/selection.rs`).
+    /// Where it runs (`crates/core-store/src/selection.rs`).
     pub target: Selection,
     /// Advanced by every change of the conversation's execution context,
     /// such as a target switch or a Host attached.
@@ -1043,7 +1043,7 @@ impl CoreStore {
     /// started from, and `from`, what it resolved to.
     ///
     /// It selects `to`'s directory, which makes its project when the user has
-    /// none (`crates/backend-database/src/selection.rs`), all in one transaction,
+    /// none (`crates/core-store/src/selection.rs`), all in one transaction,
     /// so of two switches from one selection exactly one wins.
     ///
     /// The winner records the switch for every node's next context block and
@@ -1162,9 +1162,9 @@ pub(crate) fn archive_in(connection: &Connection, id: &ConversationId, now: Time
 }
 
 /// Restores the conversation `id`. One whose project was deleted while it
-/// was archived brings it back (`crates/backend-database/src/projects.rs`);
+/// was archived brings it back (`crates/core-store/src/projects.rs`);
 /// one whose project is gone moves back to its directory, into that
-/// directory's project, made again (`crates/backend-database/src/selection.rs`);
+/// directory's project, made again (`crates/core-store/src/selection.rs`);
 /// one whose device was revoked meanwhile keeps its directory there.
 ///
 /// Its schedules count from now in the same step, as a schedule turned on

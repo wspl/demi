@@ -182,7 +182,7 @@ pub async fn call(
                 .to_string_lossy()
                 .into_owned(),
         ),
-        // The directory's canonical name (`crates/backend-database/src/selection.rs`): links followed, no trailing separator, the
+        // The directory's canonical name (`crates/core-store/src/selection.rs`): links followed, no trailing separator, the
         // file system's spelling, and on Windows a drive path rather than
         // the verbatim `\\?\` form the system answers with.
         FsRealpath {

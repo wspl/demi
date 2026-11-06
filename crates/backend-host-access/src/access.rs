@@ -1134,7 +1134,7 @@ impl dyn HostShard + '_ {
 
     /// The Hosts the user's conversation `id` reaches, which the web app's host
     /// routes and `demi host shell --host` accept
-    /// (`crates/backend-database/src/conversation_index.rs`): its primary Host,
+    /// (`crates/core-store/src/conversation_index.rs`): its primary Host,
     /// then its attached ones.
     ///
     /// A command on the primary Host starts in the conversation's directory

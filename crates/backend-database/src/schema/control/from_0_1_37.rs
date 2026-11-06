@@ -9,7 +9,7 @@
 //! - A run records the repeat's task that started it: each run of a daily
 //!   schedule's, its one task.
 //! - Each conversation keeps its cost as its ledger rows are written, and each
-//!   turn call its number and its cache miss (`crates/backend-database/src/usage.rs`
+//!   turn call its number and its cache miss (`crates/core-store/src/usage.rs`
 //!   § A conversation's cost): the rows written before are numbered, judged and
 //!   added up in the order they were written, as writing them now would.
 //! - The backend keeps each Host directory's workflows as it reads them

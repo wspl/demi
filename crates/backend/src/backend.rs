@@ -605,7 +605,7 @@ impl Backend {
         )
         .await;
         // Each user's search index catches up with the conversations, in the
-        // background (`crates/backend-database/src/search.rs`). A failure
+        // background (`crates/core-store/src/search.rs`). A failure
         // does not stop the start: a conversation not indexed here is
         // indexed by its next change.
         start_step("search_index", index_at_start(&cores, &shards.shards())).await;

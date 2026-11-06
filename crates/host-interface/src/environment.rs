@@ -191,7 +191,7 @@ pub struct JobCaller {
     pub tool_use_id: String,
     /// The turn that call belongs to, which a command's call to a vendor
     /// is counted under, even after the turn ended
-    /// (`crates/backend-database/src/usage.rs`); none for a job recorded before
+    /// (`crates/core-store/src/usage.rs`); none for a job recorded before
     /// records kept it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn: Option<TurnId>,
@@ -208,7 +208,7 @@ pub struct Unreachable {
 /// A command an environment takes up again: the call `caller` names, titled
 /// `title`, started it with `script` as the job `job` on the environment's
 /// Host for its node, it has run for `running` since, and the node had seen
-/// `seen` of its output (`crates/backend-database/src/command_outputs.rs`).
+/// `seen` of its output (`crates/core-store/src/command_outputs.rs`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TakenUp {
     pub command: CommandId,

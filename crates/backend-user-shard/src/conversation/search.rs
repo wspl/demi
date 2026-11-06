@@ -1,4 +1,4 @@
-//! Finding a conversation (`crates/backend-database/src/search.rs`).
+//! Finding a conversation (`crates/core-store/src/search.rs`).
 //!
 //! The module holds the user's indexer, which keeps the user's search index in
 //! step with the conversations, and the search the edge answers from that index

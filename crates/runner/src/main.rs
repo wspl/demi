@@ -572,7 +572,7 @@ async fn runner(cli: Cli) -> io::Result<u8> {
     };
     let scratch_root = scratch.to_string_lossy().into_owned();
     // The home as its Host names it, so the backend tells a directory that
-    // is the home from another (`crates/backend-database/src/selection.rs`); one that cannot be resolved is reported as it is set.
+    // is the home from another (`crates/core-store/src/selection.rs`); one that cannot be resolved is reported as it is set.
     let canonical_home = dunce::canonicalize(&home).unwrap_or_else(|_| home.clone());
     let identity = identity(canonical_home.to_string_lossy().into_owned(), scratch_root)?;
     let login_shell = env.get("SHELL").filter(|path| !path.is_empty()).cloned();

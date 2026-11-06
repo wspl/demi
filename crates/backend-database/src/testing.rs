@@ -2,7 +2,7 @@
 //! `testing` feature: the control database's and a conversation's, whose
 //! schema is the core store's.
 
-use demi_core_store::schema::{CONVERSATION, CORE, NoBlobs};
+use demi_core_store::schema::{CONVERSATION, CORE, NoBlobs, Schema};
 use demi_web_api_protocol::ids::ProviderId;
 use rusqlite::Connection;
 
@@ -48,6 +48,28 @@ pub fn migrate(kind: DatabaseKind, connection: &mut Connection) -> Result<(), St
 /// open does, with `seals` sealing again what its steps re-encode.
 pub fn migrate_control(connection: &mut Connection, seals: &(dyn ControlSteps + 'static)) -> Result<(), StorageError> {
     CONTROL.apply(connection, std::path::Path::new("test"), seals)
+}
+
+/// Gives the control database of `connection` the schema `to`, one of the
+/// control history's, by the steps before it, with `seals` sealing again what
+/// they re-encode, or none: a test of a step reads what it left in a table
+/// a later step moves out of the control database.
+pub fn migrate_control_to(
+    connection: &mut Connection,
+    to: &'static str,
+    seals: Option<&(dyn ControlSteps + 'static)>,
+) -> Result<(), StorageError> {
+    let end = CONTROL
+        .history
+        .iter()
+        .position(|shipped| shipped.sql == to)
+        .expect("the schema is one of the control history's");
+    let schema = Schema {
+        sql: to,
+        initial: CONTROL.initial,
+        history: &CONTROL.history[..end],
+    };
+    schema.apply(connection, std::path::Path::new("test"), seals.unwrap_or(&NoSeals))
 }
 
 /// No vault: a step that re-encodes a sealed value fails.

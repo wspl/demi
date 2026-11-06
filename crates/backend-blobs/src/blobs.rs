@@ -5,7 +5,7 @@
 //! user's hash reaches nothing of theirs.
 //!
 //! A collection of the namespace lists it and deletes the blobs nothing names
-//! (`crates/backend-database/src/deletions.rs`). Every put of a blob the
+//! (`crates/core-store/src/deletions.rs`). Every put of a blob the
 //! namespace holds already is remembered for a day, since it writes nothing
 //! that would show its age.
 //!
@@ -66,7 +66,7 @@ pub struct StoredBlob {
 
 /// How long a blob stays whatever names it, in milliseconds: a day after its
 /// object was written or it was put again
-/// (`crates/backend-database/src/deletions.rs`). A blob is stored before the
+/// (`crates/core-store/src/deletions.rs`). A blob is stored before the
 /// row that names it, and the day covers the wait.
 pub const GRACE_MS: i64 = 24 * 60 * 60 * 1000;
 

@@ -1,6 +1,6 @@
 //! From 0.1.5922's control schema, which 0.1.5924 shipped too: a turn's
 //! ledger rows are found by its id, for what each turn of a page of a
-//! transcript cost (`crates/backend-database/src/usage.rs` § A cost report).
+//! transcript cost (`crates/core-store/src/usage.rs` § A cost report).
 
 use super::super::Migration;
 

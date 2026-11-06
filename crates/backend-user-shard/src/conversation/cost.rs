@@ -1,5 +1,5 @@
 //! A conversation's cost as its open pages follow it
-//! (`crates/backend-database/src/usage.rs`).
+//! (`crates/core-store/src/usage.rs`).
 //!
 //! 1. The control store keeps each agent's cost as it writes a ledger row, and
 //!    announces the row with what its agent costs now.

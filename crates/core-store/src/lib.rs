@@ -1,8 +1,13 @@
-//! The core's storage: what one core keeps in the data directory it is
-//! given (`docs/decisions` 0296's core).
+//! The core's storage: everything one core keeps, in the data directory it
+//! is given. A core serves one principal, so no record here names a user: a
+//! program that embeds a core owns its directory, and a server gives each of
+//! its users a directory of their own.
 //!
 //! The crate holds:
 //!
+//! - [`store::CoreStore`], the core's database: its workspaces, projects,
+//!   devices, conversations' records, providers, credentials, schedules,
+//!   preferences, usage ledger and plugins' values;
 //! - each conversation's database with the tree store over it, its records
 //!   of commands' outputs and of the conversation's attachments, and the
 //!   lists of its shares;
@@ -12,9 +17,13 @@
 //!
 //! ```text
 //! data directory
+//! +-- core.sqlite                  the core's records
 //! +-- conversations/<id>.sqlite    one agent tree per conversation
 //! +-- search.sqlite                the search index, derived
 //! ```
+//!
+//! Blobs, the bytes of attachments and outputs, are read through
+//! [`store::ConversationBlobs`], which whoever opens the core provides.
 //!
 //! # Schemas and migrations
 //!

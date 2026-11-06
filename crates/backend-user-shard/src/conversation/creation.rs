@@ -12,7 +12,7 @@
 //!
 //! Its directory is selected as a move's is, in the transaction that creates
 //! it, which makes the directory's project when there is none, by the
-//! directory's name on its Host (`crates/backend-database/src/selection.rs`).
+//! directory's name on its Host (`crates/core-store/src/selection.rs`).
 
 use demi_core_store::conversation_index::{ConversationStart, Creation};
 use demi_backend_host_access::transition::ChangeRefusal;

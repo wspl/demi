@@ -128,7 +128,7 @@ impl CallUsage {
     }
 
     /// The latest call as the usage ledger keeps it, ended as `outcome`
-    /// says (`crates/backend-database/src/usage.rs`).
+    /// says (`crates/core-store/src/usage.rs`).
     pub fn call(&self, outcome: CallOutcome) -> VendorCall {
         VendorCall {
             vendor_id: self.id.clone(),

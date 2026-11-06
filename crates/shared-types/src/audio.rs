@@ -2,7 +2,7 @@
 //! generated audio file's format and length.
 //!
 //! `demi audio` checks the file with it, and the usage ledger takes its seconds
-//! from it (`crates/backend-database/src/usage.rs`). The file is probed and
+//! from it (`crates/core-store/src/usage.rs`). The file is probed and
 //! read packet by packet, never decoded, behind the `audio` feature. The shape
 //! of raw PCM, which a vendor may send instead of a file, is read by every
 //! crate that hands audio on.

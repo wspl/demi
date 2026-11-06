@@ -1,6 +1,6 @@
 //! What a conversation's calls cost, as `demi conversation cost` and `demi
 //! conversation history cost` print it, from the usage ledger
-//! (`crates/backend-database/src/usage.rs` § A cost report).
+//! (`crates/core-store/src/usage.rs` § A cost report).
 //!
 //! Prices are the equivalent API price, the one the context card shows: what
 //! the calls' tokens would cost on the vendors' APIs, a subscription's calls

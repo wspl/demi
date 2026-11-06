@@ -69,7 +69,7 @@ pub struct ConversationWorkflowList {
     pub list: KeptWorkflowList,
     /// The workflows of the linked worktree the conversation works in, while
     /// they differ from the project's; null otherwise
-    /// (`crates/backend-database/src/selection.rs` § Worktrees).
+    /// (`crates/core-store/src/selection.rs` § Worktrees).
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<KeptWorkflowList>")]
     #[garde(skip)]

@@ -4,7 +4,7 @@
 //! First, [`CONTROL_FROM_0_1_22_DEV_20261016T043704Z`]:
 //!
 //! - The usage ledger keeps a row per vendor call
-//!   (`crates/backend-database/src/usage.rs`).
+//!   (`crates/core-store/src/usage.rs`).
 //! - A managed device says which managed machine it is.
 //! - A Claude Code account may hold no secret.
 //!
@@ -43,7 +43,7 @@ fn control_from_0_1_22_dev_20261016t043704z(transaction: &Transaction<'_>, seals
 /// The usage ledger's step of [`control_from_0_1_22_dev_20261016t043704z`], to the
 /// ledger that keeps a row per vendor call with its agent, turn, purpose,
 /// account, ids, outcome, observed quota and times
-/// (`crates/backend-database/src/usage.rs`).
+/// (`crates/core-store/src/usage.rs`).
 ///
 /// A row written before keeps null for what it lacked; its `created_at`, written
 /// as its response ended, is its `ended_at`. A call's counts are null when the

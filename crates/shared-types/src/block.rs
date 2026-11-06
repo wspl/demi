@@ -728,7 +728,7 @@ pub enum StoppedBy {
 }
 
 /// How a command ended, as the conversation's record of its output keeps
-/// it (`crates/backend-database/src/command_outputs.rs`).
+/// it (`crates/core-store/src/command_outputs.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
     tag = "kind",

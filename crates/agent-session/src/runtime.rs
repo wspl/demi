@@ -113,7 +113,7 @@ pub trait SessionRuntime {
 
     /// The node's number in the conversation's tree, 0 for the root, which its
     /// requests carry to the usage ledger
-    /// (`crates/backend-database/src/usage.rs`).
+    /// (`crates/core-store/src/usage.rs`).
     ///
     /// None for a side question, which is no agent and counts under its
     /// conversation alone.

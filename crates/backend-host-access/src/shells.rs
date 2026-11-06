@@ -411,7 +411,7 @@ impl ShowWait for Shown<'_> {
 /// - The copies of their edits (`crates/agent-store/src/media.rs`), read from
 ///   the job's Host inside its host access.
 /// - Their whole outputs, each with its record in the conversation's database
-///   (`crates/backend-database/src/command_outputs.rs`).
+///   (`crates/core-store/src/command_outputs.rs`).
 struct Keeper {
     /// The shard, through which a stored attachment reaches the pages.
     shard: Weak<dyn HostShard>,
@@ -433,7 +433,7 @@ impl Keeper {
     ///
     /// It records the job first, by its device, so a runner's hello finds its
     /// conversation, then the command in the conversation's database
-    /// (`crates/backend-database/src/command_outputs.rs`). A command recorded
+    /// (`crates/core-store/src/command_outputs.rs`). A command recorded
     /// as waiting is recorded again as sent once its job starts.
     async fn record(&self, command: &CommandId, job: &str, start: &KeptStart, unsent: Option<&UnsentStart>) {
         let indexed = self
@@ -577,7 +577,7 @@ async fn read_copies(
 impl CommandKeeper for Keeper {
     /// Records the job in the core database first, by its device, so a
     /// runner's hello finds its conversation, then the command in the
-    /// conversation's (`crates/backend-database/src/command_outputs.rs`).
+    /// conversation's (`crates/core-store/src/command_outputs.rs`).
     fn started<'a>(&'a self, command: &'a CommandId, job: &'a str, start: &'a KeptStart) -> LocalBoxFuture<'a, ()> {
         Box::pin(self.record(command, job, start, None))
     }

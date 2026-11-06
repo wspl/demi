@@ -222,7 +222,7 @@ pub fn references(block: &Block) -> impl Iterator<Item = &BlobRef> {
 /// of the files its shell command changed, which only the user sees.
 ///
 /// A collection of the owner's blobs keeps each one
-/// (`crates/backend-database/src/deletions.rs`).
+/// (`crates/core-store/src/deletions.rs`).
 pub fn block_blobs(block: &Block) -> impl Iterator<Item = &BlobRef> {
     let files = match block {
         Block::ToolCall(ToolCallBlock {

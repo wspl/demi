@@ -5,9 +5,13 @@
 
 use demi_backend_database::DatabaseKind;
 use demi_backend_database::schema::ControlSteps;
-use demi_backend_database::testing::{current, history, migrate, migrate_control, version_of};
+use demi_backend_database::testing::{current, history, migrate, migrate_control_to, version_of};
 use demi_web_api_protocol::ids::ProviderId;
 use rusqlite::Connection;
+
+/// The last control schema that held every user's records, which the tests
+/// of the steps before it read.
+const SHARED: &str = include_str!("../../src/schema/control/from_0_1_65_one_core_per_user.sql");
 
 #[test]
 fn every_step_of_the_control_history_leads_to_the_current_schema() {
@@ -36,7 +40,7 @@ fn the_grants_and_requests_of_the_other_conversations_go() {
                ('other', 'c1', 'permission', '[\"credentials.use\"]', 'demi credentials list', 'n', 1, NULL, NULL);",
         )
         .unwrap();
-    migrate(DatabaseKind::Control, &mut connection).unwrap();
+    migrate_control_to(&mut connection, SHARED, None).unwrap();
     let grants = query(&connection, "SELECT category FROM permission_grants", |row| row.get::<_, String>(0));
     let requests = query(&connection, "SELECT id FROM permission_requests", |row| row.get::<_, String>(0));
     assert_eq!((grants, requests), (vec!["credentials.use".to_owned()], vec!["other".to_owned()]));
@@ -58,7 +62,7 @@ fn an_archived_conversation_takes_its_last_activity_as_its_archive_time() {
                ('archived', 'u1', 'w1', 'Plan the launch', 'user', 1, 0, 2, 0, 'cloud', 1, 1, 20);",
         )
         .unwrap();
-    migrate(DatabaseKind::Control, &mut connection).unwrap();
+    migrate_control_to(&mut connection, SHARED, None).unwrap();
     let times = query(&connection, "SELECT id, archived_at FROM conversations ORDER BY id", |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
     });
@@ -82,7 +86,7 @@ fn a_panel_loses_its_widget_tabs_and_keeps_the_others() {
                  ('s1', 'u1', 'c1', 'answer', 'b1', 'Orders', 1);"#,
         )
         .unwrap();
-    migrate(DatabaseKind::Control, &mut connection).unwrap();
+    migrate_control_to(&mut connection, SHARED, None).unwrap();
     let panels = query(&connection, "SELECT conversation_id, revision, document FROM conversation_panels ORDER BY 1", |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?))
     });
@@ -118,7 +122,7 @@ fn a_widget_keeps_its_title_in_place_of_its_file_name() {
                  ('u1', 'web', 'w1', '{"name":"Kept.html"}', 1, '[]');"#,
         )
         .unwrap();
-    migrate(DatabaseKind::Control, &mut connection).unwrap();
+    migrate_control_to(&mut connection, SHARED, None).unwrap();
     let values = query(&connection, "SELECT plugin, key, document, revision FROM plugin_values ORDER BY 1, 2", |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, i64>(3)?))
     });
@@ -189,7 +193,7 @@ fn each_configuration_of_format_2_is_sealed_again_in_format_3() {
                ('subscription', 'alex', 'codex', 'subscription', 'Codex', NULL, 1);",
         )
         .unwrap();
-    migrate_control(&mut connection, &Formats).unwrap();
+    migrate_control_to(&mut connection, SHARED, Some(&Formats)).unwrap();
     let configs = query(&connection, "SELECT id, CAST(config AS TEXT) FROM providers ORDER BY id", |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
     });

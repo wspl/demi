@@ -1,4 +1,4 @@
-//! Deleting a conversation (`crates/backend-database/src/deletions.rs`).
+//! Deleting a conversation (`crates/core-store/src/deletions.rs`).
 //!
 //! Nothing refuses a deletion. Its work stops as Stop stops it, its subagents
 //! and commands included, and its streams and Host operations end as an archive
@@ -27,7 +27,7 @@ use demi_web_api_protocol::ids::{ConversationId, WorkspaceId};
 use crate::shard::{Shard, Shards};
 
 /// Finishes each deletion an earlier backend left pending
-/// (`crates/backend-database/src/deletions.rs`), in its owner's shard, and
+/// (`crates/core-store/src/deletions.rs`), in its owner's shard, and
 /// collects the owner's blobs after it. A deletion that fails again stays
 /// pending for the next start; only listing them fails the call.
 pub async fn finish_deletions(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
@@ -126,6 +126,7 @@ impl Shard {
         self.mark(Part::Conversation(id.clone()));
         // What the shard holds of its schedules stops.
         self.conversation_deleted_schedules(&schedules);
+        self.forget_schedule_owners(&schedules).await;
         self.agent().close_tree(&root).await;
         drop(stopped);
         self.titles().abort(&id);

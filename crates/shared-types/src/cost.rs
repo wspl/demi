@@ -1,4 +1,4 @@
-//! What a vendor says a call cost (`crates/backend-database/src/usage.rs`), in
+//! What a vendor says a call cost (`crates/core-store/src/usage.rs`), in
 //! the currency it names: a figure in another unit is converted to that
 //! currency where the vendor documents the unit, and never between
 //! currencies.

@@ -258,7 +258,7 @@ pub trait AgentTreeStore {
     fn next_number(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, StoreError>>;
 
     /// What the conversation holds of its command `command`, which ended
-    /// (`crates/backend-database/src/command_outputs.rs`): how it ended,
+    /// (`crates/core-store/src/command_outputs.rs`): how it ended,
     /// and its output; none for a command it does not have.
     fn command_output<'a>(
         &'a self,
@@ -273,7 +273,7 @@ pub trait AgentTreeStore {
     ) -> LocalBoxFuture<'a, Result<Option<CommandEnd>, StoreError>>;
 
     /// The commands `node` ran that the conversation records running
-    /// (`crates/backend-database/src/command_outputs.rs`).
+    /// (`crates/core-store/src/command_outputs.rs`).
     ///
     /// The node takes them up again when it is restored
     /// (`crates/runner-client/src/device_jobs.rs`).
@@ -289,7 +289,7 @@ pub trait AgentTreeStore {
 
     /// Records that `node` has looked to `seen` in the output of the
     /// conversation's command `command`, which runs
-    /// (`crates/backend-database/src/command_outputs.rs`).
+    /// (`crates/core-store/src/command_outputs.rs`).
     ///
     /// Nothing for a command that does not run.
     fn record_place<'a>(

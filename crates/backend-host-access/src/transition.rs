@@ -121,11 +121,11 @@ pub enum ChangeRefusal {
     DeviceNotFound,
     /// The destination is on a device whose runner never reported its
     /// home, so whether it is a project's directory is unknown
-    /// (`crates/backend-database/src/selection.rs`).
+    /// (`crates/core-store/src/selection.rs`).
     #[error("The device has not connected yet; connect it, then move the conversation there")]
     DeviceHomeUnknown,
     /// The destination's device is not connected, so its directory cannot
-    /// be resolved (`crates/backend-database/src/selection.rs`).
+    /// be resolved (`crates/core-store/src/selection.rs`).
     #[error("{0}")]
     DeviceOffline(String),
     /// The destination names no directory on its Host.
@@ -444,7 +444,7 @@ impl dyn HostShard + '_ {
     /// The devices of every Host the conversation reaches, primary and
     /// attached: where its release goes. A deletion reads them before its
     /// records go, and tells them after
-    /// (`crates/backend-database/src/deletions.rs`).
+    /// (`crates/core-store/src/deletions.rs`).
     pub async fn release_devices(
         &self,
         record: &ConversationRecord,

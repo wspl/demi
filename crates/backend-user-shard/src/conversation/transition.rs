@@ -184,7 +184,7 @@ impl Shard {
             }
             ConversationChange::Record(RecordChange::Archived(false)) => {
                 // A conversation whose project was deleted while it was
-                // archived brings it back (`crates/backend-database/src/projects.rs`).
+                // archived brings it back (`crates/core-store/src/projects.rs`).
                 let remakes = match &record.target {
                     Selection::Project { project_id, .. } => self
                         .store().project(project_id.clone())

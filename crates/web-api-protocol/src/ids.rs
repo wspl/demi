@@ -91,7 +91,7 @@ fn uuid(text: &str) -> Result<(), NotUuid> {
 demi_shared_types::id!(
     /// A conversation's id, which the web app chooses: a UUID, kept in the
     /// case it arrived in. No two conversations have ids that differ only in
-    /// case (`crates/backend-database/src/columns.rs`).
+    /// case (`crates/core-store/src/columns.rs`).
     ConversationId,
     check = uuid,
     error = NotUuid,

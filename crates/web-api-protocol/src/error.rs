@@ -360,7 +360,7 @@ pub enum ErrorCode {
     SavedDestinationInvalid,
     /// A move names a directory on a device whose runner never reported its
     /// home, so whether the directory is a project's is unknown
-    /// (`crates/backend-database/src/selection.rs`).
+    /// (`crates/core-store/src/selection.rs`).
     DeviceHomeUnknown,
     /// A sidebar move leaves its row's project or pin partition.
     InvalidOrder,

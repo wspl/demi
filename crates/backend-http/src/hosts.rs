@@ -1,5 +1,5 @@
 //! A conversation's attached hosts
-//! (`crates/backend-database/src/conversation_index.rs`).
+//! (`crates/core-store/src/conversation_index.rs`).
 //!
 //! The route is a detach; the conversation's metadata lists the hosts. A detach
 //! applies at once, whatever the conversation does, and reaches the

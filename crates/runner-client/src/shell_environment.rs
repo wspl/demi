@@ -108,7 +108,7 @@ pub trait CommandKeeper {
     /// Records that `command` runs as the job `job` on the environment's Host,
     /// before the job starts, so that a backend that starts again takes it up,
     /// its reports name it by its title, and an interrupted call's command
-    /// keeps whether it is a service (`crates/backend-database/src/command_outputs.rs`). A
+    /// keeps whether it is a service (`crates/core-store/src/command_outputs.rs`). A
     /// record of it as not yet sent becomes one of it as sent.
     ///
     /// A failure to record it is the keeper's to log: the command runs all the
@@ -153,7 +153,7 @@ pub trait CommandKeeper {
     /// Records that the model has seen `command`'s output as far as `seen`,
     /// in its record as running, so that a backend that starts again shows
     /// only what it has not seen
-    /// (`crates/backend-database/src/command_outputs.rs`). A failure to
+    /// (`crates/core-store/src/command_outputs.rs`). A failure to
     /// record it is the keeper's to log.
     fn looked<'a>(&'a self, command: &'a CommandId, seen: Seen) -> LocalBoxFuture<'a, ()>;
 

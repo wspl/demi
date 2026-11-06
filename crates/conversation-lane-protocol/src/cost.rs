@@ -1,7 +1,7 @@
 //! A conversation's cost as the context card shows it: each agent's kept
 //! totals with its metadata, the conversation's with its own, and each
 //! agent's cache chart, which comes with its node
-//! (`crates/backend-database/src/usage.rs`).
+//! (`crates/core-store/src/usage.rs`).
 
 use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use schemars::JsonSchema;
@@ -59,7 +59,7 @@ pub struct AgentCost {
 
 /// The cache hit rate of an agent's recent turn calls and the chart of it, as
 /// the backend counts them from its usage ledger
-/// (`crates/backend-database/src/usage.rs`) and a context card draws them.
+/// (`crates/core-store/src/usage.rs`) and a context card draws them.
 ///
 /// The window is the agent's latest calls, at most 400, which the points
 /// share out: each point stands for `size` consecutive calls counted from

@@ -421,7 +421,7 @@ pub struct InferenceRequest {
     /// and for a request that is no session's (`crates/provider-registry/src/rotation.rs`).
     pub account: Option<AgentAccount>,
     /// What the request is for, which its usage ledger rows say
-    /// (`crates/backend-database/src/usage.rs`).
+    /// (`crates/core-store/src/usage.rs`).
     pub purpose: RequestPurpose,
     /// The number of the session's agent in the conversation's tree, 0 for
     /// the root; none for a request that is no session's, such as a title
@@ -462,7 +462,7 @@ impl InferenceRequest {
     }
 }
 
-/// What a request is for (`crates/backend-database/src/usage.rs`).
+/// What a request is for (`crates/core-store/src/usage.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub enum RequestPurpose {
     /// A request of a session's turn: its first, a continuation or a retry.
@@ -751,7 +751,7 @@ pub enum ProviderEvent {
     /// It is for the usage ledger, which keeps a row per call; the agent reads
     /// nothing of it. A run's first call starts with the run, and a call no
     /// `Ended` reports is ended by the run's end
-    /// (`crates/backend-database/src/usage.rs`).
+    /// (`crates/core-store/src/usage.rs`).
     Call(CallEvent),
 }
 

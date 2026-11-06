@@ -551,7 +551,7 @@ impl LastCall {
 
     /// The latest call as the usage ledger keeps it, ended as `outcome`
     /// says: one row per call, never the `result` line's sum
-    /// (`crates/backend-database/src/usage.rs`).
+    /// (`crates/core-store/src/usage.rs`).
     pub(crate) fn ended(&self, outcome: CallOutcome) -> ProviderEvent {
         ProviderEvent::Call(CallEvent::Ended(self.0.call(outcome)))
     }

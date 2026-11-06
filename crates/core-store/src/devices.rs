@@ -87,7 +87,7 @@ pub struct DeviceRecord {
     pub machine: Option<ManagedMachine>,
     /// The home its runner last reported; none before its runner first
     /// reported one, or since the upgrade that began keeping it
-    /// (`crates/backend-database/src/selection.rs`).
+    /// (`crates/core-store/src/selection.rs`).
     pub home: Option<String>,
     /// Why it will not start its runner by itself after a restart, as its
     /// runner last reported (`crates/runner/src/autostart.rs`);
@@ -438,7 +438,7 @@ impl CoreStore {
     /// Records the operating system, the runner release, the instance and the home
     /// `device`'s runner reported in its hello, and advances the execution context
     /// of each conversation whose context the report changes
-    /// (`crates/backend-database/src/selection.rs`).
+    /// (`crates/core-store/src/selection.rs`).
     ///
     /// The execution context advances:
     ///

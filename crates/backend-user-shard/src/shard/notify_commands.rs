@@ -174,14 +174,28 @@ async fn status(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u
 }
 
 /// Shows the card that asks the user to turn notifications on in
-/// `conversation`, unless it shows it or the user dismissed it there.
+/// `conversation`, unless it shows it, the user dismissed it there, or a
+/// browser of the user takes the agent's notifications.
+///
+/// A browser that subscribes clears every card it finds; one that subscribes
+/// while the card goes up finds none, so whether a browser takes them is read
+/// again once it is up, and the card comes down then.
 async fn ask_to_turn_on(shard: &Shard, conversation: &ConversationId) -> Result<(), RpcError> {
-    if shard
-        .store().raise_notifications_card(conversation.clone())
-        .await
-        .map_err(failed)?
-    {
-        shard.mark(demi_backend_page_sync::Part::Metadata(conversation.clone()));
+    let control = &shard.services().control;
+    let reaches = || control.agent_reaches(shard.user().clone());
+    if reaches().await.map_err(failed)? {
+        return Ok(());
+    }
+    let store = shard.store();
+    if !store.raise_notifications_card(conversation.clone()).await.map_err(failed)? {
+        return Ok(());
+    }
+    let mut changed = vec![conversation.clone()];
+    if reaches().await.map_err(failed)? {
+        changed.extend(store.clear_notifications_cards().await.map_err(failed)?);
+    }
+    for conversation in changed {
+        shard.mark(demi_backend_page_sync::Part::Metadata(conversation));
     }
     Ok(())
 }

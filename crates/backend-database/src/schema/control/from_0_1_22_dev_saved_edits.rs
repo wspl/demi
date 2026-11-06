@@ -1,6 +1,6 @@
 //! From the control schema that kept the edits and sends of saved messages
 //! to the one where an attached host goes by its device's name
-//! (`crates/backend-database/src/conversation_index.rs`) and a switch is known by the
+//! (`crates/core-store/src/conversation_index.rs`) and a switch is known by the
 //! revision it made.
 //!
 //! The hosts' table loses the names conversations gave them, rebuilt since SQLite

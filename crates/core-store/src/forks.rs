@@ -148,7 +148,7 @@ impl CoreStore {
     /// - An attached host whose device is gone since is left out, as its
     ///   revocation left the source.
     /// - Its directory is selected as a move's is
-    ///   (`crates/backend-database/src/selection.rs`), and the project that
+    ///   (`crates/core-store/src/selection.rs`), and the project that
     ///   makes, if any, is answered with it.
     /// - A directory that selects nothing any more, its device revoked or its
     ///   project deleted since the Fork began, starts it on the Cloud in its own

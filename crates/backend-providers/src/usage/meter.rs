@@ -4,7 +4,7 @@
 //!
 //! - Every call the run makes to the vendor is a usage ledger row as it ends,
 //!   the run's last before the run's response reaches the agent
-//!   (`crates/backend-database/src/usage.rs`).
+//!   (`crates/core-store/src/usage.rs`).
 //!
 //! A ledger write that fails is logged and the request goes on: inference never
 //! fails because accounting did. Each run logs under a span that names its
@@ -38,7 +38,7 @@ pub struct Ledger {
     pub account: Option<CredentialId>,
     /// Looks up the catalog's prices of a model as each of its rows is
     /// written, so a price the catalog learns or corrects applies from the
-    /// next call (`crates/backend-database/src/usage.rs`).
+    /// next call (`crates/core-store/src/usage.rs`).
     pub prices: ModelPrices,
     /// Tells the entry that the vendor no longer serves a model to it.
     pub retire: RetireModel,
@@ -54,7 +54,7 @@ pub type ModelPrices = Rc<dyn Fn(String) -> LocalBoxFuture<'static, Option<Model
 pub type RetireModel = Rc<dyn Fn(String, Option<String>) -> LocalBoxFuture<'static, ()>>;
 
 /// The hashes of the system prompt and of the tool definitions `request`
-/// sends; none for a request outside a session (`crates/backend-database/src/usage.rs`).
+/// sends; none for a request outside a session (`crates/core-store/src/usage.rs`).
 fn prompt_hashes(request: &InferenceRequest) -> (Option<String>, Option<String>) {
     if request.agent.is_none() {
         return (None, None);

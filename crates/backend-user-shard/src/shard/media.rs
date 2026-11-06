@@ -1633,7 +1633,7 @@ impl Making<'_> {
             media_digest: None,
             cost: None,
             // A medium's tokens have no catalog price: the vendor's own
-            // cost prices the call (`crates/backend-database/src/usage.rs`),
+            // cost prices the call (`crates/core-store/src/usage.rs`),
             // and it asked for no prompt of a session.
             price: None,
             system_hash: None,
@@ -1818,7 +1818,7 @@ impl OpenRow {
         let lost = (row.conversation.clone(), row.provider.clone(), row.model.clone());
         if let Err(error) = self.shard.store().append_usage(row).await {
             // The row is lost; what the call made still comes back
-            // (`crates/backend-database/src/usage.rs`).
+            // (`crates/core-store/src/usage.rs`).
             tracing::warn!(
                 event = "usage_ledger.write_failed",
                 conversation = %lost.0,

@@ -257,7 +257,7 @@ pub fn family_name(family: &str) -> &str {
 
 /// The models.dev vendor whose API sells the models subscription family
 /// `family` runs, whose prices are its calls'
-/// (`crates/backend-database/src/usage.rs`).
+/// (`crates/core-store/src/usage.rs`).
 ///
 /// The result is none for a family of API keys, whose catalog has its own
 /// prices.

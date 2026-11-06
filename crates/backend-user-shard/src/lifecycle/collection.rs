@@ -1,5 +1,5 @@
 //! The collection of a user's blob namespace
-//! (`crates/backend-database/src/deletions.rs`).
+//! (`crates/core-store/src/deletions.rs`).
 //!
 //! After a deletion, in the background, a blob is removed, and so is each upload
 //! record of it, when:

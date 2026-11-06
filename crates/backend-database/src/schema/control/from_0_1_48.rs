@@ -2,7 +2,7 @@
 //! next one.
 //!
 //! - A conversation's ledger rows are found by their end, for the cost of its
-//!   last hour and day (`crates/backend-database/src/usage.rs` § The last hour
+//!   last hour and day (`crates/core-store/src/usage.rs` § The last hour
 //!   and the last day); the index by conversation alone, which that one serves
 //!   too, goes. The ledger's later indexes are made again after it, so the
 //!   database lists its indexes in the order a new one does.

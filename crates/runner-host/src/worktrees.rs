@@ -1,7 +1,7 @@
 //! The linked worktrees of the repositories of the Host's projects, which the
 //! backend keeps with each project so that a move to a worktree selects its
 //! project without asking the Host
-//! (`crates/backend-database/src/selection.rs` § Worktrees).
+//! (`crates/core-store/src/selection.rs` § Worktrees).
 //!
 //! The backend names the projects' directories (`projects`); the runner reports
 //! each one's worktrees whole (`worktrees`) when it is named, and again when

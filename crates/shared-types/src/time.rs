@@ -1,5 +1,5 @@
 //! Times in JSON: an RFC 3339 string in UTC with millisecond precision
-//! (`crates/backend-database/src/columns.rs`), and the clock wall time is
+//! (`crates/core-store/src/columns.rs`), and the clock wall time is
 //! read from.
 
 use std::{borrow::Cow, fmt, str::FromStr};

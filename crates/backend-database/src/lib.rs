@@ -1,23 +1,26 @@
-//! The SQLite databases.
+//! The server's databases: what a Demi server keeps above its users' cores.
 //!
 //! The crate holds:
 //!
-//! - the control service and every control record;
-//! - the conversation index;
-//! - each conversation's database with the tree store over it, its records of
-//!   commands' outputs and of the conversation's attachments;
-//! - each user's search index;
-//! - the schemas with their migrations;
-//! - the record types it stores, which the domains above use.
+//! - the control service and its records: accounts, browser sessions,
+//!   passkeys, push subscriptions, the server's settings, shares, managed
+//!   operations, provider share keys, and the rows that route a request to
+//!   the user whose core holds what it names before anyone signed in, a
+//!   runner's device and a schedule's URL (`owners.rs`);
+//! - [`core_stores::CoreStores`], which opens each user's core store in the
+//!   user's directory;
+//! - the control schema with its migrations;
+//! - the log of the backend, the runners and the pages, with its database,
+//!   its writer thread and the `tracing` layer that feeds it (`server_log`).
 //!
-//! The object store is `backend-blobs`'.
+//! What a core keeps, and the rules every schema migrates by, are
+//! `core-store`'s. The object store is `backend-blobs`'.
 //!
 //! ```text
 //! data directory (DEMI_BACKEND_DATA)
-//! +-- control.sqlite               deployment-wide product records
-//! +-- conversations/<id>.sqlite    one agent tree per conversation
-//! +-- search/<userId>.sqlite       a user's search index, derived
-//! +-- log.sqlite                   the log of backend, runners and pages (`server_log`)
+//! +-- control.sqlite               the server's own records
+//! +-- users/<userId>/              the user's core (`core-store`)
+//! +-- log.sqlite                   the log of backend, runners and pages
 //! +-- blobs/<userId>/<sha256>      user-owned bytes        (`backend-blobs`)
 //! +-- native/, .attributes/        published packages, object attributes
 //! +-- instance-secret              seals credentials, unless configured
@@ -30,74 +33,28 @@
 //! # What lives elsewhere
 //!
 //! - A Cloud's disks belong to the machine manager, which keeps its own state
-//!   directory. The backend stores the Cloud's device record and its reset
-//!   intent only.
+//!   directory. The user's core stores the Cloud's device record and its
+//!   reset intent only.
 //! - A project's files belong to its Host, reached through the conversation's
-//!   host access, never kept in a conversation database.
-//! - Credentials are control records, never files.
+//!   host access, never kept in a database.
 //!
 //! # Boundaries
 //!
-//! A product module calls the control service's operations and issues no control
-//! SQL of its own.
+//! A product module calls the control service's operations and issues no
+//! control SQL of its own. No record here holds what a core holds: a row that
+//! names a user's device, schedule or conversation only routes to the core.
 //!
-//! Nothing here is a transaction across the control database, a conversation
-//! database and the files. An operation that spans them, such as a Fork or a
-//! Cloud reset, records its intent and checks its completion instead.
+//! Nothing here is a transaction across the control database and a core. A
+//! routing row is written before the record it routes to and removed after
+//! it, so a failure between them leaves at worst a row that routes to a core
+//! that finds nothing, never a record no request reaches.
 //!
-//! The log of the backend, the runners and the pages, with its database, its
-//! writer thread and the `tracing` layer that feeds it, lives here too. The crate holds no domain's policy: the
-//! domains above it decide and it stores.
+//! # Migrations
 //!
-//! # Schemas and migrations
-//!
-//! Each kind of database has a schema, one SQL text, and the history of the
-//! schemas that published releases shipped before it, each with the migration
-//! that leads from it to the next.
-//!
-//! A schema's version is a digest of its text, the first 31 bits of its SHA-256,
-//! which the database records in SQLite's `user_version`. Any edit of the text, a
-//! comment included, is another version, so the text of a schema that a release
-//! shipped is never touched.
-//!
-//! For example, 0.2.0 adds a column to the devices table:
-//!
-//! 1. The control schema's text changes, so its version does too.
-//! 2. The history gains the schema 0.1.0 shipped with a migration that adds the
-//!    column.
-//! 3. A 0.2.0 backend that opens 0.1.0's control database finds that version in
-//!    the history and applies the migration.
-//!
-//! The rules:
-//!
-//! - Every change to a schema adds the schema `main` holds to the history, with
-//!   its migration: any commit of `main` may be published as a Canary, so any
-//!   schema `main` held may be on a server. A database that records a version
-//!   outside the history, such as one a local development build made, is
-//!   refused, never changed.
-//! - Every published release's schema is in the history, so migrations are
-//!   written and tested on real upgrades long before a user depends on them.
-//!   The crate's test takes every step of each history to the current schema
-//!   and compares the result with a new database (`schema/mod.rs`).
-//! - A migration is SQL, or Rust where SQL cannot express the change, such as
-//!   re-encoding a stored value. It stands alone: it uses none of the types
-//!   and functions the rest of Demi serves with, which change after it
-//!   (`schema/mod.rs`).
-//! - A value stored as JSON is part of its schema: the schema's text names the
-//!   format of each such column in a comment (`-- nodes.state: checkpoint state
-//!   format 8`). A release that changes what the value holds raises that number,
-//!   so the text and the version change and the migration re-encodes the stored
-//!   values. Decoding stays strict: a value of an earlier format is never read as
-//!   the current one.
-//! - A transcript row is a record that names its contents (`records.rs`,
-//!   `contents.rs`) and carries its block format, so a change of the block
-//!   format rewrites no row: a release reads each format it knows. A migration
-//!   adds or drops the columns queries read, and never decodes every row.
-//! - The control database is migrated as the backend starts, before it serves; a
-//!   conversation's database when the conversation is next opened, so a start
-//!   does not wait for every conversation a server ever had. `demi-server`
-//!   copies the databases that will migrate before the new release first opens
-//!   them.
+//! The control database migrates as the backend starts, before it serves;
+//! each user's core store then, and a conversation's database when the
+//! conversation is next opened. `demi-server` copies the databases that will
+//! migrate before the new release first opens them.
 
 pub mod accounts;
 pub mod control;

@@ -453,6 +453,11 @@ impl Shard {
             None
         };
         schedule.updated_at = now;
+        // The edge finds the user whose core holds the schedule a URL names
+        // before anyone signed in.
+        if url {
+            self.services().control.record_schedule_owner(schedule.id.clone(), self.user().clone()).await?;
+        }
         store.put_schedule(schedule.clone(), secret).await?;
         if drops {
             store.drop_pending_calls(schedule.id.clone()).await?;
@@ -503,6 +508,7 @@ impl Shard {
         if !self.store().delete_schedule(schedule.id.clone()).await? {
             return Err(ScheduleError::NotFound);
         }
+        self.forget_schedule_owners(std::slice::from_ref(&schedule.id)).await;
         self.schedules_changed(conversation);
         Ok(())
     }
@@ -527,6 +533,16 @@ impl Shard {
             Err(error) => {
                 tracing::warn!(event = "schedules.forget_failed", %conversation, %error, "the schedules of a deleted conversation were not read");
                 Vec::new()
+            }
+        }
+    }
+
+    /// Forgets which core holds the deleted schedules `ids`. A row left by a
+    /// failure routes a call of the URL to a core that refuses it.
+    pub(crate) async fn forget_schedule_owners(&self, ids: &[ScheduleId]) {
+        for id in ids {
+            if let Err(error) = self.services().control.forget_schedule_owner(id.clone()).await {
+                tracing::warn!(event = "schedules.owner_kept", schedule = %id, error = &error as &dyn std::error::Error, "a deleted schedule's owner was not forgotten");
             }
         }
     }
