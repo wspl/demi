@@ -42,7 +42,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use demi_backend_database::accounts::TokenHash;
+use demi_core_store::tokens::TokenHash;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use tokio::sync::Notify;
 

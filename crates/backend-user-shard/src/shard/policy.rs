@@ -48,7 +48,7 @@ use demi_backend_database::server_log::ServerLog;
 use demi_runner_client::{CommandCatalog, DirectAdmission, ForwardEvent, HostLog, JobOrigin, LinkPolicy, PackageEvent};
 use demi_runner_protocol::wire::{HostLogLine, LinkedWorktree};
 use demi_backend_runners::host_key::conversation_of;
-use demi_backend_permissions::Need;
+use demi_core_permissions::Need;
 use demi_command_protocol::ResidentSequence;
 use demi_host_interface::{BroughtHost, RpcError, RpcInvocation, RpcPort};
 use demi_shared_gates::{GateLease, Purpose};
@@ -211,7 +211,7 @@ impl LinkPolicy for ShardPolicy {
                     (None, None) => None,
                 };
                 if let Some(need) = need {
-                    demi_backend_permissions::check(shard.permission_shard(), &invocation, need, &port).await?;
+                    demi_core_permissions::check(shard.permission_shard(), &invocation, need, &port).await?;
                 }
                 let mut invocation = invocation;
                 invocation.brought = brought;

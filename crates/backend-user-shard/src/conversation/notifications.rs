@@ -407,7 +407,7 @@ impl Shard {
             );
             // Each session says whether its browser has notifications on.
             if removed {
-                this.mark(demi_backend_page_sync::Part::Sessions);
+                this.mark(demi_core_sync::Part::Sessions);
             }
         });
     }

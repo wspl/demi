@@ -25,7 +25,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 
-use demi_backend_blobs::blobs::UserBlobs;
+use demi_core_blobs::blobs::UserBlobs;
 use demi_runner_client::{DirectoryFile, HostSubscriber, Link, Look, LookAt, RemoteHost, WeakLink};
 use bytes::{Bytes, BytesMut};
 use futures_util::StreamExt;

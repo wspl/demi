@@ -6,7 +6,7 @@
 //!    what it shows by its routes, and its first message, `open`, names each
 //!    value it follows with the version it holds.
 //! 2. Follows a value: the product state from a version, whose log of
-//!    changes (`backend-page-sync`) says which parts changed since, or a
+//!    changes (`core-sync`) says which parts changed since, or a
 //!    settings list from the entity tag the page holds, which the channel
 //!    compares with the list as it reads it. A version the log no longer
 //!    reaches is answered `stale`.
@@ -31,7 +31,7 @@ use std::convert::Infallible;
 use std::rc::Rc;
 
 use axum::extract::ws::close_code;
-use demi_backend_page_sync::{Part, Registration, StateVersion};
+use demi_core_sync::{Part, Registration, StateVersion};
 use demi_conversation_lane_protocol::{Held, Version};
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::ids::ConversationId;

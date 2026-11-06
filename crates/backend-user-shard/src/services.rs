@@ -12,7 +12,7 @@ use demi_backend_accounts::login_limiter::LoginLimiter;
 use demi_backend_accounts::passwords::{HashError, PasswordHasher};
 use demi_backend_accounts::push::{PublicPushTransport, PushKey, PushTransport, Pusher};
 use demi_backend_accounts::sessions::WebSessions;
-use demi_backend_blobs::blobs::BlobStores;
+use demi_core_blobs::blobs::BlobStores;
 use demi_backend_cloud::CloudServices;
 use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
@@ -23,7 +23,7 @@ use demi_backend_database::server_log::ServerLog;
 use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::UserId;
 use demi_backend_host_access::stream::UserStreams;
-use demi_backend_page_sync::SyncRegistry;
+use demi_core_sync::SyncRegistry;
 use demi_plugin_host::{Registry, RegistryError};
 use demi_provider_registry::registry::ProviderRegistry;
 use demi_provider_registry::catalog_cache::ModelCatalogCache;
@@ -241,7 +241,7 @@ impl BlobsOfUser for UsersBlobs {
 }
 
 struct OneUsersBlobs {
-    blobs: demi_backend_blobs::blobs::UserBlobs,
+    blobs: demi_core_blobs::blobs::UserBlobs,
     runtime: tokio::runtime::Handle,
 }
 
@@ -394,7 +394,7 @@ impl Services {
         let announced = sync.clone();
         edge.spawn(async move {
             while catalogs.changed().await.is_ok() {
-                announced.mark_everyone(&demi_backend_page_sync::Part::Providers);
+                announced.mark_everyone(&demi_core_sync::Part::Providers);
             }
         });
         let claude_releases =
@@ -418,7 +418,7 @@ impl Services {
         let announced = sync.clone();
         tokio::spawn(async move {
             while models.changed().await.is_ok() {
-                announced.mark_everyone(&demi_backend_page_sync::Part::Models);
+                announced.mark_everyone(&demi_core_sync::Part::Models);
             }
         });
         let operations = Arc::new(ProviderOperations::default());
@@ -490,14 +490,14 @@ impl Services {
     /// enforces it. The master's choice changes them, and so does what the
     /// machine manager enforces with each isolation.
     pub fn isolation_changed(&self) {
-        self.sync.mark_everyone(&demi_backend_page_sync::Part::CloudIsolation);
-        self.sync.mark_everyone(&demi_backend_page_sync::Part::Users);
+        self.sync.mark_everyone(&demi_core_sync::Part::CloudIsolation);
+        self.sync.mark_everyone(&demi_core_sync::Part::Users);
     }
 
     /// Tells Settings › Cloud that a runtime's download moved on, which
     /// changes nothing Settings › Users shows.
     pub fn download_changed(&self) {
-        self.sync.mark_everyone(&demi_backend_page_sync::Part::CloudIsolation);
+        self.sync.mark_everyone(&demi_core_sync::Part::CloudIsolation);
     }
 
     /// Cancels the logins, drains the catalog refreshes and quota

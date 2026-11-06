@@ -6,7 +6,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::http::StatusCode;
 use demi_core_store::sidebar::Reorder;
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::sidebar::SidebarReorder;
 

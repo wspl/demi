@@ -1,5 +1,5 @@
 [package]
-name = "demi-backend-page-sync"
+name = "demi-core-idle-watch"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,7 +12,8 @@ doctest = false
 bench = false
 
 [dependencies]
-demi-plugin-host = { path = "../plugin-host" }
-demi-backend-database = { path = "../backend-database" }
-demi-web-api-protocol = { path = "../web-api-protocol" }
+demi-shared-gates = { path = "../shared-gates" }
+futures-util.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true

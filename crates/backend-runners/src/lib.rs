@@ -24,7 +24,7 @@
 //!
 //! The file gate is a `shared-gates` gate and native publication uploads to the
 //! object store, which is why the crate depends on `shared-gates` and
-//! `backend-blobs`. The crate reaches a conversation's Host only through host
+//! `core-blobs`. The crate reaches a conversation's Host only through host
 //! access and knows no conversations or Cloud.
 
 pub mod claims;

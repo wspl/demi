@@ -18,7 +18,7 @@
 //! piped there, since a key typed into a conversation would sit in its
 //! transcript and reach the model's vendor.
 
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_backend_providers::vault::accounts as vault_accounts;
 use demi_backend_providers::vault::entries::Vault;
 use std::rc::Rc;

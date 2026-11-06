@@ -11,7 +11,7 @@ use demi_backend_accounts::email_change::{StartOutcome, StartRefusal};
 use demi_backend_accounts::passkeys::relying_party_id;
 use demi_backend_database::accounts::ChallengeOutcome;
 use demi_backend_database::accounts::TokenHash;
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_web_api_protocol::auth::{
     Credentials, EmailChangeConfirm, EmailChangeStart, EmailChangeStarted, Identity, NicknamePatch,
     PasswordChange, SetupRequest, SetupStatus,

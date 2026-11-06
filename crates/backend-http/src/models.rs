@@ -7,7 +7,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_backend_user_shard::provider_settings::CatalogError;
 use demi_web_api_protocol::providers::ModelSearchResults;
 use demi_web_api_protocol::query::ModelSearch;

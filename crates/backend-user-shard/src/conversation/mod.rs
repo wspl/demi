@@ -62,7 +62,7 @@ use demi_core_store::search::TranscriptChange;
 use demi_core_store::tree::SqliteTreeStore;
 use demi_backend_host_access::shells::ShardShellEnvironments;
 use demi_backend_host_access::{HostShard, conversation_of};
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_shared_types::NodeId;
 use demi_web_api_protocol::ids::UserId;
 

@@ -20,7 +20,7 @@ use demi_web_api_protocol::devices::DeviceKind;
 use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_backend_host_access::stream::{ResidentBinding, ResidentCall, UserCallError, UserCallKind};
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_backend_host_access::host_commands::reachable;
 use demi_plugin_host::{Lost, MediaCall, ProductPort, ReadOn, VideoJob};
 use demi_backend_providers::vault::seal::Row;

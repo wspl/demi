@@ -23,7 +23,7 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_backend_idle_watch::{Activity, IdlePolicy, Retirement};
+use demi_core_idle_watch::{Activity, IdlePolicy, Retirement};
 use demi_machine_manager_protocol::{CheckpointParams, DeviceId};
 use demi_shared_gates::{GateLease, Purpose};
 use tokio::time::Instant;
@@ -47,7 +47,7 @@ impl dyn CloudShard {
             shard: Rc::downgrade(&self.this()),
             machine: machine.clone(),
         };
-        let watch = demi_backend_idle_watch::watch(idle, window, sweep, self.tasks().clone())
+        let watch = demi_core_idle_watch::watch(idle, window, sweep, self.tasks().clone())
             .instrument(tracing::info_span!("idle_watch", host_id = %machine.device.id));
         let maintenance = maintain(Rc::downgrade(&self.this()), machine.clone());
         vec![

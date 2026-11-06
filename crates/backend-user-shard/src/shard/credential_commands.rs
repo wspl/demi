@@ -48,7 +48,7 @@ use std::rc::{Rc, Weak};
 
 use demi_core_store::credentials::StoredCredential;
 use demi_core_store::permissions::CredentialAsk;
-use demi_backend_permissions::{Answer, ask_credential, read_credential, save_credential};
+use demi_core_permissions::{Answer, ask_credential, read_credential, save_credential};
 use demi_host_interface::{
     Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc,
 };

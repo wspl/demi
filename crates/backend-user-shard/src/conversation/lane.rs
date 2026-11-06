@@ -73,8 +73,8 @@ use demi_agent_server::{ContentError, ContentResolver, FileReference, Outgoing, 
 use demi_agent_store::media::HeldMedia;
 use demi_core_store::StorageError;
 use demi_core_store::conversation_index::ConversationRecord;
-use demi_backend_page_sync::Part;
-use demi_backend_permissions::Stops;
+use demi_core_sync::Part;
+use demi_core_permissions::Stops;
 use demi_core_store::conversation_attachments::uploaded_after;
 use demi_conversation_lane_protocol::{
     SteerOutcome, Follow, Followed,
@@ -787,7 +787,7 @@ impl Shard {
         let Some(tree) = self.agent().tree(&root) else {
             return Vec::new();
         };
-        let held = |stops| demi_backend_permissions::held_requests(self.permission_shard(), conversation, &stops);
+        let held = |stops| demi_core_permissions::held_requests(self.permission_shard(), conversation, &stops);
         // The agents below `top`, itself included, which a stop closes with it.
         let below = |top: &NodeId| {
             let parents: Vec<_> = tree.nodes().iter().map(|node| (node.id().clone(), node.record().parent)).collect();
@@ -832,7 +832,7 @@ impl Shard {
         if requests.is_empty() {
             return;
         }
-        if let Err(error) = demi_backend_permissions::deny(self.permission_shard(), conversation, requests).await {
+        if let Err(error) = demi_core_permissions::deny(self.permission_shard(), conversation, requests).await {
             tracing::warn!(event = "permission_requests.deny_failed", %conversation, %error, "the requests that hold an agent's calls were not denied");
         }
     }

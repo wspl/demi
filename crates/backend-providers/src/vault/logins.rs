@@ -30,7 +30,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use demi_backend_page_sync::{Part, SyncRegistry};
+use demi_core_sync::{Part, SyncRegistry};
 use demi_provider_common::Secret;
 use demi_provider_common::credentials::{LoginError, LoginIo, LoginKind, MemoryCredentialPool};
 use demi_shared_types::{Clock, DownloadProgress, LoginPending, LoginStage, RequestId, Timestamp};

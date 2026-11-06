@@ -69,7 +69,7 @@ use tracing_subscriber::filter::Targets;
 use url::Url;
 
 use demi_backend_accounts::email_change::AccountMail;
-use demi_backend_blobs::store::{S3Config, Storage};
+use demi_core_blobs::store::{S3Config, Storage};
 use demi_backend_cloud::tuning::CloudTuning;
 use demi_backend_user_shard::conversation::claude_cli::MachineSlot;
 use demi_provider_claude_code::releases::DEFAULT_RELEASES_URL;
@@ -305,7 +305,7 @@ fn parse_size(text: &str) -> Result<u64, String> {
         .ok_or_else(|| format!("{text:?} is not a size: bytes, or a number with MiB or GiB"))
 }
 
-/// Where the one object store lives (`crates/backend-blobs/src/store.rs`).
+/// Where the one object store lives (`crates/core-blobs/src/store.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum StorageKind {
     Local,
@@ -333,7 +333,7 @@ pub enum ConfigError {
     #[error("{0} names an S3 bucket, and DEMI_STORAGE is local")]
     S3Unused(&'static str),
     #[error("{0}")]
-    S3(#[from] demi_backend_blobs::store::S3ConfigError),
+    S3(#[from] demi_core_blobs::store::S3ConfigError),
     /// The reason never quotes the file, which holds tokens.
     #[error("--dev-codex-account {}: {reason}", path.display())]
     DevCodexAccount { path: PathBuf, reason: String },

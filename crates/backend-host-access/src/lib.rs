@@ -97,7 +97,7 @@ pub mod uploads;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_backend_blobs::blobs::UserBlobs;
+use demi_core_blobs::blobs::UserBlobs;
 use demi_backend_cloud::CloudShard;
 use demi_core_store::store::CoreStore;
 use demi_core_store::conversations::ConversationDb;

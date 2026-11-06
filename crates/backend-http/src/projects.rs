@@ -12,7 +12,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_core_store::saved::ScopeSwitch;
 use demi_core_store::projects::{ProjectChange, ProjectCreation, new_project_id};
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ProjectId;
 use demi_web_api_protocol::projects::{

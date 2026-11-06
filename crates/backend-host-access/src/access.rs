@@ -66,7 +66,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::rc::Rc;
 
-use demi_backend_blobs::ObjectError;
+use demi_core_blobs::ObjectError;
 use demi_backend_cloud::machine::{CloudAdmission, CloudError};
 use demi_core_store::StorageError;
 use demi_core_store::conversation_index::{ConversationRecord, ExecutionTarget};

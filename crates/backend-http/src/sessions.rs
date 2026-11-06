@@ -14,7 +14,7 @@ use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
 use demi_backend_accounts::passkeys;
 use demi_backend_accounts::sessions::{DeviceSession, SignOut, Spend};
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_backend_user_shard::services::Services;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::UserId;

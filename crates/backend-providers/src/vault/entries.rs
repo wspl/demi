@@ -45,7 +45,7 @@ use demi_core_store::providers::{
     CredentialRow, CredentialWrite, EntrySwitches, NewProvider, ProviderRow,
 };
 use demi_backend_database::schema::ControlSteps;
-use demi_backend_page_sync::{Part, SyncRegistry};
+use demi_core_sync::{Part, SyncRegistry};
 use demi_provider_common::credentials::{
     AccountMeta, CredentialPool, MemoryCredentialPool, NewAccount, RefreshGates,
     credential_id_for, decode_secret,

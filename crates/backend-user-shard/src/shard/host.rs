@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_agent_store::Placement;
-use demi_backend_blobs::blobs::UserBlobs;
+use demi_core_blobs::blobs::UserBlobs;
 use demi_backend_cloud::CloudShard;
 use demi_core_store::store::CoreStore;
 use demi_core_store::conversation_index::ConversationChange;
@@ -16,7 +16,7 @@ use demi_core_store::conversations::ConversationDb;
 use demi_core_store::projects::DirectoryNamed;
 use demi_backend_host_access::{conversation_of, root_of};
 use demi_backend_host_access::transition::{ChangeRefusal, Switched};
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_backend_host_access::HostShard;
 use demi_backend_host_access::access::Conversations;
 use demi_backend_host_access::plugin_files::{DirectorySets, PluginInstalls};

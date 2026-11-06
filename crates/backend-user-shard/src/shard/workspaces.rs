@@ -4,7 +4,7 @@
 
 use demi_core_store::StorageError;
 use demi_core_store::workspaces::{MoveRefusal, WorkspaceDeletion};
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_web_api_protocol::ids::{ConversationId, ProjectId, WorkspaceId};
 
 use super::Shard;

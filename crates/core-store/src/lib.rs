@@ -128,6 +128,7 @@ pub mod sqlite;
 pub mod store;
 pub mod subagents;
 pub mod suggested_replies;
+pub mod tokens;
 pub mod tree;
 pub mod usage;
 pub mod workspaces;

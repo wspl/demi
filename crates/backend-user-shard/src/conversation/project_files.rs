@@ -22,7 +22,7 @@ use demi_core_store::conversation_index::ExecutionTarget;
 use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::conversation_of;
 use demi_backend_host_access::kept::{Found, Kept, SearchError, Shown, Subscribe};
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_plugin_interface::{PluginId, WatchSubject};
 use demi_runner_protocol::files::Subject;
 use demi_shared_types::NodeId;

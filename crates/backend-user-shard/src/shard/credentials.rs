@@ -16,7 +16,7 @@ use demi_core_store::credentials::{
     CredentialChange, CredentialRefusal, CredentialSeal, NewCredential as NewRecord, Saved,
     keep_until,
 };
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_backend_providers::vault::seal::{Row, VaultKey};
 use demi_web_api_protocol::credentials::{
     CredentialDto, CredentialField, CredentialPatch, NewCredential,
@@ -136,7 +136,7 @@ impl Shard {
     /// requests again, whose renewal follows it.
     fn saved(&self, saved: Saved) -> CredentialDto {
         for conversation in &saved.conversations {
-            demi_backend_permissions::changed(self.permission_shard(), conversation);
+            demi_core_permissions::changed(self.permission_shard(), conversation);
         }
         self.mark_credentials();
         saved.credential
@@ -150,7 +150,7 @@ impl Shard {
             .await?
             .ok_or(CredentialRefusal::NotFound)?;
         for conversation in &removed {
-            demi_backend_permissions::changed(self.permission_shard(), conversation);
+            demi_core_permissions::changed(self.permission_shard(), conversation);
         }
         self.mark_credentials();
         Ok(())
@@ -171,7 +171,7 @@ impl Shard {
                     if expired.removed {
                         self.services().sync.mark(self.user(), Part::Credentials);
                         for conversation in &expired.conversations {
-                            demi_backend_permissions::changed(self.permission_shard(), conversation);
+                            demi_core_permissions::changed(self.permission_shard(), conversation);
                         }
                     }
                     expired.next

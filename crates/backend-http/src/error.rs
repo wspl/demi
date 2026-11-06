@@ -16,7 +16,7 @@ use crate::request_id;
 use demi_backend_accounts::email_change::EmailChangeError;
 use demi_backend_accounts::passkeys::PasskeyError;
 use demi_backend_accounts::passwords::HashError;
-use demi_backend_blobs::ObjectError;
+use demi_core_blobs::ObjectError;
 use demi_backend_cloud::machine::CloudError;
 use demi_core_store::StorageError;
 use demi_provider_registry::registry::RegistryError;

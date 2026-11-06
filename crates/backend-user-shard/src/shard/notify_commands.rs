@@ -105,7 +105,7 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
     if let Some((mark, _)) = shard.schedule_input(&conversation)
         && shard.store().notify_run(mark.run_id).await.map_err(failed)?
     {
-        shard.mark(demi_backend_page_sync::Part::Metadata(conversation.clone()));
+        shard.mark(demi_core_sync::Part::Metadata(conversation.clone()));
     }
     // Counted now, so the agent is told at once; delivery goes on in the
     // background, and a browser its push service no longer knows is
@@ -195,7 +195,7 @@ async fn ask_to_turn_on(shard: &Shard, conversation: &ConversationId) -> Result<
         changed.extend(store.clear_notifications_cards().await.map_err(failed)?);
     }
     for conversation in changed {
-        shard.mark(demi_backend_page_sync::Part::Metadata(conversation));
+        shard.mark(demi_core_sync::Part::Metadata(conversation));
     }
     Ok(())
 }

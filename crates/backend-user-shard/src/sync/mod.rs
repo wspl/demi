@@ -1,7 +1,7 @@
 //! The pages' synchronization channels: the product state and its parts as a
 //! channel reads them, and the channel's task in the user's shard.
 //!
-//! Every change marks the parts it changed in the registry of `backend-page-sync`,
+//! Every change marks the parts it changed in the registry of `core-sync`,
 //! after it commits.
 //!
 //! # Apart from the conversation lanes
@@ -24,7 +24,7 @@
 mod channel;
 mod state;
 
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 
 pub use self::state::{StateError, etag_of, etag_of_json};
 use crate::shard::Shard;

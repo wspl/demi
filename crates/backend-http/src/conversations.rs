@@ -18,7 +18,7 @@ use axum::response::{IntoResponse, Response};
 use demi_core_store::conversation_index::{ConversationRecord, Creation};
 use demi_core_store::{conversation_attachments::{self, AttachmentNumber}};
 use demi_core_store::tree;
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_runner_client::OpenedRead;
 use demi_host_interface::ByteRange;
 use demi_web_api_protocol::workflows::ConversationWorkflowList;

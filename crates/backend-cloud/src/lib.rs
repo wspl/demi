@@ -116,8 +116,8 @@ use std::time::Duration;
 
 use demi_backend_database::control::ControlService;
 use demi_core_store::store::CoreStore;
-use demi_backend_idle_watch::Activity;
-use demi_backend_page_sync::UserMarks;
+use demi_core_idle_watch::Activity;
+use demi_core_sync::UserMarks;
 use demi_provider_registry::registry::ProviderRegistry;
 use demi_backend_providers::vault::entries::Vault;
 use demi_backend_runners::devices::Devices;

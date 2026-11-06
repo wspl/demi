@@ -10,7 +10,7 @@ use demi_backend_accounts::settings;
 use demi_backend_cloud::client::MachinesError;
 use demi_backend_cloud::isolation;
 use demi_backend_cloud::network::{self, AllowedError};
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::settings::{

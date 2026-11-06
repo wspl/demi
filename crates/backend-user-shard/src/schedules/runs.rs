@@ -20,7 +20,7 @@ use demi_agent_server::AgentServer;
 use demi_agent_store::StoreError;
 use demi_core_store::schedules::{RunCause, StoredRun, StoredSchedule};
 use demi_backend_host_access::root_of;
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_shared_types::{
     Block, QueuedMessage, ScheduleId, ScheduleMark, ScheduleRunId, SessionPhase, Timestamp, TurnId, UserContentBlock,
 };

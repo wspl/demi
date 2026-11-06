@@ -17,7 +17,7 @@
 use demi_agent_store::attachments::{Upload, unavailable, upload_blocks};
 use demi_agent_store::media::HeldMedia;
 use demi_agent_store::pixels::pixel_size;
-use demi_backend_blobs::blobs::OPENING_BYTES;
+use demi_core_blobs::blobs::OPENING_BYTES;
 use demi_shared_types::{B64Bytes, UserContentBlock};
 use demi_web_api_protocol::ids::{AttachmentId, ConversationId};
 

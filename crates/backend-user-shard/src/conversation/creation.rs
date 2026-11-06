@@ -16,7 +16,7 @@
 
 use demi_core_store::conversation_index::{ConversationStart, Creation};
 use demi_backend_host_access::transition::ChangeRefusal;
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_web_api_protocol::conversations::{
     ConversationTarget, CreateConversation, FirstMessageAnswer, ModelSettings,
 };

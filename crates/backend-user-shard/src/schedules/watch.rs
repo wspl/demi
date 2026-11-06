@@ -17,7 +17,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use demi_core_store::schedules::{RunCause, StoredSchedule, WatchOutput};
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_runner_client::{ContextSource, EnvironmentOptions, RemoteHost, RemoteShellEnvironment};
 use demi_command_protocol::{CommandCaller, CommandContext, Viewable};
 use demi_host_interface::{

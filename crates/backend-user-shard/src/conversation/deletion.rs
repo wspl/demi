@@ -21,7 +21,7 @@ use demi_web_api_protocol::ids::UserId;
 use demi_core_store::StorageError;
 use demi_backend_host_access::access::Leaving;
 use demi_backend_host_access::root_of;
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_web_api_protocol::ids::{ConversationId, WorkspaceId};
 
 use crate::shard::{Shard, Shards};

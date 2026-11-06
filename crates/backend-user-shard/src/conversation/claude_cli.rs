@@ -49,7 +49,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use demi_backend_cloud::access::MachineAccess;
 use demi_backend_database::control::ControlService;
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_plugin_host::Lost;
 use demi_provider_claude_code::releases::ReleaseError;
 use demi_provider_common::ProviderRuntime;

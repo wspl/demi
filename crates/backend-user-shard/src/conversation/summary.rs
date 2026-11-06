@@ -136,7 +136,7 @@ impl Shard {
             .panel_states(record.id.clone(), CancellationToken::new())
             .await
             .map_err(StorageError::from)?;
-        let permissions = demi_backend_permissions::read(self.permission_shard(), &record.id).await?;
+        let permissions = demi_core_permissions::read(self.permission_shard(), &record.id).await?;
         let other_cost = self.store().conversation_costs(record.id.clone())
             .await?
             .into_iter()

@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 
 use demi_core_store::Worktree;
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_runner_protocol::wire::LinkedWorktree;
 use demi_web_api_protocol::ids::DeviceId;
 use futures_util::FutureExt as _;

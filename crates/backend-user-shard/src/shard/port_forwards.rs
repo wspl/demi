@@ -66,7 +66,7 @@ use std::time::Duration;
 use demi_core_store::StorageError;
 use demi_core_store::devices::DeviceRecord;
 use demi_core_store::port_forwards::{PortForwardChange, PortForwardRecord, PortForwardRefusal};
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_runner_client::{DirectAnswer, ForwardEvent, Link, PeerEvent};
 use demi_runner_protocol::direct::{CONNECT_TIMEOUT, DialRefusal, Introduced, OfferRefusal};
 use demi_runner_protocol::forward::{DEADLINE, Forward, ForwardRunState};

@@ -14,14 +14,14 @@
 //!   its writer thread and the `tracing` layer that feeds it (`server_log`).
 //!
 //! What a core keeps, and the rules every schema migrates by, are
-//! `core-store`'s. The object store is `backend-blobs`'.
+//! `core-store`'s. The object store is `core-blobs`'.
 //!
 //! ```text
 //! data directory (DEMI_BACKEND_DATA)
 //! +-- control.sqlite               the server's own records
 //! +-- users/<userId>/              the user's core (`core-store`)
 //! +-- log.sqlite                   the log of backend, runners and pages
-//! +-- blobs/<userId>/<sha256>      user-owned bytes        (`backend-blobs`)
+//! +-- blobs/<userId>/<sha256>      user-owned bytes        (`core-blobs`)
 //! +-- native/, .attributes/        published packages, object attributes
 //! +-- instance-secret              seals credentials, unless configured
 //! +-- snapshots/<version>/         the databases as an upgrade found them

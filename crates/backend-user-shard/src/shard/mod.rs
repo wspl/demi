@@ -159,12 +159,12 @@ pub struct Shard {
     plugin_installs: PluginInstalls,
     /// How many times each conversation's permission requests changed
     /// since the shard started.
-    permission_revisions: demi_backend_page_sync::Revisions,
+    permission_revisions: demi_core_sync::Revisions,
     /// The project files its conversations use, kept current by the
     /// runner's file watch.
     project_files: ProjectFiles,
     /// The calls that wait for the answers to their requests.
-    waits: demi_backend_permissions::Waits,
+    waits: demi_core_permissions::Waits,
     /// What rearms the expiry of the user's credentials.
     credential_expiry: credentials::CredentialExpiry,
     /// What the user's runners announced of their forwards, and the peers
@@ -270,9 +270,9 @@ impl Shard {
             claude_cli: ClaudeCli::default(),
             plugins,
             plugin_installs: PluginInstalls::default(),
-            permission_revisions: demi_backend_page_sync::Revisions::default(),
+            permission_revisions: demi_core_sync::Revisions::default(),
             project_files,
-            waits: demi_backend_permissions::Waits::default(),
+            waits: demi_core_permissions::Waits::default(),
             credential_expiry: credentials::CredentialExpiry::default(),
             forwards: port_forwards::ForwardsHeld::default(),
             worktrees: worktrees::WorktreesHeld::default(),

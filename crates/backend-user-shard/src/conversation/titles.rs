@@ -22,7 +22,7 @@ use demi_agent_server::title::{title_from_message, title_from_response, title_re
 use demi_core_store::StorageError;
 use demi_core_store::store::CoreStore;
 use demi_core_store::conversation_index::ConversationRecord;
-use demi_backend_page_sync::{Part, UserMarks};
+use demi_core_sync::{Part, UserMarks};
 use demi_conversation_lane_protocol::ClientContent;
 use demi_shared_types::{ModelSelection, NodeId};
 use demi_web_api_protocol::ids::ConversationId;

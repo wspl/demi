@@ -1,5 +1,5 @@
 [package]
-name = "demi-backend-blobs"
+name = "demi-core-blobs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

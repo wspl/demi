@@ -88,7 +88,8 @@ Whoever starts a core names its data directory, and the core owns it:
                                entries and accounts, schedules, usage
   conversations/<id>.sqlite    one agent tree each, as today
   search.sqlite                derived, rebuilt when missing
-  blobs/                       attachments and media
+  blobs/                       attachments and media, unless the starter
+                               gives an object store
 ```
 
 - A program reads and changes what is there through the core: a
@@ -104,7 +105,9 @@ The server keeps `users/<user>/` as each user's data directory.
 `control.sqlite` keeps only what is above the core. The upgrade that brings
 this moves each user's records out of `control.sqlite` into their
 `core.sqlite`, and `conversations/` and `search/` into their directory, with
-the upgrade page's progress.
+the upgrade page's progress. The blobs stay in the server's object store,
+which keeps each user's apart already and which S3 cannot move cheaply: the
+server gives each core its user's part of the store.
 
 ### What the starter gives a core
 

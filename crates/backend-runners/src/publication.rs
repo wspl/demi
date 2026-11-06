@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path as FilePath, PathBuf};
 
 use bytes::Bytes;
-use demi_backend_blobs::store::Objects;
+use demi_core_blobs::store::Objects;
 use demi_command_protocol::{PackageArtifact, PackageDescriptor};
 use demi_runner_protocol::release::{RunnerRelease, compressed_file};
 use object_store::path::Path;
@@ -33,7 +33,7 @@ use crate::retention::keep_releases;
 use crate::sourcing::{ReleaseArtifact, Sourcing};
 
 /// The key prefix of every command package object in the store
-/// (`crates/backend-blobs/src/store.rs`).
+/// (`crates/core-blobs/src/store.rs`).
 pub const PREFIX: &str = "native";
 
 /// The metadata keys of the SHA-256 and the size of what an object stands

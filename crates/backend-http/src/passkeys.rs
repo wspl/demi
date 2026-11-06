@@ -13,7 +13,7 @@ use axum_extra::extract::CookieJar;
 use demi_backend_accounts::passkeys::{
     self, IssueRefusal, Refusal, RelyingParty, passkey_list,
 };
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_backend_user_shard::services::Services;
 use demi_web_api_protocol::auth::{Identity, UserDto};
 use demi_web_api_protocol::error::ErrorCode;

@@ -20,7 +20,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_accounts::passwords::generate_first_password;
 use demi_backend_database::accounts::Account;
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::UserId;

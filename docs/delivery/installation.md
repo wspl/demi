@@ -136,7 +136,7 @@ The following table lists the parameters:
 | --- | --- |
 | `--domain <name>` | Required. The domain the product is reached at. The public URL is `https://<name>`. `setup` refuses an IP address (`crates/backend/src/config/mod.rs`). |
 | `--listen <address:port>` | Required: where the backend listens, which the proxy in front of it reaches ([HTTPS](#https)). |
-| `--storage local\|s3` | Where the object store lives (`crates/backend-blobs/src/store.rs`). Default `local`. |
+| `--storage local\|s3` | Where the object store lives (`crates/core-blobs/src/store.rs`). Default `local`. |
 | `--s3-bucket`, `--s3-region`, `--s3-endpoint`, `--s3-force-path-style` | The bucket, with `s3`. The credentials come from `setup`'s own `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, never from the command line, which other users of the machine can read. |
 | `--cloud-data <directory>` | The machine manager's state directory, on one filesystem. Default `/opt/demi/data/cloud`. |
 | `--cloud-limits on\|off` | Whether gVisor Clouds run under cgroup limits. Default `on`. On a machine without the cgroup controllers, `on` leaves gVisor unavailable, so Clouds run on Simple Isolation, and `off` runs gVisor without limits. |

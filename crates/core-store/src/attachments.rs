@@ -1,4 +1,4 @@
-//! Attachment records (`crates/backend-blobs/src/blobs.rs`).
+//! Attachment records (`crates/core-blobs/src/blobs.rs`).
 //!
 //! A record holds an upload's owner, media type, size, content hash and a text
 //! file's snippet. The bytes are in the owner's blobs.

@@ -8,14 +8,14 @@
 //! - After a conversation's deletion, its owner's blobs that nothing names any
 //!   more go too ([`collection`]).
 //!
-//! The first two run over the idle watch of `backend-idle-watch`.
+//! The first two run over the idle watch of `core-idle-watch`.
 //!
 //! ```text
 //!   gates: the agent tree's admission, the conversation's file gate,
 //!          its stream gate, the Cloud's gate
 //!        | read as Activity
 //!        v
-//!   backend-idle-watch: one watch per resource, one window
+//!   core-idle-watch: one watch per resource, one window
 //!        | reserve, read again, retire
 //!        +--> conversation watch (`conversations`) --> release on each Host
 //!        +--> Cloud watch (backend-cloud)          --> stop the machine

@@ -11,13 +11,13 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use bytes::Bytes;
-use demi_backend_blobs::ObjectError;
+use demi_core_blobs::ObjectError;
 use demi_core_store::StorageError;
 use demi_core_store::{conversation_attachments::{AttachmentNumber, AttachmentRow}};
 use demi_backend_database::shares::{Added, ShareRecord};
 use demi_core_store::shares::{self, ShareCounts};
 use demi_core_store::{tree::{self, BlockRead, PageQuery, PageRead, Transcript}};
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_shared_types::{BlobRef, BlockId};
 use demi_web_api_protocol::ids::{ConversationId, ShareToken};
 use demi_web_api_protocol::shares::{ShareTarget, ShareTranscriptQuery};

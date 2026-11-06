@@ -6,7 +6,7 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_core_store::permissions::AnswerProblem;
-use demi_backend_permissions::{PermissionError, decide as decide_request};
+use demi_core_permissions::{PermissionError, decide as decide_request};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::permissions::{
     DecidePermission, PermissionRequestId,

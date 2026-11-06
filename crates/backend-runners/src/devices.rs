@@ -40,7 +40,7 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::core_stores::CoreStores;
 use demi_core_store::store::CoreStore;
 use demi_core_store::devices::{DeviceRecord, FirstHome};
-use demi_backend_page_sync::{Part, UserMarks};
+use demi_core_sync::{Part, UserMarks};
 use demi_runner_client::{
     Admission, DeviceJobs, DeviceLink, DeviceSession, Link, LinkDriver, LinkEnd, RemoteHost, close_frame,
     socket_frame,

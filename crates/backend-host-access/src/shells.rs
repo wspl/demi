@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_agent_tools::{EnvironmentScope, ShellEnvironmentFactory};
-use demi_backend_blobs::blobs::UserBlobs;
+use demi_core_blobs::blobs::UserBlobs;
 use demi_core_store::{command_outputs::{CommandOutput, OutputRow}};
 use demi_core_store::store::CoreStore;
 use demi_core_store::conversations::ConversationDb;

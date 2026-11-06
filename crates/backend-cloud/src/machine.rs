@@ -37,7 +37,7 @@ use demi_core_store::StorageError;
 use demi_backend_database::accounts::TokenHash;
 use demi_core_store::devices::{DeviceRecord, ManagedMachine};
 use demi_backend_database::managed::ManagedOperation;
-use demi_backend_page_sync::{Part, UserMarks};
+use demi_core_sync::{Part, UserMarks};
 use demi_runner_client::Admission;
 use demi_backend_runners::codes::new_device_token;
 use demi_host_interface::{HostError, HostErrorKind};

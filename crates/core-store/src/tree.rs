@@ -7,7 +7,7 @@
 //!
 //! Blocks hold their media by reference, and a checkpoint that holds media
 //! bytes is refused; each node's session reaches the conversation owner's
-//! blob namespace through its store (`crates/backend-blobs/src/blobs.rs`).
+//! blob namespace through its store (`crates/core-blobs/src/blobs.rs`).
 //!
 //! The same readings serve what the web app reads without a live session: a
 //! conversation's summary facts and its history, on a read-only connection,

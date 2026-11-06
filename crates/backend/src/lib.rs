@@ -71,13 +71,13 @@
 //!   |-- backend-providers (the credential vault)
 //!   `-- backend-http (the HTTP edge)
 //!         `-- backend-user-shard (the user's shard, conversations)
-//!               |-- backend-permissions (conversation permissions)
+//!               |-- core-permissions (conversation permissions)
 //!               |-- backend-host-access --> backend-cloud, backend-runners
 //!               |-- backend-cloud -------> backend-runners, backend-providers,
-//!               |                          backend-idle-watch
+//!               |                          core-idle-watch
 //!               |-- backend-accounts
-//!               `-- (as each needs) -----> backend-database, backend-blobs,
-//!                                          backend-page-sync
+//!               `-- (as each needs) -----> backend-database, core-blobs,
+//!                                          core-sync
 //! ```
 //!
 //! A test imports each part it replaces from the library that owns it

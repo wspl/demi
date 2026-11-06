@@ -85,7 +85,7 @@ use demi_core_store::permissions::{
     AnswerProblem, Answered, Asked, AskingAgent, Checked, CredentialAsk, CredentialRead,
     Needed, PermissionRefusal, SavedByAgent, StoredAsk, StoredRequest, Undecided,
 };
-use demi_backend_page_sync::{Part, Revisions, UserMarks};
+use demi_core_sync::{Part, Revisions, UserMarks};
 use demi_command_declarations::Category;
 use demi_host_interface::{PortError, RpcError, RpcInvocation, RpcPort};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, PermissionOutcome};

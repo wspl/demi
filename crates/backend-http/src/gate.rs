@@ -43,7 +43,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
 use demi_backend_database::accounts::TokenHash;
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::error::ErrorCode;

@@ -25,7 +25,7 @@ use demi_core_store::StorageError;
 use demi_core_store::store::CoreStore;
 use demi_core_store::suggested_replies::AnsweredReplies;
 use demi_backend_host_access::root_of;
-use demi_backend_page_sync::{Part, UserMarks};
+use demi_core_sync::{Part, UserMarks};
 use demi_shared_types::{BlockId, ModelSelection, Timestamp};
 use demi_web_api_protocol::ids::ConversationId;
 use sha2::{Digest as _, Sha256};

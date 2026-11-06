@@ -47,7 +47,7 @@ use demi_core_store::conversation_index::ConversationRecord;
 use demi_core_store::{search::{HistoryQuery, IndexedConversation, SearchKind, TranscriptChange, match_line, title_ranges}};
 use demi_core_store::tree;
 use demi_web_api_protocol::ids::WorkspaceId;
-use demi_backend_page_sync::{Part, Registration};
+use demi_core_sync::{Part, Registration};
 use demi_shared_gates::KeyedSerialGate;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::search::{

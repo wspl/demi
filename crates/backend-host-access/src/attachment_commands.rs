@@ -51,7 +51,7 @@ use std::rc::{Rc, Weak};
 
 use bytes::Bytes;
 use demi_agent_store::{attachments::upload_media_type, pixels::pixel_size};
-use demi_backend_blobs::blobs::{FetchError, OPENING_BYTES};
+use demi_core_blobs::blobs::{FetchError, OPENING_BYTES};
 use demi_core_store::{conversation_attachments::{ self, AttachmentNumber, AttachmentRow, AttachmentSource, StoredAttachment, }};
 use demi_core_store::conversations::ConversationDb;
 use demi_core_store::{StorageError, sequences};

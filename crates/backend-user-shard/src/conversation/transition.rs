@@ -34,7 +34,7 @@ use demi_core_store::conversation_index::{
 use demi_backend_host_access::access::Leaving;
 use demi_backend_host_access::root_of;
 use demi_backend_host_access::transition::{ChangeRefusal, Switched};
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_shared_gates::{Purpose, Reservation};
 use demi_web_api_protocol::conversations::{
     ConversationPatch, ConversationTarget, ConversationUpdate, FieldResult, PatchField,
@@ -376,8 +376,8 @@ impl Shard {
         self.titles().abort(id);
         self.suggested_replies().stop(id);
         self.stop_idle(id);
-        demi_backend_permissions::changed(self.permission_shard(), id);
-        demi_backend_permissions::withdrawn(self.permission_shard(), id);
+        demi_core_permissions::changed(self.permission_shard(), id);
+        demi_core_permissions::withdrawn(self.permission_shard(), id);
         // Its schedules wake nothing now; what they had under way drops.
         let shard = self.this();
         let id = id.clone();

@@ -13,7 +13,7 @@ use std::rc::Rc;
 use axum::extract::ws::Message;
 use demi_core_store::StorageError;
 use demi_core_store::devices::{DeviceChange, DeviceRecord, DeviceRemoval, FirstHome};
-use demi_backend_page_sync::Part;
+use demi_core_sync::Part;
 use demi_plugin_host::Lost;
 use demi_runner_client::{Beginning, Hello, Link, LinkOptions, RemoteHost, host_identity};
 use demi_host_interface::{HostErrorKind, HostFs as _};
