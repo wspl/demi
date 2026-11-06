@@ -155,6 +155,12 @@ export interface ChatSessionState
     | 'failures'
   > {
   archived: boolean
+  /**
+   * Demi resumes by itself the root's turn a restart of the backend
+   * interrupted: while the root is idle, the transcript says Resuming and
+   * the dock offers no Resume. Absent where nothing resumes, as on a share.
+   */
+  resuming?: boolean
   scroll: PersistedScrollState | null
   subagents: SubagentRecord[]
   terminals: TerminalRecord[]

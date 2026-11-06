@@ -89,7 +89,8 @@
       "nowFor": "正在思考 {span}",
       "doneFor": "已思考 {span}",
       "requesting": "正在请求",
-      "requestingFor": "正在请求 {span}"
+      "requestingFor": "正在请求 {span}",
+      "resuming": "正在恢复"
     },
     "compaction": {
       "running": "正在压缩上下文…",

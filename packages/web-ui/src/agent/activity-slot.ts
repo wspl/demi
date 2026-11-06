@@ -1,14 +1,19 @@
 import type { SessionLoad } from './session-status'
 
 /**
- * Why the transcript's tail row is waiting: `requesting` is the wait for the
- * provider's answer. It runs from the send of a message that starts a turn,
- * its delivery included. A recovery the server has not acknowledged yet and
- * the agent's own retries are the same wait and keep the same word. A lost or
- * not yet made lane is no wait of the transcript's: the spinner over the
- * transcript's end tells it, beside the dock (`SessionDock.vue`).
+ * Why the transcript's tail row is waiting:
+ *
+ * - `requesting` is the wait for the provider's answer. It runs from the send
+ *   of a message that starts a turn, its delivery included. A recovery the
+ *   server has not acknowledged yet and the agent's own retries are the same
+ *   wait and keep the same word.
+ * - `resuming` is the wait for Demi to take up by itself a turn a restart of
+ *   the backend interrupted, before the turn asks the provider anything.
+ *
+ * A lost or not yet made lane is no wait of the transcript's: the spinner
+ * over the transcript's end tells it, beside the dock (`SessionDock.vue`).
  */
-export type ActivityKind = 'requesting'
+export type ActivityKind = 'requesting' | 'resuming'
 
 /**
  * An action the client sent whose acknowledgement (the next `phase` event)
@@ -32,6 +37,11 @@ export interface ActivitySlotInput {
   startingTurn: boolean
   /** The server says the agent waits for the model's answer. */
   waiting: boolean
+  /**
+   * Demi resumes by itself the turn a restart of the backend interrupted,
+   * and the agent is idle still.
+   */
+  resuming: boolean
 }
 
 /**
@@ -54,5 +64,8 @@ export function activitySlotKind(input: ActivitySlotInput): ActivityKind | null 
   if (input.load === 'failed') {
     return null
   }
-  return input.actionSent || input.startingTurn || input.waiting ? 'requesting' : null
+  if (input.actionSent || input.startingTurn || input.waiting) {
+    return 'requesting'
+  }
+  return input.resuming ? 'resuming' : null
 }

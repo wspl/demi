@@ -107,6 +107,11 @@ const props = withDefaults(defineProps<{
    */
   pendingAction?: PendingAction
   /**
+   * Demi resumes by itself the turn a restart of the backend interrupted:
+   * while the agent is idle, the tail row says Resuming.
+   */
+  resuming?: boolean
+  /**
    * What the providers read out of the error blocks' failure records, by block
    * id.
    */
@@ -365,7 +370,7 @@ const { isEntering } = useChromeEntrance(
 // action of the page's on its way, as a side question's right after its
 // press, or a wait the server tells before the page holds the transcript.
 const paneStatus = computed(() =>
-  props.pendingSubmissions?.length || slot.value?.kind === 'requesting'
+  props.pendingSubmissions?.length || slot.value
     ? null
     : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.some((row) => row.type !== 'activity_slot' && row.type !== 'session_failure')),
 )

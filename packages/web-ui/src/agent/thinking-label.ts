@@ -1,4 +1,5 @@
 import { formatSpan } from '../ui/dates'
+import type { ActivityKind } from './activity-slot'
 import { t } from './locales/text'
 
 /**
@@ -16,10 +17,12 @@ export function thinkingFaceLabel(streaming: boolean, elapsedMs: number | null):
 }
 
 /**
- * The tail row while the provider is asked, with how long the request has
- * waited.
+ * The tail row while it waits for `kind`: while the provider is asked, with
+ * how long the request has waited; while Demi resumes a turn, with no time.
  */
-export function providerWaitLabel(elapsedMs: number): string {
+export function activityLabel(kind: ActivityKind, elapsedMs: number): string {
+  if (kind === 'resuming')
+    return t('transcript.thinking.resuming')
   if (elapsedMs <= 1000)
     return t('transcript.thinking.requesting')
   return t('transcript.thinking.requestingFor', { span: formatSpan(elapsedMs) })

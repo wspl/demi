@@ -89,7 +89,8 @@
       "nowFor": "思考中 {span}",
       "doneFor": "思考時間: {span}",
       "requesting": "リクエスト中",
-      "requestingFor": "リクエスト中 {span}"
+      "requestingFor": "リクエスト中 {span}",
+      "resuming": "再開中"
     },
     "compaction": {
       "running": "コンテキストを圧縮中…",

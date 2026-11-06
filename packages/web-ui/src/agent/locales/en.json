@@ -89,7 +89,8 @@
       "nowFor": "Thinking for {span}",
       "doneFor": "Thought for {span}",
       "requesting": "Requesting",
-      "requestingFor": "Requesting for {span}"
+      "requestingFor": "Requesting for {span}",
+      "resuming": "Resuming"
     },
     "compaction": {
       "running": "Compacting context…",

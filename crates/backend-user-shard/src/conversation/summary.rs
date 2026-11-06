@@ -75,9 +75,10 @@ impl Shard {
         let facts = self.summary_facts(&record.id).await;
         let resolved = self.host_shard().resolve_target(&record).await?;
         let archived = record.archived();
+        let resuming = self.restart_resumes().contains(&record.id);
         Ok(ConversationSummary {
             unread: facts.revision > record.read_revision && !self.idle_compactions().keeps_read(&record.id),
-            status: status(live, &facts),
+            status: status(live, resuming, &facts),
             target: record.target.shown(&resolved),
             worktree: record.target.worktree().map(|worktree| worktree.name.clone()),
             id: record.id,
@@ -241,13 +242,15 @@ fn last_turn(turn: &EndedTurn) -> LastTurn {
 
 /// A conversation's status: running or compacting while its live tree will
 /// go on working without the user, or a command that is not a service still
-/// runs; interrupted when its checkpoint was saved in a turn and no tree is
-/// live; else what its latest terminal block says. `live` is whether the live
-/// tree is running, and its root's phase.
-fn status(live: Option<(bool, SessionPhase)>, facts: &SummaryFacts) -> ConversationStatus {
+/// runs; resuming while the shard resumes its turn a restart interrupted;
+/// interrupted when its checkpoint was saved in a turn and no tree is live;
+/// else what its latest terminal block says. `live` is whether the live tree
+/// is running, and its root's phase.
+fn status(live: Option<(bool, SessionPhase)>, resuming: bool, facts: &SummaryFacts) -> ConversationStatus {
     match live {
         Some((true, SessionPhase::Compacting)) => return ConversationStatus::Compacting,
         Some((true, _)) => return ConversationStatus::Running,
+        _ if resuming => return ConversationStatus::Resuming,
         None if facts.phase != SessionPhase::Idle => return ConversationStatus::Interrupted,
         Some((false, _)) | None => {}
     }

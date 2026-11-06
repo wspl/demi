@@ -89,7 +89,8 @@
       "nowFor": "Denkt seit {span} nach",
       "doneFor": "Nachgedacht für {span}",
       "requesting": "Anfrage läuft",
-      "requestingFor": "Anfrage läuft seit {span}"
+      "requestingFor": "Anfrage läuft seit {span}",
+      "resuming": "Wird fortgesetzt"
     },
     "compaction": {
       "running": "Kontext wird komprimiert …",

@@ -89,7 +89,8 @@
       "nowFor": "Réflexion depuis {span}",
       "doneFor": "A réfléchi pendant {span}",
       "requesting": "Requête en cours",
-      "requestingFor": "Requête en cours depuis {span}"
+      "requestingFor": "Requête en cours depuis {span}",
+      "resuming": "Reprise en cours"
     },
     "compaction": {
       "running": "Compactage du contexte…",

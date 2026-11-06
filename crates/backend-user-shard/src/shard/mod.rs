@@ -62,6 +62,7 @@ use tracing::Instrument as _;
 use crate::conversation::claude_cli::{ClaudeCli, ClaudeMachine};
 use crate::conversation::project_files::ProjectFiles;
 use crate::conversation::notifications::Notifications;
+use crate::conversation::restart_resume::RestartResumes;
 use crate::conversation::retry_resume::RetryResumes;
 use crate::conversation::idle_compaction::IdleCompactions;
 use crate::conversation::search::SearchIndexer;
@@ -174,6 +175,8 @@ pub struct Shard {
     /// Each conversation's timer for the retry time of its root's failed
     /// turn.
     retry_resumes: RetryResumes,
+    /// The conversations whose turn a restart interrupted that it resumes.
+    restart_resumes: RestartResumes,
     idle_compactions: IdleCompactions,
     /// The turns its conversations' trees work on, and the agents' own
     /// notifications, for the user's push notifications.
@@ -269,6 +272,7 @@ impl Shard {
             worktrees: worktrees::WorktreesHeld::default(),
             schedules: crate::schedules::Schedules::default(),
             retry_resumes: RetryResumes::default(),
+            restart_resumes: RestartResumes::default(),
             idle_compactions: IdleCompactions::default(),
             notifications: Notifications::default(),
             lent_jobs: lent_media::LentJobs::default(),
@@ -299,6 +303,10 @@ impl Shard {
 
     pub(crate) fn retry_resumes(&self) -> &RetryResumes {
         &self.retry_resumes
+    }
+
+    pub(crate) fn restart_resumes(&self) -> &RestartResumes {
+        &self.restart_resumes
     }
 
     pub(crate) fn idle_compactions(&self) -> &IdleCompactions {

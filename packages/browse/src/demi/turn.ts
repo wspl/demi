@@ -54,8 +54,9 @@ export async function summary(slot: Slot, page: Page, id: string): Promise<Summa
   }
 }
 
+/** Whether the status says the conversation works, or Demi resumes its turn after a restart. */
 function running(status: string): boolean {
-  return status === 'running' || status === 'compacting'
+  return status === 'running' || status === 'compacting' || status === 'resuming'
 }
 
 /**
