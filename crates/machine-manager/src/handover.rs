@@ -246,7 +246,7 @@ fn sweep_blocking(keep: &[Owner], proots: &[i32]) -> io::Result<()> {
     let procs = fs_err::read_to_string(&procs_path)?;
     let pids: Vec<i32> = procs.lines().filter_map(|line| line.trim().parse().ok()).collect();
     let me = std::process::id() as i32;
-    let parent = crate::linux::process::parent;
+    let parent = demi_shared_processes::parent;
     let arguments = |pid: i32| -> String {
         std::fs::read(format!("/proc/{pid}/cmdline"))
             .map(|bytes| String::from_utf8_lossy(&bytes).replace('\0', " "))
@@ -288,7 +288,7 @@ fn sweep_blocking(keep: &[Owner], proots: &[i32]) -> io::Result<()> {
         }
         tracing::info!(event = "machine_manager.leftover_ended", pid, arguments = %arguments(pid), "a process no sandbox owns was left in the manager's unit");
         if let Some(pid) = rustix::process::Pid::from_raw(pid) {
-            let _ = rustix::process::kill_process(pid, rustix::process::Signal::KILL);
+            let _ = demi_shared_processes::signal_process(pid, rustix::process::Signal::KILL);
             ended.push(pid.as_raw_nonzero().get());
         }
     }

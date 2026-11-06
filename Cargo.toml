@@ -14,6 +14,7 @@ members = [
   "crates/shared-recording",
   "crates/shared-recording-protocol",
   "crates/shared-cli",
+  "crates/shared-processes",
   "crates/backend",
   "crates/backend-accounts",
   "crates/backend-cloud",
