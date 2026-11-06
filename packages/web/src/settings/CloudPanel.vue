@@ -25,7 +25,7 @@ import {
   type IsolationDownload as IsolationDownloadRead,
   type SetCloudIsolation,
   type SetCloudNetwork,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import { useHeldList, useProduct } from '../state/product'
 
 /**

@@ -3,7 +3,7 @@ import type { UpdateEnd } from '@demicodes/web-ui/ui/UpdatingScreen.vue'
 import { pageLog } from '@demicodes/web-ui/infra/log'
 import { errorFields } from '@demicodes/web-ui/infra/errors'
 import { reloadPage } from '@demicodes/web-ui/infra/build-reload'
-import { updateStateSchema, type UpdateState } from '../api/generated/web-api'
+import { updateStateSchema, type UpdateState } from '@demicodes/protocol'
 
 /**
  * The update the backend carries out before it serves a new release

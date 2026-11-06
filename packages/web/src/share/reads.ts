@@ -12,7 +12,7 @@ import {
   sharedTranscriptPageSchema,
   type SharedConversation,
   type SharedTranscriptPage,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 
 /**
  * The public routes of share `token`, the only ones its page calls: the page's

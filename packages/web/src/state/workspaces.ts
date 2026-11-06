@@ -11,10 +11,11 @@ import {
   type CreateWorkspace,
   type WorkspaceMove,
   type WorkspaceOrder,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import { useConversations } from '../conversation/store'
 import { t } from './locales/text'
-import { known, useProduct } from './product'
+import { known } from '@demicodes/protocol'
+import { useProduct } from './product'
 import { useResources } from './resources'
 
 /**

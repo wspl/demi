@@ -1,6 +1,6 @@
 import type { TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { apiRequest, readResponse } from '../api/client'
-import { commandCallSchema } from '../api/generated/web-api'
+import { commandCallSchema } from '@demicodes/protocol'
 import type { Conversation } from '../state/types'
 import { readNodeBlocks } from '../state/offline'
 import { createHistoryReads } from './history-reads'

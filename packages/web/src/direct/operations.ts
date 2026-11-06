@@ -29,7 +29,7 @@ import {
   type ChannelHeader,
   type Opened,
   type WriteEnd,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import type { DirectRoute } from '.'
 import { ChannelFailed, ChannelRefused, relayAnswers, type DirectPeer, type OperationChannel } from './peer'
 

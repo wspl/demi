@@ -1,7 +1,7 @@
 import { computed } from 'vue'
 import { defineStore } from 'pinia'
 import { apiRequest, jsonBody } from '../api/client'
-import type { InstructionsBody } from '../api/generated/web-api'
+import type { InstructionsBody } from '@demicodes/protocol'
 import { useHeldList, useProduct } from '../state/product'
 
 /**

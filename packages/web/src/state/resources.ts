@@ -14,10 +14,11 @@ import {
   type DeviceDto,
   type SavedScopeSwitch,
   type SidebarReorder,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import type { SavedScope } from '@demicodes/protocol'
 import { useSession } from '../auth/session'
-import { known, useProduct } from './product'
+import { known } from '@demicodes/protocol'
+import { useProduct } from './product'
 import { usePreferences } from './preferences'
 import { modelInfo, providerView, setupOf, wireApi } from './catalog'
 import { DOCK_WINDOW_SHARE } from '@demicodes/web-ui/agent/dock-window'

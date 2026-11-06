@@ -12,7 +12,7 @@ import {
   type NewPasskey,
   type PasskeyDto,
   type PasskeyPatch,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import { useHeldList, useProduct, type Answer } from '../state/product'
 import { verifyWithPassword } from './handoff'
 import { browserHasPasskeys, createPasskey, signalAccount, signalUnknownPasskey } from './webauthn'

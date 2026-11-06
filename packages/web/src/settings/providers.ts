@@ -48,10 +48,11 @@ import {
   type QuotaRequest,
   type SubscriptionLogin,
   type TestRequest,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import { useResources } from '../state/resources'
 import { usePreferences } from '../state/preferences'
-import { known, useProduct } from '../state/product'
+import { known } from '@demicodes/protocol'
+import { useProduct } from '../state/product'
 import { PROTOCOLS, type ProductProvider } from '../state/catalog'
 
 export const useProviderSettings = defineStore('provider-settings', () => {

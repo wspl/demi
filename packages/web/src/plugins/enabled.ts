@@ -1,4 +1,4 @@
-import type { PageState } from '../state/lists'
+import type { PageState } from '@demicodes/protocol'
 
 /** Whether the user has `plugin` on, by the product state's plugin list. */
 export function pluginEnabled(snapshot: PageState | null, plugin: string): boolean {

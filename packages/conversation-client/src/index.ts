@@ -1,6 +1,8 @@
-// The browser's client of the conversation lane. It validates every frame it
-// receives with the schemas of `@demicodes/protocol`, and imports no user
-// interface package.
+// The client of a core's page connection and its conversation lanes, for a
+// web page and a program's SDK alike: `PageConnection` carries the lanes on
+// the socket its host opens, and `ConversationClient` drives a conversation
+// on its lane. It validates every frame it receives with the schemas of
+// `@demicodes/protocol`, and imports no user interface package.
 //
 // `applyTranscriptPatches` is the one transcript patch applier. The agent's
 // Rust tests write patch sequences together with the snapshot each must
@@ -53,3 +55,17 @@ export {
   type SocketMessage,
   type WebSocketLike,
 } from './transport'
+export {
+  Lane,
+  LaneCloseEvent,
+  PageConnection,
+  type ConnectionHost,
+  type ConnectionLog,
+  type ConnectionSocket,
+  type ConnectionStanding,
+  type LaneEventMap,
+  type LaneRefusal,
+  type LaneTarget,
+  type SilenceWatch,
+} from './page-connection'
+export { ConversationLaneError, createConversationClient } from './conversation-lane'

@@ -23,8 +23,8 @@ import {
   conversationMetadataSchema,
   userDtoSchema,
   type UserDto,
-} from '../api/generated/web-api'
-import { readStateSchema, type PageState, type ReadState } from './lists'
+} from '@demicodes/protocol'
+import { readStateSchema, type PageState, type ReadState } from '@demicodes/protocol'
 import { IndexedDatabase } from '@demicodes/web-ui/infra/indexed-db'
 import { t } from './locales/text'
 

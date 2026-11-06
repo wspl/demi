@@ -1,6 +1,6 @@
 import { FileBrowserError, type FileSearchEvent } from '@demicodes/web-ui/files/types'
 import { invalidResponse } from './client'
-import { searchLineSchema } from './generated/web-api'
+import { searchLineSchema } from '@demicodes/protocol'
 import { t } from './locales/text'
 
 /**

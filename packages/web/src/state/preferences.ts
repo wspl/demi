@@ -12,7 +12,7 @@ import {
   type Preferences,
   type PreferencesPatch,
   type ShortcutsPatch,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import { useProduct, type Answer, type ProductChange } from './product'
 import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
 import { shortcutSet } from '@demicodes/web-ui/ui/shortcut'

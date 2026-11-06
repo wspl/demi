@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { fillText, truncate } from '@demicodes/utils'
 import { markdownPlainText } from '@demicodes/web-ui/markdown/plain-text'
 import { requestTitleIn } from '@demicodes/web-ui/permissions/title-words'
-import { pushMessageSchema, type PushMessage } from '../api/generated/web-api'
+import { pushMessageSchema, type PushMessage } from '@demicodes/protocol'
 
 /**
  * A push notification as the page's service worker shows it: the backend sends

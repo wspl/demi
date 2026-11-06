@@ -1,6 +1,6 @@
 import { watch } from 'vue'
 import { isAbortError } from '@demicodes/utils'
-import type { CostWindow, RecentCost } from '../api/generated/web-api'
+import type { CostWindow, RecentCost } from '@demicodes/protocol'
 import type { Conversation } from '../state/types'
 
 /** How often a watched window is read again with no new call. */

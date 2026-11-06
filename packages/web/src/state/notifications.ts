@@ -14,7 +14,7 @@ import {
   pushSubscriptionKeysSchema,
   type PushEvents,
   type PushSubscriptionBody,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import { OPEN_CONVERSATION, WORDS_CACHE, WORDS_KEY, type NotificationWords } from '../offline/notifications'
 import { useProduct } from './product'
 

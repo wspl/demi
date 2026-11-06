@@ -119,7 +119,8 @@ pub fn protocol() -> Vec<Root> {
     ]
 }
 
-/// `packages/web/src/api/generated`: every REST request and response body.
+/// `@demicodes/protocol`'s `web-api.ts`: every REST request and response
+/// body, which the web app and a program's SDK send and read.
 pub fn web() -> Vec<Root> {
     use api::{
         attachments, auth, cloud, conversations, credentials, devices, diagnostics, drafts, error, files, instructions, port_forwards,

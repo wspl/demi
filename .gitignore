@@ -8,7 +8,6 @@ target/
 
 # TypeScript generated from the Rust contracts by `bun run contracts`
 packages/protocol/src/generated/
-packages/web/src/api/generated/
 crates/plugin-*/page/src/generated/
 packages/web/src/plugins/generated/
 packages/web-gallery/src/generated/

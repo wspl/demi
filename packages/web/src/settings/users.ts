@@ -19,7 +19,7 @@ import {
   type CreateUser,
   type ListedUser,
   type UserChange,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import { confirmationHost, makeSignInCode } from '../auth/handoff'
 import { useSession } from '../auth/session'
 import { useHeldList, useProduct } from '../state/product'

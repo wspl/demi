@@ -1,5 +1,5 @@
 import { apiRequest, jsonBody, readResponse } from './client'
-import { conversationSharesSchema, shareAnswerSchema, type ConversationShare, type ShareAnswer, type ShareTarget } from './generated/web-api'
+import { conversationSharesSchema, shareAnswerSchema, type ConversationShare, type ShareAnswer, type ShareTarget } from '@demicodes/protocol'
 
 /** A conversation's owner routes for its shares. */
 function sharesPath(conversationId: string): string {

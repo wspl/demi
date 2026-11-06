@@ -3,7 +3,7 @@ import {
   decidePermissionSchema,
   type PermissionDecision,
   type RequestedValues,
-} from './generated/web-api'
+} from '@demicodes/protocol'
 
 /** A conversation's permission routes. */
 function permissionsPath(conversationId: string): string {

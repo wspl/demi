@@ -1,50 +1,24 @@
-import { z } from 'zod'
+import type { z } from 'zod'
 import {
   cloudIsolationSchema,
-  credentialDtoSchema,
   credentialListSchema,
   instructionsAnswerSchema,
   passkeyListSchema,
-  portForwardDtoSchema,
   portForwardListSchema,
-  productStateSchema,
-  sessionDtoSchema,
   sessionListSchema,
   subagentSettingsSchema,
   usersSchema,
   type ProductState,
   type SyncEvent,
-} from '../api/generated/web-api'
+  type Untagged,
+} from '@demicodes/protocol'
 
 /**
- * The lists only a view of settings shows, which the product state does not
- * carry: the page reads a list by its route when a view that shows it opens,
- * and follows its changes from the channel until the view closes. Each is
- * absent from the page's state until it was read, and kept in the offline copy
- * with the state.
+ * A list the page holds only while a view shows it, named as the message
+ * that carries it (`heldListsShape`): the page reads it by its route when a
+ * view that shows it opens, follows its changes from the channel until the
+ * view closes, and keeps it in the offline copy with the state.
  */
-export const heldListsShape = {
-  subagents: subagentSettingsSchema.optional(),
-  instructions: z.string().optional(),
-  credentials: z.array(credentialDtoSchema).optional(),
-  passkeys: passkeyListSchema.optional(),
-  sessions: z.array(sessionDtoSchema).optional(),
-  users: usersSchema.optional(),
-  portForwards: z.array(portForwardDtoSchema).optional(),
-  cloudIsolation: cloudIsolationSchema.optional(),
-}
-
-/** The state a read of `GET /state` gives: the whole product state, with the lists the page holds. */
-export const readStateSchema = productStateSchema.extend(heldListsShape)
-export type ReadState = z.infer<typeof readStateSchema>
-
-/**
- * The state the page holds: each part is missing until it is known, from
- * the state's read, the offline copy's or a list's own read.
- */
-export type PageState = Partial<ReadState>
-
-/** A list the page holds only while a view shows it, named as the message that carries it. */
 export type ListPart =
   | 'subagents'
   | 'instructions'
@@ -54,9 +28,6 @@ export type ListPart =
   | 'users'
   | 'port_forwards'
   | 'cloud_isolation'
-
-/** `event` without the entity tag a list's message carries, which an answer of a write has none of. */
-export type Untagged<Event> = Event extends { etag: string } ? Omit<Event, 'etag'> & { etag?: string } : Event
 
 type PartEventOf<Type extends SyncEvent['type']> = Untagged<Extract<SyncEvent, { type: Type }>>
 

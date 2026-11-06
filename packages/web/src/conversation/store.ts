@@ -106,7 +106,7 @@ import {
   type SidebarReorder,
   type ScheduleChange,
   type SuggestedReplyUse,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import type { WorkflowChoice } from '@demicodes/protocol'
 import { isEmptyMessage, joinMessageContent, storedMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { startingChoices, startingWorkflow, type RememberedChoices } from '@demicodes/web-ui/agent/starting-choices'
@@ -114,8 +114,9 @@ import type { WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
 import { blobPicture, commentFileIds, createConversationUploads, pendingFileIds, referenced, sendingFileIds } from './uploads'
 import { useWorkspaces } from '../state/workspaces'
 import { useResources } from '../state/resources'
-import { known, useProduct, type ProductChange } from '../state/product'
-import type { PageState } from '../state/lists'
+import { known } from '@demicodes/protocol'
+import { useProduct, type ProductChange } from '../state/product'
+import type { PageState } from '@demicodes/protocol'
 import { usePreferences } from '../state/preferences'
 import { useSession } from '../auth/session'
 import type { Conversation, PendingSend, ProductAttachment } from '../state/types'

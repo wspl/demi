@@ -1,6 +1,6 @@
 import type { PanelBackend, PanelChange } from '@demicodes/web-ui/agent/panel-changes'
 import { apiRequest, jsonBody, readResponse } from './client'
-import { panelAnswerSchema, panelChangesSchema } from './generated/web-api'
+import { panelAnswerSchema, panelChangesSchema } from '@demicodes/protocol'
 
 /** A change as the panel's route names it; the route's schema checks it before it leaves. */
 function changeBody(change: PanelChange) {

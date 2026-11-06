@@ -6,7 +6,8 @@ import { SerialQueue } from '@demicodes/utils'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { errorCode, errorFields, reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { pageLog } from '@demicodes/web-ui/infra/log'
-import { known, useProduct } from '../state/product'
+import { known } from '@demicodes/protocol'
+import { useProduct } from '../state/product'
 import { cloudDeviceIn } from '../state/hosts'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
@@ -16,7 +17,7 @@ import {
   type CloudReset,
   type ChangeDevice,
   type DeviceRoute,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 
 export const useDeviceSettings = defineStore('device-settings', () => {
   const product = useProduct()

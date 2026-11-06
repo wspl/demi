@@ -12,7 +12,7 @@
 // and the conversations it had until `demi.down({ wipe: true })`.
 import { copyFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { identitySchema } from '@demicodes/web/src/api/generated/web-api'
+import { identitySchema } from '@demicodes/protocol'
 import { errors, type Page } from 'playwright'
 import { startGroup, type Started } from '../processes'
 import {

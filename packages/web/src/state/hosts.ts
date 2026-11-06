@@ -1,4 +1,4 @@
-import type { DeviceDto, DeviceKind } from '../api/generated/web-api'
+import type { DeviceDto, DeviceKind } from '@demicodes/protocol'
 import { shownMark, type DeviceMark } from '@demicodes/web-ui/devices/mark'
 import type { HostKind } from '@demicodes/web-ui/hosts/types'
 import { t as shared } from '@demicodes/web-ui/locales/text'

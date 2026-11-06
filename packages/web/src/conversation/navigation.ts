@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { useRouter, type RouteLocationRaw } from 'vue-router'
-import type { CreateProject } from '../api/generated/web-api'
+import type { CreateProject } from '@demicodes/protocol'
 import { useResources } from '../state/resources'
 import { useConversations } from './store'
 import { useWorkspaces } from '../state/workspaces'

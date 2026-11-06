@@ -11,7 +11,7 @@ import {
 } from '@demicodes/web-ui/permissions/types'
 import { ApiError } from '../api/client'
 import { decidePermission } from '../api/permissions'
-import type { ConversationPermissions, PermissionCategory, PermissionRequest } from '../api/generated/web-api'
+import type { ConversationPermissions, PermissionCategory, PermissionRequest } from '@demicodes/protocol'
 import { useProduct } from '../state/product'
 import { useConversations } from './store'
 import { isNewer, type RunRevision } from '../state/revisions'

@@ -11,7 +11,7 @@ import { ApiError } from '../api/client'
 import { OVER_ANY } from './drafts'
 import { saveDraft } from '../api/drafts'
 import { deleteSaved, postSaved, putSaved, saveFromDraft } from '../api/saved'
-import type { ConversationDraft, DraftComment, DraftFile, DraftSavingComment, ListedSavedMessage, Revisions, SavedListing } from '../api/generated/web-api'
+import type { ConversationDraft, DraftComment, DraftFile, DraftSavingComment, ListedSavedMessage, Revisions, SavedListing } from '@demicodes/protocol'
 import type { Conversation, ProductAttachment } from '../state/types'
 import { t } from './locales/text'
 

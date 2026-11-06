@@ -15,7 +15,7 @@ import {
   type HandoffSpend,
   type PasskeySignIn,
   type VerifyPassword,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import { useHeldList, useProduct } from '../state/product'
 import { browserHasPasskeys, signWithPasskey } from './webauthn'
 

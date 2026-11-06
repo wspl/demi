@@ -1,7 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
 import type { PairingResult } from '@demicodes/web-ui/devices/pairing'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
-import { deviceAnswerSchema, type Claim, type InstallCommands } from '../api/generated/web-api'
+import { deviceAnswerSchema, type Claim, type InstallCommands } from '@demicodes/protocol'
 import { useProduct } from '../state/product'
 
 /** The refusals of a pairing code the dialog words itself. */

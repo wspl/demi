@@ -1,5 +1,5 @@
 import { apiRequest, readResponse } from './client'
-import { recentCostSchema, type CostWindow, type RecentCost } from './generated/web-api'
+import { recentCostSchema, type CostWindow, type RecentCost } from '@demicodes/protocol'
 
 /**
  * What the conversation's calls of the last hour or the last day cost, as the

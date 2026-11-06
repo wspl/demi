@@ -19,7 +19,7 @@ import {
   fileWatchMessageSchema,
   type ConversationWatchRequest,
   type FileWatchRequest,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 
 /** Opens a connection of a conversation's watch. */
 export type OpenConversationWatchLink = (conversationId: string, handlers: WatchLinkHandlers) => WatchLink

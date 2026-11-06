@@ -5,7 +5,7 @@ import {
   type ConversationDraft,
   type DraftSave,
   type DraftWritten,
-} from './generated/web-api'
+} from '@demicodes/protocol'
 
 /** A conversation's draft. */
 function draftPath(conversationId: string): string {

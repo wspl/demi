@@ -14,7 +14,7 @@ import {
   type SubagentProfile,
   type SubagentSettings,
   type SubagentsPatch,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import { useHeldList, useProduct, type Answer } from '../state/product'
 
 /** `settings` with `profile` in its place by id, the profiles in name order. */

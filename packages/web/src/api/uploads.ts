@@ -5,7 +5,7 @@ import type { KeepPicture } from '@demicodes/web-ui/agent/comments/pictures'
 import { coded, environmental } from '@demicodes/web-ui/infra/errors'
 import { PAGE_HEADER, PAGE_ID } from '@demicodes/web-ui/infra/log'
 import { apiError, apiRequest, apiUrl, invalidResponse, readResponse, untilReached } from './client'
-import { type AttachmentDto, attachmentAnswerSchema, attachmentCheckAnswerSchema } from './generated/web-api'
+import { type AttachmentDto, attachmentAnswerSchema, attachmentCheckAnswerSchema } from '@demicodes/protocol'
 
 /**
  * Where the page loads a blob of the user's own, seen as `mediaType`: a message's

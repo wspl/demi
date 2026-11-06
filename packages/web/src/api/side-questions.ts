@@ -7,7 +7,7 @@ import {
   sideQuestionPatchSchema,
   type AskRequest,
   type SideQuestionAnswer,
-} from './generated/web-api'
+} from '@demicodes/protocol'
 
 /** A side question as an answer names it, with its id. */
 export type AnsweredSide = SideQuestion & { id: string }

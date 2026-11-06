@@ -46,11 +46,10 @@ if (existsSync(paths.socket)) {
  * with. A slot's change of branch changes those too, and a server that kept
  * the old ones would reject the new backend's answers.
  */
-const webApi = Bun.resolveSync('@demicodes/web/src/api/generated/web-api', import.meta.dir)
 const code = [
   import.meta.dir,
-  webApi,
-  Bun.resolveSync('@demicodes/protocol', dirname(webApi)),
+  // The protocol's sources, its generated contracts among them.
+  dirname(Bun.resolveSync('@demicodes/protocol', import.meta.dir)),
 ]
 
 /** When the tool's code last changed as this server started; a later change ends it. */

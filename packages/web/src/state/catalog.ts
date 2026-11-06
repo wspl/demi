@@ -11,7 +11,7 @@ import type {
   CatalogModel,
   CatalogProvider,
   ProviderState,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 
 /**
  * The package of the CLI that `providerId`'s requests start on the Cloud, by

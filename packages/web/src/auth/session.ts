@@ -12,7 +12,7 @@ import {
   type SetupRequest,
   type SetupStatus,
   type UserDto,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
 import { unsubscribeOnSignOut } from '../state/notifications'
 import { signalUnknownPasskey, signWithPasskey } from './webauthn'

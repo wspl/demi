@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { ReadCallChange } from '@demicodes/web-ui/files/changes'
 import type { ChangeReads, HistoryReads } from '@demicodes/web-ui/files/kept-source'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
-import { changeSidesSchema, gitBranchesSchema, gitCommitSchema, gitLogSchema, gitRepositoriesSchema, repositoriesRequestSchema, workingTreeChangesSchema, type GitRepositories } from '../api/generated/web-api'
+import { changeSidesSchema, gitBranchesSchema, gitCommitSchema, gitLogSchema, gitRepositoriesSchema, repositoriesRequestSchema, workingTreeChangesSchema, type GitRepositories } from '@demicodes/protocol'
 import { fileBrowserError, rawFileContents, readAtOf } from '../api/files'
 
 /**

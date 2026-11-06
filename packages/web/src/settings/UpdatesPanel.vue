@@ -12,7 +12,7 @@ import {
   type RunUpgrade,
   type SetPrepareAhead,
   type SetUpgradeChannel,
-} from '../api/generated/web-api'
+} from '@demicodes/protocol'
 import { useProduct } from '../state/product'
 
 /**
