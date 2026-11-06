@@ -1,0 +1,44 @@
+{
+  "name": "@demicodes/sdk",
+  "description": "Demi's agents in a program: its cores, conversations, providers, Hosts and plugins, in a process of the program's own.",
+  "version": "0.24.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "dependencies": {
+    "@demicodes/conversation-client": "workspace:^",
+    "@demicodes/protocol": "workspace:^",
+    "zod": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "Apache-2.0",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist",
+    "release"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/demi-sh/demi.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/demi-sh/demi/tree/main/packages/sdk#readme",
+  "bugs": "https://github.com/demi-sh/demi/issues"
+}

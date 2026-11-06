@@ -4,6 +4,12 @@
 //! [`ARTIFACT_ROUTE`]`/<sha256>`, as a server serves its local store's.
 //! Without a release, the cores have none.
 //!
+//! The release may lie in several roots, a list of paths as `PATH` writes
+//! one: their `commands/` together name the packages, and each one's
+//! `files/` holds the executables of some targets, as an SDK's platform
+//! packages each hold their own (`packages/sdk/src/binaries.ts`). An
+//! executable no root holds is not offered to a runner.
+//!
 //! A runner checks each download against the size and SHA-256 its catalog
 //! names, so the process serves the files as they are.
 
@@ -21,7 +27,7 @@ use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
 use axum_extra::headers::Range;
 use demi_command_protocol::{ArtifactLocation, ArtifactUrl, PackageArtifact, PackageDescriptor};
-use demi_core_hosts::packages::{ARTIFACT_ROUTE, Packages, ReleaseError, ReleasePackages};
+use demi_core_hosts::packages::{ARTIFACT_ROUTE, Packages, ReleaseError, ReleasePackages, ReleaseArtifact};
 use demi_runner_client::{ArtifactResolver, CommandCatalog};
 use demi_runner_protocol::release::{COMMANDS, FILES};
 use futures_util::future::LocalBoxFuture;
@@ -37,20 +43,47 @@ use demi_web_api_protocol::error::ErrorCode;
 #[derive(Default)]
 pub(super) struct ReleaseFiles {
     packages: ReleasePackages,
-    /// The release's `files/`; none without a release.
-    files: Option<PathBuf>,
+    /// Each root's `files/` that exists.
+    files: Vec<PathBuf>,
 }
 
 impl ReleaseFiles {
-    /// The packages of the release at `root`, or none without one.
-    pub(super) async fn read(root: Option<PathBuf>) -> Result<Self, ReleaseError> {
-        let Some(root) = root else {
-            return Ok(Self::default());
-        };
-        Ok(Self {
-            packages: ReleasePackages::read(&root.join(COMMANDS)).await?,
-            files: Some(root.join(FILES)),
-        })
+    /// The packages of the release in `roots`, none without a root. A
+    /// package two roots name is refused.
+    pub(super) async fn read(roots: Vec<PathBuf>) -> Result<Self, ReleaseError> {
+        let mut release = Self::default();
+        for root in roots {
+            let commands = root.join(COMMANDS);
+            if tokio::fs::try_exists(&commands).await.unwrap_or(false) {
+                let read = ReleasePackages::read(&commands).await?;
+                for descriptor in read.descriptors {
+                    if release.packages.descriptors.iter().any(|known| known.id == descriptor.id) {
+                        return Err(ReleaseError::Commands {
+                            directory: commands,
+                            reason: format!("the package {} is in another root too", descriptor.id),
+                        });
+                    }
+                    release.packages.descriptors.push(descriptor);
+                }
+                release.packages.executables.extend(read.executables);
+            }
+            let files = root.join(FILES);
+            if tokio::fs::try_exists(&files).await.unwrap_or(false) {
+                release.files.push(files);
+            }
+        }
+        Ok(release)
+    }
+
+    /// The file of the executable `sha256`, in the first root that holds
+    /// it, with what it stands for.
+    fn file(&self, sha256: &str) -> Option<(PathBuf, &ReleaseArtifact)> {
+        let wanted = self.packages.executables.get(sha256)?;
+        self.files
+            .iter()
+            .map(|files| files.join(&wanted.file))
+            .find(|path| path.is_file())
+            .map(|path| (path, wanted))
     }
 }
 
@@ -83,18 +116,16 @@ impl ArtifactResolver for Resolver {
         _target: &str,
         _cancel: CancellationToken,
     ) -> LocalBoxFuture<'static, Result<ArtifactLocation, String>> {
-        let known = self
+        let held = self
             .0
-            .packages
-            .executables
-            .get(&artifact.sha256)
-            .is_some_and(|wanted| wanted.artifact.size == artifact.size);
-        let location = match known {
+            .file(&artifact.sha256)
+            .is_some_and(|(_, wanted)| wanted.artifact.size == artifact.size);
+        let location = match held {
             true => Ok(ArtifactLocation::Url(ArtifactUrl {
                 url: format!("{ARTIFACT_ROUTE}/{}", artifact.sha256),
                 expires_at: None,
             })),
-            false => Err("the artifact is not in the release's package catalog".to_owned()),
+            false => Err("the release holds no file of the artifact for this target".to_owned()),
         };
         Box::pin(async move { location })
     }
@@ -110,10 +141,10 @@ pub(super) async fn artifact(
     range: Option<TypedHeader<Range>>,
 ) -> Result<Response, ApiError> {
     let not_found = || ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "No such native artifact");
-    let (Some(files), Some(wanted)) = (&release.files, release.packages.executables.get(&sha256)) else {
+    let Some((path, wanted)) = release.file(&sha256) else {
         return Err(not_found());
     };
-    let mut file = tokio::fs::File::open(files.join(&wanted.file))
+    let mut file = tokio::fs::File::open(&path)
         .await
         .map_err(|error| ApiError::internal_message(format!("{}: {error}", wanted.file)))?;
     let size = file.metadata().await.map_err(|error| ApiError::internal(&error))?.len();

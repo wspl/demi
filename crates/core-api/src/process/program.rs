@@ -18,7 +18,6 @@ use demi_web_api_protocol::conversations::ConversationShares;
 use demi_web_api_protocol::devices::{DeviceDto, InstallCommands};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use demi_web_api_protocol::push::PushMessage;
-use demi_web_api_protocol::starter::NotifyOutcome;
 use demi_web_api_protocol::state::SyncEvent;
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use url::Url;
@@ -188,13 +187,7 @@ impl Starter for ProgramStarter {
     }
 
     fn notify(&self, message: PushMessage) -> LocalBoxFuture<'_, Result<Notified, StorageError>> {
-        Box::pin(async move {
-            Ok(match self.starter_lane.notify(message).await {
-                NotifyOutcome::Sending { to } => Notified::Sending(to),
-                NotifyOutcome::Shown => Notified::Shown,
-                NotifyOutcome::Nowhere => Notified::Nowhere,
-            })
-        })
+        Box::pin(async move { Ok(self.starter_lane.notify(message).await) })
     }
 
     /// The program is one receiver while its starter lane is open.

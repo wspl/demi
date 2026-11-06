@@ -170,8 +170,11 @@ export function partEvent(state: PageState, part: Part): PartEvent {
   return conversation ? { type: 'conversation', conversation } : { type: 'conversation_deleted', id }
 }
 
-/** `state` with the part `event` carries replaced. */
-export function withPart(state: PageState, event: PartEvent): PageState {
+/**
+ * `state` with the part `event` carries replaced: a page's whole state, or
+ * a core's own part of it, as a program holds it.
+ */
+export function withPart<State extends PageState>(state: State, event: PartEvent): State {
   switch (event.type) {
     case 'conversation':
       return { ...state, conversations: withSummary(known(state.conversations, 'conversations'), event.conversation) }

@@ -126,9 +126,10 @@ struct DeclaredPlugins {
 /// Runs the process over `io`, the program's connection, until it ends,
 /// then closes every core. `public_url` is where the program's server
 /// forwards the process's routes; without one, the cores offer neither a
-/// plugin's OAuth nor a schedule's URL. `release` is the release whose
-/// command packages the cores' runners run; without one, they run none.
-pub async fn run<IO>(io: IO, public_url: Option<Url>, release: Option<PathBuf>) -> Result<(), ProcessError>
+/// plugin's OAuth nor a schedule's URL. `release` holds the roots of the
+/// release whose command packages the cores' runners run; without a root,
+/// they run none.
+pub async fn run<IO>(io: IO, public_url: Option<Url>, release: Vec<PathBuf>) -> Result<(), ProcessError>
 where
     IO: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {

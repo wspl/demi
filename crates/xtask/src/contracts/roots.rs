@@ -153,6 +153,7 @@ pub fn web() -> Vec<Root> {
         sends::<sessions::VerifyPassword>(),
         sends::<sessions::HandoffRequest>(),
         sends::<sessions::HandoffSpend>(),
+        receives::<state::CoreState>(),
         receives::<state::ProductState>(),
         receives::<state::UpdateState>(),
         receives::<server_upgrade::ServerUpgrade>(),
@@ -320,5 +321,11 @@ pub fn web() -> Vec<Root> {
         receives::<direct::TextOpened>(),
         receives::<direct::VideoOpened>(),
         receives::<direct::Listed>(),
+        // A program's process and the starter lane of its cores
+        // (`crates/core-api/src/process/mod.rs`).
+        sends::<api::cores::OpenCore>(),
+        receives::<api::cores::OpenedCore>(),
+        receives::<api::starter::StarterRequest>(),
+        sends::<api::starter::StarterAnswer>(),
     ]
 }

@@ -5,6 +5,7 @@
   "type": "module",
   "workspaces": [
     "packages/conversation-client",
+    "packages/sdk",
     "packages/utils",
     "packages/protocol",
     "packages/web-ui",

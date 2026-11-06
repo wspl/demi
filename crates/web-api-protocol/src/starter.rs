@@ -5,7 +5,7 @@
 //! ```text
 //! core                                      program
 //!   {"type":"notify","id":1,"message":{..}} ------->
-//!                        <------- {"type":"notified","id":1,"outcome":"shown"}
+//!                                   <------- {"type":"shown","id":1}
 //! ```
 //!
 //! One starter lane is open for a core at a time. While none is, the core's
@@ -24,26 +24,14 @@ pub enum StarterRequest {
     Notify { id: u32, message: PushMessage },
 }
 
-/// What the program answers.
+/// What the program answers: how the notification `id` went.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum StarterAnswer {
-    /// How the notification `id` went.
-    Notified {
-        id: u32,
-        #[serde(flatten)]
-        outcome: NotifyOutcome,
-    },
-}
-
-/// How a notification went.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "outcome", rename_all = "snake_case")]
-pub enum NotifyOutcome {
     /// It goes to `to` of the places the program shows notifications in.
-    Sending { to: usize },
+    Sending { id: u32, to: u32 },
     /// Every place that would show it shows its conversation already.
-    Shown,
+    Shown { id: u32 },
     /// Nowhere takes it.
-    Nowhere,
+    Nowhere { id: u32 },
 }

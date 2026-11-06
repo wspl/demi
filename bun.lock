@@ -158,6 +158,15 @@
         "zod": "^4.0.0",
       },
     },
+    "packages/sdk": {
+      "name": "@demicodes/sdk",
+      "version": "0.24.0",
+      "dependencies": {
+        "@demicodes/conversation-client": "workspace:^",
+        "@demicodes/protocol": "workspace:^",
+        "zod": "^4.0.0",
+      },
+    },
     "packages/site": {
       "name": "@demicodes/site",
       "version": "0.0.0",
@@ -453,6 +462,8 @@
     "@demicodes/plugin-widget": ["@demicodes/plugin-widget@workspace:crates/plugin-widget/page"],
 
     "@demicodes/protocol": ["@demicodes/protocol@workspace:packages/protocol"],
+
+    "@demicodes/sdk": ["@demicodes/sdk@workspace:packages/sdk"],
 
     "@demicodes/site": ["@demicodes/site@workspace:packages/site"],
 

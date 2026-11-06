@@ -10,9 +10,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use axum::extract::ws::close_code;
+use demi_core::starter::Notified;
 use demi_core::{Lane, LaneClose, LaneEnd, LaneMessage, LaneReader};
 use demi_web_api_protocol::push::PushMessage;
-use demi_web_api_protocol::starter::{NotifyOutcome, StarterAnswer, StarterRequest};
+use demi_web_api_protocol::starter::{StarterAnswer, StarterRequest};
 use tokio::sync::{mpsc, oneshot};
 
 /// One core's starter lane, open or not.
@@ -31,7 +32,7 @@ struct Opens {
 /// A notification to send, and where its answer goes.
 struct Notification {
     message: PushMessage,
-    answer: oneshot::Sender<NotifyOutcome>,
+    answer: oneshot::Sender<Notified>,
 }
 
 impl StarterLane {
@@ -47,16 +48,16 @@ impl StarterLane {
 
     /// Sends `message` on the open lane and answers how the program says
     /// it went; nowhere while no lane is open, or when the lane ends first.
-    pub async fn notify(&self, message: PushMessage) -> NotifyOutcome {
+    pub async fn notify(&self, message: PushMessage) -> Notified {
         let (answer, answered) = oneshot::channel();
         let sent = match &self.opens().open {
             Some((_, notifications)) => notifications.send(Notification { message, answer }).is_ok(),
             None => false,
         };
         if !sent {
-            return NotifyOutcome::Nowhere;
+            return Notified::Nowhere;
         }
-        answered.await.unwrap_or(NotifyOutcome::Nowhere)
+        answered.await.unwrap_or(Notified::Nowhere)
     }
 
     /// Ends the open lane, as the core closes.
@@ -93,7 +94,7 @@ impl Claim {
     /// answers back, until the program closes the lane, its connection
     /// ends, or the core closes.
     pub(crate) async fn serve(mut self, mut lane: Lane, mut reader: LaneReader) {
-        let mut waiting: HashMap<u32, oneshot::Sender<NotifyOutcome>> = HashMap::new();
+        let mut waiting: HashMap<u32, oneshot::Sender<Notified>> = HashMap::new();
         let mut next = 0u32;
         let end = loop {
             tokio::select! {
@@ -118,8 +119,13 @@ impl Claim {
                         LaneMessage::Text(text) => serde_json::from_str::<StarterAnswer>(&text).ok(),
                         LaneMessage::Binary(_) => None,
                     };
-                    let Some(StarterAnswer::Notified { id, outcome }) = answer else {
-                        break LaneEnd::Close(LaneClose { code: close_code::POLICY, reason: "unexpected_message" });
+                    let (id, outcome) = match answer {
+                        Some(StarterAnswer::Sending { id, to }) => (id, Notified::Sending(to as usize)),
+                        Some(StarterAnswer::Shown { id }) => (id, Notified::Shown),
+                        Some(StarterAnswer::Nowhere { id }) => (id, Notified::Nowhere),
+                        None => {
+                            break LaneEnd::Close(LaneClose { code: close_code::POLICY, reason: "unexpected_message" });
+                        }
                     };
                     if let Some(answer) = waiting.remove(&id) {
                         // A notification whose sender left needs no answer.
