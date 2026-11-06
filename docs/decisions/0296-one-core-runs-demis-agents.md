@@ -28,7 +28,7 @@ does all of that, but only as a whole server:
 ## Decision
 
 Everything Demi does for one person's agents is one **core**, a Rust
-library. The server runs one core per user. Any program runs a core of its
+library. The server runs one core per user. Any program runs cores of its
 own through a binary that speaks the web API over stdio, and a TypeScript SDK
 wraps that binary. Both run the same code.
 
@@ -99,8 +99,9 @@ Whoever starts a core names its data directory, and the core owns it:
 - A conversation is open in one core at a time. A second core that opens
   the same directory is refused, so two processes of a program never write
   one conversation.
-- Credentials are sealed under a key the starter gives, as the server's
-  instance secret seals them today.
+- Credentials are sealed under a key the starter gives: the server's
+  instance secret, as today, or a secret in the core's own directory
+  (0297).
 
 The server keeps `users/<user>/` as each user's data directory.
 `control.sqlite` keeps only what is above the core. The upgrade that brings
@@ -114,11 +115,11 @@ server gives each core its user's part of the store.
 
 | Given | The server gives | A program gives |
 | --- | --- | --- |
-| Data directory and sealing key | `users/<user>/`, the instance secret's key | Its own |
+| Data directory and sealing key | `users/<user>/`, the instance secret's key | A directory for each core, with its own secret |
 | Answers to permission requests | The user, on the page | Its code, or always allow |
 | Notifications | Push and the page | Its code |
 | Commands and context of its own | None | Served over stdio, as plugin commands are served |
-| The services its cores share | One set for every user's core: the vault over each user's store, the model catalogs, account rotation | One set for its one core |
+| The services its cores share | One set for every user's core: the vault over each user's store, the model catalogs, account rotation | One set for the cores it opens |
 | Waking a Host that sleeps | The Cloud's machine | None |
 
 ### Runners connect to a core
