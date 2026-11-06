@@ -22,7 +22,7 @@ pub const SCOPE: &str = "@demicodes/";
 /// Each plugin the backend registers whose manifest names a page package,
 /// with its page, in registration order.
 pub fn pages() -> Vec<(Manifest, Page)> {
-    demi_backend::plugins::builtin()
+    demi_core::builtins::plugins()
         .iter()
         .filter_map(|factory| {
             let manifest = factory.manifest();

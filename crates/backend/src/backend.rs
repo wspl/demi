@@ -68,15 +68,17 @@ use demi_backend_cloud::user_core::CloudOfCore;
 use demi_backend_user_shard::server_starter::ServerOpener;
 use demi_core::start_passes::{start_step, take_up};
 use demi_backend_user_shard::services::{
-    CloseError, ProviderSetup, ServiceKeys, ServiceSettings, Services, ServicesError, Storage,
+    CloseError, ServiceKeys, ServiceSettings, Services, ServicesError, Storage,
 };
 use demi_core::pool::ShardPool;
+use demi_core::services::CoreSettings;
+use demi_backend_runners::native::ServedPackages;
 use demi_core_api::api::Api;
 use demi_backend_user_shard::cloud::{route_deaths, route_statuses};
 use tokio_util::task::AbortOnDropHandle;
 
 use crate::config::BackendConfig;
-use crate::families::RelayFamily;
+use demi_core::builtins::RelayFamily;
 use crate::config::secret::{InstanceSecret, SecretError};
 
 /// A running backend.
@@ -457,20 +459,6 @@ impl Backend {
         // Where this backend is reached, which the services set once it
         // listens, and the family of borrowed entries names to their lenders.
         let public_url = PublicUrl::default();
-        let providers = ProviderSetup {
-            families: config
-                .families
-                .with(demi_provider_relay::borrow::FAMILY, RelayFamily(public_url.clone())),
-            models_dev_url: config.models_dev_url,
-            model_shutdowns_url: config.model_shutdowns_url,
-            media_catalog_url: config.media_catalog_url,
-            media_catalog: config.media_catalog,
-            claude_releases: config.claude_releases,
-            claude_machine: config.claude_machine,
-            logins: config.logins,
-            clock: config.clock,
-            master_account: config.master_account,
-        };
         let (machines, notices) = MachinesClient::new(config.machines_socket, config.log.clone());
         let keys = ServiceKeys {
             email_codes: secret.email_code_key(),
@@ -488,26 +476,44 @@ impl Backend {
                 .flat_map(|factory| factory.manifest().page.iter().flat_map(|page| &page.blocks))
                 .map(|block| block.tag.clone()),
         );
+        let core = CoreSettings {
+            families: config
+                .families
+                .with(demi_provider_relay::borrow::FAMILY, RelayFamily(public_url.clone())),
+            packages: Arc::new(ServedPackages {
+                native: config.native.clone(),
+                backend: public_url.clone(),
+            }),
+            public_url,
+            clock: config.clock,
+            plugins: config.plugins,
+            models_dev_url: config.models_dev_url,
+            model_shutdowns_url: config.model_shutdowns_url,
+            media_catalog_url: config.media_catalog_url,
+            media_catalog: config.media_catalog,
+            claude_releases: config.claude_releases,
+            claude_machine: config.claude_machine,
+            logins: config.logins,
+            runners: config.runners,
+            conversations: config.conversations,
+            media: config.media,
+            lifecycle: config.lifecycle,
+            stun: config.stun,
+        };
         let settings = ServiceSettings {
             shared_subscriptions: config.shared_subscriptions,
+            master_account: config.master_account,
             log: config.log,
             web_build,
             runner_releases: RunnerReleases::new(config.runner_releases),
-            stun: config.stun,
             mail: config.account_mail,
-            runners: config.runners,
-            conversations: config.conversations,
-            media_tuning: config.media,
             native: config.native,
-            plugins: config.plugins,
             cloud: CloudServices::new(machines, config.cloud),
-            lifecycle: config.lifecycle,
             upgrade_request: config.upgrade_request,
             upgrade_channel: config.upgrade_channel,
             update: update.clone(),
-            public_url,
         };
-        let services = Services::start(storage.clone(), keys, providers, settings);
+        let services = Services::start(storage.clone(), keys, core, settings);
         let services = Arc::new(services.await?);
         let opener = Arc::new(ServerOpener(services.clone()));
         let shards = match ShardPool::start(config.shards, services.core.clone(), opener).await {

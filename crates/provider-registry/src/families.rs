@@ -2,7 +2,7 @@
 //!
 //! Each family says how its entries authenticate and builds the provider of one
 //! entry and account from the entry's decoded configuration. The backend starts
-//! with its built-in families (`demi_backend::families`). A test registers
+//! with its built-in families (`demi_core::builtins`). A test registers
 //! scripted ones beside them.
 //!
 //! The terms:

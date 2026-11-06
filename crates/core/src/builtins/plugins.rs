@@ -1,7 +1,7 @@
 //! The built-in plugins, one per plugin crate, in their order of registration.
 //!
-//! This is the list the composition root registers. A plugin leaves a
-//! deployment by leaving this list.
+//! This is the list the server and a program's process register. A plugin
+//! leaves a release by leaving this list.
 
 use demi_plugin_audio::Audio;
 use demi_plugin_browser::Browser;
@@ -16,8 +16,8 @@ use demi_plugin_skills::Skills;
 use demi_plugin_web::Web;
 use demi_plugin_widget::Widgets;
 
-/// The plugins built into the backend.
-pub fn builtin() -> Vec<Box<dyn PluginFactory>> {
+/// The built-in plugins.
+pub fn plugins() -> Vec<Box<dyn PluginFactory>> {
     vec![
         Box::new(File::new()),
         Box::new(Browser::new()),

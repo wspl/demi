@@ -12,6 +12,9 @@ pub mod store;
 pub enum ObjectError {
     #[error("the object store failed: {0}")]
     Store(#[from] object_store::Error),
+    /// The namespace of a core this process never opened.
+    #[error("the core's blobs are not open")]
+    Unplaced,
     /// Work handed to a blocking thread ended without an answer, because it
     /// panicked or the runtime is shutting down.
     #[error("blocking object store work did not finish: {0}")]

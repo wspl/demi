@@ -53,10 +53,10 @@ zstd = { version = "0.13", default-features = false }
 [features]
 default = ["developer"]
 # `xtask contracts`, `xtask dev` and `xtask logos`, which only a developer runs.
-# The build workflow builds xtask without them, and so without the backend they
+# The build workflow builds xtask without them, and so without the core they
 # compile (`.github/workflows/build.yml`).
 developer = [
-  "dep:demi-backend",
+  "dep:demi-core",
   "dep:demi-provider-common",
   "dep:demi-provider-registry",
   "dep:log",
@@ -69,13 +69,12 @@ developer = [
   "dep:process-wrap",
 ]
 
-# What `xtask contracts` and `xtask dev` need, which exist only on Unix: the
-# backend builds only where it runs. The plugins the backend registers, whose
-# manifests the page packages' types and the plugin page registry are
-# generated from; the echo endpoint `xtask dev` serves; the process groups it
-# starts its programs in.
+# What `xtask contracts` and `xtask dev` need, which exist only on Unix. The
+# built-in plugins, whose manifests the page packages' types and the plugin
+# page registry are generated from; the echo endpoint `xtask dev` serves; the
+# process groups it starts its programs in.
 [target.'cfg(unix)'.dependencies]
-demi-backend = { path = "../backend", optional = true }
+demi-core = { path = "../core", optional = true }
 # The vendors the backend offers, read from models.dev as it reads them
 # (`xtask logos`).
 demi-provider-common = { path = "../provider-common", optional = true }

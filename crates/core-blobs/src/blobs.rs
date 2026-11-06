@@ -1,5 +1,7 @@
-//! Attachment and transcript media: each user's bytes under `blobs/<user>/`,
-//! named by their SHA-256 in lowercase hexadecimal.
+//! Attachment and transcript media: each core's bytes in its namespace,
+//! named by their SHA-256 in lowercase hexadecimal. A server keeps its users'
+//! namespaces under `blobs/<user>/` of its one object store; a program's
+//! process keeps each core's under `blobs/` of the core's directory.
 //!
 //! A name identifies bytes only within its user's namespace, so knowing another
 //! user's hash reaches nothing of theirs.
@@ -74,9 +76,19 @@ pub const GRACE_MS: i64 = 24 * 60 * 60 * 1000;
 /// and the contents being read in.
 #[derive(Clone)]
 pub struct BlobStores {
-    objects: Arc<dyn ObjectStore>,
+    places: Arc<Places>,
     again: Arc<PutAgain>,
     fetching: Arc<Mutex<HashMap<UserId, Arc<Fetching>>>>,
+}
+
+/// Where the namespaces are.
+enum Places {
+    /// Every user's under `blobs/<user>` of one store.
+    Shared(Arc<dyn ObjectStore>),
+    /// Each core's under `blobs` of a store of its own, placed as the core
+    /// opens. A place stays until the process ends, so a request that found
+    /// its core open finds its blobs even while the core closes.
+    Own(Mutex<HashMap<UserId, Arc<dyn ObjectStore>>>),
 }
 
 /// A user's contents being read into the namespace, each with how its read
@@ -101,10 +113,20 @@ pub enum FetchError<E> {
 }
 
 impl BlobStores {
-    /// The namespaces in `objects`, whose puts are timed by `clock`.
+    /// Every user's namespace in `objects`, whose puts are timed by `clock`.
     pub fn new(objects: Arc<dyn ObjectStore>, clock: Arc<dyn Clock>) -> Self {
+        Self::with(Places::Shared(objects), clock)
+    }
+
+    /// Each core's namespace in a store of its own, which [`BlobStores::place`]
+    /// gives as the core opens; puts are timed by `clock`.
+    pub fn own(clock: Arc<dyn Clock>) -> Self {
+        Self::with(Places::Own(Mutex::default()), clock)
+    }
+
+    fn with(places: Places, clock: Arc<dyn Clock>) -> Self {
         Self {
-            objects,
+            places: Arc::new(places),
             again: Arc::new(PutAgain {
                 clock,
                 users: Mutex::new(HashMap::new()),
@@ -113,12 +135,28 @@ impl BlobStores {
         }
     }
 
+    /// Keeps `user`'s namespace in `objects` from now on, in place of where
+    /// an earlier open of it kept it. Stores that share one store for every
+    /// user keep it there.
+    pub fn place(&self, user: &UserId, objects: Arc<dyn ObjectStore>) {
+        if let Places::Own(own) = &*self.places {
+            own.lock().unwrap_or_else(PoisonError::into_inner).insert(user.clone(), objects);
+        }
+    }
+
     /// `user`'s namespace: the signed-in user's for uploads and downloads,
     /// the conversation owner's for transcript media.
     pub fn for_user(&self, user: &UserId) -> UserBlobs {
+        let (objects, namespace) = match &*self.places {
+            Places::Shared(objects) => (Some(objects.clone()), Path::from_iter(["blobs", user.as_str()])),
+            Places::Own(own) => (
+                own.lock().unwrap_or_else(PoisonError::into_inner).get(user).cloned(),
+                Path::from("blobs"),
+            ),
+        };
         UserBlobs {
-            objects: self.objects.clone(),
-            namespace: Path::from_iter(["blobs", user.as_str()]),
+            objects,
+            namespace,
             clock: self.again.clock.clone(),
             puts: self.again.of(user),
             fetching: self
@@ -180,7 +218,8 @@ fn forget_old(puts: &mut HashMap<BlobRef, Timestamp>, now: Timestamp) {
 /// One user's blobs.
 #[derive(Clone)]
 pub struct UserBlobs {
-    objects: Arc<dyn ObjectStore>,
+    /// None for a core whose blobs were never placed.
+    objects: Option<Arc<dyn ObjectStore>>,
     namespace: Path,
     clock: Arc<dyn Clock>,
     puts: Arc<UserPuts>,
@@ -188,6 +227,10 @@ pub struct UserBlobs {
 }
 
 impl UserBlobs {
+    fn objects(&self) -> Result<&Arc<dyn ObjectStore>, ObjectError> {
+        self.objects.as_ref().ok_or(ObjectError::Unplaced)
+    }
+
     /// The bytes `blob` names: the namespace's, or once another caller's read
     /// of them ended, or `read`'s, stored under `blob`. Only one read of a
     /// content goes at a time; one that ends without its bytes, such as a
@@ -280,7 +323,7 @@ impl UserBlobs {
         let location = self.location(blob);
         {
             let mut puts = self.puts.lock().await;
-            match self.objects.head(&location).await {
+            match self.objects()?.head(&location).await {
                 Ok(_) => {
                     self.put_again(&mut puts, blob);
                     return Ok(());
@@ -294,7 +337,7 @@ impl UserBlobs {
             ..PutOptions::default()
         };
         match self
-            .objects
+            .objects()?
             .put_opts(&location, PutPayload::from_bytes(bytes), create)
             .await
         {
@@ -312,7 +355,7 @@ impl UserBlobs {
     /// The bytes `blob` names, or `None` when this namespace does not hold
     /// them.
     pub async fn get(&self, blob: &BlobRef) -> Result<Option<Bytes>, ObjectError> {
-        match self.objects.get(&self.location(blob)).await {
+        match self.objects()?.get(&self.location(blob)).await {
             Ok(object) => Ok(Some(object.bytes().await?)),
             Err(object_store::Error::NotFound { .. }) => Ok(None),
             Err(error) => Err(error.into()),
@@ -323,7 +366,7 @@ impl UserBlobs {
     /// `None` when this namespace does not hold it.
     pub async fn opening(&self, blob: &BlobRef) -> Result<Option<BlobOpening>, ObjectError> {
         let options = GetOptions::new().with_range(Some(0..OPENING_BYTES));
-        match self.objects.get_opts(&self.location(blob), options).await {
+        match self.objects()?.get_opts(&self.location(blob), options).await {
             Ok(object) => {
                 let size = object.meta.size;
                 let bytes = object.bytes().await?;
@@ -340,7 +383,7 @@ impl UserBlobs {
     /// object whose name is no blob's is left out: no record can name it, and a
     /// collection never deletes what it does not know.
     pub async fn list(&self) -> Result<Vec<StoredBlob>, ObjectError> {
-        let mut listing = self.objects.list(Some(&self.namespace));
+        let mut listing = self.objects()?.list(Some(&self.namespace));
         let mut blobs = Vec::new();
         while let Some(object) = listing.next().await {
             let object = object?;
@@ -383,7 +426,7 @@ impl UserBlobs {
         if puts.contains_key(blob) {
             return Ok(false);
         }
-        match self.objects.delete(&self.location(blob)).await {
+        match self.objects()?.delete(&self.location(blob)).await {
             Ok(()) | Err(object_store::Error::NotFound { .. }) => Ok(true),
             Err(error) => Err(error.into()),
         }

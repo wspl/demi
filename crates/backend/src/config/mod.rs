@@ -588,9 +588,9 @@ impl BackendConfig {
             account_mail: None,
             clock: Arc::new(SystemClock),
             shards: ShardPlacement::Threads(NonZeroUsize::MIN),
-            families: crate::families::builtin(claude_machine.clone()),
+            families: demi_core::builtins::families(claude_machine.clone()),
             claude_machine,
-            plugins: crate::plugins::builtin(),
+            plugins: demi_core::builtins::plugins(),
             models_dev_url: ModelsDevClient::DEFAULT_URL
                 .parse()
                 .expect("the models.dev address parses"),

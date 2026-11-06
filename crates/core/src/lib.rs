@@ -95,6 +95,7 @@
 
 mod adoption;
 pub(crate) mod agent_profiles;
+pub mod builtins;
 pub mod conversation;
 pub mod cores;
 pub(crate) mod credential_commands;

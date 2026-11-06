@@ -1,8 +1,8 @@
 //! The built-in provider families, one per vendor crate
 //! (`crates/provider-registry/src/families.rs`).
 //!
-//! They are the registry the backend starts with, beside which a test registers
-//! scripted families.
+//! They are the registry the services start with, beside which a test
+//! registers scripted families.
 
 use std::sync::{Arc, OnceLock};
 
@@ -12,7 +12,7 @@ use demi_provider_registry::families::{
     ProviderFamily,
 };
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
-use demi_core::conversation::claude_cli::MachineSlot;
+use crate::conversation::claude_cli::MachineSlot;
 use demi_provider_claude_code::{AccountMachine, ClaudeCodeConfig, ClaudeCodeProvider};
 use demi_provider_codex::{CodexConfig, CodexProvider, CodexReleases};
 use demi_provider_common::credentials::SubscriptionAccounts;
@@ -31,9 +31,9 @@ use demi_core_hosts::public_url::PublicUrl;
 use demi_shared_types::{AudioShape, CacheTtl, ImageShape, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 
-/// The families built into the backend, whose Claude Code family reads its
-/// machine from `machine`.
-pub fn builtin(machine: MachineSlot) -> FamilyRegistry {
+/// The built-in families, whose Claude Code family reads its machine from
+/// `machine`.
+pub fn families(machine: MachineSlot) -> FamilyRegistry {
     FamilyRegistry::default()
         .with_compatible_audio(Arc::new(|args: CompatibleAudioArgs| {
             demi_provider_openai_api::compatible_audio(args.name, args.key, &args.base, args.models, args.clock)
@@ -50,9 +50,9 @@ pub fn builtin(machine: MachineSlot) -> FamilyRegistry {
 /// The `relay` family: an entry another server lends
 /// (`crates/provider-relay/src/lib.rs`). Its endpoint is the lender's public
 /// URL and its key the share key's token, which the page split from the key
-/// the user pasted. The backend registers it as it starts, with the URL it
-/// is reached at, which the lender shows beside the key.
-pub(crate) struct RelayFamily(pub(crate) PublicUrl);
+/// the user pasted. Whoever starts the services registers it with the URL
+/// they are reached at, which the lender shows beside the key.
+pub struct RelayFamily(pub PublicUrl);
 
 impl ProviderFamily for RelayFamily {
     fn credential(&self) -> CredentialKind {
