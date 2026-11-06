@@ -74,7 +74,7 @@ use demi_core_store::devices::DeviceRecord;
 use demi_agent_tools::duration;
 use demi_core_store::projects::TypedDirectory;
 use demi_runner_client::{Admission, Link, RemoteHost, WeakLink, Withdrawal};
-use demi_backend_runners::file_gate::{FileGate, FileLease};
+use demi_core_hosts::file_gate::{FileGate, FileLease};
 use demi_host_interface::{Host as _, HostError, HostErrorKind, HostFs};
 use demi_runner_protocol::files::FsFailure;
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, SerialGate};

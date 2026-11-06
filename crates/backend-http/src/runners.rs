@@ -47,7 +47,7 @@ use super::error::ApiError;
 use super::install::{current_runner_release, range_start};
 use super::listener::Peer;
 use super::runner_socket::accept;
-use demi_backend_runners::devices::RunnerSocket;
+use demi_core_hosts::devices::RunnerSocket;
 
 /// `WS /api/runner`: the socket carries MessagePack frames of at most the
 /// wire's limit; a larger one closes it. A backend with runner releases

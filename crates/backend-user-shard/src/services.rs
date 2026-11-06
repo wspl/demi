@@ -42,7 +42,7 @@ use demi_provider_registry::quotas::AccountQuotas;
 use demi_provider_registry::store::RegistryStore;
 use demi_core_providers::vault::seal::VaultKey;
 use demi_backend_runners::claims::PendingClaims;
-use demi_backend_runners::devices::Returning;
+use demi_core_hosts::devices::Returning;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::install::RunnerReleases;
 use demi_backend_runners::prefetch::Prefetches;
@@ -401,7 +401,8 @@ impl Services {
         })?;
         let hasher = PasswordHasher::new().await?;
         let clock = providers.clock.clone();
-        let returning = Arc::new(Returning::take(&control, &stores).await?);
+        let cores: Vec<CoreStore> = stores.all(&control).await?.into_iter().map(|(_, store)| store).collect();
+        let returning = Arc::new(Returning::take(&cores).await?);
         let edge = tokio::runtime::Handle::current();
         // The shared services' own client; each shard thread builds its own.
         let http = reqwest::Client::builder()

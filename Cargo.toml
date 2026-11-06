@@ -27,6 +27,7 @@ members = [
   "crates/backend-user-shard",
   "crates/backend-database",
   "crates/core-store",
+  "crates/core-hosts",
   "crates/server",
   "crates/supervisor-protocol",
   "crates/core-sync",

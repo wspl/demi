@@ -59,7 +59,7 @@ use demi_web_api_protocol::ids::CredentialId;
 use demi_runner_client::{
     AttachedArtifact, Link, RemoteHost, ResidentCallError, ResidentRequest, WeakLink,
 };
-use demi_backend_runners::command_context::{command_context, provider_context};
+use demi_core_hosts::command_context::{command_context, provider_context};
 use demi_command_package_claude_code_protocol::{
     Installed, Operation, PACKAGE, Release, Reply, Status,
 };

@@ -36,8 +36,6 @@ use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket};
 use demi_core_store::StorageError;
-use demi_backend_database::control::ControlService;
-use demi_backend_database::core_stores::CoreStores;
 use demi_core_store::store::CoreStore;
 use demi_core_store::devices::{DeviceRecord, FirstHome};
 use demi_core_sync::{Part, UserMarks};
@@ -58,7 +56,7 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::file_gate::FileLease;
 use crate::host_key::{HostOwner, host_key};
-use crate::install::start_command;
+use demi_runner_protocol::installation::start_command;
 
 /// Why a revoked device's connection ended.
 const REVOKED: &str = "device revoked";
@@ -96,10 +94,10 @@ impl Default for Returning {
 
 impl Returning {
     /// Takes what the last shutdown recorded, for the start now.
-    pub async fn take(control: &ControlService, stores: &CoreStores) -> Result<Self, StorageError> {
+    pub async fn take(stores: &[CoreStore]) -> Result<Self, StorageError> {
         let mut devices = HashSet::new();
-        for user in control.user_ids().await? {
-            devices.extend(stores.of(&user).await?.take_devices_ended_by_shutdown().await?);
+        for store in stores {
+            devices.extend(store.take_devices_ended_by_shutdown().await?);
         }
         Ok(Self {
             devices: std::sync::Mutex::new(devices),

@@ -17,7 +17,7 @@ use demi_runner_protocol::wire::{self, HelloErrorCode, Inbound, Outbound, Runner
 
 use demi_backend_runners::claims::ClaimGrant;
 use demi_backend_runners::codes::ClaimCode;
-use demi_backend_runners::devices::{RunnerSocket, send};
+use demi_core_hosts::devices::{RunnerSocket, send};
 
 use demi_backend_user_shard::services::Services;
 use demi_backend_user_shard::shard::{KeptJobs, Shards};

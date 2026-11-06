@@ -47,7 +47,7 @@ use demi_plugin_host::Lost;
 use demi_backend_database::server_log::ServerLog;
 use demi_runner_client::{CommandCatalog, DirectAdmission, ForwardEvent, HostLog, JobOrigin, LinkPolicy, PackageEvent};
 use demi_runner_protocol::wire::{HostLogLine, LinkedWorktree};
-use demi_backend_runners::host_key::conversation_of;
+use demi_core_hosts::host_key::conversation_of;
 use demi_core_permissions::Need;
 use demi_command_protocol::ResidentSequence;
 use demi_host_interface::{BroughtHost, RpcError, RpcInvocation, RpcPort};

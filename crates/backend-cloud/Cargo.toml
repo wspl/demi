@@ -12,6 +12,7 @@ doctest = false
 bench = false
 
 [dependencies]
+demi-core-hosts = { path = "../core-hosts" }
 demi-core-idle-watch = { path = "../core-idle-watch" }
 demi-core-providers = { path = "../core-providers" }
 demi-provider-registry = { path = "../provider-registry" }

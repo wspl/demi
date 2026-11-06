@@ -17,7 +17,7 @@ use demi_core_sync::Part;
 use demi_plugin_host::Lost;
 use demi_runner_client::{Beginning, Hello, Link, LinkOptions, RemoteHost, host_identity};
 use demi_host_interface::{HostErrorKind, HostFs as _};
-use demi_backend_runners::devices::{DeviceRecorder, Download, Reported, RunnerSocket, Serving, Updating, send};
+use demi_core_hosts::devices::{DeviceRecorder, Download, Reported, RunnerSocket, Serving, Updating, send};
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::{HelloErrorCode, Inbound, KeptJob, Resume, RunnerInfo};
 use demi_web_api_protocol::devices::DeviceKind;

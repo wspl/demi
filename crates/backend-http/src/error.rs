@@ -22,7 +22,7 @@ use demi_core_store::StorageError;
 use demi_provider_registry::registry::RegistryError;
 use demi_core_providers::vault::accounts::AccountRefusal;
 use demi_core_providers::vault::logins::LoginRefusal;
-use demi_backend_runners::files::{TextError, TextRefusal};
+use demi_core_hosts::files::{TextError, TextRefusal};
 use demi_host_interface::HostError;
 use demi_shared_types::ReadAt;
 

@@ -33,7 +33,7 @@ use bytes::Bytes;
 use demi_runner_client::{
     Pipe, PipeReader, PipeWriter, ResidentCallError, ResidentRequest, ResidentStream,
 };
-use demi_backend_runners::command_context::command_context;
+use demi_core_hosts::command_context::command_context;
 use demi_backend_runners::native::NativeCatalog;
 use demi_command_declarations::NativeOperation;
 use demi_command_protocol::CommandCaller;

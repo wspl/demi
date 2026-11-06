@@ -296,7 +296,7 @@ impl Shard {
             return Checked::Unrunnable(unrunnable);
         }
         let failed = |error: &dyn std::fmt::Display| Checked::Failed(error.to_string());
-        let context = match demi_backend_runners::command_context::command_context(
+        let context = match demi_core_hosts::command_context::command_context(
             store,
             &schedule.conversation,
             CommandCaller::User {},

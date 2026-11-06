@@ -738,7 +738,7 @@ fn if_busy(text: &str) -> Result<IfBusy, RpcError> {
 }
 
 async fn user_zone(shard: &Shard) -> Result<String, RpcError> {
-    let reported = demi_backend_runners::command_context::reported(shard.store())
+    let reported = demi_core_hosts::command_context::reported(shard.store())
         .await
         .map_err(failed)?;
     Ok(reported.locale.time_zone)

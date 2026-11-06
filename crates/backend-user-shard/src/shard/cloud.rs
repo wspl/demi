@@ -18,7 +18,7 @@ use demi_core_sync::UserMarks;
 use demi_plugin_host::Lost;
 use demi_provider_registry::registry::ProviderRegistry;
 use demi_core_providers::vault::entries::Vault;
-use demi_backend_runners::devices::Devices;
+use demi_core_hosts::devices::Devices;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_shared_gates::Reservation;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProviderId, UserId};

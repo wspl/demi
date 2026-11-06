@@ -71,9 +71,8 @@ What stays above it, in the server alone:
 - the Cloud's machine, which the server wakes and stops; to the core a Cloud
   is a Host like any other;
 - what crosses users: shares, a provider entry lent to another server, and
-  the master's entries a shared instance's users infer with, which the
-  server lends to each user's core through the relay's borrowing
-  (`provider-relay`), as another server's are lent today;
+  which cores a shared instance's vault reads, so each user infers with the
+  master's entries;
 - the pages' synchronization channels and the HTTP routes.
 
 ### Where a core keeps its data
@@ -117,7 +116,7 @@ server gives each core its user's part of the store.
 | Answers to permission requests | The user, on the page | Its code, or always allow |
 | Notifications | Push and the page | Its code |
 | Commands and context of its own | None | Served over stdio, as plugin commands are served |
-| Entries lent to the core | The master's, on a shared instance | Its own, if any |
+| The services its cores share | One set for every user's core: the vault over each user's store, the model catalogs, account rotation | One set for its one core |
 | Waking a Host that sleeps | The Cloud's machine | None |
 
 ### Runners connect to a core

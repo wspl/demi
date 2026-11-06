@@ -120,7 +120,7 @@ use demi_core_idle_watch::Activity;
 use demi_core_sync::UserMarks;
 use demi_provider_registry::registry::ProviderRegistry;
 use demi_core_providers::vault::entries::Vault;
-use demi_backend_runners::devices::Devices;
+use demi_core_hosts::devices::Devices;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;

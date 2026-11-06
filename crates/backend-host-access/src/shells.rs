@@ -28,10 +28,10 @@ use demi_runner_client::{
     CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, JobWaiting, KeptStart, RemoteHost,
     RemoteShellEnvironment, Withdrawal, edited_file, encode_output,
 };
-use demi_backend_runners::command_context::command_context;
-use demi_backend_runners::files::text_of;
-use demi_backend_runners::host_key::device_of;
-use demi_backend_runners::router::CommandRegistration;
+use demi_core_hosts::command_context::command_context;
+use demi_core_hosts::files::text_of;
+use demi_core_hosts::host_key::device_of;
+use demi_core_hosts::router::CommandRegistration;
 use demi_command_protocol::{CommandCaller, EDIT_FILE_BYTES};
 use demi_host_interface::{
     CommandSet,

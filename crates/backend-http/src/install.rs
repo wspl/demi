@@ -24,7 +24,7 @@ use std::ops::Bound;
 use axum_extra::TypedHeader;
 use axum_extra::headers::Range;
 use bytes::Bytes;
-use demi_backend_runners::devices::Download;
+use demi_core_hosts::devices::Download;
 
 use super::runners::TokenDevice;
 use demi_backend_runners::native::StoredBytes;

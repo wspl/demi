@@ -24,6 +24,8 @@
 use sha2::{Digest, Sha256};
 use url::{Host, Url};
 
+use crate::wire::RunnerPlatform;
+
 /// The launcher an installer writes as `run` in an installation, which its
 /// service registration runs: it starts the installation's runner, the file
 /// [`RUNNER`](crate::release::RUNNER) in its directory (`.exe` on Windows),
@@ -97,4 +99,79 @@ pub fn installation_name(backend: &Url) -> String {
         .collect();
     let digest = Sha256::digest(backend.as_str().as_bytes());
     format!("{readable}-{:02x}{:02x}", digest[0], digest[1])
+}
+
+/// The command that starts the runner of `backend`'s installation again on a
+/// device of `platform`, typed in a terminal there: the launcher of the
+/// installation, in `installation` as its runner reported it or where the
+/// installers put it by default, with `start`, which starts the runner in the
+/// background (`crates/runner/src/start.rs`).
+///
+/// A directory in `home`, the device's home directory, is written from the
+/// home: `~` in a POSIX shell, `$env:USERPROFILE` in PowerShell, where `-File`
+/// does not expand `~`. On Windows the command runs through PowerShell with a
+/// policy that lets the launcher run.
+pub fn start_command(
+    backend: &Url,
+    installation: Option<&str>,
+    home: Option<&str>,
+    platform: RunnerPlatform,
+) -> String {
+    let windows = platform == RunnerPlatform::Win32;
+    let separator = if windows { '\\' } else { '/' };
+    let default = format!(".demi{separator}runner{separator}{}", installation_name(backend));
+    let place = match installation {
+        None => Place::Home(default),
+        Some(installation) => {
+            let relative = home
+                .and_then(|home| installation.strip_prefix(home.trim_end_matches(separator)))
+                .and_then(|rest| rest.strip_prefix(separator));
+            match relative {
+                Some(relative) => Place::Home(relative.to_owned()),
+                None => Place::Absolute(installation.to_owned()),
+            }
+        }
+    };
+    if windows {
+        let launcher = match place {
+            Place::Home(relative) => format!(
+                "\"$env:USERPROFILE\\{}\\run.ps1\"",
+                powershell_expandable(&relative)
+            ),
+            Place::Absolute(installation) => powershell(&format!("{installation}\\run.ps1")),
+        };
+        return format!("powershell -ExecutionPolicy Bypass -File {launcher} start");
+    }
+    match place {
+        Place::Home(relative) => format!("~/{} start", sh(&format!("{relative}/run"))),
+        Place::Absolute(installation) => format!("{} start", sh(&format!("{installation}/run"))),
+    }
+}
+
+/// Where an installation's directory is, as a command names it.
+enum Place {
+    /// Under the home directory, at this path relative to it.
+    Home(String),
+    Absolute(String),
+}
+
+/// `value` inside a PowerShell string literal that expands variables, with
+/// nothing of its own expanded.
+fn powershell_expandable(value: &str) -> String {
+    value
+        .replace('`', "``")
+        .replace('"', "`\"")
+        .replace('$', "`$")
+}
+
+/// `value` as one POSIX shell word.
+pub fn sh(value: &str) -> String {
+    shlex::try_quote(value)
+        .expect("an installer's values hold no NUL byte")
+        .into_owned()
+}
+
+/// `value` as a PowerShell string literal.
+pub fn powershell(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }

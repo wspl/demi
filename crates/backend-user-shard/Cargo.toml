@@ -12,6 +12,7 @@ doctest = false
 bench = false
 
 [dependencies]
+demi-core-hosts = { path = "../core-hosts" }
 demi-agent-server = { path = "../agent-server" }
 demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
 demi-agent-session = { path = "../agent-session" }
