@@ -57,7 +57,8 @@ import type {
  *   shown as missing, and opens it. Every field of the detail saves as it is
  *   left: a secret's value is written, never shown, and an emptied field is
  *   missing again. A field's kind stays as it was created, so a secret is
- *   never turned into a value the page shows.
+ *   never turned into a value the page shows; only a reply's card asks for a
+ *   secret's value.
  */
 const props = defineProps<{
   credentials: SettingsCredential[]

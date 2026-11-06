@@ -1,21 +1,32 @@
 //! Loop devices the manager attaches itself: each working image gets a free
 //! device with auto-clear set, so unmounting its filesystem, or a mount
 //! that fails, detaches the device.
+//!
+//! `LOOP_CONFIGURE` attaches and configures a device in one call from Linux
+//! 5.8. An older kernel refuses it, and the manager attaches with
+//! `LOOP_SET_FD` and then sets auto-clear with `LOOP_SET_STATUS64`, as
+//! util-linux's `losetup` does; a device whose status cannot be set is
+//! detached again.
 
 use std::{
     io,
     os::fd::{AsFd, AsRawFd},
     path::{Path, PathBuf},
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use linux_raw_sys::loop_device::{
-    LO_FLAGS_AUTOCLEAR, LO_FLAGS_READ_ONLY, LOOP_CONFIGURE, LOOP_CTL_GET_FREE, LOOP_SET_DIRECT_IO,
-    loop_config,
+    LO_FLAGS_AUTOCLEAR, LO_FLAGS_READ_ONLY, LOOP_CLR_FD, LOOP_CONFIGURE, LOOP_CTL_GET_FREE, LOOP_SET_DIRECT_IO,
+    LOOP_SET_FD, LOOP_SET_STATUS64, loop_config, loop_info64,
 };
 use rustix::{
     io::Errno,
-    ioctl::{IntegerSetter, Ioctl, IoctlOutput, Opcode, Setter},
+    ioctl::{IntegerSetter, Ioctl, IoctlOutput, NoArg, Opcode, Setter},
 };
+
+/// Whether the kernel refused `LOOP_CONFIGURE` once, so every later attach
+/// goes the older way at once.
+static NO_CONFIGURE: AtomicBool = AtomicBool::new(false);
 
 use super::failed;
 use crate::blocking::OffLoop;
@@ -111,21 +122,25 @@ fn attach_as(_: &OffLoop, image: &Path, read_only: bool) -> io::Result<LoopDevic
             .read(true)
             .write(true)
             .open(&device_path)?;
-        // SAFETY: an all-zero loop_config is valid: plain integers and byte
-        // arrays; the fields that matter are set below.
-        let mut config: loop_config = unsafe { std::mem::zeroed() };
-        config.fd = u32::try_from(backing.as_raw_fd()).expect("a file descriptor is not negative");
-        config.info.lo_flags = LO_FLAGS_AUTOCLEAR as u32;
-        if read_only {
-            config.info.lo_flags |= LO_FLAGS_READ_ONLY as u32;
-        }
-        // SAFETY: LOOP_CONFIGURE reads a loop_config from the pointer the
-        // Setter passes, and the backing descriptor stays open for the call.
-        let configured = unsafe {
-            rustix::ioctl::ioctl(
-                device.as_fd(),
-                Setter::<{ LOOP_CONFIGURE }, loop_config>::new(config),
-            )
+        let flags = match read_only {
+            true => LO_FLAGS_AUTOCLEAR as u32 | LO_FLAGS_READ_ONLY as u32,
+            false => LO_FLAGS_AUTOCLEAR as u32,
+        };
+        let configured = match NO_CONFIGURE.load(Ordering::Relaxed) {
+            false => match configure(&device, &backing, flags) {
+                // A kernel before 5.8 knows no LOOP_CONFIGURE, and refuses
+                // it as a newer one refuses a backing it cannot take; only
+                // the older way's success says which it was.
+                Err(Errno::INVAL | Errno::NOTTY) => {
+                    let attached = set_fd(&device, &backing, flags);
+                    if attached.is_ok() {
+                        NO_CONFIGURE.store(true, Ordering::Relaxed);
+                    }
+                    attached
+                }
+                other => other,
+            },
+            true => set_fd(&device, &backing, flags),
         };
         match configured {
             Ok(()) => {
@@ -139,4 +154,38 @@ fn attach_as(_: &OffLoop, image: &Path, read_only: bool) -> io::Result<LoopDevic
             Err(error) => return Err(failed("attaching", &device_path, error)),
         }
     }
+}
+
+/// Attaches `backing` to `device` with `flags` set, in one call.
+fn configure(device: &fs_err::File, backing: &fs_err::File, flags: u32) -> rustix::io::Result<()> {
+    // SAFETY: an all-zero loop_config is valid: plain integers and byte
+    // arrays; the fields that matter are set below.
+    let mut config: loop_config = unsafe { std::mem::zeroed() };
+    config.fd = u32::try_from(backing.as_raw_fd()).expect("a file descriptor is not negative");
+    config.info.lo_flags = flags;
+    // SAFETY: LOOP_CONFIGURE reads a loop_config from the pointer the Setter
+    // passes, and the backing descriptor stays open for the call.
+    unsafe { rustix::ioctl::ioctl(device.as_fd(), Setter::<{ LOOP_CONFIGURE }, loop_config>::new(config)) }
+}
+
+/// Attaches `backing` to `device`, then sets `flags`: the way before
+/// `LOOP_CONFIGURE`. A device whose status cannot be set is detached.
+fn set_fd(device: &fs_err::File, backing: &fs_err::File, flags: u32) -> rustix::io::Result<()> {
+    let fd = usize::try_from(backing.as_raw_fd()).expect("a file descriptor is not negative");
+    // SAFETY: LOOP_SET_FD takes the backing descriptor by value, which stays
+    // open for the call.
+    unsafe { rustix::ioctl::ioctl(device.as_fd(), IntegerSetter::<{ LOOP_SET_FD }>::new_usize(fd)) }?;
+    // SAFETY: an all-zero loop_info64 is valid: plain integers and byte
+    // arrays; only the flags are set.
+    let mut info: loop_info64 = unsafe { std::mem::zeroed() };
+    info.lo_flags = flags;
+    // SAFETY: LOOP_SET_STATUS64 reads a loop_info64 from the pointer the
+    // Setter passes.
+    let status = unsafe { rustix::ioctl::ioctl(device.as_fd(), Setter::<{ LOOP_SET_STATUS64 }, loop_info64>::new(info)) };
+    if status.is_err() {
+        // SAFETY: LOOP_CLR_FD takes no argument; the device is the one just
+        // attached.
+        let _ = unsafe { rustix::ioctl::ioctl(device.as_fd(), NoArg::<{ LOOP_CLR_FD }>::new()) };
+    }
+    status
 }

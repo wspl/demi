@@ -76,6 +76,18 @@ impl Shard {
             .await
     }
 
+    /// `POST /credentials/:id/fields/:field/reveal`: the value of the
+    /// credential's field `field`, which its owner copies from a card.
+    pub async fn reveal_credential(&self, id: UserCredentialId, field: String) -> Result<String, CredentialError> {
+        let (_, mut values) = self
+            .services()
+            .control
+            .user_credential_values(self.user().clone(), id, self.vault_seal())
+            .await?
+            .ok_or(CredentialRefusal::NotFound)?;
+        Ok(values.remove(&field).ok_or(CredentialRefusal::NotFound)?)
+    }
+
     /// `POST /credentials`.
     pub async fn create_credential(&self, new: NewCredential) -> Result<CredentialDto, CredentialError> {
         let control = &self.services().control;

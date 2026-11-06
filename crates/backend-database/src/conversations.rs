@@ -2,9 +2,10 @@
 //! holding its agent tree.
 //!
 //! - A conversation's handle is stable. The writer connection behind it opens on
-//!   demand, on a thread of its own, and at most a fixed number of writers are
-//!   open at once, the least recently used closing first. Closing one loses
-//!   nothing: the next call opens it again.
+//!   demand, on a thread of its own. A held writer (`ConversationDb::hold`), a
+//!   live conversation's, stays open while the hold lasts; of the others, at
+//!   most a fixed number are open at once, the least recently used closing
+//!   first. Closing one loses nothing: the next call opens it again.
 //! - A read that needs no live session takes a short-lived read-only connection
 //!   on the blocking pool instead, which takes no writer and never creates a file.
 //! - A database of an earlier release is brought to the current schema by its
@@ -14,6 +15,7 @@
 //! - A test may hold the commits of the checkpoints (`CommitHold`) and the
 //!   migrations of the databases (`MigrationHold`).
 
+use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -28,10 +30,11 @@ use rusqlite::{Connection, OpenFlags};
 use super::update::{self, Update};
 use super::{StorageError, schema, sqlite};
 
-/// The most writer connections open at once.
+/// The most writer connections open at once that no one holds.
 ///
 /// Bounded because each writer is an open database connection, and the
-/// operating system limits open files.
+/// operating system limits open files; the held ones are bounded by the live
+/// conversations that hold them.
 pub const MAX_WRITERS: NonZeroUsize = NonZeroUsize::new(64).expect("64 is not zero");
 
 /// How a migration of a conversation's database reads a blob its values
@@ -77,8 +80,70 @@ struct Stores {
 }
 
 struct Writers {
+    /// The held files, each with its writer once a call has opened it. A
+    /// file is here or in `open`, never in both.
+    held: HashMap<DatabaseFile, Held>,
+    /// The writers of the files no one holds.
     open: LruCache<DatabaseFile, tokio_rusqlite::Connection>,
     closed: bool,
+}
+
+struct Held {
+    holds: usize,
+    writer: Option<tokio_rusqlite::Connection>,
+}
+
+impl Writers {
+    fn get(&mut self, file: &DatabaseFile) -> Option<tokio_rusqlite::Connection> {
+        match self.held.get(file) {
+            Some(held) => held.writer.clone(),
+            None => self.open.get(file).cloned(),
+        }
+    }
+
+    fn insert(&mut self, file: DatabaseFile, writer: tokio_rusqlite::Connection) {
+        match self.held.get_mut(&file) {
+            Some(held) => held.writer = Some(writer),
+            // Beyond the limit, this drops the least recently used writer:
+            // calls already queued on it finish on its thread, which then
+            // closes the database, and the busy timeout covers their brief
+            // overlap with a writer opened again.
+            None => {
+                self.open.insert(file, writer);
+            }
+        }
+    }
+
+    fn remove(&mut self, file: &DatabaseFile) -> Option<tokio_rusqlite::Connection> {
+        match self.held.get_mut(file) {
+            Some(held) => held.writer.take(),
+            None => self.open.remove(file),
+        }
+    }
+}
+
+/// Keeps a conversation's writer open, once a call opens it, until it drops;
+/// the writer then joins the others as the most recently used.
+pub struct WriterHold {
+    stores: Arc<Stores>,
+    file: DatabaseFile,
+}
+
+impl Drop for WriterHold {
+    fn drop(&mut self) {
+        let mut writers = self.stores.lock();
+        let Some(held) = writers.held.get_mut(&self.file) else {
+            return;
+        };
+        held.holds -= 1;
+        if held.holds > 0 {
+            return;
+        }
+        let writer = writers.held.remove(&self.file).and_then(|held| held.writer);
+        if let (Some(writer), false) = (writer, writers.closed) {
+            writers.insert(self.file.clone(), writer);
+        }
+    }
 }
 
 /// The file of a conversation's database: its id in lowercase. Ids never
@@ -120,6 +185,7 @@ impl ConversationStores {
             directory,
             blobs,
             writers: Mutex::new(Writers {
+                held: HashMap::new(),
                 open: LruCache::new(max_writers.get()),
                 closed: false,
             }),
@@ -153,7 +219,8 @@ impl ConversationStores {
         let writers: Vec<tokio_rusqlite::Connection> = {
             let mut writers = self.0.lock();
             writers.closed = true;
-            writers.open.drain().map(|(_, writer)| writer).collect()
+            let held: Vec<_> = writers.held.values_mut().filter_map(|held| held.writer.take()).collect();
+            writers.open.drain().map(|(_, writer)| writer).chain(held).collect()
         };
         let mut failures = Vec::new();
         for writer in writers {
@@ -173,7 +240,7 @@ impl ConversationStores {
     pub async fn remove(&self, conversation: &ConversationId) -> Result<(), StorageError> {
         let file = DatabaseFile::of(conversation);
         let turn = self.0.opening.acquire(file.clone()).await;
-        let writer = self.0.lock().open.remove(&file);
+        let writer = self.0.lock().remove(&file);
         if let Some(writer) = writer {
             sqlite::close(writer).await?;
         }
@@ -323,12 +390,27 @@ impl ConversationDb {
             // Dropping the writer ends its thread, which closes the database.
             return Err(StorageError::Closed);
         }
-        // Beyond the limit, this drops the least recently used writer: calls
-        // already queued on it finish on its thread, which then closes the
-        // database, and the busy timeout covers their brief overlap with a
-        // writer opened again.
-        writers.open.insert(self.file.clone(), writer.clone());
+        writers.insert(self.file.clone(), writer.clone());
         Ok(writer)
+    }
+
+    /// Keeps the writer open while the hold lasts, as a live conversation's
+    /// is: a writer that closed whenever enough other conversations wrote
+    /// opened again at the next write, and opening and closing database
+    /// files makes every connection in the process wait.
+    pub fn hold(&self) -> WriterHold {
+        let mut writers = self.stores.lock();
+        let Writers { held, open, .. } = &mut *writers;
+        held.entry(self.file.clone())
+            .or_insert_with(|| Held {
+                holds: 0,
+                writer: open.remove(&self.file),
+            })
+            .holds += 1;
+        WriterHold {
+            stores: self.stores.clone(),
+            file: self.file.clone(),
+        }
     }
 
     /// Runs `work` on a read-only connection of the database, in one read
@@ -378,7 +460,7 @@ impl ConversationDb {
         if writers.closed {
             return Err(StorageError::Closed);
         }
-        Ok(writers.open.get(&self.file).cloned())
+        Ok(writers.get(&self.file))
     }
 }
 

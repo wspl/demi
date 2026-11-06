@@ -72,5 +72,8 @@
     "nameFailed": "No se pudo cambiar tu nombre",
     "emailFailed": "No se pudo cambiar el correo",
     "passwordFailed": "No se pudo cambiar la contraseña"
+  },
+  "credentials": {
+    "revealFailed": "No se pudo leer la credencial"
   }
 }

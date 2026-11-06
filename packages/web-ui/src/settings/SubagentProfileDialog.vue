@@ -9,6 +9,7 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import ModelMenu from '../agent/ModelMenu.vue'
 import ContextMenu from '../agent/ContextMenu.vue'
+import { offersContext } from '@demicodes/protocol'
 import { profileContextChoice, profileContextOptions } from '../agent/context-limit'
 import {
   applyModelChange,
@@ -117,7 +118,7 @@ function ownModel(settings: ModelSettings | null): ModelInfo | null {
 /** The Context control, while the profile's own model offers a choice: its options, the chosen one marked. */
 const context = computed(() => {
   const model = ownModel(draft.value.model)
-  const options = model ? profileContextOptions(model) : []
+  const options = model ? profileContextOptions(model, draft.value.contextLimit) : []
   if (!model || options.length === 0) {
     return null
   }
@@ -128,9 +129,9 @@ const context = computed(() => {
 
 /** Another model keeps the profile's Context while it offers it, as the backend does; the parent's keeps none. */
 function keepContext(): void {
-  const model = ownModel(draft.value.model)
-  const offered = model && profileContextOptions(model).some((option) => option.tokens === draft.value.contextLimit)
-  if (!offered) {
+  const window = ownModel(draft.value.model)?.contextWindow ?? null
+  const tokens = draft.value.contextLimit
+  if (tokens !== null && !offersContext(window, tokens)) {
     draft.value.contextLimit = null
   }
 }

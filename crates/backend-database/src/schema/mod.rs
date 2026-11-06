@@ -109,8 +109,9 @@ pub(crate) const CONTROL: Schema = Schema {
 /// rows and the contents they name, its paths, commands, attachments and
 /// shares.
 ///
-/// Its history holds the form development databases keep of it: the one
-/// each content was kept once in, before a command's row kept its media.
+/// Its history holds the forms development databases keep of it: the one
+/// each content was kept once in, before a command's row kept its media,
+/// and the one whose child's directory a move of the conversation overrode.
 pub(crate) const CONVERSATION: Schema = Schema {
     initial: "PRAGMA auto_vacuum = INCREMENTAL;",
     sql: include_str!("conversation.sql"),

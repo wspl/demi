@@ -72,5 +72,8 @@
     "nameFailed": "Could Not Change Your Name",
     "emailFailed": "Could Not Change Email",
     "passwordFailed": "Could Not Change Password"
+  },
+  "credentials": {
+    "revealFailed": "Could Not Read the Credential"
   }
 }

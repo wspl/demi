@@ -3,8 +3,9 @@
 //!
 //! - Each route acts in the caller's shard.
 //! - A change reaches the caller's pages as the `credentials` part, which
-//!   carries a visible field's value and never a secret one's. No route
-//!   answers a secret's value: only an agent reads it, on its Host.
+//!   carries a visible field's value and never a secret one's. Only
+//!   `reveal` answers a secret's value, to the owner whose session's
+//!   verification holds, for a reply's card to copy or show.
 //! - A change writes values, a secret one's included, and answers none of a
 //!   secret's.
 //! - Each refusal is in words for the user, which the page shows as they are.
@@ -15,7 +16,7 @@ use axum::http::StatusCode;
 use demi_backend_database::credentials::CredentialRefusal;
 use demi_backend_user_shard::shard::credentials::CredentialError;
 use demi_web_api_protocol::credentials::{
-    CredentialAnswer, CredentialList, CredentialPatch, NewCredential, refusal,
+    CredentialAnswer, CredentialList, CredentialPatch, NewCredential, RevealedValue, refusal,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::UserCredentialId;
@@ -23,7 +24,8 @@ use demi_web_api_protocol::ids::UserCredentialId;
 use super::AppState;
 use super::body::{Worded, WordedBody};
 use super::error::ApiError;
-use super::gate::AuthUser;
+use super::gate::{AuthUser, CurrentSession};
+use super::sessions::require_verification;
 
 impl Worded for NewCredential {
     fn refusal(report: &garde::Report) -> String {
@@ -96,6 +98,26 @@ pub(super) async fn delete(
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /credentials/:id/fields/:field/reveal`: a field's value, for a
+/// session verified in the last five minutes, so a browser left signed in
+/// shows no secret.
+pub(super) async fn reveal(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    session: CurrentSession,
+    Path((id, field)): Path<(String, String)>,
+) -> Result<Json<RevealedValue>, ApiError> {
+    require_verification(&state.services, &session)?;
+    let id = credential_id(id)?;
+    let value = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.reveal_credential(id, field).await })
+        .await?
+        .map_err(refused)?;
+    Ok(Json(RevealedValue { value }))
 }
 
 /// The credential id a path names; an empty one names none of the

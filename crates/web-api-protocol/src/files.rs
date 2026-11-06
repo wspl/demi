@@ -158,7 +158,7 @@ pub struct ListedDirectories {
 pub struct SearchRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(skip)]
-    pub root: Option<AbsolutePath>,
+    pub root: Option<RootedPath>,
     #[garde(dive)]
     pub query: SearchQuery,
 }
@@ -168,7 +168,7 @@ pub struct SearchRequest {
 #[serde(deny_unknown_fields)]
 pub struct HtmlRequest {
     #[garde(skip)]
-    pub path: AbsolutePath,
+    pub path: RootedPath,
 }
 
 /// Where the HTML file loads, under `/api/html/`: the session's token for the
@@ -253,6 +253,34 @@ impl TryFrom<String> for AbsolutePath {
     }
 }
 
+/// A path on a Host from its root, as an [`AbsolutePath`] is, or from its
+/// home: `~` or `~/…`, which the Host's home reads. Neither depends on where
+/// a runner stands. `/` separates on every Host, so `~/` is the one form
+/// from the home a path of any Host takes.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(try_from = "String")]
+#[schemars(with = "String")]
+pub struct RootedPath(String);
+
+impl RootedPath {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for RootedPath {
+    type Error = &'static str;
+
+    fn try_from(path: String) -> Result<Self, &'static str> {
+        let from_home = path == "~" || path.starts_with("~/");
+        if from_home || Utf8TypedPath::derive(&path).is_absolute() {
+            Ok(Self(path))
+        } else {
+            Err("path must be an absolute path on the Host or one from ~")
+        }
+    }
+}
+
 /// A path under a working tree's root: nonempty, not absolute, and without
 /// a `..` segment, so it stays inside the root.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
@@ -302,11 +330,11 @@ pub struct FileQuery {
     pub path: NonEmptyPath,
 }
 
-/// `?path=` of a delete: absolute, so what it would take with it can be
-/// told.
+/// `?path=` of a delete: from the root or the home, so what it would take
+/// with it can be told.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct RemoveQuery {
-    pub path: AbsolutePath,
+    pub path: RootedPath,
 }
 
 /// `?path=&version=&download=` of the raw file route.

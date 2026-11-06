@@ -13,10 +13,11 @@ use demi_command_protocol::{
 };
 use demi_host_interface::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
-    HostErrorKind, HostFs, HostIdentity, HostKey, HostPaths, HostProcess, JobCaller, LinkTarget, MkdirOptions, Process,
+    HostErrorKind, HostFs, HostIdentity, HostKey, HostProcess, JobCaller, LinkTarget, MkdirOptions, Process,
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnRequest,
     SymbolicLink, WhenExists, WholeOutput, WriteOptions,
 };
+use demi_host_paths::HostPaths;
 use demi_runner_protocol::search::SearchQuery;
 use demi_runner_protocol::wire::{
     self, FsResult, GitBranches, GitChanges, GitCommit, GitLog, GitRepositories, GitResult, Inbound, PipeRef, ReadAt, STDIN_CHUNK_BYTES,
@@ -2191,14 +2192,7 @@ pub fn host_identity(runner: &wire::RunnerInfo) -> HostIdentity {
         hostname: identity.hostname.clone(),
         home_dir: identity.home_dir.clone(),
         scratch_root: identity.scratch_root.clone(),
-        paths: host_paths(runner.platform),
+        paths: runner.platform.paths(),
     }
 }
 
-/// How a Host of `platform` writes its paths (`crates/runner-shell/src/lib.rs`).
-pub fn host_paths(platform: wire::RunnerPlatform) -> HostPaths {
-    match platform {
-        wire::RunnerPlatform::Win32 => HostPaths::Windows,
-        wire::RunnerPlatform::Darwin | wire::RunnerPlatform::Linux => HostPaths::Posix,
-    }
-}

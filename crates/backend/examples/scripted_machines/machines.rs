@@ -18,7 +18,8 @@
 //!   a Cloud's `/run/demi` goes with it while its system image, which holds
 //!   those two, stays.
 //! - A reset clears them too.
-//! - Both keep its home.
+//! - Both keep its home, and the conversations' scratch directories, which a
+//!   Cloud's runner keeps in its home and this one in its state.
 
 use std::collections::{BTreeMap, HashMap};
 use std::panic::AssertUnwindSafe;

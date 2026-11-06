@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, superseded in part by 0295
 ---
 
 # A conversation's browser keeps its sign-ins

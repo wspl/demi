@@ -136,7 +136,7 @@ impl Registration {
                 mechanism,
                 outcome = "unavailable",
                 detail_code = reason.code(),
-                reason = reason.sentence(&self.home.to_string_lossy()),
+                reason = reason.sentence(crate::PLATFORM, &self.home.to_string_lossy()),
                 "the runner has no autostart"
             ),
         }

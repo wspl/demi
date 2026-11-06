@@ -30,4 +30,5 @@ mod transport;
 pub use kept::Kept;
 pub use link_state::LinkState;
 pub use owner::{End, Registered, serve};
+pub(crate) use owner::installation_env;
 pub use transport::{Connected, Transport};

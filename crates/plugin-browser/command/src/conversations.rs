@@ -900,20 +900,22 @@ pub(crate) struct Conversations {
 /// library of recordings and its browser profile.
 #[derive(Clone)]
 struct Kept {
-    home: Option<std::path::PathBuf>,
+    /// The runner's scratch root; none for a resident without an
+    /// installation.
+    scratch_root: Option<std::path::PathBuf>,
     codec: Arc<dyn Codec>,
 }
 
 impl Kept {
     fn library(&self, conversation: &str) -> Arc<Library> {
         Arc::new(Library::new(
-            demi_command_protocol::recordings_directory(self.home.as_deref(), conversation),
+            demi_command_protocol::recordings_directory(self.scratch_root.as_deref(), conversation),
             self.codec.clone(),
         ))
     }
 
     fn profile(&self, conversation: &str) -> std::path::PathBuf {
-        demi_command_protocol::browser_profile_directory(self.home.as_deref(), conversation)
+        demi_command_protocol::browser_profile_directory(self.scratch_root.as_deref(), conversation)
     }
 }
 
@@ -985,12 +987,12 @@ async fn serve(
 impl Conversations {
     /// Starts the owner on the current Tokio runtime; the browsers start
     /// `chrome`.
-    pub(crate) fn new(chrome: Chrome, home: Option<std::path::PathBuf>, codec: Arc<dyn Codec>) -> Self {
+    pub(crate) fn new(chrome: Chrome, scratch_root: Option<std::path::PathBuf>, codec: Arc<dyn Codec>) -> Self {
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let tasks = TaskTracker::new();
         let (numbers, source) = watch::channel(None);
         let (messages, sender) = watch::channel(None);
-        let kept = Kept { home, codec };
+        let kept = Kept { scratch_root, codec };
         tasks.spawn_traced(serve(receiver, tasks.clone(), chrome.clone(), source, sender, kept));
         Self {
             requests,

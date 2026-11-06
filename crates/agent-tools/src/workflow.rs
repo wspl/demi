@@ -50,10 +50,11 @@ Fields:
     description   When an agent should use it: one line, which demi agent profiles list shows. Required.
     instructions  Added to the child's system prompt after Demi's own: what this kind of subagent is for and how it works. Optional.
     spawning      true lets its children spawn children of their own. Optional, false by default.
-    model         A model id of an entry demi providers show shows; the first of the user's provider entries that offers it serves it. Optional: without it, the child runs on its parent's model.
+    model         A model id of an entry demi providers show shows. Optional: without it, the child runs on its parent's model.
+    provider      The provider entry that serves the model, by its name as demi providers list shows it, or its id when several share the name. Optional: without it, the first of the user's entries that offers the model serves it; needs model.
     effort        An effort the model lists, or off for no thinking. Optional, the model's first effort by default; needs model.
     tier          A service tier the model offers, such as fast. Optional, the vendor's default tier by default; needs model.
-    context       The context window its children use: full, 500K, 300K or 200K, as the model offers them, or default for the user's context limit on the model. Optional, default by default; any but default needs model.
+    context       The context window its children use: full, a size up to the model's window such as 350K, 1M or 272000, or default for the user's context limit on the model. Optional, default by default; any but default needs model.
 
 A workflow sets no limits: how many subagents run at once and how deep they go stay the user's Settings > Subagents. Check a file you wrote or changed with demi agent workflows check <file> before you report it.
 
@@ -124,6 +125,11 @@ pub struct WorkflowProfile {
     #[serde(default)]
     #[garde(inner(length(chars, min = 1)))]
     pub model: Option<String>,
+    /// The name or id of the user's provider entry that serves the model;
+    /// none for the first entry that offers it.
+    #[serde(default)]
+    #[garde(inner(length(chars, min = 1)), custom(needs_model(&self.model)))]
+    pub provider: Option<String>,
     /// An effort the model lists, or `off`; none for the model's first.
     #[serde(default)]
     #[garde(inner(length(chars, min = 1)), custom(needs_model(&self.model)))]

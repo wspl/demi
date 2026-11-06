@@ -29,6 +29,7 @@ demi-shared-types = { path = "../shared-types" }
 demi-shared-gates = { path = "../shared-gates" }
 demi-provider-common = { path = "../provider-common" }
 demi-host-interface = { path = "../host-interface" }
+demi-host-paths = { path = "../host-paths" }
 futures-util.workspace = true
 schemars.workspace = true
 serde.workspace = true

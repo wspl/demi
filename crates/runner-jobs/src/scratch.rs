@@ -1,10 +1,15 @@
 //! Each conversation's scratch directory, for the files only the agent needs (a
-//! screenshot it looks at, a probe script): `<DEMI_HOME>/scratch/<first 12
-//! digits of the conversation's id>/` ([`scratch_name`]), made at the
-//! conversation's first job on the Host.
+//! screenshot it looks at, a probe script): `<scratch root>/<first 12 digits
+//! of the conversation's id>/` ([`scratch_name`]), made at the conversation's
+//! first job on the Host.
 //!
 //! It shows in no pill and no Change view, and it is still there an hour later,
-//! which `/tmp` does not promise.
+//! which `/tmp` does not promise. The runner picks the scratch root: a
+//! Cloud's is `~/.demi/scratch` in its home, since its `DEMI_HOME` is in
+//! memory and every stop would empty it; any other Host's is
+//! `<DEMI_HOME>/scratch`. Every program the runner starts finds it in
+//! `DEMI_SCRATCH_ROOT`
+//! ([`SCRATCH_ROOT_ENV`](demi_command_protocol::SCRATCH_ROOT_ENV)).
 //!
 //! # Who sees which directory
 //!
@@ -58,11 +63,9 @@ pub struct Scratch {
 }
 
 impl Scratch {
-    /// The scratch directories of the installation in `home`, `DEMI_HOME`.
-    pub fn new(home: &Path) -> Self {
-        Self {
-            root: home.join("scratch"),
-        }
+    /// The scratch directories under `root`, the scratch root.
+    pub fn new(root: PathBuf) -> Self {
+        Self { root }
     }
 
     /// The directory that holds every conversation's scratch directory.
@@ -149,8 +152,8 @@ impl Scratch {
     /// time the runner connects.
     pub async fn forget_archived(&self, conversation: &str) {
         for (what, directory) in [
-            ("recordings", demi_command_protocol::recordings_in(&self.root, conversation)),
-            ("browser_profile", demi_command_protocol::browser_profile_in(&self.root, conversation)),
+            ("recordings", demi_command_protocol::recordings_directory(Some(&self.root), conversation)),
+            ("browser_profile", demi_command_protocol::browser_profile_directory(Some(&self.root), conversation)),
         ] {
             match tokio::fs::remove_dir_all(&directory).await {
                 Ok(()) => tracing::info!(

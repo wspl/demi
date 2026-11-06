@@ -1,0 +1,11 @@
+[env]
+# How the bundled SQLite compiles. libsqlite3-sys turns on
+# SQLITE_ENABLE_MEMORY_MANAGEMENT, which puts the page cache of every
+# connection in the process under one mutex, and SQLite counts each
+# allocation under another unless MEMSTATUS is off. The backend keeps a
+# connection per open conversation, so with a hundred conversations running
+# their threads spent more time waiting on those two locks than working.
+# Without them each connection has a page cache of its own. Nothing in Demi
+# calls sqlite3_release_memory or reads sqlite3_memory_used, the two things
+# they serve.
+LIBSQLITE3_FLAGS = "-USQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_DEFAULT_MEMSTATUS=0"

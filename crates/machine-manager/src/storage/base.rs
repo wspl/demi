@@ -447,13 +447,17 @@ fn publish(off: &OffLoop, release: &Release, stage: &Path, bases: &Path) -> Resu
 /// it, and requires a regular file with the expected size and SHA-256.
 fn verify_executable(root: &std::fs::File, path: &str, expected: &Digest) -> Result<(), BaseError> {
     let relative = path.trim_start_matches('/');
-    let opened = rustix::fs::openat2(
+    let opened = match rustix::fs::openat2(
         root.as_fd(),
         relative,
         OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOCTTY,
         Mode::empty(),
         ResolveFlags::BENEATH | ResolveFlags::NO_MAGICLINKS,
-    );
+    ) {
+        // Linux before 5.6 has no openat2.
+        Err(rustix::io::Errno::NOSYS) => open_without_links(root, relative),
+        opened => opened,
+    };
     let descriptor = match opened {
         Ok(descriptor) => descriptor,
         Err(rustix::io::Errno::XDEV | rustix::io::Errno::LOOP) => {
@@ -479,4 +483,36 @@ fn verify_executable(root: &std::fs::File, path: &str, expected: &Digest) -> Res
     verifier
         .finish()
         .map_err(|_| BaseError::Executable(path.to_owned()))
+}
+
+/// Opens `relative` beneath `root` one component at a time, following no
+/// link and no `..`: stricter than `openat2`'s `RESOLVE_BENEATH`, which
+/// follows a link that stays beneath. A link or a `..` answers `ELOOP` or
+/// `EXDEV`, as `openat2` answers an escape.
+fn open_without_links(root: &std::fs::File, relative: &str) -> rustix::io::Result<rustix::fd::OwnedFd> {
+    use rustix::io::Errno;
+    let mut parts = relative.split('/').filter(|part| !part.is_empty() && *part != ".").peekable();
+    let mut directory: Option<rustix::fd::OwnedFd> = None;
+    while let Some(part) = parts.next() {
+        if part == ".." {
+            return Err(Errno::XDEV);
+        }
+        let at = directory.as_ref().map_or(root.as_fd(), |directory| directory.as_fd());
+        let last = parts.peek().is_none();
+        let flags = if last {
+            OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NOFOLLOW
+        } else {
+            OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW
+        };
+        let opened = rustix::fs::openat(at, part, flags, Mode::empty()).map_err(|error| match error {
+            // A link where a directory was wanted.
+            Errno::NOTDIR if !last => Errno::LOOP,
+            error => error,
+        })?;
+        if last {
+            return Ok(opened);
+        }
+        directory = Some(opened);
+    }
+    Err(Errno::NOENT)
 }

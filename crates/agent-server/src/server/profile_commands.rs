@@ -51,7 +51,7 @@ const MODEL: &str = "A model id of an entry `demi providers show` shows.";
 const PROVIDER: &str = "The provider entry offering --model, by its name or id; needed only when more than one entry offers that id.";
 const EFFORT: &str = "An effort the model lists, or off to turn thinking off; without it the model's default effort.";
 const TIER: &str = "A service tier the model offers, such as fast, or default for the vendor's default tier.";
-const CONTEXT: &str = "The context window the profile's children use: full, 500K, 300K or 200K, as the model offers them (`demi providers show` gives each model's window), or default for the user's context limit on the model. Needs a model of the profile's own.";
+const CONTEXT: &str = "The context window the profile's children use: full, a size up to the model's window such as 350K, 1M or 272000 (`demi providers show` gives each model's window), or default for the user's context limit on the model. Needs a model of the profile's own.";
 const INSTRUCTIONS: &str = "Text added to a child's system prompt after Demi's, which it never replaces: what this kind of subagent is for and how it works.";
 
 /// The input of `demi agent profiles list`, which takes none.

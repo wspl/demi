@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Check, Copy } from '@lucide/vue'
 import { useCopy, type CopySource } from '../composables/useCopy'
 import IconButton from './IconButton.vue'
@@ -19,7 +19,14 @@ const props = withDefaults(defineProps<{
    * What it copies, or a function that gives it as the control is pressed,
    * for content the page holds elsewhere; returning nothing copies nothing.
    */
-  source: string | (() => CopySource)
+  source?: string | (() => CopySource)
+  /**
+   * Text the page asks for as the control is pressed, such as a secret's
+   * value, put on the clipboard as it arrives (`useCopy` § `copyWhenMade`)
+   * in place of `source`; a rejection copies nothing, its maker having told
+   * why.
+   */
+  made?: () => Promise<string>
   /** The name of the control and its tip, naming the object only where the control is away from it (Copy code). */
   label?: SentenceText
   /** A longer tip in place of the label, for a control whose object needs saying. */
@@ -31,7 +38,25 @@ const props = withDefaults(defineProps<{
   variant: 'ghost',
 })
 
-const { copy, copied } = useCopy(() => (typeof props.source === 'function' ? props.source() : props.source))
+/** The text `made` last gave, which Copied stands for. */
+const madeText = ref<string>()
+const { copy, copyWhenMade, copied } = useCopy(() => {
+  if (props.made)
+    return madeText.value
+  return typeof props.source === 'function' ? props.source() : props.source
+})
+
+function press(): void {
+  const made = props.made
+  if (!made) {
+    void copy()
+    return
+  }
+  void copyWhenMade(made().then((text) => {
+    madeText.value = text
+    return text
+  }))
+}
 const tip = computed(() => props.label ?? shared('common.copy'))
 const name = computed(() => (copied.value ? shared('common.copied') : tip.value))
 </script>
@@ -43,7 +68,7 @@ const name = computed(() => (copied.value ? shared('common.copied') : tip.value)
       :size="size"
       :variant="variant"
       :aria-label="name"
-      @click="copy"
+      @click="press"
     />
   </Tooltip>
 </template>

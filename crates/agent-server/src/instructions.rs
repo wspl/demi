@@ -29,7 +29,8 @@ use std::future::Future;
 
 use demi_agent_tools::ContextAnswer;
 use demi_host_interface::project;
-use demi_host_interface::{HostFile, HostPaths, HostRead};
+use demi_host_interface::{HostFile, HostRead};
+use demi_host_paths::HostPaths;
 use demi_shared_types::InstructionEntry;
 
 /// The names read in each directory, the first that is a file taken.

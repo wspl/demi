@@ -15,8 +15,7 @@
 
 use demi_shared_types::{Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::ModelSettings;
-use demi_runner_client::host_paths;
-use demi_host_interface::HostPaths;
+use demi_host_paths::HostPaths;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProjectId, UserId, WorkspaceId};
 use demi_runner_protocol::wire::RunnerPlatform;
@@ -95,7 +94,7 @@ impl ProjectRecord {
 /// What a project of `path` is called: the directory's last component, or
 /// the directory itself when it is a root, which has none.
 pub fn project_name(platform: RunnerPlatform, path: &str) -> String {
-    let paths = host_paths(platform);
+    let paths = platform.paths();
     match paths.parent(path) {
         // A root, `/`, `C:\` or `\\server\share\`, has no last component of
         // its own.
@@ -192,7 +191,7 @@ impl ControlService {
             let Some(record) = device_in(&transaction, &device)?.filter(|record| record.user == user) else {
                 return Ok(ProjectCreation::DeviceNotFound);
             };
-            let paths = host_paths(record.platform);
+            let paths = record.platform.paths();
             let path = directory(paths, &path);
             let home = match record.kind {
                 DeviceKind::Managed => Some(record.home.as_deref().unwrap_or(CLOUD_HOME)),
@@ -380,7 +379,7 @@ impl ControlService {
                     let Some(device) = device_in(&transaction, &project.device)? else {
                         return Ok(DirectoryNamed::default());
                     };
-                    let paths = host_paths(device.platform);
+                    let paths = device.platform.paths();
                     let canonical = paths.trimmed(&canonical).to_owned();
                     let home = device.home.as_deref().map(|home| paths.trimmed(home));
                     if canonical == project.path || home == Some(canonical.as_str()) {

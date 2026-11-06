@@ -60,8 +60,7 @@
 //!   worktree, and deletes it, as a second spelling of a project's directory
 //!   goes into the project (`ControlService::name_directory`).
 
-use demi_host_interface::HostPaths;
-use demi_runner_client::host_paths;
+use demi_host_paths::HostPaths;
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::devices::DeviceKind;
@@ -230,7 +229,7 @@ pub(crate) fn select_directory(
     path: &str,
     now: Timestamp,
 ) -> Result<Result<Selected, Unselectable>, StorageError> {
-    let paths = host_paths(device.platform);
+    let paths = device.platform.paths();
     let path = directory(paths, path);
     let home = match device.kind {
         DeviceKind::Managed => {
@@ -311,7 +310,7 @@ pub(crate) fn project_of(
     path: &str,
     now: Timestamp,
 ) -> Result<Selected, StorageError> {
-    let paths = host_paths(device.platform);
+    let paths = device.platform.paths();
     let path = directory(paths, path);
     if let Some(project) = project_at(connection, workspace, &device.id, &path)? {
         let made = if super::projects::revive(connection, &project.id)? {

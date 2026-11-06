@@ -62,8 +62,29 @@ impl CommandCaller {
     }
 }
 
-/// The name of `conversation`'s scratch directory under the installation's
-/// `scratch/`: the first 12 characters of its id, hyphens not counted, which
+/// The variable in which the runner names its scratch root, the directory
+/// that holds every conversation's scratch directory on its Host, for the
+/// programs it starts (`crates/runner-jobs/src/scratch.rs`).
+pub const SCRATCH_ROOT_ENV: &str = "DEMI_SCRATCH_ROOT";
+
+/// The scratch root the runner named for this program; none for a program
+/// the runner did not start.
+pub fn scratch_root() -> Option<std::path::PathBuf> {
+    std::env::var_os(SCRATCH_ROOT_ENV)
+        .filter(|root| !root.is_empty())
+        .map(std::path::PathBuf::from)
+}
+
+/// `conversation`'s scratch directory under `scratch_root`, or under the
+/// system's temporary directory for a program without one.
+pub fn scratch_directory(scratch_root: Option<&std::path::Path>, conversation: &str) -> std::path::PathBuf {
+    scratch_root
+        .map_or_else(|| std::env::temp_dir().join("scratch"), std::path::Path::to_path_buf)
+        .join(scratch_name(conversation))
+}
+
+/// The name of `conversation`'s scratch directory under the scratch root:
+/// the first 12 characters of its id, hyphens not counted, which
 /// are 12 hex digits for the UUID a conversation has
 /// (`crates/runner-jobs/src/scratch.rs`). Every writer of a scratch directory,
 /// the runner and the backend alike, names it with this.
@@ -76,34 +97,21 @@ pub fn scratch_name(conversation: &str) -> String {
 }
 
 /// Where a conversation's recordings are on a Host (`crates/shared-recording`):
-/// beside its scratch files, in the installation `home`, or the system's
-/// temporary directory for a program without one. Every program that records
-/// for a conversation names it with this; the runner removes it when the
-/// conversation is archived or deleted (`crates/runner-jobs/src/scratch.rs`).
-pub fn recordings_directory(home: Option<&std::path::Path>, conversation: &str) -> std::path::PathBuf {
-    recordings_in(&home.map_or_else(std::env::temp_dir, std::path::Path::to_path_buf).join("scratch"), conversation)
-}
-
-/// [`recordings_directory`] where the installation's scratch directories are
-/// kept, `scratch_root`, which the runner knows by that name.
-pub fn recordings_in(scratch_root: &std::path::Path, conversation: &str) -> std::path::PathBuf {
-    scratch_root.join(scratch_name(conversation)).join(".recordings")
+/// beside its scratch files, as [`scratch_directory`] places them. Every
+/// program that records for a conversation names it with this; the runner
+/// removes it when the conversation is archived or deleted
+/// (`crates/runner-jobs/src/scratch.rs`).
+pub fn recordings_directory(scratch_root: Option<&std::path::Path>, conversation: &str) -> std::path::PathBuf {
+    scratch_directory(scratch_root, conversation).join(".recordings")
 }
 
 /// Where a conversation's browser profile is on a Host: beside its scratch
-/// files, in the installation `home`, or the system's temporary directory for
-/// a program without one. Every Chrome the conversation starts on the Host
-/// runs on it, so its sign-ins outlast each browser; the runner removes it
-/// with the recordings, when the conversation is archived or deleted
-/// (`crates/runner-jobs/src/scratch.rs`).
-pub fn browser_profile_directory(home: Option<&std::path::Path>, conversation: &str) -> std::path::PathBuf {
-    browser_profile_in(&home.map_or_else(std::env::temp_dir, std::path::Path::to_path_buf).join("scratch"), conversation)
-}
-
-/// [`browser_profile_directory`] where the installation's scratch directories
-/// are kept, `scratch_root`, which the runner knows by that name.
-pub fn browser_profile_in(scratch_root: &std::path::Path, conversation: &str) -> std::path::PathBuf {
-    scratch_root.join(scratch_name(conversation)).join(".browser")
+/// files, as [`scratch_directory`] places them. Every Chrome the conversation
+/// starts on the Host runs on it, so its sign-ins outlast each browser; the
+/// runner removes it with the recordings, when the conversation is archived
+/// or deleted (`crates/runner-jobs/src/scratch.rs`).
+pub fn browser_profile_directory(scratch_root: Option<&std::path::Path>, conversation: &str) -> std::path::PathBuf {
+    scratch_directory(scratch_root, conversation).join(".browser")
 }
 
 /// How many characters of a conversation's id name its scratch directory.

@@ -18,9 +18,12 @@ import { executionFor, primaryHostOf } from '../targets/execution'
 import { useConversations } from './store'
 import { useConversationNavigation } from './navigation'
 import { useResources } from '../state/resources'
+import { hostKindOf, hostLabel } from '../state/hosts'
+import { provideHostNames } from '@demicodes/web-ui/agent/host-names'
 import type { CredentialKinds } from '@demicodes/web-ui/agent/credential-kinds'
 import { useProviderSettings } from '../settings/providers'
 import { useSettingsAddress } from '../settings/address'
+import { messageCredentials } from '../settings/credentials'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useWorkPanel } from './work'
@@ -96,6 +99,13 @@ provideCostWatch((window) => {
 })
 // The transcripts of the open conversation show a loading row at an edge only
 // while a page is being read for it.
+// A subagent on another Host than the conversation's names it as the
+// account's devices do.
+provideHostNames(() => (device) => {
+  const record = resources.deviceById(device)
+  const kind = hostKindOf(record)
+  return { name: hostLabel(kind, record), kind }
+})
 provideHistoryReading((node) => {
   const current = conversation.value
   return current ? store.history.reading(current, node) : { before: false, after: false }
@@ -260,6 +270,8 @@ const selectEdit = computed<EditSelectionHandler | undefined>(() => {
 const attachments = useMessageAttachments(() => props.id)
 /** The facts of the plugins' reply blocks the conversation's messages name. */
 const replyBlocks = useReplyBlockFacts(() => props.id)
+/** The user's credentials, which the cards of the replies name. */
+const credentials = messageCredentials()
 
 /**
  * The Host files the conversation's messages name:
@@ -274,6 +286,7 @@ const replyBlocks = useReplyBlockFacts(() => props.id)
  *   `~/` path starts from.
  * - The attachments they deliver, a card's opened through the `attachment`
  *   intent while a plugin opens it.
+ * - The user's credentials their credential cards name.
  */
 const files = computed<ConversationFiles | undefined>(() => {
   const current = conversation.value
@@ -309,6 +322,7 @@ const files = computed<ConversationFiles | undefined>(() => {
     },
     ...(attachments.value ? { attachment: attachments.value } : {}),
     ...(replyBlocks.value ? { replyBlock: replyBlocks.value } : {}),
+    credentials,
     attachmentOrigin: (id, attachment) => attachmentOrigin(id, attachment, {
       conversation: current.id,
       device: executionFor(current).deviceId ?? null,

@@ -587,7 +587,7 @@ fn workflow_answer(workflow: &ChosenWorkflow, child: &WorkflowChild) -> ProfileA
         description: child.description.clone(),
         model: selection.map(|selection| ShownModel {
             provider: selection.provider_id.clone(),
-            provider_name: None,
+            provider_name: child.provider_name.clone(),
             model: selection.model.id.clone(),
             effort: selection.thinking_effort().map(effort_word),
             tier: selection.service_tier_id.clone(),

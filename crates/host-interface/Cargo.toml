@@ -15,6 +15,7 @@ bench = false
 bytes.workspace = true
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-declarations = { path = "../command-declarations" }
+demi-host-paths = { path = "../host-paths" }
 demi-shared-types = { path = "../shared-types" }
 futures-util.workspace = true
 garde.workspace = true
@@ -25,4 +26,3 @@ serde_with.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-typed-path = "0.12"

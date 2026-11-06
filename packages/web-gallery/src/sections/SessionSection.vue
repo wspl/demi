@@ -92,6 +92,7 @@ import { galleryAttachmentOrigin, galleryConversationFiles, namedCodeFiles, name
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import GalleryMessageFiles from '../components/GalleryMessageFiles.vue'
+import { credentialMarkdown, galleryCredentials } from '../fixtures/credentials'
 import GalleryAgentLinks from '../components/GalleryAgentLinks.vue'
 import { attachmentMarkdown, audioAttachmentMarkdown, frameMediaMarkdown, edgedImagesMarkdown, fiveMediaMarkdown, hostPicturesKept, hostPicturesMarkdown, listAttachmentMarkdown, loneImageMarkdown, twoMediaMarkdown, unloadedImageMarkdown, unloadedImageReached } from '../fixtures/attachments'
 import { reloadFailedMedia } from '@demicodes/web-ui/files/media-reload'
@@ -225,7 +226,8 @@ import {
 } from '../fixtures/catalog'
 import { composerModels, setGalleryContextLimit } from '../fixtures/context-limits'
 import { galleryBlobs } from '../fixtures/blobs'
-import { agentLinksWrapMarkdown, agentReceiptMessages, briefSubagent, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
+import { agentLinksWrapMarkdown, agentReceiptMessages, briefSubagent, elsewhereSubagent, galleryHostName, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
+import { provideHostNames } from '@demicodes/web-ui/agent/host-names'
 import GalleryAgentDirectory from '../components/GalleryAgentDirectory.vue'
 import GalleryAgentLoading from '../components/GalleryAgentLoading.vue'
 import GalleryAgentBubbles from '../components/GalleryAgentBubbles.vue'
@@ -430,7 +432,9 @@ const exhibitAgentId = ref<string | null>(firstRunningSubagentId(agents))
 const terminalChips = useGalleryTerminalChips(() => terminals)
 const exhibitTerminalId = ref<string | null>(firstRunningOfKind(terminals, 'command'))
 /** One child per variant of the line that says what a child runs on. */
-const runLines = [workSubagent(), ...gallerySubagents()]
+const runLines = [workSubagent(), ...gallerySubagents(), elsewhereSubagent()]
+// The laptop a child kept working on goes by its name, as the account's devices name it.
+provideHostNames(() => galleryHostName)
 /** What the children's context cards show and do beside their usage. */
 const agentContext = useAgentContext()
 /** A child's own cost, which its context card shows without Profiles. */
@@ -445,6 +449,7 @@ const runLineVariants: Record<string, string> = {
   'ag-comments': 'finished · no profile',
   'ag-fixture': 'failed',
   'ag-ci': 'stopped',
+  'ag-laptop': 'running · on another Host than the conversation\'s',
 }
 const briefAgents = reactive([briefSubagent()])
 const briefOpen = ref(true)
@@ -805,6 +810,8 @@ const sessionFiles = {
   }),
   attachmentOrigin: galleryAttachmentOrigin(project.source, () => hostOnline.value),
 }
+/** The user's credentials the credential cards name. */
+const sessionCredentials = galleryCredentials()
 // The session's pictures and videos open in the Media tab of the frame's panel, as a conversation's do.
 provideMediaViewer({
   reveal: () => {
@@ -2288,6 +2295,16 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="context · limited to 300K, with its usage">
             <GalleryContextLimit provider-id="google" model-id="gemini-pro" :used-tokens="150000" />
           </GallerySpecimen>
+          <GalleryOverlayWell size="wide">
+            <GallerySpecimen variant="context · 1M model limited to 350K by a command: one more item, checked">
+              <GalleryContextLimit provider-id="openai" model-id="gpt-wide" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell size="wide">
+            <GallerySpecimen variant="context · 1,048,576 model limited to 1,000,000: both read whole, as 1M would name both">
+              <GalleryContextLimit provider-id="google" model-id="gemini-flash" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
         </div>
       </GallerySection>
 
@@ -2373,6 +2390,17 @@ onBeforeUnmount(() => {
         </GallerySpecimen>
         <GallerySpecimen variant="pictures of the Host a reply shows: copied, being copied, not copied with why, and written before copies were kept" wide>
           <GalleryMessageFiles :files="sessionFiles" :cwd="project.root" :content="hostPicturesMarkdown" :pictures="hostPicturesKept" />
+        </GallerySpecimen>
+      </GallerySection>
+      <GallerySection
+        title="Credentials in a Message"
+        note="A saved credential the agent hands the user: <credential name=&quot;GitHub token for deploys&quot; /> on a line of its own, field=&quot;password&quot; naming one field of several. It is a card 360px wide at most, with a key, the credential's name and, for one field, its value under the name; several fields are rows under it, each with its label. A secret is dots until Show, and Copy copies it without showing it; either asks the page for the value, and the first time in five minutes asks the user to confirm it's them, then goes on: the password “wrong” is refused, any other confirms. A visible field shows its value, with Copy. A name with no saved credential, or a field the credential does not have, says No longer saved. On a share, and wherever the reader is not the vault's owner, the card shows the name alone."
+      >
+        <GallerySpecimen variant="one field, several, one field of several, and one removed since" wide>
+          <GalleryMessageFiles :files="{ ...sessionFiles, credentials: sessionCredentials }" :cwd="project.root" :content="credentialMarkdown" />
+        </GallerySpecimen>
+        <GallerySpecimen variant="on a share: the name alone" wide>
+          <GalleryMessageFiles :files="sessionFiles" :cwd="project.root" :content="credentialMarkdown" />
         </GallerySpecimen>
       </GallerySection>
       <GallerySection
@@ -3485,7 +3513,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="What an Agent Runs On"
-        note="The Agents window's bar says what a child is doing and what it runs on in segments, as an editor's status bar does: each item stands in its own segment, told apart by spacing, never by dividers. A segment that acts when pressed, the folder, the branch, Forked from agent N and the context indicator, shows a hover background over its whole extent, reaching to within the bar's small inset of the window's edge, the same on every side it touches, and Tab reaches it with a focus ring (one specimen pins that background, the branch’s included); a segment that only explains, the state, the profile and the model, shows its tip and no background. Two groups say what a child is doing and what it runs on. On the left: the child's state dot, the one its tab wears, the state, Running, Finished, Stopped or Failed, how long the round has run, in the duration words of the reset times (42s, 16m 48s, 1h 5m) and counting with the page's clock while it runs, the folder it works in, its own name with the whole path as its tip, which opens the File view on that directory's tree (a toast here, naming the directory; the next section opens a real panel), the branch checked out in that folder, after it, with the branch icon, or HEAD and the commit while HEAD is detached, nothing while the folder is in no repository or its Host is away, which opens the Change view in Commits mode on that folder and branch (a toast here), and Forked from agent N for a fork, a link to that agent: its mark and the click of a message's link, which opens the Agents window on its tab here, shown in its own segment. The round is not shown. On the right: the profile as a tag, none for the inherit profile; the model's name as the model menu shows it, pointed at naming the provider and the full name, and for the inherit profile Inherited from this conversation; the effort, or Thinking off; Fast when it is on. Where the room runs out, Forked from gives way first, then the branch, then the model's name and the folder's name, which leaves the folder's icon and its tip; the state and the time always stay (the last four specimens, by width). The Agents window shows it as a bar along its bottom edge (an ended child's bar has no context indicator: finished, stopped and failed show none)."
+        note="The Agents window's bar says what a child is doing and what it runs on in segments, as an editor's status bar does: each item stands in its own segment, told apart by spacing, never by dividers. A segment that acts when pressed, the folder, the branch, Forked from agent N and the context indicator, shows a hover background over its whole extent, reaching to within the bar's small inset of the window's edge, the same on every side it touches, and Tab reaches it with a focus ring (one specimen pins that background, the branch’s included); a segment that only explains, the state, the profile and the model, shows its tip and no background. Two groups say what a child is doing and what it runs on. On the left: the child's state dot, the one its tab wears, the state, Running, Finished, Stopped or Failed, how long the round has run, in the duration words of the reset times (42s, 16m 48s, 1h 5m) and counting with the page's clock while it runs, the Host it works on when that is not the conversation's, by its name and glyph, which a move of the conversation leaves it on (that child's folder only explains and it shows no branch, as the File view looks at the conversation's Host), the folder it works in, its own name with the whole path as its tip, which opens the File view on that directory's tree (a toast here, naming the directory; the next section opens a real panel), the branch checked out in that folder, after it, with the branch icon, or HEAD and the commit while HEAD is detached, nothing while the folder is in no repository or its Host is away, which opens the Change view in Commits mode on that folder and branch (a toast here), and Forked from agent N for a fork, a link to that agent: its mark and the click of a message's link, which opens the Agents window on its tab here, shown in its own segment. The round is not shown. On the right: the profile as a tag, none for the inherit profile; the model's name as the model menu shows it, pointed at naming the provider and the full name, and for the inherit profile Inherited from this conversation; the effort, or Thinking off; Fast when it is on. Where the room runs out, Forked from gives way first, then the branch, then the model's name and the folder's name, which leaves the folder's icon and its tip; the state and the time always stay (the last four specimens, by width). The Agents window shows it as a bar along its bottom edge (an ended child's bar has no context indicator: finished, stopped and failed show none)."
       >
         <GalleryReceipts :agents="agents" @abort="sessionFlow.abortSubagents" @abort-agent="sessionFlow.abortSubagent">
           <GallerySpecimen v-for="run in runLines" :key="run.id" :variant="runLineVariants[run.id] ?? run.name" wide>

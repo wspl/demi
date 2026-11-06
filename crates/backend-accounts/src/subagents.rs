@@ -10,7 +10,7 @@
 
 use std::fmt;
 
-use demi_shared_types::{context_word, is_blank, offered_contexts, offers_context};
+use demi_shared_types::{context_word, is_blank, offers_context};
 use demi_web_api_protocol::subagents::{NewProfile, ProfilePatch, SubagentProfile};
 
 /// The name no profile takes: omitting `--profile` selects the inherit
@@ -58,18 +58,18 @@ pub struct NotOffered {
 impl fmt::Display for NotOffered {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { model, tokens, window } = self;
-        let word = context_word(*tokens);
-        match offered_contexts(*window) {
-            Some(offered) => write!(
+        if *window == 0 {
+            return write!(
                 f,
-                "context: model \"{model}\" does not offer {word}; it offers {offered}, or default for the user's limit"
-            ),
-            None => write!(
-                f,
-                "context: model \"{model}\" has a window of {} and offers no choice of context; use default",
-                context_word(*window)
-            ),
+                "context: model \"{model}\" has no known window, so it offers no Context of its own; use default"
+            );
         }
+        write!(
+            f,
+            "context: model \"{model}\" has a window of {}, under {}; use a size up to it, full, or default for the user's limit",
+            context_word(*window),
+            context_word(*tokens),
+        )
     }
 }
 

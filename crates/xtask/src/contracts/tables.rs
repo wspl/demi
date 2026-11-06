@@ -347,12 +347,12 @@ export function showsInPlace(mediaType: string): boolean {
 }
 "#;
 
-/// core's `context_limits` and `applied_context_limit`, over the steps.
+/// core's `context_limits`, `applied_context_limit` and `offers_context`.
 const CONTEXT_LIMIT_LOOKUPS: &str = r#"
 /**
- * The limits a model whose context window is `window` offers below its full
- * window, largest first; none for a window under 500,000 tokens or an unknown
- * one.
+ * The limits the model menu offers below the full window of a model whose
+ * context window is `window`, largest first; none for a window under 500,000
+ * tokens or an unknown one.
  */
 export function contextLimits(window: number | null): number[] {
   return CONTEXT_LIMIT_STEPS.filter((step) => window !== null && window >= step.minWindow).map(
@@ -362,10 +362,19 @@ export function contextLimits(window: number | null): number[] {
 
 /**
  * The limit that applies to a model whose context window is `window` when
- * the user stored `limit` on it: the limit while the window offers it, and
+ * the user stored `limit` on it: the limit while it is below the window, and
  * null, the full window, otherwise.
  */
 export function appliedContextLimit(window: number | null, limit: number | null): number | null {
-  return limit !== null && contextLimits(window).includes(limit) ? limit : null
+  return limit !== null && window !== null && limit < window ? limit : null
+}
+
+/**
+ * Whether a model whose context window is `window` offers `tokens` as a
+ * subagent profile's own Context: any size up to its window, the window
+ * itself being the full window.
+ */
+export function offersContext(window: number | null, tokens: number): boolean {
+  return window !== null && tokens >= 1 && tokens <= window
 }
 "#;

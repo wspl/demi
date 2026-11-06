@@ -78,7 +78,7 @@ const CREDENTIALS_DESCRIPTION: &str = "Use Your Credentials lets the agents of t
 const SUMMARY: &str = "The user's credentials: named secrets such as API keys, tokens and passwords, each with fields. Ask the user for one, pass a field's value on without reading it, list and show them, or remove one. Every command needs the user's permission once for the conversation.";
 
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "The user's named secrets: request one on a card, or save one piped from the Host; read a field into a pipe or a file. A secret is asked for this way, never in the conversation.";
+const ENTRY: &str = "The user's named secrets: request one on a card, or save one piped from the Host; read a field into a pipe or a file. A secret is asked for this way, never in the conversation. A reply shows one to the user with `<credential name=\"…\" />` on its own line, `field=\"…\"` naming one of several.";
 
 const LIST_SUMMARY: &str = "List the user's credentials: name, field names and when each is removed (- for kept always). No value.";
 

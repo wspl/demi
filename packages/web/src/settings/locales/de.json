@@ -72,5 +72,8 @@
     "nameFailed": "Dein Name konnte nicht geändert werden",
     "emailFailed": "E-Mail-Adresse konnte nicht geändert werden",
     "passwordFailed": "Passwort konnte nicht geändert werden"
+  },
+  "credentials": {
+    "revealFailed": "Zugangsdaten konnten nicht gelesen werden"
   }
 }

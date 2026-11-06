@@ -72,5 +72,8 @@
     "nameFailed": "无法更改你的名称",
     "emailFailed": "无法更改电子邮件",
     "passwordFailed": "无法更改密码"
+  },
+  "credentials": {
+    "revealFailed": "无法读取凭据"
   }
 }

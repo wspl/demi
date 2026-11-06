@@ -8,6 +8,7 @@ mod from_0_1_5708;
 mod from_0_1_5738;
 mod from_0_1_5742;
 mod from_0_1_5785;
+mod from_0_1_65_dev_directories_follow_moves;
 
 pub(super) const HISTORY: &[Shipped] = &[
     Shipped {
@@ -28,5 +29,9 @@ pub(super) const HISTORY: &[Shipped] = &[
     },    Shipped {
         sql: include_str!("from_0_1_5785.sql"),
         migration: from_0_1_5785::MIGRATION,
+    },
+    Shipped {
+        sql: include_str!("from_0_1_65_dev_directories_follow_moves.sql"),
+        migration: from_0_1_65_dev_directories_follow_moves::MIGRATION,
     },
 ];

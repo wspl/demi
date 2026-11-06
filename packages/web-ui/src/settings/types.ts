@@ -677,7 +677,7 @@ export interface SettingsCredential {
   createdAt: string
 }
 
-/** A field as the list shows it: a visible field with its value, a secret one without, whose value never reaches the page. */
+/** A field as the list shows it: a visible field with its value, a secret one without, whose value only a reply's card asks for. */
 export interface SettingsCredentialField extends CredentialFieldView {
   /** A visible field's value; null for a secret one. */
   value: string | null

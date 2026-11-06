@@ -9,7 +9,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     io,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -115,7 +115,24 @@ pub struct Registered {
     pub instance: u64,
 }
 
+/// The variables that tell every program the runner starts where its
+/// installation is: `DEMI_HOME`, its directory, and its scratch root
+/// (`crates/runner-jobs/src/scratch.rs`).
+pub(crate) fn installation_env(directory: &Path, scratch: &Scratch) -> [(String, String); 2] {
+    [
+        ("DEMI_HOME".to_owned(), directory.to_string_lossy().into_owned()),
+        (
+            demi_command_protocol::SCRATCH_ROOT_ENV.to_owned(),
+            scratch.root().to_string_lossy().into_owned(),
+        ),
+    ]
+}
+
 impl Registered {
+    pub(crate) fn installation_env(&self) -> [(String, String); 2] {
+        installation_env(&self.state.root, &self.scratch)
+    }
+
     /// Tells the person at the console, once per process, that the device
     /// is paired as `name` and how to remove the runner again; an installer
     /// shows them these lines (`crates/runner/src/console.rs`). A managed guest's runner, which nobody pairs, says nothing.
@@ -975,12 +992,6 @@ impl Owner<'_> {
     fn start_or_route(&mut self, message: &Inbound) -> io::Result<()> {
         let registered = self.registered;
         let draining = registered.management.draining.is_cancelled();
-        let demi_home = || {
-            (
-                "DEMI_HOME".to_owned(),
-                registered.state.root.to_string_lossy().into_owned(),
-            )
-        };
         match message {
             Inbound::JobStart { .. } | Inbound::Spawn { .. } if draining => {
                 Err(io::Error::other("runner is draining for upgrade"))
@@ -1010,7 +1021,7 @@ impl Owner<'_> {
                         }
                     }
                 }
-                values.extend([demi_home()]);
+                values.extend(registered.installation_env());
                 self.kept.jobs.start(TaskSpec {
                     id: spawn_id.clone(),
                     cwd: cwd
@@ -1051,7 +1062,7 @@ impl Owner<'_> {
                 values
                     .entry("HOME".to_owned())
                     .or_insert_with(|| registered.runner.identity.home_dir.clone());
-                values.extend([demi_home()]);
+                values.extend(registered.installation_env());
                 self.kept.jobs.start(TaskSpec {
                     id: job_id.clone(),
                     cwd: PathBuf::from(cwd),

@@ -58,7 +58,7 @@ use tokio::sync::{oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::HostShard;
-use crate::access::{Admitted, HostAccessError, Refusal, Waits};
+use crate::access::{Admitted, ConversationHost, HostAccessError, Refusal, Waits};
 use crate::lease::Lease;
 
 /// What a download asks for.
@@ -73,6 +73,17 @@ pub struct DownloadRequest {
     pub if_none_match: Option<String>,
 }
 
+impl DownloadRequest {
+    /// The request with a path it names from `~` under `host`'s home.
+    fn from_home(self, host: &ConversationHost) -> Self {
+        let path = match self.path {
+            DownloadPath::Named(path) => DownloadPath::Named(host.path(&path)),
+            place => place,
+        };
+        Self { path, ..self }
+    }
+}
+
 /// Which file a download reads.
 #[derive(Debug, Clone)]
 pub enum DownloadPath {
@@ -80,7 +91,7 @@ pub enum DownloadPath {
     Named(String),
     /// The file at a place, as an HTML view's URL names it: its path's names
     /// joined by `/`, read in the Host's form of paths
-    /// ([`demi_host_interface::HostPaths::place`]).
+    /// ([`demi_host_paths::HostPaths::place`]).
     Place(String),
 }
 
@@ -152,6 +163,7 @@ impl dyn HostShard + '_ {
         let waits = Waits::until_ended(cancel, &open.ended);
         let admitted = self.admit_host(&record.id, None, waits).await?;
         bind_to(&open, &admitted)?;
+        let request = request.from_home(&admitted.host);
         let host = &admitted.host.host;
         let path = match &request.path {
             DownloadPath::Named(path) => path.clone(),
@@ -257,10 +269,11 @@ impl dyn HostShard + '_ {
         path: &str,
         cancel: &CancellationToken,
     ) -> Result<String, HostAccessError> {
-        self.with_unheld_host(id, None, cancel, async |host| {
-            host.host.identity().paths.place(path)
-        })
-        .await
+        let place = self.with_unheld_host(id, None, cancel, async |host| {
+            let path = host.rooted(path)?;
+            Ok::<_, Refusal>(host.host.identity().paths.place(&path))
+        });
+        Ok(place.await??)
     }
 
     /// Admits a search of the text of the files under `root` on the
@@ -280,7 +293,10 @@ impl dyn HostShard + '_ {
         let waits = Waits::until_ended(cancel, &open.ended);
         let admitted = self.admit_host(&record.id, None, waits).await?;
         bind_to(&open, &admitted)?;
-        let root = root.unwrap_or_else(|| admitted.host.root.clone());
+        let root = match root {
+            Some(root) => admitted.host.rooted(&root)?,
+            None => admitted.host.root.clone(),
+        };
         let body = waits.wait(admitted.host.host.search(&root, query)).await??;
         let lease = self.lease_transfer(admitted, open, std::future::pending(), || {});
         Ok(OpenSearch { body, lease })
@@ -307,6 +323,7 @@ impl dyn HostShard + '_ {
         let admitted = self.admit_host(&record.id, None, waits).await?;
         bind_to(&open, &admitted)?;
         let host = admitted.host.host.clone();
+        let path = admitted.host.path(&path);
         let pipe = host.write_pipe()?;
         let writer = pipe.writer().expect("a pipe just made has its source free");
         let (done, written) = oneshot::channel();

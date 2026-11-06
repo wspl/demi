@@ -3437,3 +3437,33 @@ fn listed(block: &Block, run: bool) -> Vec<(String, EditKind)> {
         .map(|file| (file.path.clone(), file.kind))
         .collect()
 }
+
+#[tokio::test(flavor = "local")]
+async fn a_steer_sent_again_after_a_compaction_or_a_restore_runs_no_turn() {
+    let (held, release) = gated_turn(vec![event::text("first"), event::response(0, 0)]);
+    let provider = ScriptedRuntime::new([held, answer("read the steer"), answer("second"), answer("the summary")]);
+    let store = MemoryTreeStore::new();
+    let config = SessionConfig { compaction: CompactionConfig::default(), ..SessionConfig::default() };
+    let session = start(&provider, Vec::new(), &store, config).await;
+    let running = session.send(long_message(), turn("t1")).unwrap();
+    until(|| provider.requests().len() == 1).await;
+    let steer = BlockId::try_from("s1").unwrap();
+    session.steer(text("mind the tests"), steer.clone()).unwrap();
+    let _ = release.send(());
+    running.await.unwrap();
+    session.settled().await;
+    session.send(long_message(), turn("t2")).unwrap().await.unwrap();
+    session.compact().unwrap().await.unwrap();
+    session.settled().await;
+    let requests = provider.requests().len();
+
+    session.steer(text("mind the tests"), steer.clone()).unwrap();
+    session.settled().await;
+    assert_eq!(provider.requests().len(), requests);
+
+    drop(session);
+    let restored = restored(&store, &provider).await;
+    restored.steer(text("mind the tests"), steer).unwrap();
+    restored.settled().await;
+    assert_eq!(provider.requests().len(), requests);
+}

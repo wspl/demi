@@ -81,6 +81,7 @@ members = [
   "crates/runner-command-packages",
   "crates/runner-shell",
   "crates/host-interface",
+  "crates/host-paths",
   "crates/web-api-protocol",
   "crates/xtask",
 ]

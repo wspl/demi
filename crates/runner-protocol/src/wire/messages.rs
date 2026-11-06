@@ -8,6 +8,7 @@ use demi_command_protocol::{
     ArtifactLocation, CommandContext, EditCopies, EditKind, MediumFacts, PackageDescriptor,
     ResidentSequence, Viewable, conversation_name, digest, without_nul,
 };
+use demi_host_paths::HostPaths;
 use demi_shared_types::{BlobRef, HostLogLine};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -1978,9 +1979,9 @@ impl AutostartUnavailable {
     }
 
     /// The cause in English, as the runner's log and the installers say it
-    /// after [`crate::console::NO_AUTOSTART`]; a path under `home` is
-    /// written from `~`.
-    pub fn sentence(&self, home: &str) -> String {
+    /// after [`crate::console::NO_AUTOSTART`]; a path under `home`, on a
+    /// Host of `platform`, is written from `~`.
+    pub fn sentence(&self, platform: RunnerPlatform, home: &str) -> String {
         match self {
             Self::NoSystemd => "this system does not run systemd".into(),
             Self::NoUserManager { error } => {
@@ -1988,7 +1989,7 @@ impl AutostartUnavailable {
             }
             Self::NotWritten { path, error } => format!(
                 "the file that registers it, {}, could not be written ({error})",
-                from_home(path, home)
+                platform.paths().written_from_home(home, path)
             ),
             Self::LingerOff { user } => format!(
                 "it starts only once {user} logs in; to start it at boot, run: sudo loginctl enable-linger {user}"
@@ -2004,17 +2005,6 @@ impl AutostartUnavailable {
     }
 }
 
-/// `path` written from `~` when it lies in `home`.
-fn from_home(path: &str, home: &str) -> String {
-    let home = home.trim_end_matches(['/', '\\']);
-    match path.strip_prefix(home) {
-        Some(rest) if !home.is_empty() && (rest.starts_with('/') || rest.starts_with('\\')) => {
-            format!("~{rest}")
-        }
-        _ => path.to_owned(),
-    }
-}
-
 /// The operating system a runner runs on, named as Node's
 /// `process.platform` names it. A device keeps its runner's, and the web app
 /// receives it with the device.
@@ -2024,6 +2014,16 @@ pub enum RunnerPlatform {
     Darwin,
     Win32,
     Linux,
+}
+
+impl RunnerPlatform {
+    /// How a Host of this platform writes its paths.
+    pub fn paths(self) -> HostPaths {
+        match self {
+            Self::Win32 => HostPaths::Windows,
+            Self::Darwin | Self::Linux => HostPaths::Posix,
+        }
+    }
 }
 
 /// A Host's operating system as its runner reports it in its hello and a
@@ -2070,7 +2070,7 @@ pub struct HostIdentity {
     pub hostname: String,
     pub home_dir: String,
     /// The absolute directory that holds the conversations' scratch
-    /// directories, `<DEMI_HOME>/scratch` (`crates/runner-jobs/src/scratch.rs`).
+    /// directories, the scratch root (`crates/runner-jobs/src/scratch.rs`).
     pub scratch_root: String,
 }
 

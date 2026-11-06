@@ -26,6 +26,7 @@ demi-runner-client = { path = "../runner-client" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
+demi-host-paths = { path = "../host-paths" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-plugin-host = { path = "../plugin-host" }

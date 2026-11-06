@@ -1,5 +1,6 @@
 //! The conversation's host access: the one way to a conversation's primary or
-//! attached Host.
+//! attached Host, or to a Host one of its live subagents works on
+//! (`crates/agent-server/src/node/mod.rs`).
 //!
 //! Each conversation has one slot in its user's shard, with its file gate, its
 //! open transfers and the gate its open user streams hold.
@@ -13,9 +14,9 @@
 //! - In the grace after the backend starts, a device its last shutdown
 //!   disconnected is waited for. A restart is not a device going away: its
 //!   runners connect again by themselves within seconds.
-//! - After the grace, an agent's job on the primary Host waits for its device's
-//!   runner however long it takes. An attached device without a live runner is
-//!   refused with its offline error.
+//! - After the grace, an agent's job on its own Host, the primary one or a
+//!   subagent's, waits for its device's runner however long it takes. An
+//!   attached device without a live runner is refused with its offline error.
 //! - A Cloud's admission is taken.
 //!
 //! The file gate is let go while any of these waits. Then the operation runs
@@ -54,7 +55,7 @@
 //! A dispatched operation runs once and is never retried: if a reset or the
 //! loss of its device cuts it off, it fails with that cause.
 //!
-//! An agent's command on a primary device without a live runner waits for it as
+//! An agent's command on its own device without a live runner waits for it as
 //! for a held conversation, so the agent sees a command that is slow, never one
 //! that failed for the device's absence. The user's Stop ends every waiting
 //! command, which never runs, since a user who stops expects nothing to start
@@ -74,7 +75,7 @@ use demi_agent_tools::duration;
 use demi_backend_database::projects::TypedDirectory;
 use demi_runner_client::{Admission, Link, RemoteHost, WeakLink, Withdrawal};
 use demi_backend_runners::file_gate::{FileGate, FileLease};
-use demi_host_interface::{HostError, HostErrorKind, HostFs};
+use demi_host_interface::{Host as _, HostError, HostErrorKind, HostFs};
 use demi_runner_protocol::files::FsFailure;
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, SerialGate};
 use demi_web_api_protocol::devices::DeviceKind;
@@ -139,6 +140,8 @@ pub struct ConversationSlot {
 /// (§ Switch the primary target).
 struct WaitingJob {
     device: DeviceId,
+    /// Whether the job's agent works where the conversation does.
+    follows: bool,
     failed: RefCell<Option<String>>,
     /// Cancelled once `failed` is set.
     ended: CancellationToken,
@@ -178,12 +181,25 @@ impl Drop for HeldWait {
 /// when its Host is detached (`crates/backend-host-access/src/transition.rs`).
 struct JobAdmission {
     device: DeviceId,
+    /// Whether the job's agent works where the conversation does, the root
+    /// or a side question: a move leaves a subagent's job where it runs.
+    follows: bool,
     /// Whether the job runs without an admission of its own: it runs inside
     /// one that its caller holds, or was taken up after a restart. Such a
     /// job counts as running until it lets go.
     unadmitted: bool,
     admitted: RefCell<Option<Admitted>>,
     withdrawal: Rc<Withdrawal>,
+}
+
+/// Which jobs on an offline Host let go of their admissions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Leaving {
+    /// Those of the agents that work where the conversation does, as a move
+    /// away from the device leaves them.
+    Following,
+    /// Every job, as a deletion leaves them.
+    Every,
 }
 
 /// A job's hold of its admission, registered with its conversation's slot
@@ -210,11 +226,13 @@ impl ConversationSlot {
     pub(crate) fn hold_job(
         self: &Rc<Self>,
         device: DeviceId,
+        follows: bool,
         admitted: Option<Admitted>,
         withdrawal: Rc<Withdrawal>,
     ) -> HeldJob {
         let entry = Rc::new(JobAdmission {
             device,
+            follows,
             unadmitted: admitted.is_none(),
             admitted: RefCell::new(admitted),
             withdrawal,
@@ -227,14 +245,17 @@ impl ConversationSlot {
     }
 
     /// Lets go of the admissions of the jobs running on `device`, an offline
-    /// Host a move leaves: the jobs run on there, left to its runner, and
-    /// no longer hold the conversation's file gate.
-    pub fn leave_jobs_on(&self, device: &DeviceId) {
+    /// Host: the jobs run on there, left to its runner, and no longer hold the
+    /// conversation's file gate. A move that leaves the device lets go of
+    /// the jobs of the agents that work where the conversation does, and a
+    /// subagent's job holds its admission, as the subagent stays; a deletion
+    /// lets go of every job, `Leaving::Every`.
+    pub fn leave_jobs_on(&self, device: &DeviceId, leaving: Leaving) {
         let left: Vec<Admitted> = self
             .jobs
             .borrow()
             .iter()
-            .filter(|entry| entry.device == *device)
+            .filter(|entry| entry.device == *device && (entry.follows || leaving == Leaving::Every))
             .filter_map(|entry| entry.admitted.take())
             .collect();
         drop(left);
@@ -268,11 +289,13 @@ impl ConversationSlot {
         }
     }
 
-    /// Registers a job as waiting for `device`, the conversation's offline
-    /// primary device.
-    fn wait_for_device(self: &Rc<Self>, device: DeviceId) -> HeldWait {
+    /// Registers a job as waiting for `device`, the offline device of its
+    /// agent's Host; `follows` says whether the agent works where the
+    /// conversation does.
+    fn wait_for_device(self: &Rc<Self>, device: DeviceId, follows: bool) -> HeldWait {
         let entry = Rc::new(WaitingJob {
             device,
+            follows,
             failed: RefCell::new(None),
             ended: CancellationToken::new(),
         });
@@ -283,10 +306,11 @@ impl ConversationSlot {
         }
     }
 
-    /// Fails the jobs that wait for `device`, which a move left: none of
-    /// them was sent, and each ends with `reason`.
+    /// Fails the jobs that wait for `device`, which a move left, of the
+    /// agents that work where the conversation does: none of them was sent,
+    /// and each ends with `reason`. A subagent's job waits on.
     pub fn fail_waiting_for(&self, device: &DeviceId, reason: &str) {
-        for entry in self.waiting.borrow().iter().filter(|entry| entry.device == *device) {
+        for entry in self.waiting.borrow().iter().filter(|entry| entry.device == *device && entry.follows) {
             entry.failed.replace(Some(reason.to_owned()));
             entry.ended.cancel();
         }
@@ -390,6 +414,7 @@ impl HostAccessError {
             Self::Refused(Refusal::Busy) => (ErrorCode::ConversationBusy, 409),
             Self::Refused(Refusal::Stopped) => (ErrorCode::HostStopped, 409),
             Self::Refused(Refusal::DeviceGone) => (ErrorCode::DeviceNotFound, 404),
+            Self::Refused(Refusal::HomeUnknown) => (ErrorCode::DeviceHomeUnknown, 409),
             Self::Cloud(error) => error.code(),
             Self::Host(error) => host_error_code(error),
             Self::Cancelled | Self::Storage(_) | Self::Objects(_) | Self::Store(_) => {
@@ -436,6 +461,9 @@ pub enum Refusal {
     /// such as a revoked one.
     #[error("The conversation's device no longer exists")]
     DeviceGone,
+    /// A path from `~` on a Host whose runner never reported its home.
+    #[error("The Host has not said where its home is")]
+    HomeUnknown,
 }
 
 /// A conversation's Host as an admitted operation reaches it.
@@ -447,6 +475,28 @@ pub struct ConversationHost {
     /// The home directory the device's runner reported when it last
     /// connected.
     pub home: Option<String>,
+}
+
+impl ConversationHost {
+    /// `path` as a request names it on this Host: from `~`, under the home
+    /// its runner reported, while it reported one; any other as it is.
+    pub fn path(&self, path: &str) -> String {
+        match &self.home {
+            Some(home) => self.host.identity().paths.from_home(home, path),
+            None => path.to_owned(),
+        }
+    }
+
+    /// `path`, absolute or from `~`, as an absolute path on this Host; a
+    /// path from `~` while its runner reported no home is refused.
+    pub fn rooted(&self, path: &str) -> Result<String, Refusal> {
+        let path = self.path(path);
+        if self.host.identity().paths.is_absolute(&path) {
+            Ok(path)
+        } else {
+            Err(Refusal::HomeUnknown)
+        }
+    }
 }
 
 /// An admitted operation's hold. The fields drop in order: the Host, the
@@ -505,6 +555,12 @@ pub struct Waits<'a> {
     /// not, and finds a directory that is not there missing, except the
     /// directory of a conversation on the Cloud, which is Demi's to make.
     pub creates: bool,
+    /// Whether it is for a subagent's own Host
+    /// (`crates/agent-server/src/node/mod.rs`): its shells start where the
+    /// device's do, whatever the device is to the conversation, so the Host
+    /// is the same one however the conversation moves, and its jobs wait for
+    /// the device as the primary Host's do.
+    pub agent: bool,
 }
 
 /// How an agent's job waits while the conversation's primary Host is a
@@ -514,6 +570,10 @@ pub struct Waits<'a> {
 #[derive(Clone, Copy)]
 pub struct DeviceWait<'a> {
     pub shown: &'a dyn ShowWait,
+    /// Whether the job's agent works where the conversation does, the root
+    /// or a side question: a move away from the device fails its wait, and
+    /// a subagent's waits on.
+    pub follows: bool,
 }
 
 /// Shows a job waiting for the device `host` names, or no longer waiting
@@ -529,18 +589,25 @@ impl<'a> Waits<'a> {
             ended: None,
             device: None,
             creates: true,
+            agent: false,
         }
     }
 
-    /// The waits of an agent's job, which waits for its offline primary
-    /// device as `device` says.
+    /// The waits of an agent's job, which waits for its offline device as
+    /// `device` says; a subagent's job is on its own Host.
     pub fn job(cancel: &'a CancellationToken, device: DeviceWait<'a>) -> Self {
         Self {
             cancel,
             ended: None,
             device: Some(device),
             creates: true,
+            agent: !device.follows,
         }
+    }
+
+    /// These waits, for a subagent's own Host.
+    pub fn for_agent(self) -> Self {
+        Self { agent: true, ..self }
     }
 
     /// The waits of a file transfer or a user stream, which also end when a
@@ -551,6 +618,7 @@ impl<'a> Waits<'a> {
             ended: Some(ended),
             device: None,
             creates: true,
+            agent: false,
         }
     }
 
@@ -608,6 +676,10 @@ pub struct ReachableHost {
 pub enum HostRole {
     Primary,
     Attached,
+    /// A Host a live subagent of the conversation works on, which a move of
+    /// the conversation left it on (`crates/agent-server/src/node/mod.rs`):
+    /// its jobs wait for its device as the primary Host's do.
+    Agent,
 }
 
 impl dyn HostShard + '_ {
@@ -706,7 +778,7 @@ impl dyn HostShard + '_ {
             if let Some(reason) = waiting.as_ref().and_then(HeldWait::failed) {
                 return Err(HostError::new(HostErrorKind::Unavailable, reason).into());
             }
-            let mut selected = self.select_host(&record.id, device, true).await?;
+            let mut selected = self.select_host(&record.id, device, true, waits.agent).await?;
             // A read of a Cloud conversation's directory makes it, once the
             // gate is let go (`with_unheld_host`).
             let unmade = (!waits.creates && matches!(selected.typed, Some(TypedDirectory::Cloud(_))))
@@ -736,7 +808,7 @@ impl dyn HostShard + '_ {
             // answers it offline at once (§ Host operations).
             if away && selected.primary && let Some(wait) = waits.device {
                 drop(files);
-                let held = waiting.get_or_insert_with(|| slot.wait_for_device(selected.device.id.clone()));
+                let held = waiting.get_or_insert_with(|| slot.wait_for_device(selected.device.id.clone(), wait.follows));
                 wait.shown.shown(Some(selected.device.name.clone())).await;
                 let woke = waits
                     .wait(async {
@@ -819,7 +891,7 @@ impl dyn HostShard + '_ {
         let mut waited_for_return = false;
         let (files, mut selected) = loop {
             let files = waits.wait(slot.files.enter(purpose)).await?;
-            let selected = self.select_host(&record.id, device, false).await?;
+            let selected = self.select_host(&record.id, device, false, false).await?;
             match self.returning(&selected.device.id) {
                 Some(rest) if !waited_for_return => {
                     drop(files);
@@ -905,6 +977,7 @@ impl dyn HostShard + '_ {
         id: &ConversationId,
         device: Option<&DeviceId>,
         allocate: bool,
+        agent: bool,
     ) -> Result<Selected, HostAccessError> {
         let control = self.control();
         let record = self.owned_conversation(id).await?;
@@ -942,9 +1015,13 @@ impl dyn HostShard + '_ {
         let device = found
             .filter(|device| device.is_host_of(&record.owner))
             .ok_or(Refusal::DeviceGone)?;
-        let (root, typed, primary) = match named.filter(|host| host.role == HostRole::Attached) {
-            Some(attached) => (attached.path, None, false),
-            None => {
+        let (root, typed, primary) = match named {
+            // A subagent's own Host starts its shells where the device does,
+            // whatever the device is to the conversation now, and its jobs
+            // wait for the device as the primary Host's do.
+            Some(_) if agent => (self.devices().home(&device.id).unwrap_or_default(), None, true),
+            Some(other) if other.role != HostRole::Primary => (other.path, None, false),
+            _ => {
                 let typed = match &target {
                     ExecutionTarget::Cloud { path, .. } => Some(TypedDirectory::Cloud(path.clone())),
                     ExecutionTarget::Project { project_id, .. } => {
@@ -1066,6 +1143,19 @@ impl dyn HostShard + '_ {
     /// A command on the primary Host starts in the conversation's directory
     /// there. A command on an attached Host starts in the directory fixed when
     /// it was attached, or in its home when none was.
+    /// Whether the conversation `id` works on `device` now: its primary
+    /// Host's device, or the device of a Host one of its live subagents works
+    /// on (`crates/agent-server/src/node/mod.rs`).
+    pub async fn works_on(&self, id: &ConversationId, device: &DeviceId) -> Result<bool, HostAccessError> {
+        let record = self.owned_conversation(id).await?;
+        let target = self.resolve_target(&record).await?;
+        Ok(target.device() == Some(device)
+            || self
+                .agent_placements(id)
+                .iter()
+                .any(|placement| placement.device.as_deref() == Some(device.as_str())))
+    }
+
     pub async fn conversation_hosts(
         &self,
         id: &ConversationId,
@@ -1108,6 +1198,28 @@ impl dyn HostShard + '_ {
                 device: attached.device,
                 path,
                 role: HostRole::Attached,
+            });
+        }
+        for placement in self.agent_placements(&record.id) {
+            let Some(device) = placement.device.and_then(|device| DeviceId::try_from(device).ok()) else {
+                continue;
+            };
+            if hosts.iter().any(|host| host.device == device) {
+                continue;
+            }
+            let name = control
+                .device(device.clone())
+                .await?
+                .map_or_else(|| device.to_string(), |record| record.name);
+            // Its shells start where the device's do: each job names its
+            // subagent's directory, and a Host's key stays the same whichever
+            // subagents work there.
+            let path = self.devices().home(&device).unwrap_or_default();
+            hosts.push(ReachableHost {
+                name,
+                device,
+                path,
+                role: HostRole::Agent,
             });
         }
         Ok(hosts)

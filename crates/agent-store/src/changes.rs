@@ -37,7 +37,7 @@ use std::collections::{HashMap, HashSet};
 
 use bytes::Bytes;
 use demi_command_protocol::line_counts;
-use demi_host_interface::is_inside;
+use demi_host_paths::is_inside;
 use demi_shared_types::{
     AgentMessageEvent, B64Bytes, BlobRef, Block, BlockId, ChangedFile, CommandId, EditKind, EditedFile,
     FileEdit, LineCounts, PathChange, ReportEvent, ShellToolView, ToolView,

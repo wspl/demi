@@ -337,6 +337,11 @@
     "pictureTooLarge": "El archivo pesa {size}, demasiado para conservarlo",
     "pictureNotAnImage": "El archivo es {type}, no una imagen",
     "pictureHostUnavailable": "El host no estaba disponible para copiarlo",
-    "pictureUnreadable": "No se pudo leer el archivo"
+    "pictureUnreadable": "No se pudo leer el archivo",
+    "credential": {
+      "saved": "Credencial guardada",
+      "missing": "Ya no está guardada",
+      "confirm": "Confirma que eres tú para usar “{name}”."
+    }
   }
 }

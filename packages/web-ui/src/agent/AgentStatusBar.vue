@@ -17,6 +17,8 @@ import type { UsageLimits } from './context-usage'
 import type { CostShown } from './context-cost'
 import { useElapsedTime } from '../composables/useElapsedTime'
 import { useMessageFiles } from '../markdown/message-files'
+import { hostIcon } from '../hosts/icons'
+import { useHostNames, type HostName } from './host-names'
 import { shownBranchName } from '../files/history'
 import { useShowing } from '../files/showing'
 import { statusTone } from './conversation-status'
@@ -30,6 +32,7 @@ import { isSubagentRunning, runEffortWords, subagentStatus, type AgentRun } from
  * an editor's status bar, it is made of segments:
  *
  * - the state and time
+ * - the Host the child works on, when it is not the conversation's
  * - the folder the child works in
  * - the branch checked out in it
  * - *Forked from agent N*
@@ -39,7 +42,9 @@ import { isSubagentRunning, runEffortWords, subagentStatus, type AgentRun } from
  *
  * A segment that acts when pressed shows a hover background over its whole
  * extent. The folder, the branch, the forked-from link and the context indicator
- * act when pressed. The other segments only explain.
+ * act when pressed. The other segments only explain. A child on another Host
+ * than the conversation's works where the File view does not look: its folder
+ * only explains, and it shows no branch.
  *
  * The segments run close to the window's ends (`.status-bar`):
  *
@@ -123,15 +128,22 @@ function openForked(): void {
   if (props.run.forkedFrom !== null)
     agents()?.open(props.run.forkedFrom)
 }
+// The Host a child works on when it is not the conversation's, by the name the
+// page gives it.
+const hostNames = useHostNames()
+const host = computed<HostName | null>(() => {
+  const device = props.run.device
+  return device === null ? null : (hostNames()?.(device) ?? { name: device, kind: 'device' })
+})
 // The folder opens the File view on the child's directory where a plugin opens
-// files.
+// files, on the conversation's Host.
 const files = useMessageFiles()
 const openFolder = computed(() => {
   const open = files()?.open
-  return open ? () => open({ path: '', line: null, root: props.run.cwd }) : null
+  return open && host.value === null ? () => open({ path: '', line: null, root: props.run.cwd }) : null
 })
 // The branch checked out in the child's folder, from the repository's history as the page keeps it.
-const history = computed(() => files()?.history?.(props.run.cwd) ?? null)
+const history = computed(() => (host.value === null ? files()?.history?.(props.run.cwd) ?? null : null))
 const branches = useShowing(() => history.value, () => 'branches', (source) => source.showBranches())
 // A failed read keeps the last answer beside its failure (`ShownEntry`); the bar says nothing it cannot confirm.
 const branchList = computed(() => branches.entry.value?.failure ? undefined : branches.entry.value?.value)
@@ -156,6 +168,13 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
         <span>{{ agentPhaseWords(run.phase) }}</span>
         <span class="text-fg-faint" aria-hidden="true">·</span>
         <span class="tabular-nums">{{ time }}</span>
+      </StatusBarSegment>
+      <!--
+        The Host it works on when that is not the conversation's: its name.
+      -->
+      <StatusBarSegment v-if="host !== null" class="min-w-0">
+        <component :is="hostIcon(host)" :size="icons.chip" class="shrink-0" aria-hidden="true" />
+        <span class="max-w-40 truncate">{{ host.name }}</span>
       </StatusBarSegment>
       <!--
         Where it works: the directory's own name, its whole path in the tip.

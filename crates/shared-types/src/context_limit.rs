@@ -1,7 +1,9 @@
-//! The limits a user may set on the context window Demi uses for a model.
+//! The limits a user may set on the context window Demi uses for a model:
+//! any size below the model's window, of which the model menu offers a few
+//! steps to pick.
 //!
 //! The steps and their lookups are generated into `@demicodes/protocol`, so the
-//! model menu offers what a session applies.
+//! model menu shows what a session applies.
 //!
 //! A limit replaces the model's window wherever Demi uses the window for
 //! itself, the compaction thresholds and the usage indicator. It changes
@@ -14,8 +16,8 @@ use std::str::FromStr;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// One limit a user may set, and the smallest context window that offers
-/// it. Its schema types the table the page receives in
+/// One limit the model menu offers, and the smallest context window it
+/// offers it on. Its schema types the table the page receives in
 /// `@demicodes/protocol`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -42,9 +44,9 @@ pub const CONTEXT_LIMIT_STEPS: [ContextLimitStep; 3] = [
     },
 ];
 
-/// The limits a model whose context window is `window` offers below its
-/// full window, largest first; none for a window under 500,000 tokens or an
-/// unknown one, which is zero.
+/// The limits the model menu offers below the full window of a model whose
+/// context window is `window`, largest first; none for a window under
+/// 500,000 tokens or an unknown one, which is zero.
 pub fn context_limits(window: u32) -> impl Iterator<Item = u32> {
     CONTEXT_LIMIT_STEPS
         .into_iter()
@@ -53,10 +55,10 @@ pub fn context_limits(window: u32) -> impl Iterator<Item = u32> {
 }
 
 /// The limit that applies to a model whose context window is `window` when
-/// the user stored `limit` on it: the limit while the window offers it, and
-/// none, the full window, otherwise.
+/// the user stored `limit` on it: the limit while it is below the window,
+/// and none, the full window, otherwise.
 pub fn applied_context_limit(window: u32, limit: Option<u32>) -> Option<u32> {
-    limit.filter(|limit| context_limits(window).any(|offered| offered == *limit))
+    limit.filter(|limit| *limit < window)
 }
 
 /// The window Demi uses for a model whose context window is `window` when
@@ -66,11 +68,10 @@ pub fn effective_context_window(window: u32, limit: Option<u32>) -> u32 {
 }
 
 /// Whether a model whose context window is `window` offers `tokens` as a
-/// subagent profile's own Context (`crates/agent-server/src/server/tree/profiles.rs`): its full
-/// window or one of its limits, for a window that has a Context row at all.
+/// subagent profile's own Context (`crates/agent-server/src/server/tree/profiles.rs`): any size
+/// up to its window, the window itself being the full window.
 pub fn offers_context(window: u32, tokens: u32) -> bool {
-    let mut limits = context_limits(window).peekable();
-    limits.peek().is_some() && (tokens == window || limits.any(|limit| limit == tokens))
+    tokens >= 1 && tokens <= window
 }
 
 /// The window Demi uses for a session on a model whose context window is
@@ -84,16 +85,11 @@ pub fn session_context_window(window: u32, own: Option<u32>, limit: Option<u32>)
     effective_context_window(window, own.or(limit))
 }
 
-/// Whether `tokens` is a limit some window offers, which is what a user may
-/// store.
-pub fn is_context_limit(tokens: u32) -> bool {
-    CONTEXT_LIMIT_STEPS.iter().any(|step| step.tokens == tokens)
-}
-
 /// A subagent profile's Context as `demi agent profiles --context` and a
-/// workflow's `context:` name it (`crates/agent-server/src/server/tree/profiles.rs`): `default`,
-/// the user's limit; `full`, the model's whole window; or a limit, such as
-/// `500K`.
+/// workflow's `context:` name it, and a model's limit as `demi providers
+/// context` does (`crates/agent-server/src/server/tree/profiles.rs`): `default`, the user's limit;
+/// `full`, the model's whole window; or a size, such as `350K`, `1M` or
+/// `272000`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "String")]
 pub enum ContextChoice {
@@ -116,7 +112,7 @@ impl ContextChoice {
 
 /// Why a word names no Context.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("{0:?} is not a context: use full, {limits} or default", limits = limit_words())]
+#[error("{0:?} is not a context: use default, full, or a size such as 350K, 1M or 272000")]
 pub struct ContextWordError(String);
 
 impl FromStr for ContextChoice {
@@ -128,10 +124,18 @@ impl FromStr for ContextChoice {
             "full" => return Ok(Self::Full),
             _ => {}
         }
-        word.strip_suffix(['K', 'k'])
-            .and_then(|thousands| thousands.parse::<u32>().ok())
-            .and_then(|thousands| thousands.checked_mul(1000))
-            .filter(|tokens| is_context_limit(*tokens))
+        let (number, unit) = match word.strip_suffix(['K', 'k']) {
+            Some(thousands) => (thousands, 1_000),
+            None => match word.strip_suffix(['M', 'm']) {
+                Some(millions) => (millions, 1_000_000),
+                None => (word, 1),
+            },
+        };
+        number
+            .parse::<u32>()
+            .ok()
+            .and_then(|number| number.checked_mul(unit))
+            .filter(|tokens| *tokens >= 1)
             .map(Self::Limit)
             .ok_or_else(|| ContextWordError(word.to_owned()))
     }
@@ -157,16 +161,3 @@ pub fn context_word(tokens: u32) -> String {
     }
 }
 
-/// The limits a profile may name, largest first: `500K, 300K, 200K`.
-fn limit_words() -> String {
-    let words: Vec<String> = CONTEXT_LIMIT_STEPS.iter().map(|step| context_word(step.tokens)).collect();
-    words.join(", ")
-}
-
-/// What a model whose window is `window` offers a profile, as a refusal
-/// lists it: `full (1M), 500K, 300K, 200K`; none for a window without a
-/// Context row.
-pub fn offered_contexts(window: u32) -> Option<String> {
-    let limits: Vec<String> = context_limits(window).map(context_word).collect();
-    (!limits.is_empty()).then(|| format!("full ({}), {}", context_word(window), limits.join(", ")))
-}

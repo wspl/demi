@@ -11,7 +11,6 @@
 //! another project has is that project.
 
 use demi_backend_database::devices::DeviceRecord;
-use demi_runner_client::host_paths;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::DeviceId;
@@ -90,19 +89,16 @@ impl dyn HostShard + '_ {
 /// result must be absolute there.
 fn typed_directory(device: &DeviceRecord, path: &str) -> Result<String, ChangeRefusal> {
     let host = if device.kind == DeviceKind::Managed { "Cloud" } else { device.name.as_str() };
-    let paths = host_paths(device.platform);
-    let path = match path.strip_prefix('~') {
-        Some(rest) if rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\') => {
+    let paths = device.platform.paths();
+    let path = match paths.home_relative(path) {
+        Some(_) => {
             let home = match device.kind {
                 DeviceKind::Managed => device.home.as_deref().unwrap_or(demi_backend_database::CLOUD_HOME),
                 DeviceKind::User => device.home.as_deref().ok_or(ChangeRefusal::DeviceHomeUnknown)?,
             };
-            match rest.trim_start_matches(['/', '\\']) {
-                "" => home.to_owned(),
-                rest => paths.join(home, rest),
-            }
+            paths.from_home(home, path)
         }
-        _ => path.to_owned(),
+        None => path.to_owned(),
     };
     if !paths.is_absolute(&path) {
         return Err(ChangeRefusal::NotADirectory(format!("{path}: give an absolute directory on {host}")));

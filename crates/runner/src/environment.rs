@@ -21,8 +21,9 @@
 //! - cmd keeps the per-drive entries, and no program may be given them back.
 //!
 //! The same environment reaches jobs, raw processes and residents.
-//! Runner-owned variables (the endpoint, the context handle, `DEMI_HOME`, the
-//! alias directory on `PATH`) override caller values.
+//! Runner-owned variables (the endpoint, the context handle, `DEMI_HOME`,
+//! `DEMI_SCRATCH_ROOT`, the alias directory on `PATH`) override caller
+//! values.
 //!
 //! On Windows the `usr\bin` of Git for Windows, where the utilities Demi does
 //! not run itself are, is in `PATH`, at its end where the Host's has none

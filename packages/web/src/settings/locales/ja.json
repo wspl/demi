@@ -72,5 +72,8 @@
     "nameFailed": "名前を変更できませんでした",
     "emailFailed": "メールアドレスを変更できませんでした",
     "passwordFailed": "パスワードを変更できませんでした"
+  },
+  "credentials": {
+    "revealFailed": "認証情報を読み取れませんでした"
   }
 }

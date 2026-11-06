@@ -89,7 +89,7 @@ struct CwdArgs {
     dir: Option<String>,
 }
 
-const CWD_SUMMARY: &str = "Print your working directory, where your shell calls start, or change it to a directory of the primary Host.";
+const CWD_SUMMARY: &str = "Print your working directory, where your shell calls start, or change it to another directory of your Host.";
 
 /// The input of `demi agent send`.
 #[derive(Deserialize, JsonSchema)]

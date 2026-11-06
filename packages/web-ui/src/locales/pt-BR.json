@@ -337,6 +337,11 @@
     "pictureTooLarge": "O arquivo tem {size}, grande demais para manter",
     "pictureNotAnImage": "O arquivo é {type}, não uma imagem",
     "pictureHostUnavailable": "O host não estava disponível para copiá-lo",
-    "pictureUnreadable": "Não foi possível ler o arquivo"
+    "pictureUnreadable": "Não foi possível ler o arquivo",
+    "credential": {
+      "saved": "Credencial salva",
+      "missing": "Não está mais salva",
+      "confirm": "Confirme que é você para usar “{name}”."
+    }
   }
 }

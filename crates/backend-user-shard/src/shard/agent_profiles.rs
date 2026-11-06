@@ -219,7 +219,7 @@ impl Shard {
 
 /// The entry `named`, by its name or its id, that a profile may take
 /// `model` of: one the user has on, whose model `model` the user has on.
-fn named_entry(
+pub(crate) fn named_entry(
     scope: &Scope,
     named: &str,
     model: &str,

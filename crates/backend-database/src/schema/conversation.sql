@@ -25,16 +25,13 @@ CREATE TABLE nodes (
   -- The number of the agent the node was forked from; null for one that
   -- was not forked.
   forked_from      INTEGER CHECK (forked_from >= 1),
-  -- A child's own working directory on the primary Host, and where the
-  -- conversation worked when it was set: the primary Host's device, null
-  -- for a Cloud not made yet, and the conversation's directory then. The
-  -- child works there while the conversation still does, and in the
-  -- conversation's directory otherwise. All null for the root, which works
-  -- in the conversation's. Their reader refuses a row that sets some of
-  -- them only, since a migration adds no table CHECK.
-  cwd              TEXT CHECK (cwd <> ''),
-  cwd_device       TEXT,
-  cwd_under        TEXT CHECK (cwd_under <> ''),
+  -- A child's own placement, which a move of the conversation leaves: its
+  -- Host's device, null for the user's Cloud not made yet, and its working
+  -- directory there. Both null for the root and a side question, which work
+  -- where the conversation does. Their reader refuses a child without a
+  -- directory, since a migration adds no table CHECK.
+  placement_device    TEXT,
+  placement_directory TEXT CHECK (placement_directory <> ''),
   -- The Context its profile chose, in tokens, which its sessions use in
   -- place of the user's limit; null for the user's limit.
   context_limit    INTEGER CHECK (context_limit >= 1),

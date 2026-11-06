@@ -6,6 +6,7 @@ import type { PictureCopy, PictureFailure } from '@demicodes/protocol'
 import { codeBlockHtml } from './highlight'
 import { WEB_LINK_REL, commitFolder, isHttpUrl, linkedCommit, linkedConversation, messageFileTarget, messageImage } from './filePath'
 import { attachmentBlockAt, attachmentBlockStart } from './attachment-block'
+import { credentialBlockAt, credentialBlockStart } from './credential-block'
 import { REPLY_BLOCK_ATTRIBUTE, REPLY_BLOCK_ID_ATTRIBUTE, replyBlockAt, replyBlockStart } from './reply-block'
 import { linkedAgent } from '../agent/agent-links'
 import type { CopiedStoredFile } from '../agent/message-input/copied-message'
@@ -674,6 +675,17 @@ const ATTACHMENT_BLOCK = 'attachmentBlock'
 /** The token of a plugin's reply block (`reply-block.ts`). */
 const REPLY_BLOCK = 'replyBlock'
 
+/** The token of a credential block (`credential-block.ts`). */
+const CREDENTIAL_BLOCK = 'credentialBlock'
+
+/**
+ * The attributes of the place of a credential block's card, which hold the
+ * credential's name and the field it names, where `CredentialCard` shows
+ * them.
+ */
+export const CREDENTIAL_CARD_ATTRIBUTE = 'data-credential-card'
+export const CREDENTIAL_FIELD_ATTRIBUTE = 'data-credential-field'
+
 /**
  * Whether a run of marks opens, as the message's reader reads it beside the
  * same two characters with a closing run after them: the reader's rules for
@@ -722,6 +734,21 @@ agentMarked.use({
     },
     renderer(token) {
       return attachmentBlock(token.id, token.raw)
+    },
+  }, {
+    // A credential's card, ahead of an HTML block as an attachment's is:
+    // its place, which `CredentialCard` fills whatever the page knows of
+    // the credential (`StreamedMarkdown.vue`).
+    name: CREDENTIAL_BLOCK,
+    level: 'block',
+    start: credentialBlockStart,
+    tokenizer(src) {
+      const block = credentialBlockAt(src)
+      return block ? { type: CREDENTIAL_BLOCK, raw: block.raw, name: block.name, field: block.field } : undefined
+    },
+    renderer(token) {
+      const field = token.field === null ? '' : ` ${CREDENTIAL_FIELD_ATTRIBUTE}="${escapeHtml(token.field)}"`
+      return `<div class="attachment-block" ${CREDENTIAL_CARD_ATTRIBUTE}="${escapeHtml(token.name)}"${field}></div>\n`
     },
   }, {
     // A plugin's block, ahead of an HTML block too: its place, which the

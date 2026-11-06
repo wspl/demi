@@ -1015,7 +1015,7 @@ impl UserPlugins {
         conversation: &ConversationId,
         device: &DeviceId,
         directory: String,
-        paths: demi_host_interface::HostPaths,
+        paths: demi_host_paths::HostPaths,
         cancel: CancellationToken,
     ) -> Result<Option<(Value, Vec<WatchSubject>)>, PluginError> {
         let Some((index, _)) = self.0.registry.plugin(plugin.as_str()) else {
@@ -1544,7 +1544,7 @@ pub struct ContextAsk {
     /// The node's working directory.
     pub cwd: String,
     /// How the node's Host writes its paths.
-    pub paths: demi_host_interface::HostPaths,
+    pub paths: demi_host_paths::HostPaths,
     /// The node's current input turn.
     pub turn: TurnId,
     /// The text of the source's own blocks the model receives, oldest

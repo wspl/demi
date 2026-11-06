@@ -114,7 +114,7 @@ impl Kept {
                 paths: registered.paths.clone(),
                 residents: registered.residents.clone(),
                 endpoint: registered.endpoint.clone(),
-                home: registered.state.root.to_string_lossy().into_owned(),
+                installation: registered.installation_env(),
             }),
             leaving: Arc::default(),
         });
