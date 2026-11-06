@@ -913,10 +913,24 @@ pub struct ResumeBlock {
     pub entries: Vec<Entry>,
 }
 
-/// The agent's account reached its limit and the same request went on with
-/// another account: *alex@example.com reached its 5-hour limit, resetting
-/// at 9:00 PM; continuing with sam@example.com*. The page words it, the
-/// window's name in the viewer's language and the reset in their time zone.
+/// Why an agent moved to another account.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountSwitchCause {
+    /// The account reached its limit; a block stored before the field was the
+    /// only cause there was.
+    #[default]
+    UsedUp,
+    /// The vendor signed the account out.
+    SignedOut,
+    /// The vendor refused the account this request (HTTP 403).
+    Refused,
+}
+
+/// The vendor would not serve the agent's account and the same request went
+/// on with another account: *alex@example.com reached its 5-hour limit,
+/// resetting at 9:00 PM; continuing with sam@example.com*. The page words it,
+/// the window's name in the viewer's language and the reset in their time zone.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AccountSwitchBlock {
@@ -938,7 +952,10 @@ pub struct AccountSwitchBlock {
     pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
-    /// The label of the account that reached its limit.
+    #[serde(default)]
+    #[garde(skip)]
+    pub cause: AccountSwitchCause,
+    /// The label of the account the agent left.
     #[garde(skip)]
     pub from: String,
     /// The label of the account the agent continues with.

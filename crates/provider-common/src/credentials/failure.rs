@@ -6,7 +6,7 @@ use demi_shared_types::AuthState;
 
 use crate::{
     CatalogError, ErrorCode, ProviderFailure,
-    credentials::{AccountError, RenewError},
+    credentials::{AccountError, RefreshFailure, RenewError},
     quota::QuotaError,
 };
 
@@ -28,11 +28,11 @@ pub enum AuthReason {
     Invalid(String),
     /// The pool could not be read or written.
     Store(String),
-    /// The vendor refused the refresh and nobody else stored new tokens; the
-    /// text is the family's message.
+    /// The refresh failed in a way that may pass, and nobody else stored new
+    /// tokens; the text is the family's message.
     Refresh(String),
     /// The vendor refused the account's sign-in, which waits for the user to
-    /// sign in again (`crates/provider-claude-code/src/account.rs`).
+    /// sign in again.
     SignedOut,
 }
 
@@ -53,17 +53,22 @@ impl AuthFailure {
         Self::new(family, reason)
     }
 
-    /// The failure of a renewal whose refresh fails with the family's
-    /// message.
-    pub fn of_renewal(family: &'static str, error: RenewError<String>) -> Self {
+    /// The failure of a renewal.
+    pub fn of_renewal(family: &'static str, error: RenewError<RefreshFailure>) -> Self {
         match error {
             RenewError::Account(error) => Self::of_account(family, error),
-            RenewError::Refresh(message) => Self::new(family, AuthReason::Refresh(message)),
+            RenewError::Refresh(RefreshFailure::SignedOut) => Self::new(family, AuthReason::SignedOut),
+            RenewError::Refresh(RefreshFailure::Failed(message)) => Self::new(family, AuthReason::Refresh(message)),
             RenewError::Unanswered => Self::new(
                 family,
                 AuthReason::Refresh(format!("{family} did not answer the token refresh in time")),
             ),
         }
+    }
+
+    /// Whether the vendor refused the account's sign-in.
+    pub fn is_signed_out(&self) -> bool {
+        matches!(self.reason, AuthReason::SignedOut)
     }
 
     pub fn message(&self) -> String {

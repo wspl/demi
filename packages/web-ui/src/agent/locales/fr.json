@@ -29,6 +29,8 @@
   },
   "transcript": {
     "accountSwitch": {
+      "refused": "Le fournisseur a refusé {from}. Poursuite avec {to}.",
+      "signedOut": "{from} a été déconnecté. Poursuite avec {to}.",
       "usage": "{from} a atteint sa limite d’utilisation. Poursuite avec {to}.",
       "usageReset": "{from} a atteint sa limite d’utilisation, {reset}. Poursuite avec {to}.",
       "window": "{from} a atteint sa {window}. Poursuite avec {to}.",

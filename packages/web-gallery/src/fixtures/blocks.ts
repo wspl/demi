@@ -1467,17 +1467,19 @@ export function signedOutErrorBlock(id: string): Block {
  * answer the same request then got from the next account
  * (`crates/provider-registry/src/rotation.rs`).
  */
-export function accountSwitchBlocks(resetsAt: string): Block[] {
+export function accountSwitchBlocks(resetsAt: string, cause: 'used_up' | 'signed_out' | 'refused' = 'used_up'): Block[] {
+  const usedUp = cause === 'used_up'
   return inRequests([
     {
       type: 'account_switch',
       id: 'account-switch',
       createdAt: iso(30_000),
       model: demoModel,
+      cause,
       from: 'alex@example.com',
       to: 'sam@example.com',
-      window: { kind: 'limit', periodSeconds: 5 * 3600, scope: null },
-      resetsAt,
+      window: usedUp ? { kind: 'limit', periodSeconds: 5 * 3600, scope: null } : null,
+      resetsAt: usedUp ? resetsAt : null,
     },
     {
       type: 'text',

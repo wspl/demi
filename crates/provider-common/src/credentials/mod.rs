@@ -26,9 +26,9 @@ pub use failure::{AuthFailure, AuthReason};
 pub use memory::MemoryCredentialPool;
 pub use pool::{
     AccountDocument, AccountMeta, CredentialPool, PoolError, Revision, credential_id_for,
-    find_by_identity,
+    find_by_identity, sign_out_account,
 };
 pub use refresh::{
-    AccountError, RefreshGates, RefreshPermit, RenewError, SecretDecodeError, SecretDocument,
+    AccountError, RefreshFailure, RefreshGates, RefreshPermit, RenewError, SecretDecodeError, SecretDocument,
     SecretFault, Stored, decode_secret, read_secret, renew,
 };

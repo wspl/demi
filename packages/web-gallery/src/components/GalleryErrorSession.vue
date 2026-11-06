@@ -278,6 +278,22 @@ const cases: SessionCase[] = [
     composer: 'default',
   },
   {
+    variant: 'Account rotation · the vendor signed the account out',
+    note: 'Not a failure. The vendor refused the sign-in of the agent’s account: the account waits in Settings › Providers for Sign In Again, the same request went to the next account, and the agent stays there. Nothing to click.',
+    session: state('account-switch-signed-out', {
+      blocks: [...shortTranscriptBlocks(), ...accountSwitchBlocks(limitResets, 'signed_out')],
+    }),
+    composer: 'default',
+  },
+  {
+    variant: 'Account rotation · the vendor refused the account',
+    note: 'Not a failure. The vendor answered the request with HTTP 403: the account is not marked, since the refusal may be of this request, and the same request went to the next account. Nothing to click.',
+    session: state('account-switch-refused', {
+      blocks: [...shortTranscriptBlocks(), ...accountSwitchBlocks(limitResets, 'refused')],
+    }),
+    composer: 'default',
+  },
+  {
     variant: 'Usage limit · its time has passed',
     note: 'The same failure after the limit reset: the record still says when it reset, but the switch is gone, since there is no time left to resume at. Resume in the dock goes on.',
     session: state('usage-limit-passed', {

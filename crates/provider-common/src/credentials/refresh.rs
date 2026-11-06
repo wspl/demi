@@ -15,6 +15,7 @@ use demi_shared_gates::{KeyedPermit, KeyedSerialGate};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::credentials::{AccountDocument, PoolError};
+use crate::oauth::TokenRefusal;
 
 /// One refresh at a time for each account in this process, first come first
 /// served, and the owner of the refreshes under way.
@@ -170,6 +171,30 @@ pub enum AccountError {
     /// The stored document is corrupt; it is refused, never repaired.
     #[error("the account's secret document is {0}")]
     Invalid(SecretDecodeError),
+}
+
+/// Why a refresh of a sign-in failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RefreshFailure {
+    /// The vendor ended the sign-in: only signing in again helps.
+    SignedOut,
+    /// Anything else, which may pass; the text is the family's message.
+    Failed(String),
+}
+
+impl RefreshFailure {
+    /// A sign-in service's refusal, with `status` and `refusal`.
+    ///
+    /// HTTP 401 and OAuth's `invalid_grant` end the sign-in. Another refusal,
+    /// such as a 403 a CDN answers or a 5xx, says nothing of it, and fails
+    /// with `message`.
+    pub fn refused(status: u16, refusal: &TokenRefusal, message: String) -> Self {
+        if status == 401 || refusal.code() == Some("invalid_grant") {
+            Self::SignedOut
+        } else {
+            Self::Failed(message)
+        }
+    }
 }
 
 /// Why a renewal gave no usable secret.

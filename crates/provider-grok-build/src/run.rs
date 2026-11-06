@@ -107,6 +107,10 @@ pub(crate) fn run(
             break response;
         };
         if !response.status().is_success() {
+            // A second 401: the vendor refuses the renewed sign-in too.
+            if response.status() == StatusCode::UNAUTHORIZED {
+                shared.auth.signed_out().await;
+            }
             let failure = tokio::select! {
                 biased;
                 () = cancel.cancelled() => None,

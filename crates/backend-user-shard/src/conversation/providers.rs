@@ -29,7 +29,7 @@ use demi_provider_common::{
 };
 use demi_provider_registry::rotation::{Candidate, Choice, Running, USED_UP_FOR_MS, window_used_up};
 use demi_shared_types::{
-    AgentAccount, Model, ModelSelection, NodeId, QuotaWindowName, Rotation, Timestamp, UnavailableSetting,
+    AccountSwitchCause, AgentAccount, Model, ModelSelection, NodeId, QuotaWindowName, Rotation, Timestamp, UnavailableSetting,
     session_context_window,
 };
 use demi_web_api_protocol::conversations::ModelSettings;
@@ -557,10 +557,12 @@ impl ConversationRuntime {
     ///
     /// - the entry still has it;
     /// - its rotation is the one it was taken under;
-    /// - no refusal of its vendor marks it used up.
+    /// - no refusal of its vendor marks it used up or signed out.
     ///
-    /// Otherwise it is one taken now, which the session is told of. A request that
-    /// `runs` counts the agent as running on it.
+    /// Otherwise it is one taken now, which the session is told of. With every
+    /// account signed out it is `named`, or the entry's first, whose request
+    /// fails with the sign-in the user is asked for. A request that `runs` counts
+    /// the agent as running on it.
     async fn agent_account(
         &mut self,
         entry: &ProviderEntry,
@@ -576,24 +578,11 @@ impl ConversationRuntime {
                 .candidates(entry, false)
                 .await
                 .map_err(|error| refused(error.to_string(), None))?;
-            let kept = match candidates.iter().find(|candidate| candidate.id.as_str() == named.credential_id) {
-                Some(candidate) => {
-                    (!provider_registry.rotation().is_used_up(&entry.id, candidate, now))
-                        .then(|| candidate.id.clone())
-                }
-                // One its vendor signed out is not a candidate, and is kept:
-                // its request fails with the sign-in the user is asked for.
-                None => self
-                    .scope
-                    .services
-                    .vault
-                    .accounts(entry.id.clone())
-                    .await
-                    .map_err(|error| refused(entry_unreadable(&error), None))?
-                    .into_iter()
-                    .find(|account| account.id.as_str() == named.credential_id)
-                    .map(|account| account.id),
-            };
+            let kept = candidates
+                .iter()
+                .find(|candidate| candidate.id.as_str() == named.credential_id)
+                .filter(|candidate| !provider_registry.rotation().is_used_up(&entry.id, candidate, now))
+                .map(|candidate| candidate.id.clone());
             if let Some(kept) = kept {
                 self.keep(entry, kept.clone(), runs);
                 return Ok((kept, None));
@@ -635,6 +624,24 @@ impl ConversationRuntime {
                 self.account = Some(account.clone());
                 // Taken ahead, the agent is idle and counts on none.
                 self.running = runs.then_some(running);
+                Ok((account.clone(), Some(Some(agent_account(&account, rotation)))))
+            }
+            Some(Choice::AllTried) if candidates.is_empty() => {
+                // Every account its vendor signed out is no candidate.
+                let accounts = self
+                    .scope
+                    .services
+                    .vault
+                    .accounts(entry.id.clone())
+                    .await
+                    .map_err(|error| refused(entry_unreadable(&error), None))?;
+                let named = accounts
+                    .iter()
+                    .find(|account| named.is_some_and(|named| account.id.as_str() == named.credential_id));
+                let Some(account) = named.or(accounts.first()).map(|account| account.id.clone()) else {
+                    return Err(all_used_up(entry, &candidates));
+                };
+                self.keep(entry, account.clone(), runs);
                 Ok((account.clone(), Some(Some(agent_account(&account, rotation)))))
             }
             Some(Choice::AllTried) => Err(all_used_up(entry, &candidates)),
@@ -700,24 +707,47 @@ impl ConversationRuntime {
         Some((used_up, moment, window))
     }
 
-    /// The agent's account failed with `failure`, a usage limit, before anything
-    /// of the run reached the agent: the account is marked used up and joins
+    /// Why `failure` moves the agent off its account, if it does: the account is
+    /// used up, or refused this request, or its vendor signed it out.
+    ///
+    /// `auth_expired` alone does not say so, since a failure's words can give that
+    /// code, as "authentication" in a stream's error does. Only an account its
+    /// provider marked counts.
+    async fn switch_cause(&self, failure: &ProviderFailure) -> Option<AccountSwitchCause> {
+        match failure.code {
+            Some(ErrorCode::UsageLimit) => Some(AccountSwitchCause::UsedUp),
+            Some(ErrorCode::PermissionDenied) => Some(AccountSwitchCause::Refused),
+            Some(ErrorCode::AuthExpired) => {
+                let account = self.account.clone()?;
+                let read = self.scope.services.vault.account(self.scope.provider.clone(), account).await;
+                read.ok()??.signed_out.then_some(AccountSwitchCause::SignedOut)
+            }
+            _ => None,
+        }
+    }
+
+    /// The agent's account failed with `failure` for `cause` before anything of
+    /// the run reached the agent: a used-up account is marked so, the account joins
     /// `tried`, and the agent takes one the request has not tried, whose runtime
     /// serves the same request again.
     ///
-    /// Answers the move, or nothing when every account refused the request
+    /// Answers the move, or nothing when no account can take the request
     /// (`crates/provider-registry/src/rotation.rs`).
     async fn switch_account(
         &mut self,
+        cause: AccountSwitchCause,
         failure: &ProviderFailure,
         tried: &mut Vec<CredentialId>,
     ) -> Result<(AccountSwitch, AgentAccount), ()> {
         let entry = self.entry().await.map_err(drop)?;
-        let (used_up, moment, window) = self.mark_used_up(&entry, failure).ok_or(())?;
-        tried.push(used_up.clone());
+        let (left, moment, window) = match cause {
+            AccountSwitchCause::UsedUp => self.mark_used_up(&entry, failure).ok_or(())?,
+            AccountSwitchCause::SignedOut | AccountSwitchCause::Refused => (self.account.clone().ok_or(())?, None, None),
+        };
+        tried.push(left.clone());
         let provider_registry = self.scope.services.provider_registry.clone();
         let model = self.selection.model.clone();
-        // The agent stops counting on the used-up account before the
+        // The agent stops counting on the account it leaves before the
         // choice, which then counts it nowhere.
         self.running = None;
         let (choice, candidates) = provider_registry
@@ -739,24 +769,42 @@ impl ConversationRuntime {
             conversation = self.scope.work.conversation().map(tracing::field::display),
             share_key = self.scope.work.share_key(),
             provider = %entry.id,
-            from = %used_up,
+            from = %left,
             to = %next,
-            cause = "used_up",
+            cause = cause_name(cause),
             "an agent moved to another account"
         );
         self.account = Some(next.clone());
         self.running = Some(running);
         let selection = self.selection.clone();
         self.serve(&entry, selection, Some(&next)).await.map_err(drop)?;
+        // The other agents on an account signed out take another ahead.
+        if cause == AccountSwitchCause::SignedOut {
+            provider_registry.rotation().changed(&entry.id);
+        }
         let label = |id: &CredentialId| {
             candidates
                 .iter()
                 .find(|candidate| candidate.id == *id)
-                .map_or_else(|| id.to_string(), |candidate| candidate.label.clone())
+                .map(|candidate| candidate.label.clone())
+        };
+        // An account signed out is no candidate.
+        let from = match label(&left) {
+            Some(from) => from,
+            None => self
+                .scope
+                .services
+                .vault
+                .account(entry.id.clone(), left.clone())
+                .await
+                .ok()
+                .flatten()
+                .map_or_else(|| left.to_string(), |account| account.label),
         };
         let switch = AccountSwitch {
-            from: label(&used_up),
-            to: label(&next),
+            cause,
+            from,
+            to: label(&next).unwrap_or_else(|| next.to_string()),
             window,
             resets_at: moment,
         };
@@ -919,9 +967,22 @@ fn all_used_up(entry: &ProviderEntry, candidates: &[Candidate]) -> ProviderFailu
     refused(message, Some(ErrorCode::UsageLimit))
 }
 
-/// Whether `failure` says the account is used up.
-fn uses_up(failure: &ProviderFailure) -> bool {
-    failure.code == Some(ErrorCode::UsageLimit)
+/// Whether `failure` may move an agent off its account
+/// ([`ConversationRuntime::switch_cause`]).
+fn may_switch(failure: &ProviderFailure) -> bool {
+    matches!(
+        failure.code,
+        Some(ErrorCode::UsageLimit | ErrorCode::AuthExpired | ErrorCode::PermissionDenied)
+    )
+}
+
+/// The cause as the log names it.
+fn cause_name(cause: AccountSwitchCause) -> &'static str {
+    match cause {
+        AccountSwitchCause::UsedUp => "used_up",
+        AccountSwitchCause::SignedOut => "signed_out",
+        AccountSwitchCause::Refused => "refused",
+    }
 }
 
 impl ProviderRuntime for ConversationRuntime {
@@ -930,9 +991,9 @@ impl ProviderRuntime for ConversationRuntime {
     /// A request whose token is cancelled while the entry is read ends without
     /// an event, as every cancelled run does.
     ///
-    /// Under rotation, a usage limit before anything of the run reached the agent
-    /// moves the agent to another account and sends the same request again at once,
-    /// which is no retry of the agent's
+    /// Under rotation, a usage limit or a refusal of the account before anything of
+    /// the run reached the agent moves the agent to another account and sends the
+    /// same request again at once, which is no retry of the agent's
     /// (`crates/provider-registry/src/rotation.rs`).
     ///
     /// Such an attempt leaves nothing: the vendor's record it mirrored, such as the
@@ -964,7 +1025,7 @@ impl ProviderRuntime for ConversationRuntime {
             // again.
             let mut tried = Vec::new();
             loop {
-                let mut used_up = None;
+                let mut moving = None;
                 let mut shown = false;
                 let mut held = Vec::new();
                 {
@@ -976,9 +1037,9 @@ impl ProviderRuntime for ConversationRuntime {
                         match event {
                             // The run ends with its error.
                             ProviderEvent::Error(failure)
-                                if admitted.rotates && uses_up(&failure) =>
+                                if admitted.rotates && may_switch(&failure) =>
                             {
-                                used_up = Some(failure);
+                                moving = Some(failure);
                             }
                             // Only the answer's own output counts: the
                             // vendor's record mirrored, such as the last
@@ -998,26 +1059,42 @@ impl ProviderRuntime for ConversationRuntime {
                         }
                     }
                 }
-                let Some(failure) = used_up else {
+                let Some(failure) = moving else {
                     // The attempt stands, and so does its record.
                     for entries in held {
                         yield entries;
                     }
                     return;
                 };
+                let Some(cause) = self.switch_cause(&failure).await else {
+                    // The failure ends the turn as it would without rotation.
+                    for entries in held {
+                        yield entries;
+                    }
+                    yield ProviderEvent::Error(failure);
+                    return;
+                };
                 // Once output showed, nothing is held any more.
                 if shown {
                     // Part of the answer reached the agent, so the request
                     // is not sent again, but agents take the entry's other
-                    // accounts first until its moment.
+                    // accounts first until its moment, or until its sign-in.
                     if let Ok(entry) = self.entry().await {
-                        self.mark_used_up(&entry, &failure);
+                        match cause {
+                            AccountSwitchCause::UsedUp => {
+                                self.mark_used_up(&entry, &failure);
+                            }
+                            AccountSwitchCause::SignedOut => {
+                                self.scope.services.provider_registry.rotation().changed(&entry.id);
+                            }
+                            AccountSwitchCause::Refused => {}
+                        }
                     }
                     yield ProviderEvent::Error(failure);
                     return;
                 }
                 let switched = tokio::select! {
-                    switched = self.switch_account(&failure, &mut tried) => switched,
+                    switched = self.switch_account(cause, &failure, &mut tried) => switched,
                     () = cancel.cancelled() => return,
                 };
                 match switched {

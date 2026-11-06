@@ -5,7 +5,7 @@
 use std::{num::NonZeroU32, sync::Arc};
 
 use demi_shared_types::{
-    AgentAccount, AuthState, B64Bytes, MODEL_MEDIA_TYPES, Model, ModelMediaKind, ModelSelection, ProviderErrorDiagnostics,
+    AccountSwitchCause, AgentAccount, AuthState, B64Bytes, MODEL_MEDIA_TYPES, Model, ModelMediaKind, ModelSelection, ProviderErrorDiagnostics,
     ProviderFailureFacts, ProviderModelList, QuotaWindow, QuotaWindowName, RuntimeState, ThinkingConfig, ThinkingForm,
     Timestamp,
     TokenUsage,
@@ -884,11 +884,12 @@ impl ProviderEvent {
     }
 }
 
-/// An agent's move from a used-up account to another: the accounts by
-/// their labels, the window that was used up and when the account can be
-/// used again, when known.
+/// An agent's move to another account: why, the accounts by their labels, and
+/// for a used-up account the window that was used up and when it can be used
+/// again, when known.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountSwitch {
+    pub cause: AccountSwitchCause,
     pub from: String,
     pub to: String,
     pub window: Option<QuotaWindowName>,

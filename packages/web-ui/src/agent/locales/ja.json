@@ -29,6 +29,8 @@
   },
   "transcript": {
     "accountSwitch": {
+      "refused": "プロバイダーが {from} を拒否しました。{to} で続けます。",
+      "signedOut": "{from} はサインアウトされました。{to} で続けます。",
       "usage": "{from} が利用上限に達したため、{to} で続けます。",
       "usageReset": "{from} が利用上限に達したため（{reset}）、{to} で続けます。",
       "window": "{from} が{window}に達したため、{to} で続けます。",
