@@ -72,7 +72,10 @@ program                                         demi-core
   runner its channel names.
 - The process serves the command packages of the release `DEMI_RELEASE`
   names, as the server serves its release's: their descriptors from its
-  `commands/`, their executables from its `files/`, on each channel.
+  `commands/`, their executables from its `files/`, on each channel. A
+  release in several directories, a list of paths as `PATH` writes one,
+  names the packages of all their `commands/`, and serves each executable
+  from the directory whose `files/` holds it.
 
 ### The server
 

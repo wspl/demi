@@ -21,7 +21,7 @@ conversations, providers, Hosts and state, and the program's plugins, with
 the clients the web app uses.
 
 ```ts
-import { Demi, definePlugin } from '@demicodes/sdk'
+import { Demi, definePlugin, leaf } from '@demicodes/sdk'
 import { z } from 'zod'
 
 const chat = definePlugin({
@@ -31,16 +31,18 @@ const chat = definePlugin({
   commands: {
     chat: {
       summary: 'The chat this conversation answers in',
+      index: 'Posts to the chat this conversation answers in.',
       commands: {
-        send: {
+        send: leaf({
           summary: 'Posts a message to the chat',
           input: z.object({ text: z.string().describe('The message, in Markdown') }),
+          positionals: ['text'],
           output: 'the id of the message posted',
           failure: 'an error on stderr and exit status 1; nothing is posted',
           async run({ text }, call) {
             await call.stdout(await postToChat(text))
           },
-        },
+        }),
       },
     },
   },
@@ -50,7 +52,7 @@ const demi = await Demi.start({ plugins: [chat], publicUrl: 'https://bot.example
 const core = await demi.open('/srv/bot/team-a')
 const host = await core.hosts.create()
 await host.spawn(['docker', 'exec', '-i', 'box-7', 'demi-runner', 'run', '--stdio'])
-await core.providers.create({ vendor: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY })
+await core.providers.create({ source: 'vendor', vendorId: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY })
 
 const conversation = await core.conversations.create({ title: 'Release notes' })
 const turn = await conversation.run('Draft the notes for this week')
@@ -61,7 +63,7 @@ console.log(turn.text)
 
 ```text
 public API       Demi, Core, Conversation, definePlugin     this record
-clients          the lane client, ConversationClient,       shared with the
+clients          PageConnection, ConversationClient,        shared with the
                  the product state, the generated schemas    web app
 wire             HTTP/2 on the process's stdio (0304)        internal
 ```
@@ -75,8 +77,9 @@ public packages both import:
 - the product state's applier (`withPart`, now in the web app's Pinia
   store) moves into `@demicodes/protocol`;
 - the lane client (`page-connection.ts`, which holds two Vue refs of the
-  connection's state) moves out of `web-ui`, its state given to whoever
-  shows it;
+  connection's state) moves out of `web-ui` into
+  `@demicodes/conversation-client` as `PageConnection`, a class that tells
+  whoever shows the connection's state through the host it is given;
 - `ConversationClient` (`@demicodes/conversation-client`) is used as it is,
   over a lane of the process's connection.
 
@@ -86,13 +89,14 @@ public packages both import:
 | --- | --- |
 | `Demi.start({ plugins, publicUrl })` | starts `demi-core` from the package's release, speaks HTTP/2 on its stdio, `PUT /plugins` (0299), and gives the process the public URL (0304) |
 | `demi.open(dir)`, `core.close()`, `demi.close()` | `POST /cores`, `DELETE /cores/{id}`, the connection's end (0304) |
-| `core.state`, `core.on('state')` | `GET /state` and the synchronization lane, applied by `withPart` |
-| `core.on('notify', handler)` | the `starter` lane; the handler's answer is how the notification was shown (`Notified`) |
+| `core.state`, `core.on('state')` | `GET /state`, the core's part of the product state (`CoreState`), and the synchronization lane, applied by `withPart` |
+| `core.on('notify', handler)` | the `starter` lane, open while a handler listens; the handler's answer is how the notification went (`Notified`): `{ type: 'sending', to }` with the number of places it goes to, `{ type: 'shown' }` when every place that would show it shows its conversation already, `{ type: 'nowhere' }` |
 | `core.conversations.create(options)` | `POST /conversations` (`CreateConversation`): the SDK makes the id, and the workspace is the core's first unless named |
-| `core.conversations.open(id)` | a `ConversationClient` on the conversation's lane |
+| `core.conversations.open(id)` | the conversation, one for each id, whose `ConversationClient` opens on the conversation's lane at its first use |
 | `conversation.send(input)`, `steer`, `abort`, `retry`, `resume`, `compact` | the client's methods, which send `Send`, `Steer`, `Abort`, `Retry`, `Resume`, `Compact` |
-| `conversation.run(input)` | `send`, then waits until the conversation's status leaves running, compacting and resuming, and answers the blocks after the message and its text |
+| `conversation.run(input)` | `send`, then waits until the metadata's last ended turn ends after the message, which a turn the root resumes ends anew; answers how it ended, the blocks after the message and their text |
 | `conversation.events()` | the client's events, as an async iterator, with a `permission` event for each new request in the conversation's metadata |
+| `conversation.close()` | lets the lane go, as a page that leaves the conversation does; its agents run on, and a `run` that waits fails |
 | `request.allow(values?)`, `request.deny()` | `POST /conversations/{id}/permissions/requests/{request}` (`DecidePermission`) |
 | `core.providers.list`, `create`, `update`, `remove` | `/providers` (`CreateProvider`, `ProviderPatch`, whose `rotation` is the accounts' rotation) |
 | `core.providers.accounts(id)` | the entry's account routes: list, activate, order, remove |
@@ -100,8 +104,11 @@ public packages both import:
 | `core.hosts.create()` | `POST /devices` (0305): a Host, with its id |
 | `host.connect(stream)` | `CONNECT /devices/{device}/runner` (0305), with the stream's bytes carried both ways: a runner's channel the program reaches it by |
 | `host.spawn(command)` | starts `command`, whose standard input and output are a `demi-runner run --stdio`'s, and connects them; with no command, the package's own `demi-runner` on the program's machine |
-| `core.fetch(request)`, `core.accept(socket)` | the core's routes under `/cores/{id}/api`, for the program's HTTP server to forward its pages' requests and sockets |
-| `demi.fetch(request)` | the process's schedule URLs, `/hooks/{id}` (0304) |
+| `core.fetch(request, base)`, `core.accept(socket, url)` | the core's routes under `/cores/{id}/api`, for the program's HTTP server to forward its pages' requests below `base` (`/api` unless named) and its pages' sockets, with the query of the address the page opened |
+| `demi.fetch(request, base)` | the process's schedule URLs, `/hooks/{id}` below `base` (0304) |
+
+The plugin, synchronization and starter lanes open again when they close,
+unless the core refused them.
 
 ### A plugin
 
@@ -109,18 +116,23 @@ public packages both import:
 
 - `id`, `name`, `description` are the manifest's.
 - `commands` is the plugin's tree under `demi`: each key is a group's or a
-  leaf's name. A group has `summary`, and may have `details`, `index` (its
-  index entry) and `permissions`; a leaf has `summary`, `input`, `output`,
-  `failure` (0300), and may have `stdin`, `rest`, `media`, `runningHint`,
-  `permission`, `permissionWhen` and `bringsHost`, each its `GroupBuilder`
-  or `LeafBuilder` counterpart.
+  leaf's name. A group has `summary`, and may have `details` and
+  `permissions`; a group right under `demi` has `index` too, its sentence
+  of the `demi` index, which the core asks of every such group. A leaf has
+  `summary`, and may have `input`, `positionals`, `output`, `failure`
+  (0300), `stdin`, `rest`, `media`, `runningHint`, `permission`,
+  `permissionWhen` and `bringsHost`, each its `GroupBuilder` or
+  `LeafBuilder` counterpart.
 - `input` is a Zod schema, whose JSON Schema (`z.toJSONSchema`) is the
   leaf's input, as a Rust leaf's comes from its type; a field's
-  `describe` is its description.
+  `describe` is its description. An object without a catchall refuses
+  unknown fields, as a command refuses an unknown option, where Zod's
+  input schema would take them. `leaf()` infers `run`'s input from it.
 - `run(input, call)` answers the leaf's `Command` request. `call` is its
-  RPC port: `stdout`, `stderr`, `readStdin`, `awaitsUser`, `medium`. A
-  `run` that returns ends with exit status 0, or the number it returns; a
-  `run` that throws writes the error to stderr and ends with 1.
+  RPC port: `stdout`, `stderr`, `readStdin`, `awaitsUser`, `medium`, and
+  `ask` for any other port message; its `signal` aborts when the call
+  ends. A `run` that returns ends with exit status 0, or the number it
+  returns; a `run` that throws writes the error to stderr and ends with 1.
 - `context`, `projectSearch`, `onConversationDeleted` and
   `onConversationForked` answer those requests, and declare them in the
   manifest by being there.
@@ -129,9 +141,30 @@ public packages both import:
 
 `@demicodes/sdk` depends on one package for each target the runner is
 built for, macOS, Linux and Windows, each on x86-64 and ARM64, as esbuild
-does (`optionalDependencies`). Each holds `demi-core`, `demi-runner` and
-the release's command packages, of the SDK's own build. The SDK runs on
-Node.js, Bun and Deno, which the wire's spike ran.
+does: they are its `optionalDependencies`, and each declares its `os` and
+`cpu`, so a package manager installs only the machine's own.
+
+```text
+@demicodes/sdk                 release/commands/   every command package's
+                                                   descriptor
+@demicodes/sdk-darwin-arm64    bin/demi-core, bin/demi-runner,
+                               release/files/      this target's programs
+@demicodes/sdk-linux-x64       ...
+```
+
+The SDK gives the process the release as a list of roots, the main
+package's and each platform package's that is installed, in
+`DEMI_RELEASE`, which takes a list of paths as `PATH` writes one: their
+`commands/` together name the packages, and a runner's download is served
+from the root whose `files/` holds it. A Host of another platform, such as
+a Linux container a Mac's program starts, runs its commands once that
+platform's package is installed too, as npm and Bun install one for
+another platform with `--os` and `--cpu`; it also holds the runner to run
+there. `DEMI_SDK_PLATFORM` names a platform package's directory to use
+instead, as esbuild's `ESBUILD_BINARY_PATH` does, for a development build.
+
+The SDK runs on Node.js 22 or later, Bun and Deno, with their
+`node:http2` and `node:child_process`.
 
 ## Built on
 

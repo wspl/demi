@@ -211,7 +211,9 @@ impl Release {
                     .map(|operation| operation.name().to_owned())
                     .to_vec(),
             },
-            Executable::Backend | Executable::Machines | Executable::Server => Self::Executable,
+            Executable::Core | Executable::Backend | Executable::Machines | Executable::Server => {
+                Self::Executable
+            }
         })
     }
 }

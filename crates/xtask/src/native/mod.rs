@@ -109,12 +109,16 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
-/// An executable of the workspace, named by its Cargo
+/// An executable of the workspace, which `--package` names by its Cargo
 /// package.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Executable {
     #[value(name = "demi-runner")]
     Runner,
+    /// The process a program's cores run in, which the SDK's packages carry
+    /// (`crates/core-api/src/main.rs`).
+    #[value(name = "demi-core-api")]
+    Core,
     #[value(name = "demi-file")]
     File,
     #[value(name = "demi-fetch")]
@@ -153,10 +157,11 @@ impl Executable {
         Self::Mobile,
     ];
 
-    /// The Cargo package, which is also the executable's name.
+    /// The executable's name, its Cargo package's but for the process's.
     pub fn name(self) -> &'static str {
         match self {
             Self::Runner => demi_runner_protocol::release::RUNNER,
+            Self::Core => "demi-core",
             Self::File => "demi-file",
             Self::Fetch => "demi-fetch",
             Self::Browser => "demi-browser",
@@ -168,8 +173,17 @@ impl Executable {
         }
     }
 
+    /// The Cargo package that builds it.
+    pub(crate) fn package(self) -> &'static str {
+        match self {
+            Self::Core => "demi-core-api",
+            other => other.name(),
+        }
+    }
+
     /// Whether it runs on a Host, as the runner and the command programs
-    /// do, and so allocates with mimalloc on a musl target.
+    /// do, and so allocates with mimalloc on a musl target. The process
+    /// runs cores as the backend does, and keeps the server's allocator.
     pub(crate) fn runs_on_host(self) -> bool {
         match self {
             Self::Runner
@@ -178,14 +192,16 @@ impl Executable {
             | Self::Browser
             | Self::Claude
             | Self::Mobile => true,
-            Self::Backend | Self::Machines | Self::Server => false,
+            Self::Core | Self::Backend | Self::Machines | Self::Server => false,
         }
     }
 
     /// The targets it runs on, in the order of the release matrix.
     pub(crate) fn targets(self) -> &'static [&'static str] {
         match self {
+            // A program runs its cores wherever the runner runs.
             Self::Runner
+            | Self::Core
             | Self::File
             | Self::Fetch
             | Self::Browser

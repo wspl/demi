@@ -14,9 +14,10 @@
  * The process serves the command programs of every platform package
  * installed: a Host of another platform, such as a Linux container a Mac's
  * program starts, runs its commands once that platform's package is
- * installed too (`npm install @demicodes/sdk-linux-x64`), which also holds
- * the runner to run there. `DEMI_SDK_PLATFORM` names a platform package's
- * directory to use instead, as for a development build.
+ * installed too (`npm install --os=linux --cpu=x64
+ * @demicodes/sdk-linux-x64`), which also holds the runner to run there.
+ * `DEMI_SDK_PLATFORM` names a platform package's directory to use instead,
+ * as for a development build.
  */
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'

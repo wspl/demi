@@ -426,7 +426,7 @@ impl Build<'_> {
         }
         for executable in executables {
             arguments.push("-p".into());
-            arguments.push(executable.name().into());
+            arguments.push(executable.package().into());
         }
         arguments
     }

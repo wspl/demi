@@ -91,6 +91,7 @@ mod contracts;
 mod dev;
 mod native;
 mod notices;
+mod sdk_release;
 mod server_release;
 // Reads Unix file metadata: the sweep runs where development builds do.
 #[cfg(unix)]
@@ -120,6 +121,8 @@ enum Command {
     Native(native::Command),
     /// Assembles a server release root from the built executables.
     ServerRelease(server_release::Options),
+    /// Assembles the TypeScript SDK's npm packages from the built executables.
+    SdkRelease(sdk_release::Options),
     /// Writes the third-party notices of a release into the built web app.
     Notices(notices::Options),
     /// Pins a Chrome for Testing version: writes its release record.
@@ -360,6 +363,13 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask server-release: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        Command::SdkRelease(options) => match sdk_release::run(options) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("xtask sdk-release: {error}");
                 ExitCode::FAILURE
             }
         },

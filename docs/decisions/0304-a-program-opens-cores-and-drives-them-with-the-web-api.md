@@ -53,8 +53,9 @@ generated with (`bun run contracts`).
 
 ### The process
 
-- The SDK starts `demi-core` with its release's directory, as the server
-  is started (`DEMI_RELEASE`); a program sets nothing. The process runs one
+- The SDK starts `demi-core` with its release, as the server is started
+  (`DEMI_RELEASE`), which may lie in several directories, as the SDK's
+  packages hold it (0301); a program sets nothing. The process runs one
   shard thread, as the server does, and the plugins its release builds in.
   It runs on every target the runner is built for.
 - The process logs to its standard error. The connection's end closes

@@ -90,8 +90,8 @@ export interface PluginDefinition {
   name: string
   /** What it does for the user, in one sentence that names its command. */
   description: string
-  /** Its command groups under `demi`, by name. */
-  commands?: Record<string, GroupDefinition>
+  /** Its command groups under `demi`, by name; each says its sentence of the `demi` index. */
+  commands?: Record<string, GroupDefinition & { index: string }>
   /** The context block it adds before each request of a node, if any. */
   context?(request: Extract<PluginRequest, { type: 'context' }>, port: PluginPort): Promise<string | undefined>
   /** Searches a conversation's project directory, what it found and what to watch. */

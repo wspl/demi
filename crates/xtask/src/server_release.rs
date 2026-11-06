@@ -73,7 +73,7 @@ const WEB_BUILD: &str = "build.json";
 
 /// The project's license and its notice, which every release carries at its
 /// root.
-const LEGAL: [(&str, &str); 2] = [
+pub(crate) const LEGAL: [(&str, &str); 2] = [
     ("LICENSE", include_str!("../../../LICENSE")),
     ("NOTICE", include_str!("../../../NOTICE")),
 ];
@@ -283,7 +283,7 @@ pub(crate) async fn assemble(options: &Options, cancel: &CancellationToken) -> R
 
 /// Copies the contents of `source` into the new directory `destination`,
 /// keeping each file's permissions.
-async fn copy_directory(source: PathBuf, destination: PathBuf) -> Result<(), Error> {
+pub(crate) async fn copy_directory(source: PathBuf, destination: PathBuf) -> Result<(), Error> {
     tokio::task::spawn_blocking(move || -> Result<(), Error> {
         std::fs::create_dir(&destination)?;
         let contents = fs_extra::dir::CopyOptions::new().content_only(true);
@@ -296,7 +296,7 @@ async fn copy_directory(source: PathBuf, destination: PathBuf) -> Result<(), Err
 
 /// A new directory in `parent` whose name starts with `prefix`, removed
 /// when dropped.
-async fn staged(parent: &Path, prefix: String) -> Result<tempfile::TempDir, Error> {
+pub(crate) async fn staged(parent: &Path, prefix: String) -> Result<tempfile::TempDir, Error> {
     let parent = parent.to_owned();
     let directory = tokio::task::spawn_blocking(move || {
         tempfile::Builder::new().prefix(&prefix).tempdir_in(parent)
