@@ -515,6 +515,7 @@ impl<H: HostResolver> Tree<H> {
             });
         }
         let paths = watch::Sender::new(0);
+        agents.set_resuming(deps.agents.resuming(root));
         agents.put(agents::resting(root.clone(), AgentRole::Root));
         agents.change(root, |entry| {
             entry.phase = session.phase();
@@ -620,6 +621,12 @@ impl<H: HostResolver> Tree<H> {
         tree.agents.adopt(kept);
         tree.agents.adopt_charts(charts);
         Ok((tree, assembled.continuation))
+    }
+
+    /// Whether the product resumes the root's turn a restart interrupted
+    /// changed: the root's entry says so beside its phase.
+    pub(crate) fn resuming_changed(&self, resuming: bool) {
+        self.agents.resuming_changed(self.root.id(), resuming);
     }
 
     pub fn root(&self) -> &Rc<Node<H>> {
@@ -1238,19 +1245,22 @@ async fn evict_when_idle<H: HostResolver>(
 
 /// The agents of a conversation whose tree is not live, as its store keeps
 /// them: its `subagents` with what each runs on, its `sides`, and what the
-/// product `kept`, while the conversation works at `placement`, at the stored
-/// version, which a collection no live session runs keeps.
+/// product `kept`, and whether it is `resuming` the root's turn, while the
+/// conversation works at `placement`, at the stored version, which a
+/// collection no live session runs keeps.
 pub(super) fn stored_agents(
     root: &NodeId,
     subagents: Vec<(demi_agent_store::StoredSubagent, demi_conversation_lane_protocol::JobModel)>,
     sides: Vec<NodeRecord>,
     placement: Option<demi_agent_store::Placement>,
     kept: KeptAgents,
+    resuming: bool,
     saved: u64,
 ) -> (Version, Vec<demi_conversation_lane_protocol::AgentEntry>) {
     // No connection is attached to the sink, so the puts announce nothing.
     let agents = Agents::new(STORED_EPOCH.to_owned(), Rc::new(FrameSink::new()));
     agents.set_placement(placement.clone());
+    agents.set_resuming(resuming);
     agents.put(agents::resting(root.clone(), AgentRole::Root));
     for (stored, runs_on) in subagents {
         let role = agents::subagent_role(&stored.record, runs_on, placement.as_ref(), stored.started_on_path);

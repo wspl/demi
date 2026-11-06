@@ -502,7 +502,9 @@ impl<H: HostResolver> Connection<H> {
         let building = Instant::now();
         tree.attach(self.id, self.outbox.clone(), self.follows.clone());
         // In the step that attached it, with nothing awaited between: no
-        // change falls between the attachment and the follows.
+        // change falls between the attachment and the follows, and a stale
+        // follow's answer reaches the page in the message that says the
+        // session opened, which `ConversationClient::reopened` relies on.
         let followed = follows.len();
         for Follow { value, holds } in follows {
             self.follows.register(&value);

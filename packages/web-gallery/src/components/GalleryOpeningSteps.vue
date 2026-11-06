@@ -33,6 +33,7 @@ const session = reactive<ChatSessionState>({
   load: 'loading',
   lastError: null,
   pendingAction: null,
+  resuming: false,
   failures: {},
   archived: false,
   scroll: null,

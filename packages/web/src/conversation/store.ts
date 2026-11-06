@@ -118,7 +118,7 @@ import { usePreferences } from '../state/preferences'
 import { useSession } from '../auth/session'
 import type { Conversation, PendingSend, ProductAttachment } from '../state/types'
 import type { PendingSubmissionState } from '@demicodes/web-ui/agent/types'
-import { applyConversationEvent, describeAttachments, describeReplyBlocks, takeAgents, takeResuming, updateLiveStatus } from './activity'
+import { applyConversationEvent, describeAttachments, describeReplyBlocks, takeAgents, updateLiveStatus } from './activity'
 import { composerWriting, createRecordSync, draftFile, editedMessage, newRecord, wholeListed, type Message, type Writing } from './record'
 import { createConversationHistoryReads } from './history'
 import type { SideWriting } from './side-questions'
@@ -511,7 +511,6 @@ export const useConversations = defineStore('conversations', () => {
       ...listEntry(record),
       persistence: 'synced',
       status: summaryStatus(record.status),
-      resuming: record.status === 'resuming',
       metadata: markRaw(new Slot<ConversationMetadata>()),
       metadataRun: null,
       agentsHeld: null,
@@ -556,6 +555,7 @@ export const useConversations = defineStore('conversations', () => {
       terminals: [],
       load: 'loading',
       pendingAction: null,
+      resuming: false,
       failures: {},
       contextUsage: null,
       cost: NO_COST,
@@ -645,12 +645,9 @@ export const useConversations = defineStore('conversations', () => {
         }
         const archiveChanged = current.archived !== record.archived
         Object.assign(current, listEntry(record))
-        takeResuming(current, record.status)
         const cached = cache.get(current.id)
         if (!cached?.runtime?.connected) {
           current.status = summaryStatus(record.status)
-        } else {
-          updateLiveStatus(current)
         }
         if (archiveChanged) {
           followArchive(current)
@@ -1841,7 +1838,6 @@ export const useConversations = defineStore('conversations', () => {
     // alone would not tell, such as a turn the process died under.
     const summary = product.snapshot?.conversations?.find((item) => item.id === conversation.id)
     if (summary) {
-      takeResuming(conversation, summary.status)
       conversation.status = summaryStatus(summary.status)
     }
     conversation.load = 'ready'
@@ -2008,6 +2004,7 @@ export const useConversations = defineStore('conversations', () => {
    */
   function clearSession(conversation: Conversation): void {
     conversation.phase = 'idle'
+    conversation.resuming = false
     conversation.queue = []
     conversation.pendingSteers = []
     conversation.starting = null
@@ -2257,7 +2254,6 @@ export const useConversations = defineStore('conversations', () => {
       // Its status is the list's again, as for any conversation not open.
       const record = product.snapshot?.conversations?.find((item) => item.id === conversation.id)
       if (record) {
-        takeResuming(conversation, record.status)
         conversation.status = summaryStatus(record.status)
       }
     }
