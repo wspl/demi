@@ -29,13 +29,13 @@ does all of that, but only as a whole server:
 
 Everything Demi does for one person's agents is one **core**, a Rust
 library. The server runs one core per user. Any program runs a core of its
-own through a binary that speaks JSON-RPC over stdio, and a TypeScript SDK
+own through a binary that speaks the web API over stdio, and a TypeScript SDK
 wraps that binary. Both run the same code.
 
 ```text
 a program (TypeScript)                    Demi's server
   @demicodes/sdk                            accounts, sessions, pages,
-    │ JSON-RPC over stdio                   pairing, Clouds, shares, push
+    │ the web API, HTTP/2 over stdio        pairing, Clouds, shares, push
     ▼                                         │ in process, one per user
   demi-core binary ──────┐                    ▼
                          ├──────────▶  the core library
@@ -138,9 +138,9 @@ before:
 1. This record: the core's boundary and data directory. The backend crates
    that hold the core's parts become core crates, the server runs one core
    per user, and the data moves.
-2. The core's protocol over stdio: JSON-RPC with the reads a page makes
-   today over HTTP, the conversation lane's frames, and the requests the
-   core sends back (commands, context, permissions).
+2. The core's protocol over stdio: the web API's core routes and the page
+   connection, over HTTP/2, and what the core asks of the program that
+   started it.
 3. Runners connect to a core directly.
 4. The TypeScript SDK: the types made from the protocol's schema, and the
    core and runner binaries of one build version in one package.
