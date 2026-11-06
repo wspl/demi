@@ -17,7 +17,7 @@ use demi_core_store::credentials::{
     keep_until,
 };
 use demi_core_sync::Part;
-use demi_backend_providers::vault::seal::{Row, VaultKey};
+use demi_core_providers::vault::seal::{Row, VaultKey};
 use demi_web_api_protocol::credentials::{
     CredentialDto, CredentialField, CredentialPatch, NewCredential,
 };

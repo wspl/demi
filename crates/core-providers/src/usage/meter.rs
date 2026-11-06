@@ -71,7 +71,7 @@ async fn write(store: &CoreStore, row: UsageRow) -> Option<String> {
     match store.append_usage(row).await {
         Ok(id) => Some(id),
         Err(error) => {
-            // The row is lost; the request goes on (`crates/backend-providers/src/usage/mod.rs`).
+            // The row is lost; the request goes on (`crates/core-providers/src/usage/mod.rs`).
             tracing::warn!(
                 event = "usage_ledger.write_failed",
                 %conversation,

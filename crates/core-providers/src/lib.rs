@@ -23,7 +23,7 @@
 //! there:
 //!
 //! ```text
-//! backend-providers          provider-registry        provider-* crates
+//! core-providers          provider-registry        provider-* crates
 //! +---------------------+    +-------------------+
 //! | vault  entry,       |    | registry, catalog |  family  +----------+
 //! |        sealed       |<---| rotation, quotas  | builds   | provider |

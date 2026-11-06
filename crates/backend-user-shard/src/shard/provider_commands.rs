@@ -19,8 +19,8 @@
 //! transcript and reach the model's vendor.
 
 use demi_core_sync::Part;
-use demi_backend_providers::vault::accounts as vault_accounts;
-use demi_backend_providers::vault::entries::Vault;
+use demi_core_providers::vault::accounts as vault_accounts;
+use demi_core_providers::vault::entries::Vault;
 use std::rc::Rc;
 
 use demi_backend_host_access::host_commands::conversation_of;

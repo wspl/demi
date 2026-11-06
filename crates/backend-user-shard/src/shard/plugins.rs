@@ -23,7 +23,7 @@ use demi_backend_host_access::stream::{ResidentBinding, ResidentCall, UserCallEr
 use demi_core_sync::Part;
 use demi_backend_host_access::host_commands::reachable;
 use demi_plugin_host::{Lost, MediaCall, ProductPort, ReadOn, VideoJob};
-use demi_backend_providers::vault::seal::Row;
+use demi_core_providers::vault::seal::Row;
 use demi_runner_client::ResidentCallError;
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{HostErrorKind, JobCaller, PortError};

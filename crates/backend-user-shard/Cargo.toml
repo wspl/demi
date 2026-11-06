@@ -23,7 +23,7 @@ demi-backend-cloud = { path = "../backend-cloud" }
 demi-backend-host-access = { path = "../backend-host-access" }
 demi-core-idle-watch = { path = "../core-idle-watch" }
 demi-core-blobs = { path = "../core-blobs" }
-demi-backend-providers = { path = "../backend-providers" }
+demi-core-providers = { path = "../core-providers" }
 demi-backend-runners = { path = "../backend-runners" }
 demi-backend-database = { path = "../backend-database" }
 demi-core-store = { path = "../core-store" }

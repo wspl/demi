@@ -29,8 +29,8 @@ use demi_core_store::StorageError;
 use demi_core_store::providers::EntrySwitches;
 use demi_provider_registry::families::{ProviderFamily, family_name};
 use demi_provider_registry::entry::{ApiKeyConfig, EntryCredential, ProviderEntry};
-use demi_backend_providers::vault::entries::Vault;
-use demi_backend_providers::vault::operations::{Held, OperationGuard};
+use demi_core_providers::vault::entries::Vault;
+use demi_core_providers::vault::operations::{Held, OperationGuard};
 use demi_provider_common::credentials::MemoryCredentialPool;
 use demi_provider_common::{ProviderHttp, Secret, SecretError};
 use demi_provider_relay::borrow::{Borrowed, FAMILY as BORROWED, server_name};
@@ -688,6 +688,7 @@ impl Services {
         // with them, as a revoke closes them.
         let lent = self.lent_keys(&entry).await?;
         self.vault.delete(&entry).await?;
+        self.control.delete_share_keys_of(entry.owner.clone(), entry.id.clone()).await?;
         self.end_lending(&lent);
         self.provider_registry.forget(&entry.id).await?;
         self.cli_installs.forget(&entry.id);
@@ -807,7 +808,7 @@ impl Services {
         if !self.provider_registry.families().connects_through(family) {
             return Err(ProviderRefusal::ConnectsDirectly(label.to_owned()));
         }
-        let store = self.vault.stores().of(owner).await?;
+        let store = self.vault.stores().store_of(owner).await?;
         let mut devices = store.paired_devices().await?;
         devices.extend(store.managed_device().await?);
         if !devices.iter().any(|owned| owned.id == device) {

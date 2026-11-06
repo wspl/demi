@@ -1,5 +1,5 @@
 //! The account operations of a subscription family
-//! (`crates/backend-providers/src/vault/entries.rs`).
+//! (`crates/core-providers/src/vault/entries.rs`).
 //!
 //! They list, select and log in the accounts of the provider's entry; the vault
 //! removes them. One implementation, [`Accounts`], serves every family over its

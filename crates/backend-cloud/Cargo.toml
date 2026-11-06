@@ -13,7 +13,7 @@ bench = false
 
 [dependencies]
 demi-core-idle-watch = { path = "../core-idle-watch" }
-demi-backend-providers = { path = "../backend-providers" }
+demi-core-providers = { path = "../core-providers" }
 demi-provider-registry = { path = "../provider-registry" }
 demi-backend-runners = { path = "../backend-runners" }
 demi-backend-database = { path = "../backend-database" }

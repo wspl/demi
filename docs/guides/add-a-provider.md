@@ -218,7 +218,7 @@ entry's credential pool and the account's ID
 5. Write a device login by hand on `provider_common::oauth`. Report the
    verification address and code once, poll with `tokio::time::sleep` so that
    dropping the login's future cancels it at once, and return the new document
-   (`crates/backend-providers/src/vault/logins.rs`).
+   (`crates/core-providers/src/vault/logins.rs`).
 
 ## Optional: quota
 

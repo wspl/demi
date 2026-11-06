@@ -1867,13 +1867,13 @@ dependencies = [
  "demi-backend-database",
  "demi-backend-host-access",
  "demi-backend-http",
- "demi-backend-providers",
  "demi-backend-runners",
  "demi-backend-user-shard",
  "demi-command-declarations",
  "demi-command-package-browser-protocol",
  "demi-command-protocol",
  "demi-core-blobs",
+ "demi-core-providers",
  "demi-core-store",
  "demi-host-interface",
  "demi-machine-manager-protocol",
@@ -1965,9 +1965,9 @@ name = "demi-backend-cloud"
 version = "0.1.65"
 dependencies = [
  "demi-backend-database",
- "demi-backend-providers",
  "demi-backend-runners",
  "demi-core-idle-watch",
+ "demi-core-providers",
  "demi-core-store",
  "demi-core-sync",
  "demi-host-interface",
@@ -2081,13 +2081,13 @@ dependencies = [
  "demi-backend-cloud",
  "demi-backend-database",
  "demi-backend-host-access",
- "demi-backend-providers",
  "demi-backend-runners",
  "demi-backend-user-shard",
  "demi-command-protocol",
  "demi-conversation-lane-protocol",
  "demi-core-blobs",
  "demi-core-permissions",
+ "demi-core-providers",
  "demi-core-store",
  "demi-core-sync",
  "demi-host-interface",
@@ -2124,31 +2124,6 @@ dependencies = [
  "tracing",
  "typed-path",
  "url",
- "uuid",
-]
-
-[[package]]
-name = "demi-backend-providers"
-version = "0.1.65"
-dependencies = [
- "aes-gcm 0.10.3",
- "async-stream",
- "demi-backend-database",
- "demi-core-store",
- "demi-core-sync",
- "demi-provider-common",
- "demi-provider-registry",
- "demi-shared-types",
- "demi-web-api-protocol",
- "futures-util",
- "garde",
- "rand 0.9.5",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tokio-util",
- "tracing",
  "uuid",
 ]
 
@@ -2205,7 +2180,6 @@ dependencies = [
  "demi-backend-cloud",
  "demi-backend-database",
  "demi-backend-host-access",
- "demi-backend-providers",
  "demi-backend-runners",
  "demi-command-declarations",
  "demi-command-package-claude-code-protocol",
@@ -2214,6 +2188,7 @@ dependencies = [
  "demi-core-blobs",
  "demi-core-idle-watch",
  "demi-core-permissions",
+ "demi-core-providers",
  "demi-core-store",
  "demi-core-sync",
  "demi-host-interface",
@@ -2515,6 +2490,30 @@ dependencies = [
  "shlex",
  "thiserror 2.0.20",
  "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "demi-core-providers"
+version = "0.1.65"
+dependencies = [
+ "aes-gcm 0.10.3",
+ "async-stream",
+ "demi-core-store",
+ "demi-core-sync",
+ "demi-provider-common",
+ "demi-provider-registry",
+ "demi-shared-types",
+ "demi-web-api-protocol",
+ "futures-util",
+ "garde",
+ "rand 0.9.5",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
  "tracing",
  "uuid",
 ]

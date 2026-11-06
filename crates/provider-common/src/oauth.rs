@@ -1,5 +1,5 @@
 //! The pieces every OAuth device login and token refresh meets
-//! (`crates/backend-providers/src/vault/logins.rs`,
+//! (`crates/core-providers/src/vault/logins.rs`,
 //! `crates/provider-common/src/wire/mod.rs`).
 //!
 //! They are the durations servers state as numbers or as digits, a response

@@ -1,5 +1,5 @@
 //! The accounts of a subscription entry and their secrets
-//! (`crates/backend-providers/src/vault/entries.rs`).
+//! (`crates/core-providers/src/vault/entries.rs`).
 //!
 //! This module holds:
 //!

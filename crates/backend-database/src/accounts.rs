@@ -20,7 +20,7 @@ use demi_web_api_protocol::text::EmailAddress;
 use hmac::{Hmac, Mac};
 use jiff::SignedDuration;
 use password_hash::PasswordHash as PhcString;
-use sha2::{Digest, Sha256};
+use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
 /// An account with the hash its password checks against.

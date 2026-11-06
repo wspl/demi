@@ -83,7 +83,7 @@ The two sides of that boundary work as follows:
 The following files define the boundaries:
 
 - Providers: `crates/provider-registry/src/lib.rs`, with the server's
-  credential vault in `crates/backend-providers/src/lib.rs`
+  credential vault in `crates/core-providers/src/lib.rs`
 - Claude Code: `crates/provider-claude-code/src/lib.rs`
 - Native command residents, which are separate from provider CLIs:
   `crates/command-protocol/src/lib.rs`

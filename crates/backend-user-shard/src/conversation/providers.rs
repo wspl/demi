@@ -21,7 +21,7 @@ use std::sync::Arc;
 use demi_agent_server::{ProviderResolver, ResolveError};
 use demi_agent_tools::{ProfileModel, Unavailable};
 use demi_backend_host_access::transition::ChangeRefusal;
-use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime, ModelPrices, RetireModel};
+use demi_core_providers::usage::meter::{Ledger, MeteredRuntime, ModelPrices, RetireModel};
 use demi_provider_registry::entry::{EntryCredential, ProviderEntry};
 use demi_provider_common::{
     AccountSwitch, Ahead, ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,

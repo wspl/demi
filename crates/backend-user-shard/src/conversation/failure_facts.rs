@@ -25,7 +25,7 @@ use demi_shared_types::{
 };
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 
-use demi_backend_providers::vault::entries::Vault;
+use demi_core_providers::vault::entries::Vault;
 use demi_provider_registry::registry::ProviderRegistry;
 use demi_provider_registry::entry::ProviderEntry;
 

@@ -1,5 +1,5 @@
 //! One change of an entry at a time
-//! (`crates/backend-providers/src/vault/logins.rs`).
+//! (`crates/core-providers/src/vault/logins.rs`).
 //!
 //! An edit, a deletion, an account change or a test holds the entry while it
 //! runs, and a login into the entry holds it until the login ends. A login that

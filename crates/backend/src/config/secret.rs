@@ -25,7 +25,7 @@ use sha2::Sha256;
 
 use demi_backend_accounts::email_change::CodeKey;
 use demi_backend_accounts::push::PushKey;
-use demi_backend_providers::vault::seal::VaultKey;
+use demi_core_providers::vault::seal::VaultKey;
 
 const FILE: &str = "instance-secret";
 const EMAIL_CODE_LABEL: &[u8] = b"demi email-change code";

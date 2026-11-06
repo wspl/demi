@@ -1,7 +1,7 @@
 //! What the product shows about a provider entry besides its catalog: the wire
 //! format it speaks, whether its credential is usable, whether it can run, and
 //! its subscription accounts (`crates/provider-common/src/lib.rs`,
-//! `crates/backend-providers/src/vault/entries.rs`).
+//! `crates/core-providers/src/vault/entries.rs`).
 //!
 //! The backend reads the states when it answers and never stores them, so they
 //! accept unknown fields.
@@ -476,7 +476,7 @@ pub struct DownloadProgress {
 }
 
 /// What a login asks the user to do, reported while the login
-/// waits (`crates/backend-providers/src/vault/logins.rs`). When the login ends is
+/// waits (`crates/core-providers/src/vault/logins.rs`). When the login ends is
 /// the vault's, not the vendor's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

@@ -454,7 +454,7 @@ impl CoreStore {
     ///
     /// - When it was the entry's active account, the entry's first remaining
     ///   account in the list's order becomes active in the same transaction, or
-    ///   none when it was the last (`crates/backend-providers/src/vault/logins.rs`).
+    ///   none when it was the last (`crates/core-providers/src/vault/logins.rs`).
     /// - An entry left with fewer than two accounts has nothing to rotate, and its
     ///   rotation goes back to Manual in the same transaction
     ///   (`crates/provider-registry/src/rotation.rs`).

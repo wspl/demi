@@ -19,7 +19,7 @@ demi-backend-accounts = { path = "../backend-accounts" }
 demi-backend-cloud = { path = "../backend-cloud" }
 demi-backend-host-access = { path = "../backend-host-access" }
 demi-core-blobs = { path = "../core-blobs" }
-demi-backend-providers = { path = "../backend-providers" }
+demi-core-providers = { path = "../core-providers" }
 demi-backend-runners = { path = "../backend-runners" }
 demi-backend-user-shard = { path = "../backend-user-shard" }
 demi-backend-database = { path = "../backend-database" }

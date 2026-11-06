@@ -29,7 +29,7 @@ use base64::Engine;
 use demi_core_store::StorageError;
 use demi_core_store::schedules::{StoredRun, StoredSchedule};
 use demi_core_sync::Part;
-use demi_backend_providers::vault::seal::Row;
+use demi_core_providers::vault::seal::Row;
 use demi_shared_types::{ScheduleId, Timestamp};
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::schedules::{

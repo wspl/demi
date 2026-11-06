@@ -68,12 +68,12 @@
 //!
 //! ```text
 //! demi-backend (configuration, composition)
-//!   |-- backend-providers (the credential vault)
+//!   |-- core-providers (the credential vault)
 //!   `-- backend-http (the HTTP edge)
 //!         `-- backend-user-shard (the user's shard, conversations)
 //!               |-- core-permissions (conversation permissions)
 //!               |-- backend-host-access --> backend-cloud, backend-runners
-//!               |-- backend-cloud -------> backend-runners, backend-providers,
+//!               |-- backend-cloud -------> backend-runners, core-providers,
 //!               |                          core-idle-watch
 //!               |-- backend-accounts
 //!               `-- (as each needs) -----> backend-database, core-blobs,

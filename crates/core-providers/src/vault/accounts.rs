@@ -1,5 +1,5 @@
 //! The product's rules over a subscription entry's accounts
-//! (`crates/backend-providers/src/vault/logins.rs`):
+//! (`crates/core-providers/src/vault/logins.rs`):
 //!
 //! - Every account comes from a sign-in.
 //! - Selecting an account is explicit.

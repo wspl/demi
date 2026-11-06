@@ -30,12 +30,17 @@ use demi_provider_registry::catalog_cache::ModelCatalogCache;
 use demi_provider_claude_code::releases::ClaudeReleases;
 use demi_provider_registry::families::FamilyRegistry;
 use demi_provider_registry::vendors::VendorCatalog;
-use demi_backend_providers::vault::entries::{VaultReseal, SeededAccount, Vault};
-use demi_backend_providers::vault::logins::{LoginFlows, LoginTiming};
-use demi_backend_providers::vault::operations::ProviderOperations;
+use demi_backend_database::schema::ControlSteps;
+use demi_core_providers::vault::entries::{SeededAccount, Vault, VaultReseal, VaultStores};
+use demi_core_store::store::CoreStore;
+use demi_web_api_protocol::ids::ProviderId;
+use demi_web_api_protocol::settings::InstanceMode;
+use futures_util::future::BoxFuture;
+use demi_core_providers::vault::logins::{LoginFlows, LoginTiming};
+use demi_core_providers::vault::operations::ProviderOperations;
 use demi_provider_registry::quotas::AccountQuotas;
 use demi_provider_registry::store::RegistryStore;
-use demi_backend_providers::vault::seal::VaultKey;
+use demi_core_providers::vault::seal::VaultKey;
 use demi_backend_runners::claims::PendingClaims;
 use demi_backend_runners::devices::Returning;
 use demi_backend_runners::native::NativeCatalog;
@@ -225,6 +230,65 @@ pub struct Storage {
 
 /// The blobs a conversation database's migration reads: those of its user's
 /// namespace.
+/// What the control database's migrations ask: the data directory, and the
+/// vault's key that seals a value again.
+struct ServerReseal {
+    vault: VaultReseal,
+    data_directory: std::path::PathBuf,
+}
+
+impl ControlSteps for ServerReseal {
+    fn data_directory(&self) -> &Path {
+        &self.data_directory
+    }
+
+    fn provider_config(&self, id: &ProviderId, family: &str, sealed: &[u8]) -> Result<Vec<u8>, String> {
+        self.vault.provider_config(id, family, sealed)
+    }
+
+    fn schedule_secret(&self, id: &str, sealed: &[u8]) -> Result<Vec<u8>, String> {
+        self.vault.schedule_secret(id, sealed)
+    }
+
+    fn provider_endpoint_on_device(
+        &self,
+        id: &ProviderId,
+        sealed: &[u8],
+        owned: &dyn Fn(&str) -> bool,
+    ) -> Result<Option<(String, Vec<u8>)>, String> {
+        self.vault.provider_endpoint_on_device(id, sealed, owned)
+    }
+
+    fn provider_config_format_3(&self, id: &ProviderId, sealed: &[u8]) -> Result<Option<Vec<u8>>, String> {
+        self.vault.provider_config_format_3(id, sealed)
+    }
+}
+
+/// The users' cores, whose entries the vault keeps, with the control
+/// database that names the users, the master and the mode.
+struct ServerVaultStores {
+    control: ControlService,
+    stores: CoreStores,
+}
+
+impl VaultStores for ServerVaultStores {
+    fn store_of<'a>(&'a self, user: &'a UserId) -> BoxFuture<'a, Result<CoreStore, StorageError>> {
+        Box::pin(self.stores.of(user))
+    }
+
+    fn users(&self) -> BoxFuture<'_, Result<Vec<UserId>, StorageError>> {
+        Box::pin(self.control.user_ids())
+    }
+
+    fn master(&self) -> BoxFuture<'_, Result<Option<UserId>, StorageError>> {
+        Box::pin(self.control.master())
+    }
+
+    fn keep_mode(&self, mode: InstanceMode) -> BoxFuture<'_, Result<(), StorageError>> {
+        Box::pin(self.control.set_instance_mode(mode))
+    }
+}
+
 struct UsersBlobs {
     blobs: BlobStores,
     /// The backend's runtime, which the reads run on.
@@ -282,7 +346,10 @@ impl Storage {
         let control = ControlService::open(
             &data_dir.join(CONTROL_DATABASE),
             clock.clone(),
-            Arc::new(VaultReseal::new(vault, data_dir.to_owned())),
+            Arc::new(ServerReseal {
+                vault: VaultReseal::new(vault),
+                data_directory: data_dir.to_owned(),
+            }),
         )
         .await?;
         let blobs = BlobStores::new(objects, clock.clone());
@@ -357,8 +424,10 @@ impl Services {
         let push = Pusher::new(control.clone(), keys.push, push_transport);
         let mode = control.instance_mode().await?;
         let vault = Vault::new(
-            control.clone(),
-            stores.clone(),
+            Arc::new(ServerVaultStores {
+                control: control.clone(),
+                stores: stores.clone(),
+            }),
             keys.vault,
             mode,
             settings.shared_subscriptions,

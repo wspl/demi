@@ -48,7 +48,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_core_store::media_jobs::{Follow, JobOfCall, Made, MediaJob, MediaJobStatus};
 use demi_core_store::usage::{MadeVideoCall, UsageRow, merge_windows};
-use demi_backend_providers::vault::entries::Vault;
+use demi_core_providers::vault::entries::Vault;
 use demi_plugin_host::{MediaCall, VideoJob};
 use demi_provider_registry::store::StoreError;
 use demi_provider_registry::registry::{RegistryError, MakerOf};
@@ -1711,7 +1711,7 @@ pub(super) async fn on_accounts<T>(
             .ok_or(Unmade::Refusal(MediaRefusal::NoProvider))?;
         // The account is named only to whoever manages the entry: on a
         // shared instance it is the administrator's
-        // (`crates/backend-providers/src/vault/entries.rs`).
+        // (`crates/core-providers/src/vault/entries.rs`).
         let label = if manages {
             let record = services.vault.account(entry.id.clone(), account.clone()).await.ok().flatten();
             Some(record.map_or_else(|| account.to_string(), |record| record.label))

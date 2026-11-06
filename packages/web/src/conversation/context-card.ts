@@ -35,7 +35,7 @@ export function useContextCard(openFile: () => ((target: MessageFileTarget) => v
     return used ? { provider, account: used } : null
   }
 
-  /** What the card shows of that account's usage limits (`crates/backend-providers/src/usage/mod.rs`). */
+  /** What the card shows of that account's usage limits (`crates/core-providers/src/usage/mod.rs`). */
   function limitsOf(providerId: string, account: string | null): UsageLimits | null {
     const current = accountOf(providerId, account)
     return current

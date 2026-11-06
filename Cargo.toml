@@ -22,7 +22,7 @@ members = [
   "crates/backend-host-access",
   "crates/core-idle-watch",
   "crates/core-blobs",
-  "crates/backend-providers",
+  "crates/core-providers",
   "crates/backend-runners",
   "crates/backend-user-shard",
   "crates/backend-database",

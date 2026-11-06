@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_core_store::StorageError;
-use demi_backend_database::core_stores::CoreStores;
+use demi_core_providers::vault::entries::VaultStores;
 use demi_host_interface::HostErrorKind;
 use demi_provider_common::{DeviceAnswer, DeviceRefusal, DeviceRequest, DeviceRoute};
 use demi_provider_registry::entry::ProviderEntry;
@@ -152,10 +152,10 @@ impl Shard {
 /// The device `entry` connects through, which a failure of its request
 /// names as offline. A read that fails adds nothing: the fact only adds to
 /// the failure.
-pub(crate) async fn through_device(stores: &CoreStores, entry: &ProviderEntry) -> Option<OfflineDevice> {
+pub(crate) async fn through_device(stores: &dyn VaultStores, entry: &ProviderEntry) -> Option<OfflineDevice> {
     let id = entry.through_device.as_ref()?;
     let read = async {
-        let store = stores.of(&entry.owner).await?;
+        let store = stores.store_of(&entry.owner).await?;
         let mut devices = store.paired_devices().await?;
         devices.extend(store.managed_device().await?);
         Ok::<_, StorageError>(devices)

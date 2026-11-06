@@ -6,7 +6,7 @@
 //! not be: its version is taken before it is read, so a change made while it
 //! is read is one after the version, which the page follows the state from.
 
-use demi_backend_providers::vault::entries::Vault;
+use demi_core_providers::vault::entries::Vault;
 use demi_backend_accounts::passkeys::{passkey_list, relying_party_id};
 use demi_core_store::StorageError;
 use demi_backend_database::accounts::TokenHash;

@@ -1,5 +1,5 @@
 //! Credential records, their scope and login flows
-//! (`crates/backend-providers/src/vault/entries.rs`).
+//! (`crates/core-providers/src/vault/entries.rs`).
 
 pub mod accounts;
 pub mod entries;

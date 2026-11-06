@@ -123,7 +123,7 @@ pub trait CredentialPool: Send + Sync {
 
     /// Removes the account and its document. When it was the active
     /// account, the first remaining one in id order becomes active, or none
-    /// when it was the last (`crates/backend-providers/src/vault/logins.rs`).
+    /// when it was the last (`crates/core-providers/src/vault/logins.rs`).
     fn remove<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), PoolError>>;
 }
 

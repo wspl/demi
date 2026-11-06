@@ -5,7 +5,7 @@
 //! strictly. A value that does not open or decode is corrupt and is never
 //! repaired.
 //!
-//! Every credential of the product is a record of the control store, sealed
+//! Every credential of the product is a record of its core's store, sealed
 //! under a key derived from the instance secret and bound to its row. Nothing
 //! the product authenticates with is a file.
 //!
@@ -37,14 +37,11 @@
 
 use std::sync::Arc;
 
-use demi_backend_database::core_stores::CoreStores;
 use demi_core_store::StorageError;
 use demi_core_store::store::CoreStore;
-use demi_backend_database::control::ControlService;
 use demi_core_store::providers::{
     CredentialRow, CredentialWrite, EntrySwitches, NewProvider, ProviderRow,
 };
-use demi_backend_database::schema::ControlSteps;
 use demi_core_sync::{Part, SyncRegistry};
 use demi_provider_common::credentials::{
     AccountMeta, CredentialPool, MemoryCredentialPool, NewAccount, RefreshGates,
@@ -56,6 +53,7 @@ use demi_web_api_protocol::providers::{CredentialKind, Rotation};
 use demi_web_api_protocol::settings::InstanceMode;
 use demi_web_api_protocol::text::EndpointUrl;
 use demi_web_api_protocol::state::ManagedKinds;
+use futures_util::future::BoxFuture;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -68,15 +66,31 @@ use super::seal::{self, VaultKey};
 #[derive(Clone)]
 pub struct Vault(Arc<Shared>);
 
+/// The cores whose entries a vault keeps, which whoever runs them gives: a
+/// server's users' cores, or a program's one core.
+pub trait VaultStores: Send + Sync {
+    /// The core store of `user`.
+    fn store_of<'a>(&'a self, user: &'a UserId) -> BoxFuture<'a, Result<CoreStore, StorageError>>;
+
+    /// Every user whose core it keeps.
+    fn users(&self) -> BoxFuture<'_, Result<Vec<UserId>, StorageError>>;
+
+    /// The master, whose entries a shared instance's users infer with; none
+    /// before the first user exists.
+    fn master(&self) -> BoxFuture<'_, Result<Option<UserId>, StorageError>>;
+
+    /// Keeps the instance's mode, which the next start reads.
+    fn keep_mode(&self, mode: InstanceMode) -> BoxFuture<'_, Result<(), StorageError>>;
+}
+
 struct Shared {
-    control: ControlService,
-    stores: CoreStores,
+    stores: Arc<dyn VaultStores>,
     /// Whose core holds each entry, read from the cores at the start and kept
     /// as entries are made. An entry deleted stays: its store answers that it
     /// has none.
     holders: std::sync::Mutex<std::collections::HashMap<ProviderId, UserId>>,
     key: VaultKey,
-    /// The mode the control store holds, which `set_mode` writes after it.
+    /// The instance's mode, which `set_mode` keeps through the stores.
     mode: std::sync::RwLock<InstanceMode>,
     /// Whether a shared instance's users infer with the master's
     /// subscriptions rather than their own (`DEMI_SHARED_SUBSCRIPTIONS`).
@@ -115,8 +129,8 @@ pub struct SeededAccount {
 
 
 /// The format of the sealed configuration document this release writes
-/// and reads, which the control schema names. The control database's
-/// migrations re-encode the earlier ones ([`VaultReseal`]):
+/// and reads, which the core schema names. The server's migrations
+/// re-encoded the earlier ones ([`VaultReseal`]):
 ///
 /// - Format 1, the bare configuration that 0.1.21 and the builds before it
 ///   sealed, told a compatible entry by its endpoint rather than by its
@@ -169,23 +183,21 @@ impl Owners {
 }
 
 impl Vault {
-    /// The vault of an instance whose control store holds `mode`.
+    /// The vault of the cores `stores` gives, of an instance in `mode`.
     pub async fn new(
-        control: ControlService,
-        stores: CoreStores,
+        stores: Arc<dyn VaultStores>,
         key: VaultKey,
         mode: InstanceMode,
         shared_subscriptions: bool,
         sync: SyncRegistry,
     ) -> Result<Self, StorageError> {
         let mut holders = std::collections::HashMap::new();
-        for user in control.user_ids().await? {
-            for row in stores.of(&user).await?.providers().await? {
+        for user in stores.users().await? {
+            for row in stores.store_of(&user).await?.providers().await? {
                 holders.insert(row.id, user.clone());
             }
         }
         Ok(Self(Arc::new(Shared {
-            control,
             stores,
             holders: std::sync::Mutex::new(holders),
             key,
@@ -203,10 +215,10 @@ impl Vault {
     pub async fn store_of(&self, id: &ProviderId) -> Result<CoreStore, StorageError> {
         let holder = self.holder_of(id);
         match holder {
-            Some(holder) => self.0.stores.of(&holder).await,
+            Some(holder) => self.0.stores.store_of(&holder).await,
             None => {
                 let master = self.master().await?.clone();
-                self.0.stores.of(&master).await
+                self.0.stores.store_of(&master).await
             }
         }
     }
@@ -299,13 +311,9 @@ impl Vault {
         let _ = self.0.account_changes.send(entry.clone());
     }
 
-    pub fn control(&self) -> &ControlService {
-        &self.0.control
-    }
-
-    /// Each user's core store.
-    pub fn stores(&self) -> &CoreStores {
-        &self.0.stores
+    /// The cores whose entries the vault keeps.
+    pub fn stores(&self) -> &dyn VaultStores {
+        self.0.stores.as_ref()
     }
 
     pub fn key(&self) -> &VaultKey {
@@ -323,7 +331,7 @@ impl Vault {
     /// Changes the mode, and has every page read the entries, the models and
     /// the mode again.
     pub async fn set_mode(&self, mode: InstanceMode) -> Result<(), StorageError> {
-        self.0.control.set_instance_mode(mode).await?;
+        self.0.stores.keep_mode(mode).await?;
         *self.0.mode.write().unwrap_or_else(std::sync::PoisonError::into_inner) = mode;
         for part in [Part::Instance, Part::Providers, Part::Models] {
             self.0.sync.mark_everyone(&part);
@@ -340,7 +348,7 @@ impl Vault {
         self.0
             .master
             .get_or_try_init(|| async {
-                match self.0.control.master().await? {
+                match self.0.stores.master().await? {
                     Some(master) => Ok(master),
                     // A signed-in user means setup ran, and setup creates
                     // the master.
@@ -470,7 +478,7 @@ impl Vault {
     /// Every entry `owner` holds, in their order, whether or not anyone
     /// infers with it now.
     pub async fn entries(&self, owner: UserId) -> Result<Vec<ProviderEntry>, StorageError> {
-        let rows = self.0.stores.of(&owner).await?.providers().await?;
+        let rows = self.0.stores.store_of(&owner).await?.providers().await?;
         rows.into_iter().map(|row| self.decode(row, owner.clone())).collect()
     }
 
@@ -504,7 +512,7 @@ impl Vault {
             cache_ttl,
             through_device: None,
         };
-        let row = self.0.stores.of(&owner).await?.insert_provider(provider, Vec::new()).await?;
+        let row = self.0.stores.store_of(&owner).await?.insert_provider(provider, Vec::new()).await?;
         // An API-key entry is under no uniqueness rule.
         let row = row.expect("an API-key entry is always stored");
         self.hold(row.id.clone(), owner.clone());
@@ -514,7 +522,7 @@ impl Vault {
 
     /// Stores a new subscription entry that connects through `through_device`
     /// with the accounts of `staged`, in one transaction: a completed login's
-    /// (`crates/backend-providers/src/vault/logins.rs`), or an empty pool's
+    /// (`crates/core-providers/src/vault/logins.rs`), or an empty pool's
     /// for an entry that Settings creates before any sign-in.
     ///
     /// The transaction stores the entry, its accounts, and the staged active
@@ -566,7 +574,7 @@ impl Vault {
             cache_ttl: None,
             through_device,
         };
-        let row = self.0.stores.of(&owner).await?.insert_provider(provider, accounts).await?;
+        let row = self.0.stores.store_of(&owner).await?.insert_provider(provider, accounts).await?;
         if let Some(row) = &row {
             self.hold(row.id.clone(), owner.clone());
             self.mark_changed(&owner, row.kind).await;
@@ -690,7 +698,7 @@ impl Vault {
             }
         }
         all.extend(ids);
-        let ordered = self.0.stores.of(user).await?.set_provider_order(all).await?;
+        let ordered = self.0.stores.store_of(user).await?.set_provider_order(all).await?;
         if ordered {
             for kind in kinds {
                 self.mark_changed(user, kind).await;
@@ -701,8 +709,7 @@ impl Vault {
 
     /// Deletes the entry with its accounts and catalog record.
     pub async fn delete(&self, entry: &ProviderEntry) -> Result<(), StorageError> {
-        self.0.stores.of(&entry.owner).await?.delete_provider(entry.id.clone()).await?;
-        self.0.control.delete_share_keys_of(entry.owner.clone(), entry.id.clone()).await?;
+        self.0.stores.store_of(&entry.owner).await?.delete_provider(entry.id.clone()).await?;
         self.mark_changed(&entry.owner, entry.kind()).await;
         Ok(())
     }
@@ -796,8 +803,8 @@ impl Vault {
     }
 }
 
-/// The vault's side of the control database's migrations that seal a value
-/// again (`crates/backend-database/src/schema.rs`).
+/// What the server's migrations that seal a value again ask of the vault's
+/// key (`crates/backend-database/src/schema.rs`).
 ///
 /// - To provider configuration format 2, it opens each configuration of format
 ///   1 under the vault's key, decodes and checks it as any configuration is,
@@ -816,21 +823,14 @@ impl Vault {
 ///   device itself.
 pub struct VaultReseal {
     key: VaultKey,
-    data_directory: std::path::PathBuf,
 }
 
 impl VaultReseal {
-    pub fn new(key: VaultKey, data_directory: std::path::PathBuf) -> Self {
-        Self { key, data_directory }
-    }
-}
-
-impl ControlSteps for VaultReseal {
-    fn data_directory(&self) -> &std::path::Path {
-        &self.data_directory
+    pub fn new(key: VaultKey) -> Self {
+        Self { key }
     }
 
-    fn provider_config(&self, id: &ProviderId, family: &str, sealed: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn provider_config(&self, id: &ProviderId, family: &str, sealed: &[u8]) -> Result<Vec<u8>, String> {
         let text = open_text(&self.key, id, sealed)?;
         let config = decode_secret::<serde_json::Value>(&text).map_err(|error| error.to_string())?;
         let mut config = without_media_shapes(config)?;
@@ -840,7 +840,7 @@ impl ControlSteps for VaultReseal {
         Ok(seal_config(&self.key, id, &config))
     }
 
-    fn schedule_secret(&self, id: &str, sealed: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn schedule_secret(&self, id: &str, sealed: &[u8]) -> Result<Vec<u8>, String> {
         let secret = self
             .key
             .open(seal::Row::AutomationSecret(id), sealed)
@@ -848,7 +848,7 @@ impl ControlSteps for VaultReseal {
         Ok(self.key.seal(seal::Row::ScheduleSecret(id), &secret))
     }
 
-    fn provider_endpoint_on_device(
+    pub fn provider_endpoint_on_device(
         &self,
         id: &ProviderId,
         sealed: &[u8],
@@ -869,7 +869,7 @@ impl ControlSteps for VaultReseal {
         Ok(Some((device, seal_config(&self.key, id, &config))))
     }
 
-    fn provider_config_format_3(&self, id: &ProviderId, sealed: &[u8]) -> Result<Option<Vec<u8>>, String> {
+    pub fn provider_config_format_3(&self, id: &ProviderId, sealed: &[u8]) -> Result<Option<Vec<u8>>, String> {
         let text = open_text(&self.key, id, sealed)?;
         let document = decode_secret::<SealedDocument>(&text).map_err(|error| error.to_string())?;
         match document.format {

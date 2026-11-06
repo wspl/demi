@@ -408,7 +408,7 @@ function askRemoveProvider(provider: SettingsProviderEntry): void {
 
 /**
  * Removing the active account switches the provider to its first other account in the list,
- * as the backend does, or leaves it with none (`crates/backend-providers/src/vault/logins.rs`); the
+ * as the backend does, or leaves it with none (`crates/core-providers/src/vault/logins.rs`); the
  * question says which.
  */
 function askRemoveAccount(

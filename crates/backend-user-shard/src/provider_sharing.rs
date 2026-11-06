@@ -28,7 +28,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use demi_core_store::StorageError;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::provider_keys::ShareKeyRow;
-use demi_backend_providers::vault::entries::Vault;
+use demi_core_providers::vault::entries::Vault;
 use demi_provider_registry::entry::ProviderEntry;
 use demi_provider_relay::borrow::FAMILY as BORROWED;
 use demi_provider_relay::key::ShareKey as KeyText;
