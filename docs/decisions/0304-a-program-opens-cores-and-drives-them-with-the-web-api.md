@@ -44,7 +44,7 @@ program                                      demi-core
 ```
 
 The records after this one decide how a runner reaches a program's core
-(0298) and how a program's own plugins run in it (0299).
+(0305) and how a program's own plugins run in it (0299).
 
 The wire is the SDK's, not a program's: a program calls the TypeScript
 SDK, whose own interface a later record of this series decides, and the
@@ -174,7 +174,7 @@ program follows its core's changes as a page does.
 | `notify` | sends the notification on the `starter` lane; the program answers how it was shown |
 | `reach`, `agent_reaches` | one receiver while a `starter` lane is open, none otherwise |
 | `cloud`, `cloud_network_limited` | none: a program's core runs no Cloud |
-| `pair`, `install_commands`, `device_removed` | none: a program's Hosts reach the core over channels the program gives (0298) |
+| `pair`, `install_commands`, `device_removed` | none: a program's Hosts reach the core over channels the program gives (0305) |
 | `host_log` | none |
 | `schedule_called_at_url`, `schedule_deleted` | nothing to keep: the process serves `/hooks/{id}` and finds the schedule among its open cores |
 | `conversation_deleted`, `provider_deleted` | nothing: the process keeps no record of them |

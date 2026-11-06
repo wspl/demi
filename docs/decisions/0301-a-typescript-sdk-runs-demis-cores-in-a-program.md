@@ -6,8 +6,9 @@ status: proposed
 
 ## Problem
 
-0297 to 0300 give a program a process that runs cores, its runners and its
-plugins, all over the web API on the process's standard input and output.
+0304, 0305, 0299 and 0300 give a program a process that runs cores, its
+runners and its plugins, all over the web API on the process's standard
+input and output.
 A program in TypeScript still has to start the process, speak HTTP/2 to
 it, open lanes, apply transcript patches and product state changes, and
 encode its plugins' messages. Each program would write that again, and
@@ -62,7 +63,7 @@ console.log(turn.text)
 public API       Demi, Core, Conversation, definePlugin     this record
 clients          the lane client, ConversationClient,       shared with the
                  the product state, the generated schemas    web app
-wire             HTTP/2 on the process's stdio (0297)        internal
+wire             HTTP/2 on the process's stdio (0304)        internal
 ```
 
 The SDK writes no client of its own. What the web app does for a page and
@@ -83,8 +84,8 @@ public packages both import:
 
 | SDK | What it does underneath |
 | --- | --- |
-| `Demi.start({ plugins, publicUrl })` | starts `demi-core` from the package's release, speaks HTTP/2 on its stdio, `PUT /plugins` (0299), and gives the process the public URL (0297) |
-| `demi.open(dir)`, `core.close()`, `demi.close()` | `POST /cores`, `DELETE /cores/{id}`, the connection's end (0297) |
+| `Demi.start({ plugins, publicUrl })` | starts `demi-core` from the package's release, speaks HTTP/2 on its stdio, `PUT /plugins` (0299), and gives the process the public URL (0304) |
+| `demi.open(dir)`, `core.close()`, `demi.close()` | `POST /cores`, `DELETE /cores/{id}`, the connection's end (0304) |
 | `core.state`, `core.on('state')` | `GET /state` and the synchronization lane, applied by `withPart` |
 | `core.on('notify', handler)` | the `starter` lane; the handler's answer is how the notification was shown (`Notified`) |
 | `core.conversations.create(options)` | `POST /conversations` (`CreateConversation`): the SDK makes the id, and the workspace is the core's first unless named |
@@ -96,11 +97,11 @@ public packages both import:
 | `core.providers.list`, `create`, `update`, `remove` | `/providers` (`CreateProvider`, `ProviderPatch`, whose `rotation` is the accounts' rotation) |
 | `core.providers.accounts(id)` | the entry's account routes: list, activate, order, remove |
 | `core.providers.signIn(options)` | `POST /providers/subscription-login`; the login's states come from the product state's `logins`, and `submitCode`, `cancel` are its code and delete routes |
-| `core.hosts.create()` | `POST /devices` (0298): a Host, with its id |
-| `host.connect(stream)` | `CONNECT /devices/{device}/runner` (0298), with the stream's bytes carried both ways: a runner's channel the program reaches it by |
+| `core.hosts.create()` | `POST /devices` (0305): a Host, with its id |
+| `host.connect(stream)` | `CONNECT /devices/{device}/runner` (0305), with the stream's bytes carried both ways: a runner's channel the program reaches it by |
 | `host.spawn(command)` | starts `command`, whose standard input and output are a `demi-runner run --stdio`'s, and connects them; with no command, the package's own `demi-runner` on the program's machine |
 | `core.fetch(request)`, `core.accept(socket)` | the core's routes under `/cores/{id}/api`, for the program's HTTP server to forward its pages' requests and sockets |
-| `demi.fetch(request)` | the process's schedule URLs, `/hooks/{id}` (0297) |
+| `demi.fetch(request)` | the process's schedule URLs, `/hooks/{id}` (0304) |
 
 ### A plugin
 
@@ -147,8 +148,8 @@ Node.js, Bun and Deno, which the wire's spike ran.
 
 ## Spike
 
-None beyond those 0297 to 0299 run: the SDK's calls are the routes and
-lanes those records try.
+None beyond 0304's: the SDK's calls are the routes and lanes 0304, 0305
+and 0299 decide.
 
 ## Prior art
 

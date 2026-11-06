@@ -75,7 +75,7 @@ What stays above it, in the server alone:
   master's entries;
 - the HTTP listener, the session gate and the routes of what is above the
   core. The core's routes, with its product state and its synchronization
-  channel, serve the server's pages and a program alike (0297).
+  channel, serve the server's pages and a program alike (0304).
 
 ### Where a core keeps its data
 
@@ -101,7 +101,7 @@ Whoever starts a core names its data directory, and the core owns it:
   one conversation.
 - Credentials are sealed under a key the starter gives: the server's
   instance secret, as today, or a secret in the core's own directory
-  (0297).
+  (0304).
 
 The server keeps `users/<user>/` as each user's data directory.
 `control.sqlite` keeps only what is above the core. The upgrade that brings
@@ -128,7 +128,7 @@ A runner connects to a core with a token the core issues. The server
 issues one at pairing and hands the runner's socket to the user's core, as
 it adopts it today. A program asks its core for a Host, starts the runner
 where it wants its agents' commands to run, and carries the runner's
-channel to the core however it reaches the runner (0298).
+channel to the core however it reaches the runner (0305).
 
 ### The series
 
@@ -138,10 +138,10 @@ before:
 1. This record: the core's boundary and data directory. The backend crates
    that hold the core's parts become core crates, the server runs one core
    per user, and the data moves.
-2. 0297: a program opens cores in a process of its own and drives them
+2. 0304: a program opens cores in a process of its own and drives them
    with the web API's core routes and the page connection, over HTTP/2 on
    stdio.
-3. 0298: a runner reaches its core over a channel whoever runs the core
+3. 0305: a runner reaches its core over a channel whoever runs the core
    gives.
 4. 0299: a program's plugins run in the program, over a lane of each
    core's connection.

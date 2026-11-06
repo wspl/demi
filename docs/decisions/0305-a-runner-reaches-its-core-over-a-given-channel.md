@@ -37,7 +37,7 @@ program                                         demi-core
 
 - `demi-runner run --stdio` speaks to its backend over its standard input
   and output, with HTTP/2 inside, as the program speaks to the process
-  (0297). Its routes are the ones it uses today: its socket
+  (0304). Its routes are the ones it uses today: its socket
   (`/api/runner`), its pipe connection, its pipes, offers and commands'
   outputs, its update and the command packages' executables, each a
   request or a WebSocket on the stream.
@@ -75,7 +75,7 @@ no start command; the web app shows none for them.
 | --- | --- | --- |
 | The runner's routes | `backend-http`, found by the device token | in `core-api`, found by the token or by the channel |
 | The runner's way to its backend | `Backend`: a URL, or a socket in a Cloud | a stream it is given |
-| HTTP/2 on a stream, WebSockets by extended CONNECT | 0297's wire | |
+| HTTP/2 on a stream, WebSockets by extended CONNECT | 0304's wire | |
 | Jobs that outlive their runner | `demi-runner shell`, taken over by the next runner's hello | |
 | A runner that drops | the Host returning for a while | |
 | One runner for a Host | `AlreadyConnected` | |
@@ -83,7 +83,7 @@ no start command; the web app shows none for them.
 ## Spike
 
 None: the runner's routes run unchanged on the stream, which carries
-HTTP/2 and WebSockets as 0297's spike ran them.
+HTTP/2 and WebSockets as 0304's spike ran them.
 
 ## Prior art
 
