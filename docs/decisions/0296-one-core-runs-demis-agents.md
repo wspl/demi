@@ -73,7 +73,9 @@ What stays above it, in the server alone:
 - what crosses users: shares, a provider entry lent to another server, and
   which cores a shared instance's vault reads, so each user infers with the
   master's entries;
-- the pages' synchronization channels and the HTTP routes.
+- the HTTP listener, the session gate and the routes of what is above the
+  core. The core's routes, with its product state and its synchronization
+  channel, serve the server's pages and a program alike (0297).
 
 ### Where a core keeps its data
 
