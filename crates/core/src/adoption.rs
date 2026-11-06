@@ -19,7 +19,7 @@ use demi_runner_client::{Beginning, Hello, Link, LinkOptions, RemoteHost, host_i
 use demi_host_interface::{HostErrorKind, HostFs as _};
 use demi_core_hosts::devices::{DeviceRecorder, Download, Reported, RunnerSocket, Serving, Updating, send};
 use demi_runner_protocol::values::DeviceToken;
-use demi_runner_protocol::wire::{HelloErrorCode, Inbound, KeptJob, Resume, RunnerInfo};
+use demi_runner_protocol::wire::{HelloErrorCode, Inbound, KeptJob, Resume, RunnerInfo, RunnerPlatform};
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::devices::DeviceDto;
@@ -48,7 +48,29 @@ pub struct KeptJobs {
     pub resume: Option<Resume>,
 }
 
+/// The name a Host a program makes takes, with (2), (3) when it is taken.
+const HOST_NAME: &str = "Host";
+
 impl Core {
+    /// Makes a Host whose runner a program connects over a channel of its
+    /// own: *Host*, or *Host (2)* when that name is taken, of the platform its
+    /// runner's first hello reports.
+    pub async fn create_host(&self) -> Result<DeviceDto, StorageError> {
+        let names: Vec<String> = self
+            .store()
+            .paired_devices()
+            .await?
+            .into_iter()
+            .map(|device| device.name)
+            .collect();
+        let name = crate::provider_settings::free_label(HOST_NAME.to_owned(), |name| {
+            names.iter().any(|taken| taken == name)
+        });
+        let record = self.store().create_device(name, RunnerPlatform::Linux).await?;
+        self.mark(Part::Devices);
+        Ok(self.devices().dto(record, self.services().public_url.get()))
+    }
+
     /// Takes the socket of a runner that presented `device`'s token.
     pub async fn adopt_runner(
         self: Rc<Self>,
@@ -366,6 +388,7 @@ impl Core {
             let first = seen
                 .hello(
                     device.clone(),
+                    runner.platform,
                     runner.os,
                     runner.version,
                     hello_instance,

@@ -19,7 +19,9 @@
 //! closes, as the server's stop closes its users' cores.
 
 mod cores;
+mod hosts;
 mod program;
+mod stream;
 
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
@@ -31,7 +33,7 @@ use axum::extract::{OriginalUri, Path, Request, State};
 use axum::http::{StatusCode, Uri};
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, delete, get, post};
+use axum::routing::{any, connect, delete, get, post};
 use axum::{Extension, Json, Router};
 use demi_command_protocol::{ArtifactLocation, PackageArtifact, PackageDescriptor};
 use demi_core::builtins::{self, RelayFamily};
@@ -187,8 +189,12 @@ fn routes(api: Api, cores: Arc<OpenCores>, closing: CancellationToken) -> Router
             any(crate::connection::connect).layer(Extension(Closing(closing))),
         )
         .merge(crate::public_routes())
+        .route("/devices", post(hosts::create))
+        .route("/devices/{id}/runner", connect(hosts::channel))
         .fallback(no_route)
-        .with_state(api.clone());
+        .with_state(api.clone())
+        // Each stream is its request's connection.
+        .layer(middleware::from_fn(stream::stream_peer));
     let state = ProcessState {
         api,
         cores,
@@ -263,7 +269,7 @@ async fn hook(State(state): State<ProcessState>, id: Path<String>, request: Requ
     crate::schedules::hook(State(state.api), id, request).await
 }
 
-async fn no_route(request: Request) -> Response {
+pub(super) async fn no_route(request: Request) -> Response {
     // The core's routes see their own path; the program called the whole.
     let path = match request.extensions().get::<OriginalUri>() {
         Some(OriginalUri(uri)) => uri.path().to_owned(),

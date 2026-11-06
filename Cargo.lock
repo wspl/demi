@@ -2481,6 +2481,7 @@ dependencies = [
  "demi-web-api-protocol",
  "futures-util",
  "garde",
+ "http-body",
  "hyper",
  "hyper-util",
  "mime",

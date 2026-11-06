@@ -28,9 +28,6 @@ use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade, close_code};
 use axum::http::StatusCode;
 use axum::response::Response;
-use axum_extra::TypedHeader;
-use axum_extra::headers::Authorization;
-use axum_extra::headers::authorization::Bearer;
 use demi_runner_client::{DeviceSource, FromSource, ToSource, relay_stream_pipe};
 use demi_runner_protocol::wire::{PIPE_LANE_CREDIT, PipeLaneRefusal, PipeLaneTarget, STREAM_PIPE_MESSAGE_BYTES};
 use demi_shared_lanes::{Assembly, AssemblyError, Frame, LANE_PIECE_BYTES, Message as LaneMessage, pieces};
@@ -39,8 +36,8 @@ use tokio::sync::mpsc;
 use tokio::task::AbortHandle;
 use tracing::Instrument as _;
 
-use super::AppState;
-use super::runners::{TokenDevice, claim_source, device_of};
+use crate::api::Api;
+use crate::runners::{RunnerDevice, RunnerOf, claim_source};
 
 /// The most bytes of one message the runner sends on the connection: a
 /// piece and its header, or an open and its target, with room to spare.
@@ -49,15 +46,11 @@ const MAX_FRAME_BYTES: usize = LANE_PIECE_BYTES + 1024;
 
 /// `WS /api/runner/pipes`: a missing or unknown device token answers 401
 /// before the upgrade.
-pub(super) async fn connect(
-    State(state): State<AppState>,
-    authorization: Option<TypedHeader<Authorization<Bearer>>>,
+pub(crate) async fn connect(
+    State(state): State<Api>,
+    RunnerOf(device): RunnerOf,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    let device = match device_of(&state, authorization).await {
-        Ok(device) => device,
-        Err(refusal) => return *refusal,
-    };
     let span = tracing::Span::current();
     upgrade
         .max_message_size(MAX_FRAME_BYTES)
@@ -91,8 +84,8 @@ enum Told {
 }
 
 struct Connection {
-    state: AppState,
-    device: TokenDevice,
+    state: Api,
+    device: RunnerDevice,
     lanes: HashMap<u32, Lane>,
     /// The number of the last lane the runner opened.
     last_lane: u32,
@@ -103,7 +96,7 @@ struct Connection {
     refused: u64,
 }
 
-async fn serve(socket: WebSocket, state: AppState, device: TokenDevice) {
+async fn serve(socket: WebSocket, state: Api, device: RunnerDevice) {
     let (mut sink, mut stream) = socket.split();
     let (to_writer, mut writes) = mpsc::unbounded_channel::<Bytes>();
     let mut writer = tokio::spawn(async move {

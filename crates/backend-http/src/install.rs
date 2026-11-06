@@ -19,14 +19,13 @@ use axum::http::header::{
 };
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use std::ops::Bound;
 
 use axum_extra::TypedHeader;
 use axum_extra::headers::Range;
 use bytes::Bytes;
 use demi_core_hosts::devices::Download;
 
-use super::runners::TokenDevice;
+use demi_core_api::runners::{RunnerDevice, range_start};
 use demi_backend_runners::native::StoredBytes;
 use futures_util::stream::{BoxStream, StreamExt as _, TryStreamExt as _};
 use demi_backend_runners::install::{
@@ -231,7 +230,7 @@ pub(super) async fn artifact(
 
 /// `stored`, whose bytes count as `device`'s download as they are served:
 /// its core hears of each, until the download ends (`crates/runner/src/update.rs`). Without a device, nothing counts.
-async fn counted(state: &AppState, device: Option<TokenDevice>, stored: Stored) -> Stored {
+async fn counted(state: &AppState, device: Option<RunnerDevice>, stored: Stored) -> Stored {
     let Some(device) = device else {
         return stored;
     };
@@ -286,15 +285,6 @@ pub(super) async fn native_artifact(
     }
 }
 
-/// Where a download from a byte on starts, as one that broke off resumes; a
-/// range with an end, or several, is answered with the whole, as HTTP
-/// allows.
-pub(super) fn range_start(range: &Range) -> u64 {
-    match range.satisfiable_ranges(u64::MAX).collect::<Vec<_>>()[..] {
-        [(Bound::Included(from), Bound::Unbounded)] => from,
-        _ => 0,
-    }
-}
 
 /// The answer to a range that starts past the stored `size` bytes.
 fn beyond(size: u64) -> Response {

@@ -9,11 +9,11 @@
 
 use std::sync::Arc;
 
-use axum::extract::ws::{Message, WebSocket};
+use axum::extract::ws::Message;
+use demi_core_api::runner_socket::{Hello, closed, hello, refuse};
 use demi_backend_database::accounts::TokenHash;
 use demi_core_store::StorageError;
-use demi_runner_protocol::values::DeviceToken;
-use demi_runner_protocol::wire::{self, HelloErrorCode, Inbound, Outbound, RunnerInfo};
+use demi_runner_protocol::wire::{self, HelloErrorCode, Inbound, RunnerInfo};
 
 use demi_backend_runners::claims::ClaimGrant;
 use demi_backend_runners::codes::ClaimCode;
@@ -21,7 +21,6 @@ use demi_core_hosts::devices::{RunnerSocket, send};
 
 use demi_backend_user_shard::services::Services;
 use demi_core::pool::Shards;
-use demi_core::KeptJobs;
 
 /// Serves a runner's socket until it is handed to a core or closes.
 pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: RunnerSocket) {
@@ -135,95 +134,6 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
     // without a word, as shutdown does to every runner.
     if adopted.is_err() {
         tracing::info!(event = "socket.refused", kind = "runner", reason = "shutting_down", "a runner connected while the backend shuts down");
-    }
-}
-
-/// What a runner's hello says.
-struct Hello {
-    protocol: u32,
-    token: Option<DeviceToken>,
-    runner: RunnerInfo,
-    kept: KeptJobs,
-}
-
-/// The first message, which must be a hello; none when the socket closed or
-/// sent something else, which breaks the protocol.
-async fn hello(socket: &mut WebSocket) -> Option<Hello> {
-    loop {
-        let frame = match socket.recv().await? {
-            Ok(Message::Binary(frame)) => frame,
-            Ok(Message::Ping(_) | Message::Pong(_)) => continue,
-            Ok(Message::Text(_)) => {
-                tracing::info!(event = "runner_connection.closed", reason = "text_frame", "closing a runner connection that sent a text frame");
-                return None;
-            }
-            Ok(Message::Close(_)) | Err(_) => return None,
-        };
-        // The hello belongs to the connection: no number covers it.
-        let own = match wire::Session::new().read(&frame) {
-            Ok(wire::Read::Own(own)) => own,
-            _ => {
-                tracing::info!(event = "runner_connection.closed", reason = "first_not_hello", "closing a runner connection whose first message is not a hello");
-                return None;
-            }
-        };
-        return match wire::decode::<Outbound>(own) {
-            Ok(Outbound::Hello {
-                protocol,
-                device_token,
-                runner,
-                instance,
-                jobs,
-                resume,
-            }) => Some(Hello {
-                protocol,
-                token: device_token,
-                runner,
-                kept: KeptJobs {
-                    instance,
-                    jobs,
-                    resume,
-                },
-            }),
-            Ok(_) => {
-                tracing::info!(event = "runner_connection.closed", reason = "first_not_hello", "closing a runner connection whose first message is not a hello");
-                None
-            }
-            Err(error) => {
-                tracing::info!(event = "runner_connection.closed", reason = "malformed_frame", %error, "closing a runner connection over a malformed frame");
-                None
-            }
-        };
-    }
-}
-
-/// Resolves once the socket closed; the messages before that are dropped,
-/// since a runner sends nothing but its hello before it is answered.
-async fn closed(socket: &mut WebSocket) {
-    while let Some(Ok(message)) = socket.recv().await {
-        if matches!(message, Message::Close(_)) {
-            return;
-        }
-    }
-}
-
-/// Answers the hello with a refusal and closes the socket.
-async fn refuse(mut socket: RunnerSocket, runner: &RunnerInfo, code: HelloErrorCode, reason: &str) {
-    tracing::warn!(
-        event = "runner_hello.refused",
-        code = %code,
-        reason,
-        runner_name = %runner.name,
-        platform = %runner.platform,
-        "a runner's hello was refused"
-    );
-    let refusal = Inbound::HelloError {
-        code,
-        reason: reason.into(),
-    };
-    // A runner that went away hears nothing, and there is nothing to close.
-    if send(&mut socket, &refusal).await.is_ok() {
-        let _ = socket.send(Message::Close(None)).await;
     }
 }
 

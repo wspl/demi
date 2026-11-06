@@ -919,7 +919,7 @@ fn distinct_models(models: Option<&ConfiguredModels>) -> Result<(), ProviderRefu
 
 /// `name`, or the first of `name (2)`, `name (3)`, … that `taken` does not
 /// hold.
-fn free_label(name: String, taken: impl Fn(&str) -> bool) -> String {
+pub(crate) fn free_label(name: String, taken: impl Fn(&str) -> bool) -> String {
     if !taken(&name) {
         return name;
     }

@@ -44,7 +44,7 @@ use demi_runner_client::{
     socket_frame,
 };
 use demi_host_interface::{HostIdentity, HostKey};
-use demi_runner_protocol::wire::{self, AutostartUnavailable, HostArtifact, Inbound, OperatingSystem};
+use demi_runner_protocol::wire::{self, AutostartUnavailable, HostArtifact, Inbound, OperatingSystem, RunnerPlatform};
 use demi_runner_protocol::values::BackendUrl;
 use demi_web_api_protocol::devices::{DeviceDto, DeviceKind, DeviceLogo, DeviceMark, DeviceState};
 use demi_web_api_protocol::ids::DeviceId;
@@ -1094,10 +1094,10 @@ impl DeviceRecorder {
         Self { store, marks }
     }
 
-    /// Records what `device`'s runner said in its hello: its operating system,
-    /// its release, its instance, its home and why it will not start by itself
-    /// after a restart, and that it was connected just now. It advances the
-    /// execution contexts the report changes
+    /// Records what `device`'s runner said in its hello: its platform and
+    /// operating system, its release, its instance, its home and why it will
+    /// not start by itself after a restart, and that it was connected just
+    /// now. It advances the execution contexts the report changes
     /// (`crates/core-store/src/selection.rs`).
     ///
     /// Answers the directories the runner resolves before a paired device's
@@ -1106,6 +1106,7 @@ impl DeviceRecorder {
     pub async fn hello(
         &self,
         device: DeviceId,
+        platform: RunnerPlatform,
         os: OperatingSystem,
         version: String,
         instance: u64,
@@ -1114,7 +1115,7 @@ impl DeviceRecorder {
     ) -> Option<FirstHome> {
         let first = match self
             .store
-            .set_device_runner(device.clone(), os, version, instance, home, autostart_unavailable)
+            .set_device_runner(device.clone(), platform, os, version, instance, home, autostart_unavailable)
             .await
         {
             Ok(first) => first,

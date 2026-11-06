@@ -35,7 +35,6 @@ mod listener;
 mod manage;
 mod pairing;
 mod passkeys;
-mod pipe_connection;
 mod push;
 mod runner_socket;
 mod runners;
@@ -570,18 +569,10 @@ fn runners_and_downloads() -> Router<AppState> {
 /// `app` as a listener serves it: with the body limit and the 503 of a
 /// closing backend, and the pipes beside both.
 fn edge(app: Router<AppState>, closing: CancellationToken, state: AppState) -> Router {
-    let pipes = Router::new()
-        .route("/api/pipes/{id}", put(runners::put).get(runners::get).head(runners::head))
-        .route(
-            &format!("{}/{{id}}", demi_runner_protocol::wire::CALL_OUTPUT_ROUTE),
-            get(runners::call_output),
-        )
-        .route("/api/offers/{id}", get(runners::offer))
-        .route(
-            demi_runner_protocol::wire::PIPE_CONNECTION_ROUTE,
-            get(pipe_connection::connect),
-        )
-        .method_not_allowed_fallback(no_route);
+    let pipes = demi_core_api::runners::routes()
+        .method_not_allowed_fallback(no_route)
+        .with_state(state.api.clone())
+        .layer(middleware::from_fn_with_state(state.clone(), runners::token_device));
     app.layer(DefaultBodyLimit::max(demi_core_api::body::JSON_BODY_LIMIT))
         .layer(middleware::from_fn_with_state(
             closing,

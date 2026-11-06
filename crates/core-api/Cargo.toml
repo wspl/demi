@@ -58,6 +58,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 # The program's connection: HTTP/2 over the process's standard input and
 # output, WebSockets by extended CONNECT.
+http-body = "1"
 hyper = { version = "1", features = ["http2", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "service"] }
 tokio = { workspace = true, features = ["io-std"] }

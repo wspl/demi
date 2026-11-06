@@ -461,6 +461,7 @@ impl CoreStore {
     pub async fn set_device_runner(
         &self,
         device: DeviceId,
+        platform: RunnerPlatform,
         os: OperatingSystem,
         runner_version: String,
         runner_instance: u64,
@@ -469,9 +470,12 @@ impl CoreStore {
     ) -> Result<Option<FirstHome>, StorageError> {
         self.call(move |connection, _|  {
             let transaction = connection.transaction()?;
-            let Some(record) = one(&transaction, "id = ?1", device.as_str())? else {
+            let Some(mut record) = one(&transaction, "id = ?1", device.as_str())? else {
                 return Ok(None);
             };
+            // A Host a program created takes its platform from its runner's
+            // first hello; a paired device's never changes.
+            record.platform = platform;
             let logo = DeviceLogo::of(record.platform, Some(&os));
             let mark_number = match record.kind {
                 DeviceKind::Managed => None,
@@ -497,8 +501,8 @@ impl CoreStore {
             };
             transaction.execute(
                 "UPDATE devices SET os = ?1, runner_version = ?2, runner_instance = ?3, mark_number = ?4,
-                   home = ?5, autostart_unavailable = ?6
-                 WHERE id = ?7",
+                   home = ?5, autostart_unavailable = ?6, platform = ?7
+                 WHERE id = ?8",
                 params![
                     to_json(&os),
                     runner_version,
@@ -506,6 +510,7 @@ impl CoreStore {
                     mark_number,
                     recorded,
                     autostart_unavailable.as_ref().map(to_json),
+                    platform.to_string(),
                     device.as_str()
                 ],
             )?;
