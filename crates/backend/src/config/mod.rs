@@ -82,7 +82,7 @@ use demi_provider_common::media_catalog;
 use demi_provider_common::models_dev::ModelsDevClient;
 
 use demi_core::pool::ShardPlacement;
-use demi_backend_user_shard::tuning::PageTuning;
+use demi_core_api::connection::PageTuning;
 use demi_core::tuning::{ConversationTuning, LifecycleTuning, MediaTuning, RunnerTuning};
 
 use self::secret::InstanceSecret;

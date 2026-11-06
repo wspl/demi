@@ -23,6 +23,7 @@ demi-shared-cli = { path = "../shared-cli" }
 demi-backend-accounts = { path = "../backend-accounts" }
 demi-backend-cloud = { path = "../backend-cloud" }
 demi-backend-http = { path = "../backend-http" }
+demi-core-api = { path = "../core-api" }
 demi-core-host-access = { path = "../core-host-access" }
 demi-core-blobs = { path = "../core-blobs" }
 demi-core-providers = { path = "../core-providers" }

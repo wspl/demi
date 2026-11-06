@@ -1,0 +1,78 @@
+//! `GET /api/blobs/:sha256` (`crates/core-host-access/src/uploads.rs`): the
+//! bytes a media reference names, from the caller's own namespace.
+//!
+//! - A name is a content hash, so the answer never changes and the user's
+//!   browser keeps it for a year. The cache is private and varies by cookie,
+//!   since the bytes are the caller's.
+//! - A byte range is answered as `fs/raw` answers one: Safari plays a video
+//!   only from a server that does.
+
+use std::sync::Arc;
+
+use axum::extract::rejection::PathRejection;
+use axum::extract::{Path, RawQuery, State};
+use axum::http::header::{CACHE_CONTROL, RANGE, VARY};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
+use bytes::Bytes;
+use demi_shared_types::BlobRef;
+use demi_web_api_protocol::error::ErrorCode;
+
+use crate::content::content_headers;
+use crate::error::ApiError;
+use crate::caller::Principal;
+use demi_core_host_access::transfer::RangeAnswer;
+use demi_core::services::CoreServices;
+
+pub(crate) async fn blob(
+    State(services): State<Arc<CoreServices>>,
+    Principal(user): Principal,
+    name: Result<Path<String>, PathRejection>,
+    RawQuery(query): RawQuery,
+    request: HeaderMap,
+) -> Result<Response, ApiError> {
+    // A name that is not a lowercase SHA-256 names no blob.
+    let blob = name
+        .ok()
+        .and_then(|Path(name)| BlobRef::try_from(name).ok())
+        .ok_or_else(no_such_blob)?;
+    let bytes = services
+        .blobs
+        .for_user(&user)
+        .get(&blob)
+        .await?
+        .ok_or_else(no_such_blob)?;
+    let mut answer = blob_answer(&bytes, query.as_deref(), &request);
+    let headers = answer.headers_mut();
+    headers.insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=31536000, immutable"),
+    );
+    headers.insert(VARY, HeaderValue::from_static("Cookie"));
+    Ok(answer)
+}
+
+/// The bytes of a blob as a blob route answers them: as the media type the
+/// query's `type` asks for, and the part a byte range asks for.
+pub fn blob_answer(bytes: &Bytes, query: Option<&str>, request: &HeaderMap) -> Response {
+    // `type` asks to see the bytes as that media type, and is not validated:
+    // one the page does not show in place leaves the blob a download.
+    let requested = query.and_then(|query| {
+        url::form_urlencoded::parse(query.as_bytes())
+            .find(|(key, _)| key == "type")
+            .map(|(_, media_type)| media_type.into_owned())
+    });
+    let size = u64::try_from(bytes.len()).expect("a blob held in memory fits u64");
+    let range = request.get(RANGE).and_then(|value| value.to_str().ok());
+    let part = RangeAnswer::of(range, size);
+    let mut headers = content_headers(requested.as_deref(), false, None);
+    headers.extend(part.headers());
+    match part.part_of(bytes) {
+        Some(body) => (part.status(), headers, body).into_response(),
+        None => (part.status(), headers).into_response(),
+    }
+}
+
+fn no_such_blob() -> ApiError {
+    ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "No such blob")
+}

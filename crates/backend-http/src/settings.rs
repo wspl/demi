@@ -1,25 +1,22 @@
-//! The instance's settings and the caller's preferences. Preferences belong to
-//! the signed-in user alone, in both instance modes.
+//! The instance's settings, which only the master changes: the instance
+//! mode, and the Cloud's isolation and network.
 
 use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use demi_core::settings;
 use demi_backend_cloud::client::MachinesError;
 use demi_backend_cloud::isolation;
 use demi_backend_cloud::network::{self, AllowedError};
-use demi_core_sync::Part;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::settings::{
-    CloudIsolation, CloudNetwork, PreferencesPatch, SetCloudIsolation, SetCloudNetwork, SetInstanceMode, Settings,
-    UserPreferences,
+    CloudIsolation, CloudNetwork, SetCloudIsolation, SetCloudNetwork, SetInstanceMode, Settings,
 };
 
-use super::body::JsonBody;
-use super::error::ApiError;
+use demi_core_api::body::JsonBody;
+use demi_core_api::error::ApiError;
 use super::gate::AuthUser;
 use demi_backend_user_shard::services::Services;
 
@@ -143,28 +140,4 @@ pub(super) async fn set_cloud_network(
             "The machine manager did not apply the network policy: {error}"
         ))),
     }
-}
-
-pub(super) async fn preferences(
-    State(services): State<Arc<Services>>,
-    AuthUser(user): AuthUser,
-) -> Result<Json<UserPreferences>, ApiError> {
-    let preferences = services.stores.of(&user.id).await?.preferences().await?;
-    Ok(Json(UserPreferences { preferences }))
-}
-
-/// Merges the patch into the caller's preferences; a reported locale must
-/// name a known time zone and well-formed language tags.
-pub(super) async fn patch_preferences(
-    State(services): State<Arc<Services>>,
-    AuthUser(user): AuthUser,
-    JsonBody(patch): JsonBody<PreferencesPatch>,
-) -> Result<Json<UserPreferences>, ApiError> {
-    let patch =
-        settings::check(patch).map_err(|error| ApiError::invalid_body(error.to_string()))?;
-    let merge = move |saved| settings::merge(saved, patch);
-    let preferences = services.stores.of(&user.id).await?.patch_preferences(merge)
-        .await?;
-    services.sync.mark(&user.id, Part::Preferences);
-    Ok(Json(UserPreferences { preferences }))
 }

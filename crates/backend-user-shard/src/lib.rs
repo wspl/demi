@@ -46,6 +46,5 @@ pub mod provider_sharing;
 pub mod server_starter;
 pub mod services;
 pub mod shares;
-pub mod sync;
-pub mod tuning;
+pub mod page_state;
 pub mod upgrades;

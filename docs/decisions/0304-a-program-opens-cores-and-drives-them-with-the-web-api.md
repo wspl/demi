@@ -136,7 +136,7 @@ puts the signed-in user's id in the request. The process mounts it under
 
 ```text
 backend-http: accounts, passkeys, sessions, users, the server's upgrade,
-              the instance mode, the Cloud's isolation and network,
+              setting the instance mode, the Cloud's isolation and network,
               public shares, provider lending, pairing, installers,
               schedule URLs
    `-- mounts core-api under /api, behind the session gate
@@ -162,10 +162,13 @@ A page reads the product state once and follows its changes on the
 synchronization channel. Both move into `core-api` for the core's parts:
 the conversations and their order, the preferences, workspaces, projects,
 devices, providers, sign-ins, models, subagents, instructions,
-credentials, port forwards and plugins. The server adds its own parts, the
-user, passkeys, sessions, users, the Cloud and its isolation, the server's
-upgrade and the instance mode, to the same read and the same channel. A
-program follows its core's changes as a page does.
+credentials, port forwards and plugins, and the instance mode with what it
+lets the user manage, since the vault shares entries by it: a program's
+core reads as an isolated instance. The server adds its own parts, the
+user, passkeys, sessions, users, the Cloud and its isolation and the
+server's upgrade, to the same read and the same channel; setting the
+instance mode stays the server's. A program follows its core's changes as
+a page does.
 
 ### What the starter gives, from a program
 

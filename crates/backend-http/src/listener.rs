@@ -19,22 +19,18 @@ use std::future::Future;
 use std::io;
 use std::net::IpAddr;
 use std::pin::Pin;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
-use std::time::Duration;
 
 use axum::http::Request;
-use demi_runner_protocol::wire::WriteProgress;
 use axum::response::Response;
+use demi_core_api::peer::{ConnectionControl, Peer};
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
-use tokio_util::task::{AbortOnDropHandle, TaskTracker};
+use tokio_util::task::TaskTracker;
 
 pub(super) struct EdgeListener<L> {
     /// Dropped, which closes the socket, once shutdown starts.
@@ -224,108 +220,17 @@ impl<I> ConnectionIo<I> {
             stream,
             read_closed: Box::pin(closed.clone().cancelled_owned()),
             write_closed: Box::pin(closed.clone().cancelled_owned()),
-            control: ConnectionControl(Arc::new(ControlState {
-                closed,
-                opened: Instant::now(),
-                moved: AtomicU64::new(0),
-                writes: Arc::default(),
-            })),
+            control: ConnectionControl::new(closed),
         }
     }
 
     /// Notes that bytes moved when `polled` moved some.
     fn moved<T>(&self, polled: &Poll<io::Result<T>>) {
         if matches!(polled, Poll::Ready(Ok(_))) {
-            self.control.0.touch();
+            self.control.moved();
         }
     }
 }
-
-/// A connection as a request sees it: its control, and the address it came
-/// from.
-#[derive(Clone)]
-pub(crate) struct Peer {
-    pub(crate) control: ConnectionControl,
-    /// None for a local socket, such as the runner socket.
-    pub(crate) address: Option<IpAddr>,
-}
-
-/// Closes a connection from the request it serves: at once, or once no
-/// byte moved on it for a while. Cloning it is cheap.
-#[derive(Clone)]
-pub(crate) struct ConnectionControl(Arc<ControlState>);
-
-struct ControlState {
-    /// Cancelled, the connection's IO fails.
-    closed: CancellationToken,
-    opened: Instant,
-    /// When bytes last moved, in milliseconds after `opened`.
-    moved: AtomicU64,
-    /// Whether the connection's writes move, which the runner's socket
-    /// asks for ([`ConnectionControl::write_progress`]).
-    writes: Arc<WriteProgress>,
-}
-
-impl ControlState {
-    fn touch(&self) {
-        let elapsed = u64::try_from(self.opened.elapsed().as_millis()).unwrap_or(u64::MAX);
-        self.moved.store(elapsed, Ordering::Relaxed);
-    }
-
-    /// When bytes last moved.
-    fn last_moved(&self) -> Instant {
-        self.opened + Duration::from_millis(self.moved.load(Ordering::Relaxed))
-    }
-}
-
-impl ConnectionControl {
-
-    /// Whether the connection's writes move: the runner's socket ends when
-    /// they stop for too long (`crates/runner-protocol/src/wire/mod.rs`).
-    pub(crate) fn write_progress(&self) -> Arc<WriteProgress> {
-        self.0.writes.clone()
-    }
-
-    /// Closes the connection now.
-    pub(crate) fn close(&self) {
-        self.0.closed.cancel();
-    }
-
-    /// A token that closes the connection when cancelled, for what outlives
-    /// the request, such as a pipe whose device reads it on this connection.
-    pub(crate) fn closer(&self) -> CancellationToken {
-        self.0.closed.clone()
-    }
-
-    /// Closes the connection once no byte moved on it for `limit`, counted
-    /// from now, or once `ended` is cancelled, until the answer is dropped.
-    pub(crate) fn watch(&self, limit: Duration, ended: CancellationToken) -> ConnectionWatch {
-        self.0.touch();
-        let state = self.0.clone();
-        let watching = tokio::spawn(async move {
-            loop {
-                let due = state.last_moved() + limit;
-                tokio::select! {
-                    () = ended.cancelled() => break,
-                    () = state.closed.cancelled() => return,
-                    () = tokio::time::sleep_until(due) => {
-                        // Bytes moved while this slept: the deadline moved.
-                        if state.last_moved() + limit <= Instant::now() {
-                            break;
-                        }
-                    }
-                }
-            }
-            state.closed.cancel();
-        });
-        ConnectionWatch(AbortOnDropHandle::new(watching))
-    }
-}
-
-/// A connection's watch; dropping it stops watching.
-pub(crate) struct ConnectionWatch(
-    #[expect(dead_code, reason = "held for its drop")] AbortOnDropHandle<()>,
-);
 
 fn closed_by_the_backend() -> io::Error {
     io::Error::new(
@@ -364,7 +269,7 @@ impl<I: AsyncWrite + Unpin> AsyncWrite for ConnectionIo<I> {
             return Poll::Ready(Err(closed_by_the_backend()));
         }
         let polled = Pin::new(&mut this.stream).poll_write(cx, buf);
-        this.control.0.writes.polled(&polled, |&written| written > 0);
+        this.control.writes().polled(&polled, |&written| written > 0);
         this.moved(&polled);
         polled
     }
@@ -379,7 +284,7 @@ impl<I: AsyncWrite + Unpin> AsyncWrite for ConnectionIo<I> {
             return Poll::Ready(Err(closed_by_the_backend()));
         }
         let polled = Pin::new(&mut this.stream).poll_write_vectored(cx, bufs);
-        this.control.0.writes.polled(&polled, |&written| written > 0);
+        this.control.writes().polled(&polled, |&written| written > 0);
         this.moved(&polled);
         polled
     }

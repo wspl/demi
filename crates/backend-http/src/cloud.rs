@@ -10,8 +10,8 @@ use demi_web_api_protocol::cloud::{CloudReset, CloudResetAnswer, CloudStatus};
 use demi_web_api_protocol::error::ErrorCode;
 
 use super::AppState;
-use super::body::JsonBody;
-use super::error::ApiError;
+use demi_core_api::body::JsonBody;
+use demi_core_api::error::ApiError;
 use super::gate::AuthUser;
 use demi_backend_cloud::user_core::CloudOfCore;
 
@@ -20,7 +20,7 @@ pub(super) async fn status(
     AuthUser(user): AuthUser,
 ) -> Result<Json<CloudStatus>, ApiError> {
     let status = state
-        .shards
+        .api.shards
         .of(&user.id)
         .call(|core, _| async move { core.cloud_core().cloud_status().await })
         .await??;
@@ -35,7 +35,7 @@ pub(super) async fn reset(
     JsonBody(CloudReset { operation_id }): JsonBody<CloudReset>,
 ) -> Result<(StatusCode, Json<CloudResetAnswer>), ApiError> {
     let operation = state
-        .shards
+        .api.shards
         .of(&user.id)
         .call(move |core, _| async move { core.cloud_core().reset_cloud(operation_id).await })
         .await?

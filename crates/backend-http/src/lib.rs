@@ -23,80 +23,35 @@
 //!
 //! Web sessions and the `Origin` check are the `gate`'s.
 
-// The text of the pages the backend renders, one catalogue per language.
-rust_i18n::i18n!("locales", fallback = "en");
-
-mod accounts;
 mod assets;
-mod attachments;
 mod auth;
-mod schedules;
-mod blobs;
-mod blocks;
-mod body;
 mod cloud;
-mod connection;
-mod content;
-mod conversations;
 mod cookies;
-mod cost;
-mod credentials;
-mod devices;
 mod diagnostics;
-mod direct;
-mod drafts;
-mod error;
-mod file_watch;
-mod files;
 mod gate;
-mod history;
-mod html_view;
-mod hosts;
 mod install;
-mod instructions;
 mod lending;
 mod listener;
-mod models;
-mod oauth;
-mod passkeys;
-mod push;
-mod page_client;
-mod panel;
-mod permissions;
-mod plugins;
-mod port_forwards;
-mod provider_cli;
-mod providers;
-mod query;
-mod request_id;
-mod revalidate;
 mod manage;
-mod runner_socket;
-
-pub use blocks::BlockLinks;
-pub use html_view::HtmlGrants;
-pub use manage::manage_socket;
+mod pairing;
+mod passkeys;
 mod pipe_connection;
+mod push;
+mod runner_socket;
 mod runners;
-mod saved;
-mod search;
+mod server_upgrade;
+mod session_caller;
 mod sessions;
 mod settings;
+mod shared_blocks;
 mod shares;
-mod side_questions;
-mod sidebar;
 mod state;
-mod streams;
-mod subagents;
-mod suggested_replies;
-mod sync;
-mod transfer;
-mod server_upgrade;
 mod update;
 mod usage;
 mod users;
-mod projects;
-mod workspaces;
+
+pub use manage::manage_socket;
+pub use shared_blocks::BlockLinks;
 
 use std::io;
 use std::net::SocketAddr;
@@ -121,12 +76,15 @@ use tokio_util::sync::CancellationToken;
 use tower::ServiceExt as _;
 use tower_http::trace::TraceLayer;
 
-use self::error::ApiError;
+use demi_core_api::error::ApiError;
 pub use self::assets::{WebBuildError, web_build};
 pub use self::install::Site;
-use self::listener::{EdgeListener, Peer};
+use self::listener::EdgeListener;
+use demi_core_api::peer::Peer;
 use demi_backend_user_shard::services::Services;
 use demi_core::pool::Shards;
+use demi_core_api::api::Api;
+use demi_core_api::connection::{self, Closing};
 
 /// The listener and the server over it.
 pub struct Edge {
@@ -368,19 +326,24 @@ async fn respond(app: Router, peer: Peer, mut request: Request<Incoming>) -> Res
     }
 }
 
-/// What the routes reach: the services every request may use, the users'
-/// shards, and how the backend is reached from outside.
+/// What the routes reach: the core's routes' own, the server's services, and
+/// how the backend is reached from outside.
 #[derive(Clone)]
 pub struct AppState {
+    /// What the users' cores' routes reach (`crates/core-api/src/api.rs`).
+    pub api: Api,
     pub services: Arc<Services>,
-    pub shards: Shards,
     pub site: Arc<Site>,
-    /// The tokens of the HTML files the File view shows.
-    pub html: Arc<HtmlGrants>,
     /// The links of the reply blocks shared pages frame.
     pub blocks: Arc<BlockLinks>,
     /// The update before this start, which `GET /api/update` says is over.
     pub update: Arc<demi_backend_database::update::Update>,
+}
+
+impl FromRef<AppState> for Api {
+    fn from_ref(state: &AppState) -> Self {
+        state.api.clone()
+    }
 }
 
 impl FromRef<AppState> for Arc<demi_backend_database::update::Update> {
@@ -397,7 +360,7 @@ impl FromRef<AppState> for Arc<Services> {
 
 impl FromRef<AppState> for Shards {
     fn from_ref(state: &AppState) -> Self {
-        state.shards.clone()
+        state.api.shards.clone()
     }
 }
 
@@ -414,8 +377,13 @@ impl FromRef<AppState> for Shards {
 ///   code;
 /// - the shares' public routes;
 /// - the routes that authenticate with device credentials instead;
+/// - the files a page's frames load by a token or a plugin's name
+///   (`core_api::public_routes`);
 /// - the page connection, which checks the session without renewing it, and
 ///   the synchronization channel of a page of an earlier build.
+///
+/// The users' cores' routes (`core_api::routes`) sit beside the server's own
+/// behind the gate, which gives each request its session as the caller.
 ///
 /// The pipes stay outside the 503 of a closing backend, whose shutdown needs
 /// them, and outside the body limit, since their bodies have none.
@@ -452,53 +420,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/settings/cloud-isolation",
             get(settings::cloud_isolation).put(settings::set_cloud_isolation),
         )
-        .route("/settings/instructions", get(instructions::read))
-        .route("/settings/subagents", get(subagents::read))
-        .route(
-            "/settings/preferences",
-            get(settings::preferences).patch(settings::patch_preferences),
-        )
-        .route(
-            "/attachments",
-            post(attachments::upload).layer(DefaultBodyLimit::max(attachments::BODY_LIMIT)),
-        )
-        .route("/blobs/{sha256}", get(blobs::blob))
-        .route("/models/refresh", post(models::refresh))
-        .route("/models/search", get(models::search))
-        .route("/providers", get(providers::list).post(providers::create))
-        .route("/providers/catalog", get(providers::catalog))
-        .route("/providers/order", put(providers::order))
-        .route("/providers/subscription-login", post(accounts::start_login))
-        .route(
-            "/providers/subscription-login/{id}",
-            get(accounts::login_state).delete(accounts::cancel_login),
-        )
-        .route(
-            "/providers/subscription-login/{id}/code",
-            post(accounts::submit_code),
-        )
-        .route(
-            "/providers/{id}",
-            patch(providers::update).delete(providers::delete),
-        )
-        .route("/providers/{id}/status", get(providers::status))
         .route("/providers/{id}/share-keys", get(lending::list).post(lending::create))
         .route("/providers/{id}/share-keys/{key}", delete(lending::revoke))
-        .route("/providers/{id}/quota", post(providers::quota))
-        .route("/providers/{id}/test", post(providers::test))
-        .route("/providers/{id}/cli", get(provider_cli::read))
-        .route("/providers/{id}/cli/install", post(provider_cli::install))
-        .route(
-            "/providers/{id}/accounts",
-            get(accounts::list),
-        )
-        .route("/providers/{id}/accounts/active", put(accounts::activate))
-        .route("/providers/{id}/accounts/order", put(accounts::reorder))
-        .route("/providers/{id}/accounts/login", post(accounts::login_into))
-        .route(
-            "/providers/{id}/accounts/{credential}",
-            delete(accounts::remove),
-        )
         .route("/server-upgrade", get(server_upgrade::read))
         .route("/server-upgrade/channel", put(server_upgrade::set_channel))
         .route("/server-upgrade/prepare-ahead", put(server_upgrade::set_prepare_ahead))
@@ -510,101 +433,13 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/users/{id}/password", post(users::new_first_password))
         .route("/users/{id}/sign-out", post(users::sign_out))
         .route("/users/{id}/sign-in-code", post(users::sign_in_code))
-        .route("/search", get(search::search))
-        .route("/usage", get(usage::totals))
         .route("/usage/instance", get(usage::instance))
         .route("/log", post(diagnostics::log))
-        .route(
-            "/conversations",
-            get(conversations::list).post(conversations::create),
-        )
-        .route("/conversations/batch", post(conversations::batch))
-        .route(
-            "/conversations/{id}",
-            get(conversations::detail)
-                .patch(conversations::patch)
-                .delete(conversations::delete),
-        )
-        .route("/conversations/{id}/fork", post(conversations::fork))
-        .route(
-            "/conversations/{id}/side-questions",
-            post(side_questions::ask),
-        )
-        .route(
-            "/conversations/{id}/side-questions/{side}",
-            patch(side_questions::fold).delete(side_questions::delete),
-        )
-        .route(
-            "/conversations/{id}/side-questions/{side}/messages",
-            post(side_questions::follow_up),
-        )
-        .route(
-            "/conversations/{id}/side-questions/{side}/retry",
-            post(side_questions::retry),
-        )
-        .route(
-            "/conversations/{id}/side-questions/{side}/stop",
-            post(side_questions::stop),
-        )
         .route("/conversations/{id}/shares", get(shares::list).post(shares::create))
-        .route("/conversations/{id}/workflows", get(conversations::workflows))
         .route(
             "/conversations/{id}/shares/{token}",
             put(shares::update).delete(shares::remove),
         )
-        .route(
-            "/conversations/{id}/agents/{node}/transcript",
-            get(history::transcript),
-        )
-        .route(
-            "/conversations/{id}/agents/{node}/blocks/{block}",
-            get(history::block),
-        )
-        .route(
-            "/conversations/{id}/commands/{command}",
-            get(history::command),
-        )
-        .route("/conversations/{id}/read", post(conversations::read))
-        .route(
-            "/conversations/{id}/attachments/{attachment}/file",
-            get(conversations::attachment_file),
-        )
-        .route("/conversations/{id}/cost/recent", get(cost::recent))
-        .route("/conversations/{id}/search", get(search::search_in))
-        .route("/conversations/{id}/panel/changes", post(panel::change))
-        .route("/conversations/{id}/suggested-replies/used", post(suggested_replies::used))
-        .route(
-            "/conversations/{id}/draft",
-            get(drafts::read).put(drafts::save),
-        )
-        .route(
-            "/conversations/{id}/saved",
-            get(saved::list).post(saved::save),
-        )
-        .route("/conversations/{id}/saved/from-draft", post(saved::from_draft))
-        .route(
-            "/conversations/{id}/saved/{message}",
-            get(saved::read).put(saved::write).delete(saved::remove),
-        )
-        .route(
-            "/conversations/{id}/permissions/requests/{request}",
-            post(permissions::decide),
-        )
-        .route(
-            "/conversations/{id}/plugins/{plugin}/calls/{method}",
-            post(plugins::conversation_call),
-        )
-        .route(
-            "/conversations/{id}/plugins/{plugin}/state",
-            get(plugins::conversation_state),
-        )
-        .route("/plugins/{plugin}/calls/{method}", post(plugins::user_call))
-        .route("/plugins/{plugin}/blocks/{tag}/{id}", get(blocks::document))
-        .route("/reply-blocks", post(blocks::facts))
-        .route("/plugins/{plugin}/oauth/callback", get(oauth::callback))
-        .route("/plugins/{plugin}", put(plugins::switch))
-        .route("/plugins/{plugin}/features/{feature}", put(plugins::switch_feature))
-        .route("/instructions", put(instructions::replace))
         .route("/push/key", get(push::key))
         .route(
             "/push/subscription",
@@ -614,91 +449,20 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/conversations/{id}/notifications-card/dismiss",
             post(push::dismiss_card),
         )
-        .route(
-            "/conversations/{id}/schedules/{schedule}",
-            patch(schedules::change).delete(schedules::delete),
-        )
-        .route("/port-forwards", get(port_forwards::list).post(port_forwards::create))
-        .route(
-            "/port-forwards/{id}",
-            patch(port_forwards::patch).delete(port_forwards::delete),
-        )
-        .route("/port-forwards/{id}/retry", post(port_forwards::retry))
-        .route("/credentials", get(credentials::list).post(credentials::create))
-        .route(
-            "/credentials/{id}",
-            patch(credentials::change).delete(credentials::delete),
-        )
-        .route("/credentials/{id}/fields/{field}/reveal", post(credentials::reveal))
-        .route("/subagents", put(subagents::switch))
-        .route("/subagents/profiles", post(subagents::create))
-        .route(
-            "/subagents/profiles/{id}",
-            patch(subagents::patch).delete(subagents::delete),
-        )
-        .route("/conversations/{id}/reload", post(plugins::reload))
-        .route("/sidebar/reorder", post(sidebar::reorder))
-        .route(
-            "/projects",
-            get(projects::list).post(projects::create),
-        )
-        .route(
-            "/projects/{id}",
-            patch(projects::change).delete(projects::delete),
-        )
-        .route("/projects/{id}/saved-scope", put(projects::switch_saved_scope))
-        .route("/workspaces", get(workspaces::list).post(workspaces::create))
-        .route("/workspaces/order", put(workspaces::order))
-        .route("/workspaces/{id}", patch(workspaces::change).delete(workspaces::delete))
-        .route("/workspaces/{id}/moves", post(workspaces::moves))
         .route("/cloud", get(cloud::status))
         .route("/cloud/reset", post(cloud::reset))
-        .route("/devices", get(devices::list))
-        .route("/devices/claim", post(devices::claim))
-        .route("/devices/{id}", delete(devices::revoke).patch(devices::change))
-        .route(
-            "/devices/{id}/fs",
-            get(devices::browse).post(devices::make_directory),
-        )
-        .route("/devices/{id}/workflows", get(devices::workflows))
-        .route(
-            "/conversations/{id}/fs",
-            get(files::list)
-                .post(files::make_directory)
-                .delete(files::remove),
-        )
-        .route("/conversations/{id}/fs/lists", post(files::lists))
-        .route("/conversations/{id}/fs/search", post(files::search))
-        .route("/conversations/{id}/fs/html", post(html_view::grant))
-        .route("/conversations/{id}/fs/file", get(files::text))
-        .route(
-            "/conversations/{id}/fs/raw",
-            get(files::raw).put(files::upload),
-        )
-        .route(
-            "/conversations/{id}/hosts/{device}",
-            delete(hosts::detach),
-        )
-        .route(
-            "/conversations/{id}/hosts/{device}/fs",
-            get(files::list_on_host).post(files::make_directory_on_host),
-        )
-        .route("/conversations/{id}/changes", get(files::changes))
-        .route("/conversations/{id}/changes/file", get(files::changed_file))
-        .route("/conversations/{id}/changes/raw", get(files::committed))
-        .route("/conversations/{id}/changes/branches", get(files::branches))
-        .route("/conversations/{id}/changes/repositories", post(files::repositories))
-        .route("/conversations/{id}/changes/log", get(files::log))
-        .route("/conversations/{id}/changes/commit", get(files::commit))
+        .route("/devices/claim", post(pairing::claim))
         // The reads' caching (`revalidate.rs`): the routes' answers only.
-        .layer(middleware::from_fn(revalidate::reads))
+        .layer(middleware::from_fn(demi_core_api::revalidate::reads))
+        .merge(demi_core_api::routes().with_state(state.api.clone()))
         .fallback(no_route)
         .method_not_allowed_fallback(no_route)
         // After the fallbacks, so the gate covers them too.
         .layer(middleware::from_fn_with_state(
             state.services.clone(),
             gate::session,
-        ));
+        ))
+        .merge(demi_core_api::public_routes().with_state(state.api.clone()));
     let web_app_routes = Router::new()
         .route("/api/setup", get(auth::setup_status).post(auth::setup))
         .route("/api/auth/login", post(auth::login))
@@ -707,12 +471,12 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/api/auth/handoff", post(sessions::spend_code))
         .route(
             &format!("/api{CONNECT_ROUTE}"),
-            get(connection::connect).layer(Extension(connection::Closing(closing.clone()))),
+            get(connection::connect)
+                .layer(Extension(Closing(closing.clone())))
+                .layer(middleware::from_fn_with_state(state.services.clone(), gate::page_connection)),
         )
-        .route("/api/sync", get(sync::legacy))
+        .route("/api/sync", get(demi_core_api::sync::legacy))
         .merge(public_shares())
-        .merge(html_views())
-        .route("/api/plugins/{plugin}/files/{name}", get(plugins::file))
         .method_not_allowed_fallback(no_route)
         .nest("/api", session_api)
         // After the nest, so the check covers every web app route, the
@@ -747,9 +511,9 @@ fn public_shares() -> Router<AppState> {
         .route("/api/shares/{token}/blobs/{sha256}", get(shares::blob))
         .route(
             "/api/shares/{token}/plugins/{plugin}/blocks/{tag}/{id}",
-            get(blocks::shared_document),
+            get(shared_blocks::shared_document),
         )
-        .route("/api/blocks/{link}", get(blocks::linked_document))
+        .route("/api/blocks/{link}", get(shared_blocks::linked_document))
         .route(
             "/api/shares/{token}/attachments/{attachment}",
             get(shares::attachment),
@@ -757,20 +521,11 @@ fn public_shares() -> Router<AppState> {
         .layer(middleware::map_response(shares::public_headers))
 }
 
-/// The route of the HTML files the File view shows: no session gate, the token
-/// its only key, each answer in the sandbox.
-fn html_views() -> Router<AppState> {
-    Router::new()
-        .route("/api/html/{token}/", get(html_view::serve_root))
-        .route("/api/html/{token}/{*place}", get(html_view::serve))
-        .layer(middleware::map_response(html_view::headers))
-}
-
 /// The schedules' URLs: no session gate and no check of the page they come
 /// from, since another system calls them; the id and the secret are their only
 /// keys.
 fn hooks() -> Router<AppState> {
-    Router::new().route("/hooks/{id}", axum::routing::any(schedules::hook))
+    Router::new().route("/hooks/{id}", axum::routing::any(demi_core_api::schedules::hook))
 }
 
 /// What a server that borrows an entry of this one's calls: no session gate
@@ -827,7 +582,7 @@ fn edge(app: Router<AppState>, closing: CancellationToken, state: AppState) -> R
             get(pipe_connection::connect),
         )
         .method_not_allowed_fallback(no_route);
-    app.layer(DefaultBodyLimit::max(body::JSON_BODY_LIMIT))
+    app.layer(DefaultBodyLimit::max(demi_core_api::body::JSON_BODY_LIMIT))
         .layer(middleware::from_fn_with_state(
             closing,
             refuse_while_closing,
@@ -835,21 +590,27 @@ fn edge(app: Router<AppState>, closing: CancellationToken, state: AppState) -> R
         .merge(pipes)
         // Inside the request's span, so an abandoned request's line carries
         // its fields.
-        .layer(middleware::from_fn(request_id::watch_abandon))
+        .layer(middleware::from_fn(demi_core_api::request_id::watch_abandon))
         // The request's line is `request_id::answered`'s alone: the layer's
         // own failure line would say a 5xx answer twice.
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &axum::http::Request<axum::body::Body>| {
-                    request_id::span(request)
+                    demi_core_api::request_id::span(request)
                 })
-                .on_response(request_id::answered)
+                .on_response(demi_core_api::request_id::answered)
                 .on_failure(()),
         )
         // Outermost, so every answer carries the request's ID, a refusal of
         // the layers inside included.
-        .layer(middleware::from_fn(request_id::assign))
+        .layer(middleware::from_fn(demi_core_api::request_id::assign))
         .with_state(state)
+}
+
+/// The 500 of an error of the server's own services, such as its password
+/// hashing, which its message describes.
+pub(crate) fn internal(error: impl std::error::Error + 'static) -> ApiError {
+    ApiError::internal(&error)
 }
 
 /// The JSON 404 of a method and path no route answers.

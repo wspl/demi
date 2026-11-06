@@ -22,9 +22,9 @@ use demi_web_api_protocol::passkeys::{
     PasskeyPatch, PasskeySignIn, SignInChallenge,
 };
 
-use super::body::JsonBody;
+use demi_core_api::body::JsonBody;
 use super::cookies::{self, Https};
-use super::error::ApiError;
+use demi_core_api::error::ApiError;
 use super::gate::{self, AuthUser, CurrentSession};
 use super::sessions::{require_verification, user_agent};
 
@@ -89,7 +89,7 @@ pub(super) async fn sign_in_options(
 ) -> Result<Json<SignInChallenge>, ApiError> {
     let party = relying_party(&services, &headers)?;
     let challenge = passkeys::start_sign_in(&services.control, &party)
-        .await?
+        .await.map_err(crate::internal)?
         .map_err(too_many)?;
     Ok(Json(challenge))
 }
@@ -112,7 +112,7 @@ pub(super) async fn sign_in(
         &request.credential,
         None,
     )
-    .await?
+    .await.map_err(crate::internal)?
     .map_err(refused)?;
     let account = services
         .control
@@ -148,9 +148,9 @@ pub(super) async fn add_options(
     headers: HeaderMap,
 ) -> Result<Json<CreationChallenge>, ApiError> {
     let party = relying_party(&services, &headers)?;
-    require_verification(&services, &session)?;
+    require_verification(&services, session.verified_at)?;
     let challenge = passkeys::start_registration(&services.control, &party, &user)
-        .await?
+        .await.map_err(crate::internal)?
         .map_err(too_many)?;
     Ok(Json(challenge))
 }
@@ -171,7 +171,7 @@ pub(super) async fn add(
         &request.credential,
         user_agent(&headers),
     )
-    .await?
+    .await.map_err(crate::internal)?
     .map_err(refused)?;
     services.sync.mark(&user.id, Part::Passkeys);
     Ok((

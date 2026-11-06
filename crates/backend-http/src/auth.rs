@@ -18,11 +18,11 @@ use demi_web_api_protocol::auth::{
 };
 use demi_web_api_protocol::error::ErrorCode;
 
-use super::body::JsonBody;
+use demi_core_api::body::JsonBody;
 use super::cookies::{self, Https, SESSION_COOKIE};
-use super::error::ApiError;
+use demi_core_api::error::ApiError;
 use super::gate::AuthUser;
-use super::revalidate;
+use demi_core_api::revalidate;
 use super::sessions::user_agent;
 use demi_backend_user_shard::services::Services;
 
@@ -49,7 +49,7 @@ pub(super) async fn setup(
     Https(https): Https,
     JsonBody(request): JsonBody<SetupRequest>,
 ) -> Result<Response, ApiError> {
-    let password_hash = services.hasher.hash(request.password).await?;
+    let password_hash = services.hasher.hash(request.password).await.map_err(crate::internal)?;
     let Some(user) = services
         .control
         .create_master(request.nickname.into_string(), request.email, password_hash)
@@ -95,7 +95,7 @@ pub(super) async fn login(
     let stored = account
         .as_ref()
         .map(|account| account.password_hash.clone());
-    let verified = services.hasher.verify(credentials.password, stored).await?;
+    let verified = services.hasher.verify(credentials.password, stored).await.map_err(crate::internal)?;
     let Some(account) = account.filter(|_| verified) else {
         services.limiter.failed(&email);
         return Err(ApiError::new(
@@ -170,7 +170,7 @@ pub(super) async fn change_password(
                 .account(user.id.clone())
                 .await?
                 .map(|account| account.password_hash);
-            if !services.hasher.verify(current, stored).await? {
+            if !services.hasher.verify(current, stored).await.map_err(crate::internal)? {
                 return Err(ApiError::new(
                     StatusCode::UNAUTHORIZED,
                     ErrorCode::InvalidCredentials,
@@ -183,7 +183,7 @@ pub(super) async fn change_password(
         }
         (false, None) => return Err(ApiError::invalid_body("The current password is needed")),
     }
-    let password_hash = services.hasher.hash(change.next).await?;
+    let password_hash = services.hasher.hash(change.next).await.map_err(crate::internal)?;
     services
         .control
         .set_chosen_password(user.id.clone(), password_hash)
@@ -205,7 +205,7 @@ pub(super) async fn start_email_change(
     match services
         .email
         .start(user.id, start.email, start.password)
-        .await?
+        .await.map_err(crate::internal)?
     {
         StartOutcome::Issued(challenge) => {
             Ok((StatusCode::ACCEPTED, Json(EmailChangeStarted { challenge })))

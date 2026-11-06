@@ -58,7 +58,6 @@ use object_store::ObjectStore;
 use demi_core::conversation::claude_cli::{CliInstalls, MachineSlot};
 use demi_core::services::CoreServices;
 use demi_core::tuning::{ConversationTuning, LifecycleTuning, MediaTuning, RunnerTuning};
-use crate::tuning::PageTuning;
 
 const CONTROL_DATABASE: &str = "control.sqlite";
 
@@ -84,8 +83,6 @@ pub struct Services {
     /// The log, which the runners' and the pages' lines are stored in
     /// (`crates/backend-database/src/server_log/mod.rs`).
     pub log: ServerLog,
-    /// How the sockets to a page are timed.
-    pub pages: PageTuning,
     /// The command packages each core's catalog is built from.
     pub native: NativeCatalog,
     /// The machine manager's client, the Cloud capacity across users and
@@ -158,7 +155,6 @@ pub struct ServiceSettings {
     pub mail: Option<Arc<dyn AccountMail>>,
     pub runners: RunnerTuning,
     pub conversations: ConversationTuning,
-    pub pages: PageTuning,
     pub media_tuning: MediaTuning,
     pub native: NativeCatalog,
     /// The plugins, in their order of registration.
@@ -521,7 +517,6 @@ impl Services {
             stores,
             master_account: providers.master_account,
             log: settings.log,
-            pages: settings.pages,
             native: settings.native,
             cloud: Arc::new(settings.cloud),
             lent: Default::default(),

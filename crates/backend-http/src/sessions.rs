@@ -16,6 +16,7 @@ use demi_backend_accounts::passkeys;
 use demi_backend_accounts::sessions::{DeviceSession, SignOut, Spend};
 use demi_core_sync::Part;
 use demi_backend_user_shard::services::Services;
+use demi_shared_types::Timestamp;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::UserId;
 use demi_web_api_protocol::passkeys::{PasskeySignIn, SignInChallenge};
@@ -24,9 +25,9 @@ use demi_web_api_protocol::sessions::{
     VerifyPassword,
 };
 
-use super::body::JsonBody;
+use demi_core_api::body::JsonBody;
 use super::cookies::{self, Https, SESSION_COOKIE};
-use super::error::ApiError;
+use demi_core_api::error::ApiError;
 use super::gate::{AuthUser, CurrentSession};
 use super::passkeys::{refused, relying_party, too_many};
 
@@ -49,7 +50,7 @@ pub(super) async fn verify(
         .account(user.id.clone())
         .await?
         .map(|account| account.password_hash);
-    if !services.hasher.verify(request.password, stored).await? {
+    if !services.hasher.verify(request.password, stored).await.map_err(crate::internal)? {
         return Err(ApiError::new(
             StatusCode::UNAUTHORIZED,
             ErrorCode::InvalidCredentials,
@@ -67,7 +68,7 @@ pub(super) async fn verify_passkey_options(
 ) -> Result<Json<SignInChallenge>, ApiError> {
     let party = relying_party(&services, &headers)?;
     let challenge = passkeys::start_sign_in(&services.control, &party)
-        .await?
+        .await.map_err(crate::internal)?
         .map_err(too_many)?;
     Ok(Json(challenge))
 }
@@ -89,7 +90,7 @@ pub(super) async fn verify_passkey(
         &request.credential,
         Some(&user.id),
     )
-    .await?
+    .await.map_err(crate::internal)?
     .map_err(refused)?;
     services.sync.mark(&user.id, Part::Passkeys);
     services.sessions.verify(&session.token).await?;
@@ -99,8 +100,8 @@ pub(super) async fn verify_passkey(
 /// The session's verification must hold: it signed in, or was verified, in
 /// the last five minutes. What needs the user's confirmation (a handoff
 /// code, adding a passkey) is gated by this, and by nothing else.
-pub(super) fn require_verification(services: &Services, session: &CurrentSession) -> Result<(), ApiError> {
-    if services.sessions.verification_holds(session.verified_at) {
+pub(super) fn require_verification(services: &Services, verified_at: Option<Timestamp>) -> Result<(), ApiError> {
+    if services.sessions.verification_holds(verified_at) {
         return Ok(());
     }
     Err(ApiError::new(
@@ -119,7 +120,7 @@ pub(super) async fn make_code(
     session: CurrentSession,
     JsonBody(request): JsonBody<HandoffRequest>,
 ) -> Result<Json<HandoffCode>, ApiError> {
-    require_verification(&services, &session)?;
+    require_verification(&services, session.verified_at)?;
     Ok(Json(make_handoff(&services, &user.id, None, request.to).await?))
 }
 

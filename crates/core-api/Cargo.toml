@@ -1,0 +1,54 @@
+[package]
+name = "demi-core-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# No doc examples.
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+demi-core-hosts = { path = "../core-hosts" }
+demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
+demi-agent-store = { path = "../agent-store" }
+demi-core-host-access = { path = "../core-host-access" }
+demi-core-blobs = { path = "../core-blobs" }
+demi-core-providers = { path = "../core-providers" }
+demi-core = { path = "../core" }
+demi-core-store = { path = "../core-store" }
+demi-core-sync = { path = "../core-sync" }
+demi-core-permissions = { path = "../core-permissions" }
+demi-plugin-host = { path = "../plugin-host" }
+demi-plugin-interface = { path = "../plugin-interface" }
+demi-shared-types = { path = "../shared-types" }
+demi-runner-client = { path = "../runner-client", features = ["edge"] }
+demi-provider-common = { path = "../provider-common" }
+demi-provider-registry = { path = "../provider-registry" }
+demi-runner-protocol = { path = "../runner-protocol" }
+demi-shared-lanes = { path = "../shared-lanes" }
+demi-host-interface = { path = "../host-interface" }
+demi-web-api-protocol = { path = "../web-api-protocol" }
+axum = { version = "0.8", features = ["ws"] }
+axum-extra = { version = "0.12", features = ["typed-header"] }
+bytes.workspace = true
+# Request IDs: 80 random bits in lowercase Crockford base-32.
+data-encoding = "2"
+rand = "0.9"
+futures-util.workspace = true
+garde.workspace = true
+mime = "0.3"
+percent-encoding = "2"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+typed-path = "0.12"
+uuid = { version = "1", features = ["v4"] }
+url = "2"
+rust-i18n = "4.2.4"

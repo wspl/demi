@@ -34,7 +34,7 @@ use sha2::{Digest as _, Sha256};
 use tower::ServiceBuilder;
 use tower_http::services::ServeDir;
 
-use super::error::ApiError;
+use demi_core_api::error::ApiError;
 
 /// `build.json` of a web app build: the build's id, which `vite build`
 /// writes into the page too.

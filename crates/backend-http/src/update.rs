@@ -27,7 +27,7 @@ use demi_core_hosts::public_url::PublicUrl;
 use demi_web_api_protocol::state::UpdateState;
 
 use super::assets;
-use super::error::ApiError;
+use demi_core_api::error::ApiError;
 
 /// `GET /api/update`.
 pub(crate) async fn read(State(update): State<Arc<Update>>) -> Json<UpdateState> {

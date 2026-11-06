@@ -1,0 +1,65 @@
+//! A conversation's attached hosts
+//! (`crates/core-store/src/conversation_index.rs`).
+//!
+//! The route is a detach; the conversation's metadata lists the hosts. A detach
+//! applies at once, whatever the conversation does, and reaches the
+//! conversation's nodes at their next context block. The conversation's agents
+//! attach the devices.
+
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use demi_core_store::conversation_index::{ConversationChange, RecordChange};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
+
+use crate::api::Api;
+use crate::error::ApiError;
+use crate::caller::Principal;
+use demi_core_host_access::transition::ChangeRefusal;
+
+/// Detaches a device: answers once it has left the conversation and the
+/// conversation's commands there were asked to stop, waiting for no Host; the
+/// device hears the release once they ended. A device that is not attached
+/// detaches as nothing.
+pub(crate) async fn detach(
+    State(state): State<Api>,
+    Principal(user): Principal,
+    Path((id, device)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    let id = conversation_id(&id)?;
+    let Ok(device) = DeviceId::try_from(device) else {
+        return Ok(StatusCode::NO_CONTENT);
+    };
+    change(&state, &user, &id, RecordChange::Detach(device).into()).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Applies `change` through the conversation's transition.
+async fn change(
+    state: &Api,
+    user: &UserId,
+    id: &ConversationId,
+    change: ConversationChange,
+) -> Result<(), ApiError> {
+    let id = id.clone();
+    state
+        .shards
+        .of(user)
+        .call(move |core, _| async move { core.transition(&id, change).await })
+        .await?
+        .map_err(refused)
+}
+
+fn conversation_id(id: &str) -> Result<ConversationId, ApiError> {
+    ConversationId::try_from(id).map_err(|_| refused(ChangeRefusal::NotFound))
+}
+
+pub(crate) fn refused(refusal: ChangeRefusal) -> ApiError {
+    match refusal {
+        ChangeRefusal::Storage(error) => error.into(),
+        refusal => {
+            let (code, status) = refusal.code();
+            let status = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            ApiError::new(status, code, refusal.to_string())
+        }
+    }
+}

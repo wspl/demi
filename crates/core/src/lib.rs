@@ -188,6 +188,9 @@ pub struct Core {
     commands: CommandRouter,
     /// Every task the core spawns, which its close waits for.
     tasks: TaskTracker,
+    /// The pages' synchronization channels, which the core's close ends
+    /// first, so none reads what the close changes.
+    channels: TaskTracker,
     /// Cancelled when the core starts closing: it takes no new runner.
     closing: CancellationToken,
     /// The user's conversation trees.
@@ -381,6 +384,7 @@ impl Core {
             pipes: Pipes::new(ARRIVAL),
             commands: CommandRouter::default(),
             tasks: TaskTracker::new(),
+            channels: TaskTracker::new(),
             closing: CancellationToken::new(),
             agent,
             titles,
@@ -510,6 +514,12 @@ impl Core {
         &self.tasks
     }
 
+    /// The pages' synchronization channels: each holds a token while it
+    /// lives.
+    pub fn channels(&self) -> &TaskTracker {
+        &self.channels
+    }
+
     /// The Claude Code machine, through the master's core; none in a
     /// backend whose cores never started.
     pub(crate) fn claude_machine(&self) -> Option<ClaudeMachine> {
@@ -590,6 +600,8 @@ impl Core {
     ///   still save.
     pub async fn close(&self) {
         self.closing.cancel();
+        self.channels.close();
+        closed("the channels ended", self.channels.wait()).await;
         closed("the starter's work ended", self.starter.closing()).await;
         self.services.sync.forget(self.user());
         self.stop_idle_watches();

@@ -1,7 +1,5 @@
-//! The usage ledger's totals (`crates/core-store/src/usage.rs`).
-//!
-//! Each user's own, and on a shared instance every account's for an
-//! administrator.
+//! On a shared instance, every account's usage totals, for an administrator
+//! (`crates/core-store/src/usage.rs`).
 
 use std::sync::Arc;
 
@@ -9,19 +7,11 @@ use axum::Json;
 use axum::extract::State;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::settings::InstanceMode;
-use demi_web_api_protocol::usage::{InstanceUsage, UsageTotals, UserUsage};
+use demi_web_api_protocol::usage::{InstanceUsage, UserUsage};
 
-use super::error::ApiError;
+use demi_core_api::error::ApiError;
 use super::gate::AuthUser;
 use demi_backend_user_shard::services::Services;
-
-pub(super) async fn totals(
-    State(services): State<Arc<Services>>,
-    AuthUser(user): AuthUser,
-) -> Result<Json<UsageTotals>, ApiError> {
-    let totals = services.stores.of(&user.id).await?.usage_totals().await?;
-    Ok(Json(UsageTotals { totals }))
-}
 
 pub(super) async fn instance(
     State(services): State<Arc<Services>>,

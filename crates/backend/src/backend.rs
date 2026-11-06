@@ -71,6 +71,7 @@ use demi_backend_user_shard::services::{
     CloseError, ProviderSetup, ServiceKeys, ServiceSettings, Services, ServicesError, Storage,
 };
 use demi_core::pool::ShardPool;
+use demi_core_api::api::Api;
 use demi_backend_user_shard::cloud::{route_deaths, route_statuses};
 use tokio_util::task::AbortOnDropHandle;
 
@@ -496,7 +497,6 @@ impl Backend {
             mail: config.account_mail,
             runners: config.runners,
             conversations: config.conversations,
-            pages: config.pages,
             media_tuning: config.media,
             native: config.native,
             plugins: config.plugins,
@@ -545,14 +545,19 @@ impl Backend {
             return Err(StartError::Storage(error));
         }
         let state = AppState {
+            api: Api {
+                services: services.core.clone(),
+                shards: shards.shards(),
+                html: Arc::default(),
+                pages: config.pages,
+                schedule_owners: services.clone(),
+            },
             services: services.clone(),
-            shards: shards.shards(),
             site: Arc::new(Site {
                 public_url: config.public_url,
                 origin_dropped: AtomicBool::new(false),
             }),
             update: update.clone(),
-            html: Arc::default(),
             blocks: Arc::default(),
         };
         let runner_socket = match config.runner_socket.as_deref().map(runner_socket).transpose() {

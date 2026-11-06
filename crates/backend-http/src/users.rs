@@ -30,8 +30,8 @@ use demi_web_api_protocol::users::{
 };
 
 use super::AppState;
-use super::body::JsonBody;
-use super::error::ApiError;
+use demi_core_api::body::JsonBody;
+use demi_core_api::error::ApiError;
 use super::gate::{AdminUser, CurrentSession};
 use super::sessions::{make_handoff, require_verification};
 use demi_backend_user_shard::services::Services;
@@ -59,9 +59,9 @@ pub(super) async fn create(
     if !caller.role.outranks(role) {
         return Err(ApiError::forbidden("Only the master creates admins"));
     }
-    require_verification(&services, &session)?;
+    require_verification(&services, session.verified_at)?;
     let password = generate_first_password();
-    let password_hash = services.hasher.hash(password.clone()).await?;
+    let password_hash = services.hasher.hash(password.clone()).await.map_err(crate::internal)?;
     let user = services
         .control
         .create_user(request.email, password_hash, role)
@@ -126,9 +126,9 @@ pub(super) async fn new_first_password(
     Path(id): Path<String>,
 ) -> Result<Json<NewFirstPassword>, ApiError> {
     let target = lower_account(&services, &caller, id).await?;
-    require_verification(&services, &session)?;
+    require_verification(&services, session.verified_at)?;
     let password = generate_first_password();
-    let password_hash = services.hasher.hash(password.clone()).await?;
+    let password_hash = services.hasher.hash(password.clone()).await.map_err(crate::internal)?;
     services
         .control
         .set_first_password(target.user.id.clone(), password_hash)
@@ -186,7 +186,7 @@ pub(super) async fn change(
             if disabled {
                 let user = account.clone();
                 state
-                    .shards
+                    .api.shards
                     .of(&user)
                     .call(|core, _| async move { core.disconnect_runners("the account was disabled").await })
                     .await??;
@@ -226,7 +226,7 @@ pub(super) async fn sign_in_code(
     Path(id): Path<String>,
 ) -> Result<Json<HandoffCode>, ApiError> {
     let target = lower_account(&services, &caller, id).await?;
-    require_verification(&services, &session)?;
+    require_verification(&services, session.verified_at)?;
     let home = ProductPath::try_from("/".to_owned()).expect("the home is a path of the product");
     Ok(Json(
         make_handoff(&services, &target.user.id, Some(&caller.id), home).await?,

@@ -1,0 +1,81 @@
+//! A conversation's permission route: a decision on one of its undecided
+//! requests, in the user's core; its metadata carries the requests.
+//!
+//! An archived conversation refuses a decision.
+
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use demi_core_store::permissions::AnswerProblem;
+use demi_core_permissions::{PermissionError, decide as decide_request};
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::permissions::{
+    DecidePermission, PermissionRequestId,
+};
+
+use crate::api::Api;
+use crate::body::JsonBody;
+use crate::conversations::owned;
+use crate::error::ApiError;
+use crate::caller::Principal;
+
+/// `POST /conversations/:id/permissions/requests/:request`.
+pub(crate) async fn decide(
+    State(state): State<Api>,
+    Principal(user): Principal,
+    Path((id, request)): Path<(String, String)>,
+    body: Result<JsonBody<DecidePermission>, ApiError>,
+) -> Result<StatusCode, ApiError> {
+    let record = owned(&state.services, &user, &id).await?;
+    let JsonBody(DecidePermission {
+        decision,
+        credential,
+    }) = body?;
+    let request = PermissionRequestId::try_from(request).map_err(|_| refused(PermissionError::NotFound))?;
+    let conversation = record.id;
+    state
+        .shards
+        .of(&user)
+        .call(move |core, _| async move {
+            decide_request(
+                core.permission_core(),
+                &conversation,
+                request,
+                decision,
+                credential,
+            )
+            .await
+        })
+        .await?
+        .map_err(refused)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn refused(error: PermissionError) -> ApiError {
+    let message = error.to_string();
+    match error {
+        PermissionError::Archived => ApiError::new(
+            StatusCode::CONFLICT,
+            ErrorCode::ConversationArchived,
+            message,
+        ),
+        PermissionError::NotFound => ApiError::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::PermissionRequestNotFound,
+            message,
+        ),
+        // The field the page words the refusal with, under the form.
+        PermissionError::InvalidAnswer(problem) => {
+            let refusal = ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::InvalidAnswer, message);
+            match problem {
+                AnswerProblem::ValueMissing { label } => refusal.with_param("field", label),
+                _ => refusal,
+            }
+        }
+        PermissionError::FieldsDiffer(_) => ApiError::new(
+            StatusCode::CONFLICT,
+            ErrorCode::CredentialFieldsDiffer,
+            message,
+        ),
+        PermissionError::Storage(error) => error.into(),
+    }
+}

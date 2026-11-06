@@ -7,6 +7,7 @@ use demi_backend_cloud::CloudSide;
 use demi_backend_cloud::user_core::UserCloud;
 use demi_core::extensions::Extensions;
 use demi_core::pool::Opener;
+use demi_core_api::schedules::ScheduleOwners;
 use demi_core_store::store::CoreStore;
 use demi_core_host_access::cloud::CloudHost;
 use demi_core_store::StorageError;
@@ -21,7 +22,6 @@ use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use demi_web_api_protocol::push::PushMessage;
 use demi_web_api_protocol::conversations::ConversationShares;
 use demi_web_api_protocol::shares::ConversationShare;
-use tokio_util::task::TaskTracker;
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 
 use crate::page_notifications::PageNotifications;
@@ -50,6 +50,14 @@ impl Opener for ServerOpener {
     }
 }
 
+/// A schedule's URL reaches the core the server recorded as its owner when
+/// the schedule took a URL (`ServerStarter::schedule_called_at_url`).
+impl ScheduleOwners for Services {
+    fn owner<'a>(&'a self, id: &'a ScheduleId) -> BoxFuture<'a, Result<Option<UserId>, StorageError>> {
+        Box::pin(self.control.schedule_owner(id.clone()))
+    }
+}
+
 /// What the server gives one user's core.
 pub struct ServerStarter {
     user: UserId,
@@ -72,8 +80,6 @@ pub struct ServerSide {
     pub(crate) pages: PageNotifications,
     /// The media jobs of the user's entries lent to other servers.
     pub(crate) lent_jobs: LentJobs,
-    /// The tasks of the user's pages' synchronization channels.
-    pub(crate) sync_channels: TaskTracker,
 }
 
 impl ServerSide {
@@ -82,7 +88,6 @@ impl ServerSide {
             services,
             pages: PageNotifications::default(),
             lent_jobs: LentJobs::default(),
-            sync_channels: TaskTracker::new(),
         }
     }
 
@@ -200,14 +205,9 @@ impl Starter for ServerStarter {
     }
 
     fn closing(&self) -> LocalBoxFuture<'_, ()> {
-        Box::pin(async move {
-            let Some(core) = self.core.upgrade() else {
-                return;
-            };
-            let channels = &ServerSide::of(&core).sync_channels;
-            channels.close();
-            channels.wait().await;
-        })
+        // The server keeps no work of its own on a core that outlives the
+        // core's close.
+        Box::pin(std::future::ready(()))
     }
 
     fn reach(&self) -> LocalBoxFuture<'_, Result<Reach, StorageError>> {

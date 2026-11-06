@@ -35,19 +35,18 @@ pub struct ManagedKinds {
     pub subscriptions: bool,
 }
 
-/// The product state `GET /state` answers: the signed-in user, the instance
-/// mode, the user's preferences, the provider entries the user infers with and
-/// the catalog of their models, the user's projects in their order, the
-/// user's devices, the paired ones and the Cloud, the backend's public URL, the
-/// summaries of the user's conversations, the active ones first, then the
-/// archived, the Cloud's status, the backend's plugins with whether the user has
-/// each on, and the state of each plugin the user has on that gives one, by its
-/// id. The lists only a settings pane shows are read when it opens.
-/// The backend reads it without waking a Cloud or running inference.
+/// A core's part of the product state, which every way into the core
+/// answers at `GET /state`: the instance mode its vault keeps, the
+/// principal's preferences, the provider entries it infers with and the
+/// catalog of their models, its workspaces and projects in their order, its
+/// devices, the summaries of its conversations, the active ones first, then
+/// the archived, its sign-ins, and the plugins with whether it has each on
+/// and the state of each it has on that gives one, by its id. The lists only
+/// a settings pane shows are read when it opens. It is read without waking a
+/// Cloud or running inference.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct ProductState {
-    pub user: UserDto,
+pub struct CoreState {
     pub mode: InstanceMode,
     pub shared_subscriptions: bool,
     pub manages: ManagedKinds,
@@ -61,33 +60,54 @@ pub struct ProductState {
     pub workspaces: Vec<WorkspaceDto>,
     pub projects: Vec<ProjectDto>,
     pub devices: Vec<DeviceDto>,
+    /// The STUN servers the page's peers ask for the address the internet
+    /// sees the browser at (`DEMI_STUN_URLS`, `crates/runner-direct/src/lib.rs`); none keeps direct channels to one network.
+    pub stun_urls: Vec<StunUrl>,
+    pub conversations: Vec<ConversationSummary>,
+    /// The user's sign-ins that run or ended within ten minutes, in the
+    /// order they started, as the `logins` message carries them.
+    pub logins: Vec<ListedLogin>,
+    /// The plugins, in their order of registration.
+    pub plugins: Vec<PluginEntry>,
+    /// The state of each plugin the user has on that gives one, valid
+    /// against the schema its page package's types are generated from.
+    pub plugin_states: BTreeMap<String, Value>,
+    /// This run of the process, an id it chooses when it starts. The
+    /// revisions it counts in memory, such as a conversation's list of
+    /// permission requests, compare only within one run: a page holding
+    /// one of another run reads again.
+    pub run: String,
+    /// The version of the product state this read is current as of: the page
+    /// follows the state with it on the synchronization channel
+    /// (`SyncFollowed::State`).
+    pub version: Version,
+}
+
+/// The product state the server's `GET /state` answers: the user's core's,
+/// with the server's own parts: the signed-in user, the backend's public URL
+/// and the runner's installers, the Cloud's status, the passkeys' relying
+/// party, the web build, the account mail and the server's updates.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductState {
+    #[serde(flatten)]
+    pub core: CoreState,
+    pub user: UserDto,
     /// The URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`).
     pub public_url: String,
     /// The commands that install the runner on each system, which fetch the
     /// installer from the origin of `public_url`, not from the page's own,
     /// which may be another server's, as in development.
     pub install_commands: InstallCommands,
-    /// The STUN servers the page's peers ask for the address the internet
-    /// sees the browser at (`DEMI_STUN_URLS`, `crates/runner-direct/src/lib.rs`); none keeps direct channels to one network.
-    pub stun_urls: Vec<StunUrl>,
     /// The runner release paired devices follow, the one the backend's
     /// `runners/` names; none for a backend without runner releases, as in
     /// development, whose runners are development builds
     /// (`packages/web-ui/src/devices/direct.ts`).
     pub runner_release: Option<String>,
-    pub conversations: Vec<ConversationSummary>,
     pub cloud: CloudStatus,
-    /// The user's sign-ins that run or ended within ten minutes, in the
-    /// order they started, as the `logins` message carries them.
-    pub logins: Vec<ListedLogin>,
     /// The relying party's id of the backend's passkeys, as `GET /setup`
     /// gives it.
     pub passkey_rp_id: Option<String>,
-    /// The backend's plugins, in their order of registration.
-    pub plugins: Vec<PluginEntry>,
-    /// The state of each plugin the user has on that gives one, valid
-    /// against the schema its page package's types are generated from.
-    pub plugin_states: BTreeMap<String, Value>,
     /// The build of the web app the backend serves, from its `build.json`,
     /// or none when it serves none, as in development: a page of another
     /// build is out of date.
@@ -99,15 +119,6 @@ pub struct ProductState {
     /// server that offers updates; none for a user's page, or on another
     /// server.
     pub server_upgrade: Option<crate::server_upgrade::ServerUpgrade>,
-    /// This run of the backend, an id it chooses when it starts. The
-    /// revisions it counts in memory, such as a conversation's list of
-    /// permission requests, compare only within one run: a page holding
-    /// one of another run reads again.
-    pub run: String,
-    /// The version of the product state this read is current as of: the page
-    /// follows the state with it on the synchronization channel
-    /// (`SyncFollowed::State`).
-    pub version: Version,
 }
 
 /// A value of the product a page follows on its synchronization channel: the

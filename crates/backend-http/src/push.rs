@@ -19,9 +19,9 @@ use demi_backend_user_shard::services::Services;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::push::{PushKey, PushSubscriptionBody};
 
-use super::body::JsonBody;
-use super::conversations::owned;
-use super::error::ApiError;
+use demi_core_api::body::JsonBody;
+use demi_core_api::conversations::owned;
+use demi_core_api::error::ApiError;
 use super::gate::{AuthUser, CurrentSession};
 
 /// `GET /push/key`.

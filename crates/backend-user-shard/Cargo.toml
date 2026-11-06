@@ -13,8 +13,8 @@ bench = false
 
 [dependencies]
 demi-core = { path = "../core" }
+demi-core-api = { path = "../core-api" }
 demi-core-hosts = { path = "../core-hosts" }
-demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
 demi-backend-accounts = { path = "../backend-accounts" }
 demi-backend-cloud = { path = "../backend-cloud" }
 demi-core-host-access = { path = "../core-host-access" }
@@ -45,7 +45,6 @@ http.workspace = true
 object_store.workspace = true
 rand = "0.9"
 reqwest = { workspace = true, features = ["rustls", "stream"] }
-serde_json.workspace = true
 thiserror.workspace = true
 semver.workspace = true
 tokio.workspace = true

@@ -10,10 +10,10 @@ use demi_shared_types::{LogLine, LogOrigin};
 use demi_web_api_protocol::diagnostics::PageLog;
 
 use super::AppState;
-use super::body::JsonBody;
-use super::error::ApiError;
+use demi_core_api::body::JsonBody;
+use demi_core_api::error::ApiError;
 use super::gate::AuthUser;
-use super::request_id;
+use demi_core_api::request_id;
 
 /// `POST /log`: 204 once the lines are stored.
 pub(super) async fn log(

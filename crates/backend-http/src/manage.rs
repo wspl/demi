@@ -151,7 +151,7 @@ async fn announce(state: &AppState, request: &str) -> Result<Arc<NextRelease>, S
     for user in users {
         let next = next.clone();
         let asked = state
-            .shards
+            .api.shards
             .of(&user)
             .call(move |core, _| async move { core.prefetch(next).await })
             .await;
