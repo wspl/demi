@@ -43,8 +43,8 @@ program                                      demi-core
   DELETE /cores/{id} -------------------->  closes the core, unlocks a
 ```
 
-The records after this one decide how a program's runners connect to the
-process (0298) and how a program's own plugins run in it (0299).
+The records after this one decide how a runner reaches a program's core
+(0298) and how a program's own plugins run in it (0299).
 
 The wire is the SDK's, not a program's: a program calls the TypeScript
 SDK, whose own interface a later record of this series decides, and the
@@ -140,7 +140,7 @@ backend-http: accounts, passkeys, sessions, users, the server's upgrade,
               public shares, provider lending, pairing, installers,
               schedule URLs
    `-- mounts core-api under /api, behind the session gate
-demi-core:    /cores, and core-api under /cores/{id}/api
+demi-core:    /cores, /hooks/{id}, and core-api under /cores/{id}/api
 core-api:     conversations, drafts, saved messages, permissions,
               providers and accounts, devices, workspaces, projects,
               schedules, plugins, files, changes, search, cost, usage,
@@ -174,16 +174,18 @@ program follows its core's changes as a page does.
 | `notify` | sends the notification on the `starter` lane; the program answers how it was shown |
 | `reach`, `agent_reaches` | one receiver while a `starter` lane is open, none otherwise |
 | `cloud`, `cloud_network_limited` | none: a program's core runs no Cloud |
-| `pair`, `install_commands`, `device_removed` | the process's, as the next record decides (0298) |
+| `pair`, `install_commands`, `device_removed` | none: a program's Hosts reach the core over channels the program gives (0298) |
 | `host_log` | none |
-| `schedule_called_at_url`, `schedule_deleted` | nothing to keep: the process finds a schedule among its open cores (0298) |
+| `schedule_called_at_url`, `schedule_deleted` | nothing to keep: the process serves `/hooks/{id}` and finds the schedule among its open cores |
 | `conversation_deleted`, `provider_deleted` | nothing: the process keeps no record of them |
 | `conversation_shares` | none |
 | `closing` | ends the core's `starter` lane |
 
-What needs an address that a browser or another system reaches, a
-plugin's OAuth callback, a schedule's URL and a device's address, uses the
-public URL the program gives (0298), as the server's use its own.
+The SDK gives the process the program's public URL, where the program's
+HTTP server forwards the core's routes and the schedules' URLs. A plugin's
+OAuth callback and a schedule's URL use it, as the server's use its own;
+without one, the core offers neither, as it already leaves each out while
+it has no public URL.
 
 ## Built on
 

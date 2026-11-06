@@ -47,7 +47,8 @@ const chat = definePlugin({
 
 const demi = await Demi.start({ plugins: [chat], publicUrl: 'https://bot.example.com/demi' })
 const core = await demi.open('/srv/bot/team-a')
-await core.hosts.startLocal()
+const host = await core.hosts.create()
+await host.spawn(['docker', 'exec', '-i', 'box-7', 'demi-runner', 'run', '--stdio'])
 await core.providers.create({ vendor: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY })
 
 const conversation = await core.conversations.create({ title: 'Release notes' })
@@ -82,7 +83,7 @@ public packages both import:
 
 | SDK | What it does underneath |
 | --- | --- |
-| `Demi.start({ plugins, publicUrl })` | starts `demi-core` from the package's release, speaks HTTP/2 on its stdio, `PUT /plugins` (0299), and gives the process the public URL (0298) |
+| `Demi.start({ plugins, publicUrl })` | starts `demi-core` from the package's release, speaks HTTP/2 on its stdio, `PUT /plugins` (0299), and gives the process the public URL (0297) |
 | `demi.open(dir)`, `core.close()`, `demi.close()` | `POST /cores`, `DELETE /cores/{id}`, the connection's end (0297) |
 | `core.state`, `core.on('state')` | `GET /state` and the synchronization lane, applied by `withPart` |
 | `core.on('notify', handler)` | the `starter` lane; the handler's answer is how the notification was shown (`Notified`) |
@@ -95,11 +96,11 @@ public packages both import:
 | `core.providers.list`, `create`, `update`, `remove` | `/providers` (`CreateProvider`, `ProviderPatch`, whose `rotation` is the accounts' rotation) |
 | `core.providers.accounts(id)` | the entry's account routes: list, activate, order, remove |
 | `core.providers.signIn(options)` | `POST /providers/subscription-login`; the login's states come from the product state's `logins`, and `submitCode`, `cancel` are its code and delete routes |
-| `core.hosts.create()` | `POST /devices` (0298): the record a runner boots with |
-| `core.hosts.startLocal()` | `create`, then starts the package's `demi-runner` with that record |
-| `core.hosts.claim(code)` | `POST /devices/claim` |
+| `core.hosts.create()` | `POST /devices` (0298): a Host, with its id |
+| `host.connect(stream)` | `CONNECT /devices/{device}/runner` (0298), with the stream's bytes carried both ways: a runner's channel the program reaches it by |
+| `host.spawn(command)` | starts `command`, whose standard input and output are a `demi-runner run --stdio`'s, and connects them; with no command, the package's own `demi-runner` on the program's machine |
 | `core.fetch(request)`, `core.accept(socket)` | the core's routes under `/cores/{id}/api`, for the program's HTTP server to forward its pages' requests and sockets |
-| `demi.fetch(request)`, `demi.accept(socket)` | the process's runner routes and schedule URLs (0298) |
+| `demi.fetch(request)` | the process's schedule URLs, `/hooks/{id}` (0297) |
 
 ### A plugin
 

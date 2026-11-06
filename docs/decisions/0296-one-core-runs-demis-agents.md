@@ -126,9 +126,9 @@ server gives each core its user's part of the store.
 
 A runner connects to a core with a token the core issues. The server
 issues one at pairing and hands the runner's socket to the user's core, as
-it adopts it today. A program asks its core for a Host and starts the
-runner where it wants its agents' commands to run. How a runner reaches a
-core without a server is the subject of 0298.
+it adopts it today. A program asks its core for a Host, starts the runner
+where it wants its agents' commands to run, and carries the runner's
+channel to the core however it reaches the runner (0298).
 
 ### The series
 
@@ -141,8 +141,8 @@ before:
 2. 0297: a program opens cores in a process of its own and drives them
    with the web API's core routes and the page connection, over HTTP/2 on
    stdio.
-3. 0298: a program's runners connect to its process, which serves them as
-   the server does.
+3. 0298: a runner reaches its core over a channel whoever runs the core
+   gives.
 4. 0299: a program's plugins run in the program, over a lane of each
    core's connection.
 5. 0300: a command declares what its output holds and what a failure
