@@ -20,7 +20,7 @@ const MODELS_SUMMARY: &str = "List the audio models the user's provider entries 
 
 const TEXT: &str = "The text to read aloud; - reads it from stdin.";
 const PROMPT: &str = "What to make; - reads it from stdin.";
-const MODEL: &str = "The audio model, required: one `demi audio models` lists that makes this kind.";
+const MODEL: &str = "The audio model, required: one `demi audio models` lists that makes this kind and an entry can make now.";
 const PROVIDER: &str = "The entry to make it through, by its name in Settings or its id, when the user asked for one; without it, the first that can make the model now, in the order of Settings > Providers.";
 const VOICE: &str = "A voice `demi audio voices --model <id>` lists; the vendor's default without it; ElevenLabs and ByteDance's Seed speech, which have none, need it.";
 const INSTRUCTIONS: &str = "How to speak, such as a tone, a pace or an accent, for the models that take it.";
@@ -35,9 +35,9 @@ const VOICES_MODEL: &str = "The speech model whose voices to list, required.";
 const SEARCH: &str = "Words to narrow the voices by, in their ID, name or description.";
 const SHOWN: &str = "The model to show; without it, every model is listed.";
 
-const SUCCESS: &str = "the audio's bytes on stdout; on stderr a line such as `0:04 MP3 speech from gpt-4o-mini-tts (OpenAI), voice coral` or `0:15 MP3 music from music_v2 (ElevenLabs)`, with the cost where the vendor reports one, and a warning for each option the entry's API takes no field for, a format the vendor does not make, or a length more than a second from --duration";
+const OUTPUT: &str = "the audio's bytes on stdout; on stderr a line such as `0:04 MP3 speech from gpt-4o-mini-tts (OpenAI), voice coral` or `0:15 MP3 music from music_v2 (ElevenLabs)`, with the cost where the vendor reports one, and a warning for each option the entry's API takes no field for, a format the vendor does not make, or a length more than a second from --duration";
 
-const FAILURE: &str = "no --model, no provider that makes audio, a model none makes or that makes another kind (with the kinds it makes), an entry --provider names that cannot make it now (with why and the entries that can), every entry that could used up, a refused API key, a refusal in the vendor's words, ElevenLabs or Seed speech without --voice, a vendor that did not answer in 120 s, or a file that is not audio this reads, each named on stderr with exit status 1";
+const FAILURE: &str = "an error on stderr that names the cause, with exit status 1, and nothing on stdout";
 
 /// The formats music and effects are asked in.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -130,8 +130,8 @@ fn audio_group() -> GroupBuilder {
                 .describe("speed", SPEED)
                 .describe("format", SPEECH_FORMAT)
                 .positionals(["text"])
-                .success_output(SUCCESS)
-                .failure_output(FAILURE)
+                .output(OUTPUT)
+                .failure(FAILURE)
                 .bind(PortHandled),
         )
         .leaf(
@@ -145,8 +145,8 @@ fn audio_group() -> GroupBuilder {
                 .describe("seed", SEED)
                 .describe("format", CLIP_FORMAT)
                 .positionals(["prompt"])
-                .success_output(SUCCESS)
-                .failure_output(FAILURE)
+                .output(OUTPUT)
+                .failure(FAILURE)
                 .bind(PortHandled),
         )
         .leaf(
@@ -159,8 +159,8 @@ fn audio_group() -> GroupBuilder {
                 .describe("loop", LOOP)
                 .describe("format", CLIP_FORMAT)
                 .positionals(["prompt"])
-                .success_output(SUCCESS)
-                .failure_output(FAILURE)
+                .output(OUTPUT)
+                .failure(FAILURE)
                 .bind(PortHandled),
         )
         .leaf(

@@ -81,12 +81,10 @@ fn web_group() -> GroupBuilder {
                 format!("How many pages to list in all, at least 1; default {DEFAULT_COUNT}"),
             )
             .json_output::<Vec<SearchedPage>>()
-            .success_output(
+            .output(
                 "a line saying that what follows is untrusted web content, then the pages, numbered; or \"No pages found. Try other words or fewer filters.\"",
             )
-            .failure_output(
-                "an option the search cannot honour without an Exa API key, the anonymous limit, the account's rate limit or credit, an expired sign-in, or Exa not answering within 30 s, each named on stderr with exit status 1",
-            )
+            .failure("an error on stderr that names the cause, with exit status 1, and nothing on stdout")
             .bind(PortHandled),
         )
         .leaf(
@@ -113,11 +111,11 @@ fn web_group() -> GroupBuilder {
                 format!("The whole fetch's deadline in milliseconds; default {DEFAULT_TIMEOUT_MS}, maximum {MAX_TIMEOUT_MS}"),
             )
             .json_output::<Fetched>()
-            .success_output(
+            .output(
                 "a line naming the URL, where its redirects led, its HTTP status, type and length; a line saying that what follows is untrusted web content; the part; and, when more remains, a line naming how many characters and the call that reads on. A page read is kept on this Host for 15 minutes, so reading on fetches it only once. A file that is no text is saved under the temporary directory's demi-fetch/, and its path, type and size are printed with the call that shows it",
             )
-            .failure_output(
-                "an HTTP status of 400 or more prints the page and exits 1; a Cloudflare challenge, no answer within the deadline, more than 10 redirects, more than 10 MiB of text or 64 MiB of a file write the reason to stderr and exit 1",
+            .failure(
+                "a page answered with an HTTP status of 400 or more is printed as any page, and the command exits 1; any other failure writes its cause to stderr, with exit status 1, and nothing on stdout",
             ),
         )
 }

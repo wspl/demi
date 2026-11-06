@@ -204,7 +204,7 @@ pub fn host_group(core: Weak<dyn HostCore>) -> GroupBuilder {
             LeafBuilder::rpc("shell", SHELL_SUMMARY)
                 .input::<ShellArgs>()
                 .positionals(["script"])
-                .failure_output("writes the reason to stderr and exits non-zero (127 when the host cannot run bash)")
+                .failure("writes the reason to stderr and exits non-zero (127 when the host cannot run bash)")
                 .bind(TypedRpc::new(verb(core.clone(), shell))),
         )
         .leaf(

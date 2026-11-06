@@ -119,7 +119,7 @@ pub(crate) fn conversation_group(core: Weak<Core>) -> GroupBuilder {
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<ListArgs>()
                 .positionals(["words"])
-                .success_output("a table of the page's conversations; on stderr, the page and the list of the next page")
+                .output("a table of the page's conversations; on stderr, the page and the list of the next page")
                 .json_output::<Vec<ListedConversation>>()
                 .bind(TypedRpc::new(verb(core.clone(), list))),
         )
@@ -128,20 +128,20 @@ pub(crate) fn conversation_group(core: Weak<Core>) -> GroupBuilder {
                 .input::<SendArgs>()
                 .positionals(["conversation"])
                 .stdin_field("message")
-                .success_output("the conversation the message reached")
+                .output("the conversation the message reached")
                 .bind(TypedRpc::new(verb(core.clone(), send))),
         )
         .leaf(
             LeafBuilder::rpc("new", NEW_SUMMARY)
                 .input::<NewArgs>()
                 .stdin_field("message")
-                .success_output("the conversation started, its title and id")
+                .output("the conversation started, its title and id")
                 .bind(TypedRpc::new(verb(core.clone(), new))),
         )
         .leaf(
             LeafBuilder::rpc("cost", COST_SUMMARY)
                 .input::<CostArgs>()
-                .success_output("the conversation's totals as labelled lines, with a table for each way they are broken down")
+                .output("the conversation's totals as labelled lines, with a table for each way they are broken down")
                 .json_output::<ConversationCost>()
                 .bind(TypedRpc::new(verb(core.clone(), cost))),
         )

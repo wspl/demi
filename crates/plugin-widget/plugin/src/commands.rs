@@ -19,11 +19,11 @@ const CREATE_SUMMARY: &str = "Make the HTML page on stdin a widget, and show it 
 
 const GUIDE_SUMMARY: &str = "How to make a widget: the theme its page is drawn in, its frame, its style, and a page to copy for each kind of chart and diagram.";
 
-const PAGE: &str = "The page, a whole HTML document of at most 1 MiB; - or none reads it from stdin.";
+const PAGE: &str = "The page, a whole HTML document of at most 1 MiB, whose demi-frame meta tag, when it has one, declares its frame as demi widget guide shows; - or none reads it from stdin.";
 
-const CREATE_SUCCESS: &str = "the widget's ID and frame, such as `w1  height 330px`, and two screenshots of it, light and dark, shown to you with the result; without the Host's browser, a line on stderr that the screenshots were skipped and how to install it";
+const CREATE_OUTPUT: &str = "the widget's ID and frame, such as `w1  height 330px`, and two screenshots of it, light and dark, shown to you with the result; without the Host's browser, a line on stderr that the screenshots were skipped and how to install it";
 
-const CREATE_FAILURE: &str = "a page that is not HTML, or a frame its demi-frame meta tag declares that cannot be read, named on stderr with exit status 1";
+const CREATE_FAILURE: &str = "an error on stderr that names the cause, with exit status 1; no widget is made";
 
 /// The input of `create`.
 #[derive(Deserialize, JsonSchema)]
@@ -88,8 +88,8 @@ fn widget_group() -> GroupBuilder {
                 .positionals(["page"])
                 .stdin_field("page")
                 .media()
-                .success_output(CREATE_SUCCESS)
-                .failure_output(CREATE_FAILURE)
+                .output(CREATE_OUTPUT)
+                .failure(CREATE_FAILURE)
                 .bind(PortHandled),
         )
         .leaf(
@@ -97,7 +97,7 @@ fn widget_group() -> GroupBuilder {
                 .input::<GuideArgs>()
                 .describe("kind", KIND)
                 .positionals(["kind"])
-                .success_output("the guide, as Markdown, or the kind's page, as HTML")
+                .output("the guide, as Markdown, or the kind's page, as HTML")
                 .bind(PortHandled),
         )
 }

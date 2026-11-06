@@ -117,8 +117,8 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
             LeafBuilder::rpc("status", STATUS_SUMMARY)
                 .input::<StatusArgs>()
                 .positionals(["id"])
-                .success_output("each command's status as a shell result shows it, a blank line between two")
-                .failure_output("a line per command that cannot be looked at, \"demi shell status: <id>: <reason>\", on stderr; the others are still shown, and the command exits 1")
+                .output("each command's status as a shell result shows it, a blank line between two")
+                .failure("a line per command that cannot be looked at, \"demi shell status: <id>: <reason>\", on stderr; the others are still shown, and the command exits 1")
                 .json_output::<StatusJson>()
                 .bind(TypedRpc::new(verb(server.clone(), status))),
         )
@@ -126,15 +126,15 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
             LeafBuilder::rpc("output", OUTPUT_SUMMARY)
                 .input::<OutputArgs>()
                 .positionals(["id"])
-                .success_output("the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out")
+                .output("the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out")
                 .bind(TypedRpc::new(verb(server.clone(), output))),
         )
         .leaf(
             LeafBuilder::rpc("stop", STOP_SUMMARY)
                 .input::<StopArgs>()
                 .positionals(["id"])
-                .success_output("\"[command <id> stopped]\", or \"[command <id> had already ended]\" for a command that had ended")
-                .failure_output("a line per command that cannot be stopped, \"demi shell stop: <id>: <reason>\", on stderr; the others are still stopped, and the command exits 1")
+                .output("\"[command <id> stopped]\", or \"[command <id> had already ended]\" for a command that had ended")
+                .failure("a line per command that cannot be stopped, \"demi shell stop: <id>: <reason>\", on stderr; the others are still stopped, and the command exits 1")
                 .bind(TypedRpc::new(verb(server, stop))),
         )
 }

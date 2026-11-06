@@ -32,7 +32,7 @@ const ENTRY: &str = "The user's skills: list, add, update, remove, enable, disab
 
 const MANAGE_DESCRIPTION: &str = "Manage Skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Global skills reach every conversation and a workspace's skills reach that workspace's conversations, and the skills that are on are installed on the Hosts those conversations use.";
 
-const REFUSED_OUTPUT: &str =
+const FAILURE: &str =
     "writes the reason to stderr and exits non-zero, having changed nothing the reason does not name";
 
 /// The input of `demi skills list`.
@@ -44,13 +44,14 @@ struct ListArgs {}
 #[derive(Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 struct AddArgs {
-    /// owner/repo for GitHub, or an https URL of a git repository
+    /// owner/repo for GitHub, an https URL or an SSH address of a git
+    /// repository that is in no place yet
     repository: String,
     /// A skill of the source, by name; every skill when none is given
     skill: Option<Vec<String>>,
     /// Add the source to this conversation's workspace instead of Global
     workspace: Option<bool>,
-    /// The paired device, by name, that fetches the source with its own git, keys and network; the server without one
+    /// The paired device, by name, that fetches the source with its own git, keys and network, online when the source is added; the server without one. An SSH address needs one
     fetch_with: Option<String>,
 }
 
@@ -58,7 +59,8 @@ struct AddArgs {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct SkillsArgs {
-    /// owner/repo for GitHub, or an https URL of a git repository
+    /// A source of Global or of this conversation's workspace, as
+    /// `demi skills list` names it
     repository: String,
     /// A skill of the source, by name; every skill when none is given
     skill: Option<Vec<String>>,
@@ -68,7 +70,8 @@ struct SkillsArgs {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct RepositoryArgs {
-    /// owner/repo for GitHub, or an https URL of a git repository
+    /// A source of Global or of this conversation's workspace, as
+    /// `demi skills list` names it
     repository: String,
 }
 
@@ -81,17 +84,17 @@ pub(crate) fn commands() -> CommandPlugin {
             LeafBuilder::rpc("list", "The skill sources of Global and of this conversation's workspace with their skills, whether each is on, and whether an update is available.")
                 .input::<ListArgs>()
                 .json_output::<Vec<SourceState>>()
-                .success_output("a table of the skills of those sources: name, source, place (Global or the workspace's name), what fetches it (server or a device's name), commit, whether it is on, the source whose skill of that name is on and its place, and description; on stderr, a source that is updating, failed, has an update, or waits for its offline device; with --json, the sources with their skills, each with its workspace's id or none for Global and its fetching device's id or none for the server")
+                .output("a table of the skills of those sources: name, source, place (Global or the workspace's name), what fetches it (server or a device's name), commit, whether it is on, the source whose skill of that name is on and its place, and description; on stderr, a source that is updating, failed, has an update, or waits for its offline device; with --json, the sources with their skills, each with its workspace's id or none for Global and its fetching device's id or none for the server")
                 .bind(PortHandled),
         )
         .leaf(
             LeafBuilder::rpc("add", "Add a skill source to Global, or with --workspace to this conversation's workspace, and wait for its first fetch; its skills start on, or only those --skill names. The server fetches it, or with --fetch-with a paired device with its own git, keys and network, which an SSH address needs.")
                 .input::<AddArgs>()
                 .positionals(["repository"])
-                .describe("skill", "A skill of the source to turn on; the others stay off")
+                .describe("skill", "A skill of the source to turn on, one its commit has and whose name no skill that is on has; the others stay off")
                 .permission(MANAGE)
-                .success_output("the commit pinned and the skills turned on and left off")
-                .failure_output(format!("a repository that is not owner/repo, an https URL or an SSH address, one added already in any place, naming the place, an SSH address without --fetch-with, a --fetch-with device that is not paired or is offline, a failed fetch (the source stays, showing its failure), or a --skill the commit lacks or whose name a skill that is on has (the source stays, its skills as a new source's start); {REFUSED_OUTPUT}"))
+                .output("the commit pinned and the skills turned on and left off")
+                .failure(format!("{FAILURE}; a source whose fetch began stays added, showing a failed fetch, or with its skills as a new source's start when a --skill could not turn on"))
                 .bind(PortHandled),
         )
         .leaf(
@@ -99,8 +102,8 @@ pub(crate) fn commands() -> CommandPlugin {
                 .input::<RepositoryArgs>()
                 .positionals(["repository"])
                 .permission(MANAGE)
-                .success_output("the commit pinned and the skills turned on or off, or that nothing changed")
-                .failure_output(format!("a repository neither Global nor this conversation's workspace has, a source whose device is offline or no longer paired, or a failed fetch; {REFUSED_OUTPUT}"))
+                .output("the commit pinned and the skills turned on or off, or that nothing changed")
+                .failure(FAILURE)
                 .bind(PortHandled),
         )
         .leaf(
@@ -108,18 +111,18 @@ pub(crate) fn commands() -> CommandPlugin {
                 .input::<RepositoryArgs>()
                 .positionals(["repository"])
                 .permission(MANAGE)
-                .success_output("the source and the skills removed")
-                .failure_output(format!("a repository neither Global nor this conversation's workspace has; {REFUSED_OUTPUT}"))
+                .output("the source and the skills removed")
+                .failure(FAILURE)
                 .bind(PortHandled),
         )
         .leaf(
             LeafBuilder::rpc("enable", "Turn on the named skills of a source, or every skill of it.")
                 .input::<SkillsArgs>()
                 .positionals(["repository"])
-                .describe("skill", "A skill of the source to turn on; every skill when none is given")
+                .describe("skill", "A skill of the source to turn on, whose name no skill that is on has; every skill when none is given")
                 .permission(MANAGE)
-                .success_output("the skills turned on")
-                .failure_output(format!("a repository neither Global nor this conversation's workspace has, a skill the source lacks, or a skill whose name a skill that is on in any place has, naming that skill's source and place; {REFUSED_OUTPUT}"))
+                .output("the skills turned on")
+                .failure(FAILURE)
                 .bind(PortHandled),
         )
         .leaf(
@@ -128,8 +131,8 @@ pub(crate) fn commands() -> CommandPlugin {
                 .positionals(["repository"])
                 .describe("skill", "A skill of the source to turn off; every skill when none is given")
                 .permission(MANAGE)
-                .success_output("the skills turned off")
-                .failure_output(format!("a repository neither Global nor this conversation's workspace has, or a skill the source lacks; {REFUSED_OUTPUT}"))
+                .output("the skills turned off")
+                .failure(FAILURE)
                 .bind(PortHandled),
         );
     CommandPlugin::new(Placement::Demi, vec![group])

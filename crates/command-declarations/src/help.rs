@@ -224,10 +224,11 @@ impl<B> Node<B> {
                     }
                 }
                 let mut notes = Vec::new();
-                if let Some(success) = leaf.success_output.as_ref().filter(|value| !value.is_empty()) {
-                    notes.push(format!("Output: {success}"));
+                let output = leaf.output.as_ref().and_then(|output| output.description.as_ref());
+                if let Some(output) = output.filter(|value| !value.is_empty()) {
+                    notes.push(format!("Output: {output}"));
                 }
-                if let Some(failure) = leaf.failure_output.as_ref().filter(|value| !value.is_empty()) {
+                if let Some(failure) = leaf.failure.as_ref().filter(|value| !value.is_empty()) {
                     notes.push(format!("Failure: {failure}"));
                 }
                 if let Some(permission) = &leaf.permission {

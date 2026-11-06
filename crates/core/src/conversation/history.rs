@@ -192,7 +192,7 @@ pub(crate) fn history_group(core: Weak<Core>) -> GroupBuilder {
             LeafBuilder::rpc("search", SEARCH_SUMMARY)
                 .input::<SearchArgs>()
                 .positionals(["words"])
-                .success_output("a table of the page's hits, each with the message before and after it; on stderr, the page and the search of the next page")
+                .output("a table of the page's hits, each with the message before and after it; on stderr, the page and the search of the next page")
                 .json_output::<Vec<SearchRow>>()
                 .bind(TypedRpc::new(verb(core.clone(), search))),
         )
@@ -200,14 +200,14 @@ pub(crate) fn history_group(core: Weak<Core>) -> GroupBuilder {
             LeafBuilder::rpc("read", READ_SUMMARY)
                 .input::<ReadArgs>()
                 .positionals(["range"])
-                .success_output("the blocks of the range as plain text; when it stopped early, a last line \"Stopped at <index> · next: <the read that goes on>\"")
+                .output("the blocks of the range as plain text; when it stopped early, a last line \"Stopped at <index> · next: <the read that goes on>\"")
                 .bind(TypedRpc::new(verb(core.clone(), read))),
         )
         .leaf(
             LeafBuilder::rpc("timing", TIMING_SUMMARY)
                 .input::<TimingArgs>()
                 .positionals(["range"])
-                .success_output("a table of the turns that start in the range, one row per turn; on stderr, the next page when more turns follow")
+                .output("a table of the turns that start in the range, one row per turn; on stderr, the next page when more turns follow")
                 .json_output::<Vec<TurnTiming>>()
                 .bind(TypedRpc::new(verb(core.clone(), timing))),
         )
@@ -215,7 +215,7 @@ pub(crate) fn history_group(core: Weak<Core>) -> GroupBuilder {
             LeafBuilder::rpc("cost", COST_SUMMARY)
                 .input::<CostArgs>()
                 .positionals(["range"])
-                .success_output("a table of the turns that start in the range, one row per turn, or per call with --calls; on stderr, the next page when more turns follow")
+                .output("a table of the turns that start in the range, one row per turn, or per call with --calls; on stderr, the next page when more turns follow")
                 .json_output::<CostRows>()
                 .bind(TypedRpc::new(verb(core.clone(), cost))),
         )
@@ -223,7 +223,7 @@ pub(crate) fn history_group(core: Weak<Core>) -> GroupBuilder {
             LeafBuilder::rpc("open", OPEN_SUMMARY)
                 .input::<OpenArgs>()
                 .positionals(["item"])
-                .success_output("what the item holds, or the path an attachment was saved to; when more pages follow, a last line naming the next")
+                .output("what the item holds, or the path an attachment was saved to; when more pages follow, a last line naming the next")
                 .bind(TypedRpc::new(verb(core, open))),
         )
 }

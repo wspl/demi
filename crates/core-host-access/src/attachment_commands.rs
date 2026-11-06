@@ -143,8 +143,8 @@ pub fn attachment_group(core: Weak<dyn HostCore>) -> GroupBuilder {
                 .input::<UploadArgs>()
                 .positionals(["path"])
                 .json_output::<Vec<UploadedAttachment>>()
-                .success_output("a table of the files uploaded: each one's attachment id, such as a3, its media type, size and path")
-                .failure_output("a file that cannot be uploaded writes its path and why to stderr; the others are still uploaded, and the command exits 1")
+                .output("a table of the files uploaded: each one's attachment id, such as a3, its media type, size and path")
+                .failure("a file that cannot be uploaded writes its path and why to stderr; the others are still uploaded, and the command exits 1")
                 .bind(TypedRpc::new(verb(core.clone(), upload))),
         )
         .leaf(
@@ -152,8 +152,8 @@ pub fn attachment_group(core: Weak<dyn HostCore>) -> GroupBuilder {
                 .input::<DownloadArgs>()
                 .positionals(["id"])
                 .json_output::<Vec<DownloadedAttachment>>()
-                .success_output("a table of the attachments written: each one's id and path")
-                .failure_output("an attachment that cannot be written writes its id and why to stderr; the others are still written, and the command exits 1")
+                .output("a table of the attachments written: each one's id and path")
+                .failure("an attachment that cannot be written writes its id and why to stderr; the others are still written, and the command exits 1")
                 .bind(TypedRpc::new(verb(core, download))),
         )
 }

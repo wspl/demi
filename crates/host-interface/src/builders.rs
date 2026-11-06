@@ -6,7 +6,7 @@
 use std::{future::Future, marker::PhantomData, rc::Rc};
 
 use demi_command_declarations::{
-    BringsHost, Category, Group, Leaf, LeafKind, LeafOutput, NativeOperation, Node, Schema, StdinRead,
+    BringsHost, Category, Group, Leaf, LeafKind, NativeOperation, Node, Schema, StdinRead,
     command_schema_settings,
 };
 use futures_util::future::{LocalBoxFuture, ready};
@@ -141,8 +141,7 @@ impl LeafBuilder {
             leaf: Leaf {
                 name,
                 summary,
-                success_output: None,
-                failure_output: None,
+                failure: None,
                 running_hint: None,
                 input: None,
                 positionals: None,
@@ -253,24 +252,27 @@ impl LeafBuilder {
         self
     }
 
-    pub fn success_output(mut self, text: impl Into<String>) -> Self {
-        self.leaf.success_output = Some(text.into());
+    /// What the command writes to standard output when it succeeds.
+    pub fn output(mut self, text: impl Into<String>) -> Self {
+        self.leaf.output.get_or_insert_default().description = Some(text.into());
         self
     }
 
-    pub fn failure_output(mut self, text: impl Into<String>) -> Self {
-        self.leaf.failure_output = Some(text.into());
+    /// What a failure looks like and what it leaves, never why it fails
+    /// (`Leaf::failure`).
+    pub fn failure(mut self, text: impl Into<String>) -> Self {
+        self.leaf.failure = Some(text.into());
         self
     }
 
-    /// The guidance the model sees in place of the generic running hint
-    /// while this command runs.
     /// The command may return media (`crates/runner-jobs/src/commands/command_output.rs`).
     pub fn media(mut self) -> Self {
         self.leaf.media = true;
         self
     }
 
+    /// The guidance the model sees in place of the generic running hint
+    /// while this command runs.
     pub fn running_hint(mut self, text: impl Into<String>) -> Self {
         self.leaf.running_hint = Some(text.into());
         self
@@ -279,7 +281,7 @@ impl LeafBuilder {
     /// The command prints `T` as JSON when the caller passes `--json`.
     pub fn json_output<T: JsonSchema>(mut self) -> Self {
         match schema_of::<T>(true) {
-            Ok(json) => self.leaf.output = Some(LeafOutput { json: Some(json) }),
+            Ok(json) => self.leaf.output.get_or_insert_default().json = Some(json),
             Err(error) => self.refuse(error),
         }
         self

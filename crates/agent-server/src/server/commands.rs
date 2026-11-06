@@ -286,7 +286,7 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
                 .describe("prompt", SPAWN_PROMPT)
                 .describe("profile", PROFILE_OPTION)
                 .stdin_field("prompt")
-                .success_output("stdout is \"subagentId: <id>\"; creation succeeded, not necessarily execution")
+                .output("stdout is \"subagentId: <id>\"; creation succeeded, not necessarily execution")
                 .json_output::<Started>()
                 .bind(TypedRpc::new(verb(server.clone(), spawn))),
         );

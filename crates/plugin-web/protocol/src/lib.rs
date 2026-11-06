@@ -51,7 +51,9 @@ pub enum OperationError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct FetchArgs {
-    /// The http or https URL to read
+    /// The http or https URL to read: a page of at most 10 MiB of text or a
+    /// file of at most 64 MiB, at most 10 redirects away, which no
+    /// Cloudflare challenge guards
     #[garde(length(min = 1))]
     pub url: String,
     /// The character the part starts at, 0 for the first

@@ -38,29 +38,37 @@ listed moves into the description of the argument it concerns, or is
 checked to be what the command's error says when it happens, and the
 error is fixed where it does not.
 
-`--help` keeps its labels, `Output:` and `Failure:`. The leaf's fields,
-its builder's methods and its wire form are renamed together:
+`--help` keeps its labels, `Output:` and `Failure:`. The leaf's `output`
+already holds the JSON Schema of the command's `--json` form; the text
+joins it there, so one field says what the output is. The leaf's fields,
+its builder's methods and its wire form change together:
 
 ```rust
 pub struct Leaf<B = Binding> {
     pub name: String,
     pub summary: String,
-    pub output: Option<String>,
     pub failure: Option<String>,
+    pub output: Option<LeafOutput>,
     // ...
+}
+
+pub struct LeafOutput {
+    pub description: Option<String>,
+    pub json: Option<Schema>,
 }
 ```
 
-Declarations travel to runners (`runner-protocol` reads them), so the
-wire's `successOutput` and `failureOutput` become `output` and `failure`.
-A runner of an earlier release updates before its socket opens, as the
-server's 409 makes it.
+`description` is the name OpenAPI gives a response's text beside its
+schema. Declarations travel to runners (`runner-protocol` reads them), so
+the wire's `successOutput` becomes `output.description` and
+`failureOutput` becomes `failure`. A runner of an earlier release updates
+before its socket opens, as the server's 409 makes it.
 
 ## Built on
 
 | What the design uses | Where it is today |
 | --- | --- |
-| The two texts | `command-declarations`: `Leaf`, `RawLeaf`; `host-interface`: `LeafBuilder::success_output`, `failure_output` |
+| The two texts | `command-declarations`: `Leaf`, `RawLeaf`, `LeafOutput`; `host-interface`: `LeafBuilder::success_output`, `failure_output`, `json_output` |
 | Their rendering | `command-declarations/src/help.rs`, `Output:` and `Failure:` |
 | Success and failure themselves | the exit status of `Reply::Exit` |
 | A runner's update first | the 409 with the required release |

@@ -44,17 +44,22 @@ pub struct SearchArgs {
     /// How many pages to list in all
     #[schemars(range(min = 1))]
     pub count: Option<u32>,
-    /// Keep only pages of this domain and its subdomains; repeat for several
+    /// Keep only pages of this domain and its subdomains; repeat for several.
+    /// Anonymous search may not offer it; a search with an Exa API key does
     pub domain: Option<Vec<String>>,
-    /// Leave out pages of this domain and its subdomains; repeat for several
+    /// Leave out pages of this domain and its subdomains; repeat for
+    /// several. Anonymous search may not offer it; a search with an Exa API
+    /// key does
     pub exclude_domain: Option<Vec<String>>,
-    /// Only pages published on or after this date
+    /// Only pages published on or after this date. Anonymous search may not
+    /// offer it; a search with an Exa API key does
     #[schemars(
         pattern(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"),
         extend("patternDescription" = "a date, such as 2026-01-31")
     )]
     pub since: Option<String>,
-    /// Only pages published on or before this date
+    /// Only pages published on or before this date. Anonymous search may not
+    /// offer it; a search with an Exa API key does
     #[schemars(
         pattern(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"),
         extend("patternDescription" = "a date, such as 2026-01-31")

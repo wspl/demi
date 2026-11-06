@@ -198,8 +198,11 @@ pub struct Category {
 pub struct Leaf<B = Binding> {
     pub name: String,
     pub summary: String,
-    pub success_output: Option<String>,
-    pub failure_output: Option<String>,
+    /// What a failure looks like and what it leaves: where the error goes
+    /// and in what form, the exit status, what is already done and the
+    /// state left behind. It names no cause: an argument's description
+    /// says what the argument must be, and the error which cause happened.
+    pub failure: Option<String>,
     pub running_hint: Option<String>,
     pub input: Option<Schema>,
     pub positionals: Option<Vec<String>>,
@@ -258,10 +261,18 @@ impl StdinRead {
     }
 }
 
-/// The JSON Schema of a command's `--json` output.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// What a command writes to standard output when it succeeds: what it
+/// holds, such as "the conversation started, its title and id", and the
+/// JSON Schema of its `--json` form.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LeafOutput {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    pub description: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -572,8 +583,7 @@ impl Node<NativeOperation> {
             Self::Leaf(leaf) => Node::Leaf(Leaf {
                 name: leaf.name.clone(),
                 summary: leaf.summary.clone(),
-                success_output: leaf.success_output.clone(),
-                failure_output: leaf.failure_output.clone(),
+                failure: leaf.failure.clone(),
                 running_hint: leaf.running_hint.clone(),
                 input: leaf.input.clone(),
                 positionals: leaf.positionals.clone(),
@@ -851,13 +861,7 @@ struct RawLeaf<B> {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
-    success_output: Option<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    failure_output: Option<String>,
+    failure: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -955,8 +959,7 @@ impl<B> TryFrom<RawLeaf<B>> for Leaf<B> {
         Ok(Self {
             name: raw.name,
             summary: raw.summary,
-            success_output: raw.success_output,
-            failure_output: raw.failure_output,
+            failure: raw.failure,
             running_hint: raw.running_hint,
             input: raw.input,
             positionals: raw.positionals,
@@ -983,8 +986,7 @@ impl<B> From<Leaf<B>> for RawLeaf<B> {
         Self {
             name: leaf.name,
             summary: leaf.summary,
-            success_output: leaf.success_output,
-            failure_output: leaf.failure_output,
+            failure: leaf.failure,
             running_hint: leaf.running_hint,
             input: leaf.input,
             positionals: leaf.positionals,

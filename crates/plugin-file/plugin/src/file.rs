@@ -74,12 +74,12 @@ pub(crate) fn file_group() -> GroupBuilder {
         )
         .input::<ViewArgs>()
         .positionals(["path"])
-        .success_output(
+        .output(
             "nothing on stdout; a line for each medium in the command's output, such as [image 1: image/png, 1280 × 720 px, 412000 bytes], and the medium shown to you in the result, with its attachment_id",
         )
         .media()
-        .failure_output(
-            "a line per path that cannot be shown, `demi file view: <path>: <reason>`, on stderr, such as a text file, bytes that are no image, video or PDF, a type this conversation's model does not read, or more than 16 MiB; the other paths are still shown, and the command exits 1",
+        .failure(
+            "a line per path that cannot be shown, `demi file view: <path>: <reason>`, on stderr; the other paths are still shown, and the command exits 1",
         ),
     )
     .leaf(
@@ -96,11 +96,11 @@ pub(crate) fn file_group() -> GroupBuilder {
             "old",
             "Exact text to replace in the path argument's file, without stdin; with several matches, --occurrence or --context chooses one",
         )
-        .success_output(
+        .output(
             "a line for each file, \"Created <path> (<n> lines)\" or \"Edited <path> (+<added> −<removed>)\", and under an edited file each change as the file now reads, numbered, with a line of context on each side",
         )
-        .failure_output(
-            "names the file by its full path and the block whose SEARCH is not in the file, with the file's closest lines, or occurs more than once, with the line of each, and exits non-zero without changing any file",
+        .failure(
+            "an error on stderr that names the file by its full path and the block that failed, with the file's closest lines or each line it matches, and a nonzero exit status; no file is changed",
         ),
     )
     .leaf(
@@ -111,9 +111,9 @@ pub(crate) fn file_group() -> GroupBuilder {
                 "patch",
                 "A unified diff, as git diff writes it. A hunk's header line counts may be off, and a bare @@ header works: each hunk goes where its context and removed lines match, the only place or the one nearest its header's line.",
             )
-            .success_output("writes \"Patched <n> file(s)\" to stdout")
-            .failure_output(
-                "names the file and hunk that match nowhere and exits non-zero without changing any file",
+            .output("writes \"Patched <n> file(s)\" to stdout")
+            .failure(
+                "an error on stderr that names the file and the hunk that failed, and a nonzero exit status; no file is changed",
             ),
     )
 }

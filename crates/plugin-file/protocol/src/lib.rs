@@ -32,7 +32,8 @@ pub enum OperationError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ViewArgs {
-    /// Images, videos or PDFs to show, in order; - or none reads stdin
+    /// Images, videos or PDFs to show, in order, each of at most 16 MiB and
+    /// of a type this conversation's model reads; - or none reads stdin
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

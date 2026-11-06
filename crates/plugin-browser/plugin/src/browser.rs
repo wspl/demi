@@ -143,7 +143,7 @@ fn leaf<I: BrowserInput + schemars::JsonSchema, R: schemars::JsonSchema>(
         )
         .positionals(positionals::<I>(name))
         .json_output::<R>()
-        .success_output(match name {
+        .output(match name {
             "screenshot" => {
                 "the PNG's bytes on stdout and what it captured on stderr, so pipe it into demi file view to see it or redirect it to save it; with --output, the file saved and what it captured on stdout; --json requires --output"
             }
@@ -152,7 +152,7 @@ fn leaf<I: BrowserInput + schemars::JsonSchema, R: schemars::JsonSchema>(
             }
             _ => SUCCESS,
         })
-        .failure_output(FAILURE);
+        .failure(FAILURE);
     if let Some(field) = stdin_field(name) {
         leaf = leaf.stdin_field(field);
     }

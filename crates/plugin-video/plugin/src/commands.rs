@@ -22,6 +22,7 @@ const MODELS_SUMMARY: &str = "List the video models the user's provider entries 
 
 const PROMPT: &str = "What the video shows and how it moves; - reads it from stdin.";
 const MODEL: &str = "The video model, required: one `demi video models` lists.";
+const CHANGE_MODEL: &str = "The video model, required: one `demi video models` lists whose entry makes this change of a video.";
 const PROVIDER: &str = "The entry to make it through, by its name in Settings or its id, when the user asked for one; without it, the first that can make the model now, subscriptions before API keys, each in the order of Settings > Providers.";
 const IMAGE: &str = "The first frame: a PNG, JPEG or WebP file of this Host of at most 16 MiB, relative to the current directory or absolute.";
 const LAST_FRAME: &str = "The last frame, which needs --image; a file as --image takes.";
@@ -38,13 +39,11 @@ const EXTEND_PROMPT: &str = "How the video goes on; - reads it from stdin.";
 const VIDEO: &str = "The video to change: an MP4 file of this Host of at most 64 MiB, relative to the current directory or absolute.";
 const CHANGE_REFERENCE: &str = "An image the result keeps to, such as a character entering the scene; repeat it for several. A file as an image a video takes: a PNG, JPEG or WebP file of at most 16 MiB.";
 
-const CHANGE_SUCCESS: &str = "the MP4's bytes on stdout; on stderr what generate's says, the result's line naming the job it continued, such as `13 s 640×360 MP4 with sound from gemini-omni-1.1-flash (Google), extending its job v1_ChdFeGFtcGxl, $0.45`, and a warning when the vendor no longer kept that job and the file was sent instead";
+const CHANGE_OUTPUT: &str = "the MP4's bytes on stdout; on stderr what generate's says, the result's line naming the job it continued, such as `13 s 640×360 MP4 with sound from gemini-omni-1.1-flash (Google), extending its job v1_ChdFeGFtcGxl, $0.45`, and a warning when the vendor no longer kept that job and the file was sent instead";
 
-const CHANGE_FAILURE: &str = "what fails generate, a model whose entry makes no such change of a video, or a --video that is not an MP4 file of at most 64 MiB, each named on stderr with exit status 1";
+const OUTPUT: &str = "the MP4's bytes on stdout; on stderr the job asked for, such as `asked grok-imagine-video-1.5 (Grok, alex@example.com), job d97415a1-5796-b7ec-379f-4e6819e08fdf`, each change of its state, `queued`, `running` or `running, 40%`, and a line such as `5 s 1280×720 MP4 with sound from grok-imagine-video-1.5 (Grok, alex@example.com), $0.25`, with a warning for each option the result does not honour";
 
-const SUCCESS: &str = "the MP4's bytes on stdout; on stderr the job asked for, such as `asked grok-imagine-video-1.5 (Grok, alex@example.com), job d97415a1-5796-b7ec-379f-4e6819e08fdf`, each change of its state, `queued`, `running` or `running, 40%`, and a line such as `5 s 1280×720 MP4 with sound from grok-imagine-video-1.5 (Grok, alex@example.com), $0.25`, with a warning for each option the result does not honour";
-
-const FAILURE: &str = "no --model, no provider that makes videos, a model none makes, an option the model does not take, such as `gemini-omni-1.1-flash takes --duration 3 to 10`, before anything is sent, an entry --provider names that cannot make it now (with why and the entries that can), every entry that could used up, a refused API key, a refusal, an expired sign-in, a vendor that did not answer a request in 120 s, a job the vendor failed or that expired there, a job still running after 10 minutes (with its id), a file that is not an MP4, or an image that is not a PNG, JPEG or WebP file of at most 16 MiB, each named on stderr with exit status 1";
+const FAILURE: &str = "an error on stderr that names the cause, with exit status 1, and nothing on stdout; an option the model does not take fails before anything is sent, and a job still running after 10 minutes is named by its id";
 
 /// The input of `generate`.
 #[derive(Deserialize, JsonSchema)]
@@ -108,8 +107,8 @@ fn video_group() -> GroupBuilder {
                 .describe("no-audio", NO_AUDIO)
                 .describe("seed", SEED)
                 .positionals(["prompt"])
-                .success_output(SUCCESS)
-                .failure_output(FAILURE)
+                .output(OUTPUT)
+                .failure(FAILURE)
                 .bind(PortHandled),
         )
         .leaf(change_leaf("edit", EDIT_SUMMARY, EDIT_PROMPT))
@@ -130,12 +129,12 @@ fn change_leaf(name: &'static str, summary: &'static str, prompt: &'static str) 
         .input::<ChangeArgs>()
         .describe("prompt", prompt)
         .describe("video", VIDEO)
-        .describe("model", MODEL)
+        .describe("model", CHANGE_MODEL)
         .describe("provider", PROVIDER)
         .describe("reference", CHANGE_REFERENCE)
         .describe("resolution", RESOLUTION)
         .positionals(["prompt"])
-        .success_output(CHANGE_SUCCESS)
-        .failure_output(CHANGE_FAILURE)
+        .output(CHANGE_OUTPUT)
+        .failure(FAILURE)
         .bind(PortHandled)
 }
