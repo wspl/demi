@@ -818,7 +818,7 @@ CREATE TABLE providers (
   search_images        INTEGER NOT NULL DEFAULT 1 CHECK (search_images IN (0, 1)),
   search_videos        INTEGER NOT NULL DEFAULT 1 CHECK (search_videos IN (0, 1)),
   -- The owner's device the entry's requests go out from
-  -- (crates/core/src/device_requests.rs); null for the
+  -- (crates/backend-user-shard/src/shard/device_requests.rs); null for the
   -- server. It names no row, so a device removed leaves it, and the entry's
   -- requests fail until another is chosen. Which families may name one is
   -- theirs to say (crates/provider-registry/src/families.rs).
