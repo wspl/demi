@@ -45,7 +45,8 @@ use demi_web_api_protocol::providers::{
 use demi_web_api_protocol::text::{EndpointUrl, Trimmed};
 use std::sync::Arc;
 
-use crate::services::Services;
+use crate::services::CoreServices;
+use crate::starter::Starter;
 
 /// Why a change of an entry, or a search, was refused, in the words both
 /// the settings page and `demi providers` show.
@@ -172,7 +173,7 @@ fn plural(kind: ModelKind) -> &'static str {
     }
 }
 
-impl Services {
+impl CoreServices {
     /// Refuses a user who infers with another's entries of `kind`, and so
     /// adds none.
     pub async fn may_add(&self, user: &UserId, kind: CredentialKind) -> Result<(), ProviderRefusal> {
@@ -679,17 +680,16 @@ impl Services {
     /// snapshots; answers the entry as it was.
     pub async fn delete_provider(
         &self,
+        starter: &dyn Starter,
         user: &UserDto,
         id: &str,
     ) -> Result<ProviderEntry, ProviderRefusal> {
         let entry = self.managed_entry(&user.id, id).await?;
         let _held = self.hold_entry(&entry)?;
-        // Deleting the entry deletes its share keys; their sessions close
-        // with them, as a revoke closes them.
-        let lent = self.lent_keys(&entry).await?;
         self.vault.delete(&entry).await?;
-        self.control.delete_share_keys_of(entry.owner.clone(), entry.id.clone()).await?;
-        self.end_lending(&lent);
+        // What the starter keeps of the entry goes with it, as a server's
+        // share keys with the sessions borrowed with them.
+        starter.provider_deleted(&entry).await?;
         self.provider_registry.forget(&entry.id).await?;
         self.cli_installs.forget(&entry.id);
         Ok(entry)
@@ -728,7 +728,7 @@ impl Services {
         waits: Option<bool>,
     ) -> Result<demi_web_api_protocol::providers::ModelCatalog, CatalogError> {
         let entries = self.vault.entries_for(user).await?;
-        let preferences = self.stores.of(user).await?.preferences().await?;
+        let preferences = self.vault.stores().store_of(user).await?.preferences().await?;
         let mut providers = match waits {
             Some(refresh) => self.provider_registry.model_catalog(&entries, refresh).await,
             None => self.provider_registry.known_model_catalog(&entries).await,

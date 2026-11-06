@@ -319,7 +319,7 @@ impl Shard {
     /// `in_use` are the sessions in use when the notification came, which
     /// decide it however long it waits for the ones before.
     pub(crate) async fn recipients(&self, message: &PushMessage, in_use: &[SessionId]) -> Result<Recipients, StorageError> {
-        let subscriptions = self.services().push.subscriptions(self.user().clone()).await?;
+        let subscriptions = self.server_services().push.subscriptions(self.user().clone()).await?;
         let mut recipients = Recipients {
             now: Vec::new(),
             shown: 0,
@@ -389,7 +389,7 @@ impl Shard {
                 );
                 return;
             }
-            let services = this.services();
+            let services = this.server_services();
             let Some(contact) = services.public_url.get() else {
                 // The backend serves only once it listens, which sets it.
                 tracing::error!(event = "notification.too_early", conversation = %message.conversation(), "a notification came before the backend listened");

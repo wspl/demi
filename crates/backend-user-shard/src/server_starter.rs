@@ -11,6 +11,7 @@ use demi_backend_runners::install::install_commands;
 use demi_provider_registry::entry::ProviderEntry;
 use demi_runner_client::HostLog;
 use demi_shared_types::ScheduleId;
+use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::devices::{DeviceDto, InstallCommands};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use demi_web_api_protocol::push::PushMessage;
@@ -32,9 +33,26 @@ impl ServerStarter {
     pub fn new(user: UserId, services: Arc<Services>, shard: Weak<Shard>) -> Self {
         Self { user, services, shard }
     }
+
+    /// The server's side of `core`, which the server started.
+    pub fn of(core: &Shard) -> &Self {
+        core.starter()
+            .as_any()
+            .downcast_ref()
+            .expect("the server starts each of its cores with its own side")
+    }
+
+    /// The server's services.
+    pub fn services(&self) -> &Arc<Services> {
+        &self.services
+    }
 }
 
 impl Starter for ServerStarter {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn cloud(&self) -> Option<Rc<dyn CloudHost>> {
         Some(self.shard.upgrade()?)
     }
@@ -123,6 +141,17 @@ impl Starter for ServerStarter {
                     .iter()
                     .filter(|subscription| subscription.events.agent_notifies)
                     .count(),
+            })
+        })
+    }
+
+    fn principal(&self) -> LocalBoxFuture<'_, Result<UserDto, StorageError>> {
+        Box::pin(async move {
+            let account = self.services.control.account(self.user.clone()).await?;
+            account.map(|account| account.user).ok_or_else(|| StorageError::Corrupt {
+                table: "users",
+                column: "id",
+                reason: format!("the account of the core's user {} is gone", self.user),
             })
         })
     }

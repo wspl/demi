@@ -55,7 +55,7 @@ use demi_web_api_protocol::search::{
 };
 use tokio::sync::broadcast::error::RecvError;
 
-use crate::services::Services;
+use crate::services::CoreServices;
 use crate::shard::{Shard, Shards};
 
 /// The user's indexer: the watch of the user's changes, one indexing at a
@@ -84,7 +84,7 @@ enum CatchUp {
 }
 
 impl SearchIndexer {
-    pub(crate) fn new(services: &Services, user: &UserId) -> Self {
+    pub(crate) fn new(services: &CoreServices, user: &UserId) -> Self {
         Self {
             watch: services.sync.watch(user),
             turns: KeyedSerialGate::new(),

@@ -66,7 +66,7 @@ impl Shard {
         let record = store.conversation(conversation)
             .await?
             .ok_or(ShareRefusal::NoConversation)?;
-        if let Some(existing) = self.services().control.share_of(self.user().clone(), record.id.clone(), target.clone()).await? {
+        if let Some(existing) = self.server_services().control.share_of(self.user().clone(), record.id.clone(), target.clone()).await? {
             return Ok(existing);
         }
         // A reply block is shared from the conversation a reply of which
@@ -97,9 +97,9 @@ impl Shard {
             conversation: record.id.clone(),
             target,
             title,
-            taken_at: self.services().clock.now(),
+            taken_at: self.server_services().clock.now(),
         };
-        match self.services().control.add_share(share).await? {
+        match self.server_services().control.add_share(share).await? {
             Added::New(share) => {
                 // The token is the link's secret, which no line holds.
                 tracing::info!(
@@ -145,8 +145,8 @@ impl Shard {
             .await?
             .ok_or(ShareRefusal::NoConversation)?;
         let _ = self.make_list(&record.id, &token, &share.target).await?;
-        let Some(share) = self.services().control
-            .retake_share(token.clone(), record.title, self.services().clock.now())
+        let Some(share) = self.server_services().control
+            .retake_share(token.clone(), record.title, self.server_services().clock.now())
             .await?
         else {
             // The owner stopped sharing meanwhile: this list is no one's.
@@ -166,7 +166,7 @@ impl Shard {
     ) -> Result<(), ShareRefusal> {
         let share = self.owned_share(&conversation, &token).await?;
         if !self
-            .services()
+            .server_services()
             .control
             .remove_share(self.user().clone(), share.conversation.clone(), token.clone())
             .await?
@@ -184,7 +184,7 @@ impl Shard {
         conversation: &ConversationId,
         token: &ShareToken,
     ) -> Result<ShareRecord, ShareRefusal> {
-        self.services()
+        self.server_services()
             .control
             .share(token.clone())
             .await?
@@ -330,7 +330,7 @@ impl Shard {
         if !shown {
             return Ok(None);
         }
-        Ok(self.services().blobs.for_user(&share.owner).get(&blob).await?)
+        Ok(self.server_services().blobs.for_user(&share.owner).get(&blob).await?)
     }
 }
 

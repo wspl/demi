@@ -88,7 +88,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::services::Services;
+use crate::services::CoreServices;
 use crate::shard::{Shard, Shards};
 
 /// The most an operation of the package answers: one JSON document.
@@ -1687,7 +1687,7 @@ async fn reporting_download<T>(
 }
 
 /// The versions `target` has, newest first.
-async fn installed(services: &Services, target: &CliTarget) -> Result<Vec<Installed>, CliError> {
+async fn installed(services: &CoreServices, target: &CliTarget) -> Result<Vec<Installed>, CliError> {
     let status: Status = call(
         services,
         target,
@@ -1702,7 +1702,7 @@ async fn installed(services: &Services, target: &CliTarget) -> Result<Vec<Instal
 
 /// Installs `release` on `target` and answers the installed executable.
 async fn ensure(
-    services: &Services,
+    services: &CoreServices,
     target: &CliTarget,
     release: &Release,
 ) -> Result<Installed, CliError> {
@@ -1743,7 +1743,7 @@ async fn ensure(
 /// document it answers. A nonzero exit keeps a failure document; an output
 /// with no document is a resident that failed.
 async fn call<T: DeserializeOwned>(
-    services: &Services,
+    services: &CoreServices,
     target: &CliTarget,
     operation: Operation,
     input: Bytes,
@@ -1867,7 +1867,7 @@ impl CliInstalls {
 /// Starts the install of `entry`'s CLI on the Claude Code machine for
 /// `user` unless one is under way. Nobody waits for it: the user's pages
 /// learn of its start and its end with the providers' part.
-pub async fn start_install(services: &Services, shards: &Shards, user: &UserId, entry: &ProviderId) {
+pub async fn start_install(services: &CoreServices, shards: &Shards, user: &UserId, entry: &ProviderId) {
     if !services.cli_installs.begin(user, entry) {
         return;
     }

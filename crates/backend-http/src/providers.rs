@@ -210,13 +210,16 @@ pub(super) async fn update(
 
 /// Deletes an entry with its accounts, catalog and quota snapshots.
 pub(super) async fn delete(
-    State(services): State<Arc<Services>>,
+    State(shards): State<Shards>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    services
-        .delete_provider(&user, &id)
-        .await
+    shards
+        .of(&user.id.clone())
+        .call(move |shard, _| async move {
+            shard.services().delete_provider(shard.starter(), &user, &id).await
+        })
+        .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
 }

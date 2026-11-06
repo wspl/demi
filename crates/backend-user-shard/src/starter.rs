@@ -6,6 +6,7 @@
 //! records of its own that name what the core holds, such as which core a
 //! runner's token or a schedule's URL reaches.
 
+use std::any::Any;
 use std::rc::Rc;
 
 use demi_core_host_access::cloud::CloudHost;
@@ -14,6 +15,7 @@ use demi_core_store::devices::DeviceRecord;
 use demi_provider_registry::entry::ProviderEntry;
 use demi_runner_client::HostLog;
 use demi_shared_types::ScheduleId;
+use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::devices::{DeviceDto, InstallCommands};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use demi_web_api_protocol::push::PushMessage;
@@ -40,7 +42,11 @@ pub struct Reach {
 }
 
 /// What the core asks of whoever runs it.
-pub trait Starter {
+pub trait Starter: Any {
+    /// The starter itself, which its own code that holds the core reads its
+    /// state from.
+    fn as_any(&self) -> &dyn Any;
+
     /// The Cloud, a Host the starter wakes and stops; none for a starter
     /// that runs no Cloud.
     fn cloud(&self) -> Option<Rc<dyn CloudHost>>;
@@ -81,6 +87,10 @@ pub trait Starter {
 
     /// How a notification reaches the user now.
     fn reach(&self) -> LocalBoxFuture<'_, Result<Reach, StorageError>>;
+
+    /// The user the core serves, with the role that decides which provider
+    /// entries they configure.
+    fn principal(&self) -> LocalBoxFuture<'_, Result<UserDto, StorageError>>;
 
     /// Whether the agent's notifications reach the user now.
     fn agent_reaches(&self) -> LocalBoxFuture<'_, Result<bool, StorageError>>;

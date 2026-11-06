@@ -40,7 +40,7 @@ use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
 use super::Shard;
-use crate::services::Services;
+use crate::services::CoreServices;
 
 /// The most bytes of a package call's JSON answer.
 ///
@@ -51,7 +51,7 @@ const CALL_ANSWER_MAX_BYTES: usize = 1024 * 1024;
 /// plugins that hold it.
 pub(crate) struct ShardPort {
     pub(crate) shard: Weak<Shard>,
-    pub(crate) services: Arc<Services>,
+    pub(crate) services: Arc<CoreServices>,
     /// The shard thread's client of the plugins' outbound requests.
     pub(crate) web: reqwest::Client,
 }
@@ -308,7 +308,7 @@ impl ProductPort for ShardPort {
 /// The client of a shard thread's plugins' outbound requests
 /// (`crates/plugin-host/src/web.rs`). A test's backend trusts the
 /// authorities its HTTPS servers present.
-pub(crate) fn web_client(services: &Services) -> reqwest::Client {
+pub(crate) fn web_client(services: &CoreServices) -> reqwest::Client {
     let roots = {
         let _ = services;
         &[]

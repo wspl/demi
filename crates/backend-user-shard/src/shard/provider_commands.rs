@@ -1132,7 +1132,7 @@ async fn remove(shard: Rc<Shard>, call: Call<EntryArgs>, port: RpcPort) -> Resul
     let id = named(&entries, &call.args.entry).map_err(failed)?.id.clone();
     let removed = shard
         .services()
-        .delete_provider(&user, id.as_str())
+        .delete_provider(shard.starter(), &user, id.as_str())
         .await
         .map_err(failed)?;
     let removed = RemovedEntry {
@@ -1330,14 +1330,7 @@ const NONE: &str = "none";
 /// The user the shard serves, with the role that decides whether they
 /// configure the scope's entries.
 async fn user(shard: &Shard) -> Result<UserDto, RpcError> {
-    shard
-        .services()
-        .control
-        .account(shard.user().clone())
-        .await
-        .map_err(failed)?
-        .map(|account| account.user)
-        .ok_or_else(|| failed("the user's account is gone"))
+    shard.starter().principal().await.map_err(failed)
 }
 
 /// The model the calling agent runs on, while its session is live.

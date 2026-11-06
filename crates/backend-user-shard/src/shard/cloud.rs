@@ -50,7 +50,7 @@ impl CloudShard for Shard {
     }
 
     fn control(&self) -> &ControlService {
-        &self.services.control
+        &self.server_services().control
     }
 
     fn store(&self) -> &CoreStore {
@@ -58,7 +58,7 @@ impl CloudShard for Shard {
     }
 
     fn cloud_services(&self) -> &CloudServices {
-        &self.services.cloud
+        &self.server_services().cloud
     }
 
     fn public_url(&self) -> &PublicUrl {

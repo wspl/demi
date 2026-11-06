@@ -95,7 +95,7 @@ impl Shard {
         &self,
         user: UserDto,
     ) -> Result<ProductState, StateError> {
-        let services = self.services();
+        let services = self.server_services();
         let started = Instant::now();
         let mut ms = PartTimes::default();
         // The version before anything is read: a change made while the state
@@ -202,7 +202,7 @@ impl Shard {
         reader: &TokenHash,
     ) -> Result<Option<SyncEvent>, StateError> {
         let store = self.store();
-        let control = &self.services().control;
+        let control = &self.server_services().control;
         let event = match part {
             // No channel of a page's sidebar follows it.
             Part::Metadata(_) => return Ok(None),
@@ -219,8 +219,8 @@ impl Shard {
                 ids: store.conversation_order().await?,
             },
             Part::Instance => SyncEvent::Instance {
-                mode: self.services().vault.mode(),
-                manages: self.services().vault.managed_kinds(self.user()).await?,
+                mode: self.server_services().vault.mode(),
+                manages: self.server_services().vault.managed_kinds(self.user()).await?,
             },
             Part::Preferences => SyncEvent::Preferences {
                 preferences: store.preferences().await?,
@@ -284,7 +284,7 @@ impl Shard {
                 }
             }
             Part::Sessions => SyncEvent::Sessions {
-                sessions: self.services().sessions.list(self.user(), reader).await?.sessions,
+                sessions: self.server_services().sessions.list(self.user(), reader).await?.sessions,
                 etag: String::new(),
             },
             Part::Users => {
@@ -294,7 +294,7 @@ impl Shard {
                 }
                 let list = Users {
                     users: control.users().await?,
-                    cloud_storage_limits: demi_backend_cloud::isolation::storage_limits(control, &self.services().cloud).await?,
+                    cloud_storage_limits: demi_backend_cloud::isolation::storage_limits(control, &self.server_services().cloud).await?,
                 };
                 SyncEvent::Users {
                     etag: etag_of(&list),
@@ -308,7 +308,7 @@ impl Shard {
                     return Ok(None);
                 }
                 SyncEvent::CloudIsolation {
-                    isolation: demi_backend_cloud::isolation::setting(control, &self.services().cloud).await?,
+                    isolation: demi_backend_cloud::isolation::setting(control, &self.server_services().cloud).await?,
                     etag: String::new(),
                 }
             }
@@ -317,13 +317,13 @@ impl Shard {
                 if user.role == Role::User {
                     return Ok(None);
                 }
-                let Some(upgrade) = self.services().upgrades.snapshot() else {
+                let Some(upgrade) = self.server_services().upgrades.snapshot() else {
                     return Ok(None);
                 };
                 SyncEvent::ServerUpgrade { upgrade }
             }
             Part::Update => SyncEvent::Update {
-                state: self.services().upgrades.update_state(),
+                state: self.server_services().upgrades.update_state(),
             },
             Part::Plugins => SyncEvent::Plugins {
                 plugins: self.plugins().entries().await.map_err(StorageError::from)?,
@@ -341,10 +341,10 @@ impl Shard {
                 providers: self.provider_states(user).await?,
             },
             Part::Models => SyncEvent::Models {
-                models: self.services().known_model_catalog(self.user()).await?,
+                models: self.server_services().known_model_catalog(self.user()).await?,
             },
             Part::Logins => SyncEvent::Logins {
-                logins: self.services().logins.listed(self.user()),
+                logins: self.server_services().logins.listed(self.user()),
             },
             Part::Cloud => SyncEvent::Cloud {
                 cloud: self.cloud_shard().cloud_status().await?,
@@ -357,7 +357,7 @@ impl Shard {
     /// which a user who only infers sees without accounts, plan or usage.
     /// One entry that cannot be read leaves the others intact.
     async fn provider_states(&self, user: &UserDto) -> Result<Vec<ProviderState>, StorageError> {
-        let services = self.services();
+        let services = self.server_services();
         let entries = services.vault.entries_for(&user.id).await?;
         let providers = join_all(entries.iter().map(|entry| async move {
             let disclose = Vault::manages(&user.id, entry);

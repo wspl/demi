@@ -9,13 +9,13 @@ use demi_conversation_lane_protocol::JobModel;
 use demi_shared_types::ModelSelection;
 use demi_web_api_protocol::ids::UserId;
 
-use crate::services::Services;
+use crate::services::CoreServices;
 
 /// What rounds on `selections` of `user`'s run on, in their order. An
 /// entry or a model the user's scope no longer has, or a scope that cannot
 /// be read, shows by what the selection holds ([`job_model`]).
 pub async fn runs_on(
-    services: &Services,
+    services: &CoreServices,
     user: &UserId,
     selections: &[ModelSelection],
 ) -> Vec<JobModel> {

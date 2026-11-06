@@ -128,7 +128,7 @@ impl Shard {
         kind: MediaKind,
         call: Call,
     ) -> Result<oneshot::Receiver<Reply>, Unlent> {
-        let services = self.services();
+        let services = self.server_services();
         let (sender, receiver) = oneshot::channel();
         let key = borrowing.key.id.clone();
         // A job's reads and cancel go to the maker that took it.
@@ -146,7 +146,7 @@ impl Shard {
             let revoked = services.lent.open(&key);
             self.tasks().spawn_local(async move {
                 shard.lend_job_call(lent, &handle, call, sender, &revoked).await;
-                shard.services().lent.ended(&key, &revoked);
+                shard.server_services().lent.ended(&key, &revoked);
             });
             return Ok(receiver);
         }
@@ -184,7 +184,7 @@ impl Shard {
         let shard = self.clone();
         self.tasks().spawn_local(async move {
             shard.lend_call(&borrowing, route, call, sender, &revoked).await;
-            shard.services().lent.ended(&key, &revoked);
+            shard.server_services().lent.ended(&key, &revoked);
         });
         Ok(receiver)
     }
@@ -200,7 +200,7 @@ impl Shard {
         revoked: &tokio_util::sync::CancellationToken,
     ) {
         let key = &borrowing.key.id;
-        let services = self.services();
+        let services = self.server_services();
         let catalog = services.media.current();
         let http = route.http(services, self.http());
         let answered = async {
@@ -275,7 +275,7 @@ impl Shard {
             Call::VideoCancel { .. } => Call::VideoCancel { job: lent.job.clone(), model: lent.model.clone() },
             _ => Call::VideoState { job: lent.job.clone(), model: lent.model.clone() },
         };
-        let catalog = self.services().media.current();
+        let catalog = self.server_services().media.current();
         let reply = served(&lent.maker, &lent.http, &catalog, call);
         let reply = tokio::select! {
             reply = reply => reply,

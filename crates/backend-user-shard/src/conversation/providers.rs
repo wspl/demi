@@ -39,7 +39,7 @@ use futures_util::StreamExt as _;
 use tracing::Instrument as _;
 
 use crate::conversation::claude_cli::{CrossPlacement, ProcessWork};
-use crate::services::Services;
+use crate::services::CoreServices;
 use demi_core_store::store::CoreStore;
 use crate::shard::Shard;
 use demi_core_host_access::conversation_of;
@@ -78,7 +78,7 @@ pub(super) struct ConversationProviders {
     user: UserId,
     /// The user's core, which holds their conversations and usage.
     store: CoreStore,
-    services: Arc<Services>,
+    services: Arc<CoreServices>,
     /// The shard's HTTP client, which its runtimes send with.
     http: reqwest::Client,
 }
@@ -88,7 +88,7 @@ impl ConversationProviders {
         shard: Weak<Shard>,
         user: UserId,
         store: CoreStore,
-        services: Arc<Services>,
+        services: Arc<CoreServices>,
         http: reqwest::Client,
     ) -> Self {
         Self {
@@ -295,7 +295,7 @@ fn missing(model: &str, refusal: ChangeRefusal) -> Unavailable {
 /// `selection` with the facts `entry`'s catalog states for its model now
 /// ([`ProviderRegistry::current_selection`](demi_provider_registry::registry::ProviderRegistry)).
 async fn current_selection(
-    services: &Services,
+    services: &CoreServices,
     entry: &ProviderEntry,
     selection: ModelSelection,
 ) -> Result<ModelSelection, demi_provider_registry::catalog::NotConfigured> {
@@ -308,7 +308,7 @@ async fn current_selection(
 /// runtimes with.
 struct Scope {
     shard: Weak<Shard>,
-    services: Arc<Services>,
+    services: Arc<CoreServices>,
     store: CoreStore,
     user: UserId,
     work: Work,
@@ -347,7 +347,7 @@ impl Work {
 /// entry's rotation, but unmetered. Its first request makes its runtime.
 pub(crate) fn lent_runtime(
     shard: &Rc<Shard>,
-    services: Arc<Services>,
+    services: Arc<CoreServices>,
     user: UserId,
     provider: ProviderId,
     key: String,
@@ -387,7 +387,7 @@ pub(crate) fn lent_runtime(
 /// of a session lent with the share key `key` would say.
 pub(crate) async fn lent_limits(
     shard: &Rc<Shard>,
-    services: Arc<Services>,
+    services: Arc<CoreServices>,
     user: UserId,
     entry: &ProviderEntry,
     models: &[ModelSelection],

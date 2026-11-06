@@ -102,7 +102,7 @@ impl Shard {
     /// dialog lists them.
     pub async fn conversation_shares(&self, id: &ConversationId) -> Result<ConversationShares, StorageError> {
         let shares = self
-            .services()
+            .server_services()
             .control
             .shares_of(self.user().clone(), id.clone())
             .await?

@@ -82,7 +82,7 @@ use self::providers::ConversationProviders;
 use self::small_requests::SmallRequests;
 use self::suggested_replies::SuggestedReplies;
 use self::titles::Titles;
-use crate::services::Services;
+use crate::services::CoreServices;
 use crate::shard::Shard;
 
 /// What a shard's conversations run on: the agent server, and the title and
@@ -104,7 +104,7 @@ pub(crate) fn conversation_parts(
     shard: Weak<Shard>,
     user: UserId,
     store: CoreStore,
-    services: Arc<Services>,
+    services: Arc<CoreServices>,
     http: reqwest::Client,
 ) -> ConversationParts {
     let marks = services.sync.of(&user);
@@ -219,7 +219,7 @@ pub(crate) fn conversation_parts(
 /// The context sources a node asks before each provider request, in order:
 /// the product's execution context, the instructions, the side questions,
 /// then each plugin that is one, in registration order.
-fn context_sources(shard: &Weak<Shard>, services: &Services) -> Rc<[Rc<dyn ContextSource>]> {
+fn context_sources(shard: &Weak<Shard>, services: &CoreServices) -> Rc<[Rc<dyn ContextSource>]> {
     let execution = Rc::new(ExecutionContext {
         shard: shard.clone(),
     }) as Rc<dyn ContextSource>;

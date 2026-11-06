@@ -73,7 +73,7 @@ use crate::conversation::{self, ConversationParts, ShardHosts};
 use crate::lifecycle::collection::BlobCollection;
 use crate::lifecycle::conversations::ConversationWatches;
 use crate::server_starter::ServerStarter;
-use crate::services::Services;
+use crate::services::{CoreServices, Services};
 use crate::starter::Starter;
 use demi_core_host_access::access::Conversations;
 use demi_core_host_access::plugin_files::PluginInstalls;
@@ -103,7 +103,7 @@ pub struct Shard {
     store: CoreStore,
     /// The shard itself, for the tasks its methods start.
     this: Weak<Shard>,
-    services: Arc<Services>,
+    services: Arc<CoreServices>,
     /// What whoever runs the core gives it.
     starter: Rc<dyn Starter>,
     /// The HTTP client of the shard's thread, which the runtimes built here
@@ -219,7 +219,7 @@ impl Shard {
         shard: Weak<Shard>,
         user: UserId,
         store: CoreStore,
-        services: Arc<Services>,
+        services: Arc<CoreServices>,
         starter: Rc<dyn Starter>,
         http: reqwest::Client,
         web: reqwest::Client,
@@ -337,7 +337,7 @@ impl Shard {
         &self.user
     }
 
-    pub fn services(&self) -> &Services {
+    pub fn services(&self) -> &CoreServices {
         &self.services
     }
 
@@ -352,8 +352,13 @@ impl Shard {
     }
 
     /// The services, for work the shard builds that keeps them.
-    pub(crate) fn shared_services(&self) -> Arc<Services> {
+    pub(crate) fn shared_services(&self) -> Arc<CoreServices> {
         self.services.clone()
+    }
+
+    /// The server's services, for the server's work on the core.
+    pub(crate) fn server_services(&self) -> &Arc<Services> {
+        ServerStarter::of(self).services()
     }
 
     pub fn http(&self) -> &reqwest::Client {
@@ -929,7 +934,7 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                                 shard.clone(),
                                 user.clone(),
                                 store,
-                                services.clone(),
+                                services.core.clone(),
                                 Rc::new(ServerStarter::new(user.clone(), services.clone(), shard.clone())),
                                 http.clone(),
                                 web.clone(),

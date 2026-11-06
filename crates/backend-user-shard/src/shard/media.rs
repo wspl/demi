@@ -81,7 +81,7 @@ use tracing::Instrument as _;
 use super::Shard;
 use super::media_jobs::Reader;
 use super::provider_commands::named;
-use crate::services::Services;
+use crate::services::CoreServices;
 
 /// An entry that makes media of a kind, with what makes them for its
 /// active account, in the order a call tries the entries.
@@ -100,7 +100,7 @@ impl Route {
 
     /// The client the entry's calls go through on `client`, the shard's or
     /// the shared services'.
-    pub(super) fn http(&self, services: &Services, client: &reqwest::Client) -> demi_provider_common::ProviderHttp {
+    pub(super) fn http(&self, services: &CoreServices, client: &reqwest::Client) -> demi_provider_common::ProviderHttp {
         services.provider_registry.http_for(&self.entry, client.clone())
     }
 
@@ -145,11 +145,11 @@ fn failed(error: impl ToString) -> PortFailure {
 /// Providers. An entry that lacks what its provider is built from, such as
 /// a key, offers nothing yet and is left out.
 async fn routes(
-    services: &Services,
+    services: &CoreServices,
     user: &demi_web_api_protocol::ids::UserId,
     kind: MediaKind,
 ) -> Result<Vec<Route>, RegistryError> {
-    let store = services.stores.of(user).await.map_err(StoreError::new)?;
+    let store = services.vault.stores().store_of(user).await.map_err(StoreError::new)?;
     let preferences = store.preferences().await.map_err(StoreError::new)?;
     let mut routes = Vec::new();
     for entry in services.vault.entries_for(user).await.map_err(StoreError::new)? {
@@ -168,7 +168,7 @@ async fn routes(
 }
 
 pub(super) async fn route(
-    services: &Services,
+    services: &CoreServices,
     entry: ProviderEntry,
     preferences: &demi_web_api_protocol::settings::Preferences,
     kind: MediaKind,
@@ -201,14 +201,14 @@ pub(super) async fn route(
 /// It is read again right before a request is sent, since any of them may have
 /// changed while an earlier entry's request was under way.
 async fn current(
-    services: &Services,
+    services: &CoreServices,
     user: &demi_web_api_protocol::ids::UserId,
     route: &Route,
 ) -> Result<Option<Route>, RegistryError> {
     let Some(entry) = services.vault.entry(route.entry.id.clone()).await.map_err(StoreError::new)? else {
         return Ok(None);
     };
-    let store = services.stores.of(user).await.map_err(StoreError::new)?;
+    let store = services.vault.stores().store_of(user).await.map_err(StoreError::new)?;
     let preferences = store.preferences().await.map_err(StoreError::new)?;
     let Some(now) = self::route(services, entry, &preferences, route.kind).await? else {
         return Ok(None);
@@ -234,7 +234,7 @@ pub(super) fn model_of(id: &str) -> Model {
 /// How `route` stands for a call of `model` now. A key's limit is known
 /// only from a call's refusal; a subscription's accounts are judged as the
 /// entry's rotation judges them, counting none.
-async fn standing(services: &Services, route: &Route, model: &str) -> Result<Standing, RegistryError> {
+async fn standing(services: &CoreServices, route: &Route, model: &str) -> Result<Standing, RegistryError> {
     let entry = &route.entry;
     if route.hidden {
         return Ok(Standing::TurnedOff);
@@ -273,7 +273,7 @@ async fn standing(services: &Services, route: &Route, model: &str) -> Result<Sta
 /// is left out beside the model it names. An entry whose models could not be
 /// listed has none here; the agent's listing says why.
 pub async fn entry_media_models(
-    services: &Services,
+    services: &CoreServices,
     user: &demi_web_api_protocol::ids::UserId,
     kind: MediaKind,
 ) -> Result<std::collections::HashMap<String, Vec<EntryMediaModel>>, RegistryError> {

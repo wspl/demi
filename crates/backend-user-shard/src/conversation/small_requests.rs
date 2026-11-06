@@ -19,13 +19,13 @@ use demi_web_api_protocol::ids::{ConversationId, UserId};
 use tokio_util::sync::CancellationToken;
 
 use super::providers::ConversationProviders;
-use crate::services::Services;
+use crate::services::CoreServices;
 
 /// Where a shard's small jobs send their requests.
 pub(crate) struct SmallRequests {
     providers: Rc<ConversationProviders>,
     user: UserId,
-    services: Arc<Services>,
+    services: Arc<CoreServices>,
 }
 
 /// Why a small request answered nothing.
@@ -40,7 +40,7 @@ pub(crate) enum SmallRequestFailure {
 }
 
 impl SmallRequests {
-    pub(super) fn new(providers: Rc<ConversationProviders>, user: UserId, services: Arc<Services>) -> Self {
+    pub(super) fn new(providers: Rc<ConversationProviders>, user: UserId, services: Arc<CoreServices>) -> Self {
         Self {
             providers,
             user,
@@ -53,7 +53,7 @@ impl SmallRequests {
     pub(crate) async fn resolve(&self, conversation: &ModelSelection) -> Result<ModelSelection, StorageError> {
         let services = &self.services;
         let entries = services.vault.entries_for(&self.user).await?;
-        let preferences = services.stores.of(&self.user).await?.preferences().await?;
+        let preferences = services.vault.stores().store_of(&self.user).await?.preferences().await?;
         let catalog = services.provider_registry.model_catalog(&entries, false).await;
         Ok(small_model(&catalog, &preferences, conversation))
     }

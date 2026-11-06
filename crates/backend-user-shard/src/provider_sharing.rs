@@ -226,11 +226,11 @@ impl Shard {
     /// the models the key's maker has on, and what one request of each may
     /// hold; nothing but its name while they have it turned off.
     pub async fn lent(self: Rc<Self>, borrowing: Borrowing) -> Result<Lent, String> {
-        let services = self.shared_services();
+        let services = self.server_services().clone();
         let registry = &services.provider_registry;
         let entry = &borrowing.entry;
         let preferences = self
-            .services()
+            .server_services()
             .stores
             .of(&borrowing.key.created_by)
             .await
@@ -273,7 +273,7 @@ impl Shard {
             .collect();
         let limits = lent_limits(
             &self,
-            services.clone(),
+            services.core.clone(),
             borrowing.key.created_by.clone(),
             entry,
             &selections,
@@ -298,7 +298,7 @@ impl Shard {
         In: Stream<Item = ClientMessage> + Unpin,
         Out: Sink<ServerMessage> + Unpin,
     {
-        let services = self.shared_services();
+        let services = self.server_services().clone();
         let key = borrowing.key.id.clone();
         let revoked = services.lent.open(&key);
         // A revoke, or the entry's deletion, between the key's check and
@@ -311,7 +311,7 @@ impl Shard {
         }
         let runtime = lent_runtime(
             &self,
-            services.clone(),
+            services.core.clone(),
             borrowing.key.created_by.clone(),
             borrowing.entry.id.clone(),
             key.clone(),
