@@ -18,7 +18,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import http2 from 'node:http2'
 import { Duplex, Readable } from 'node:stream'
-import { once } from 'node:events'
 
 /** How the process starts. */
 export interface ProcessStart {
@@ -45,7 +44,12 @@ export class Process {
     // Node takes a pair of its own streams, which its types do not say.
     const stdio = Duplex.from({ readable: child.stdout!, writable: child.stdin! } as unknown as Parameters<typeof Duplex.from>[0])
     this.session = http2.connect('http://demi-core', { createConnection: () => stdio })
-    this.settled = once(this.session, 'remoteSettings').then(() => {})
+    this.settled = new Promise((resolve, reject) => {
+      this.session.once('remoteSettings', () => resolve())
+      this.session.once('close', () => reject(new Error('The process ended before it answered')))
+    })
+    // Its failure is each connection's to report.
+    this.settled.catch(() => {})
     // A failed session ends every request on it, which says why.
     this.session.on('error', () => {})
     this.exited = new Promise((resolve) => child.once('exit', (code) => resolve(code)))
@@ -81,13 +85,16 @@ export class Process {
       }
     })
     const stream = this.session.request(headers, { endStream: request.body === null })
+    // A stream that fails closes, which its reader sees; Bun also reports
+    // each stream an ended session cancels as an error.
+    stream.on('error', () => {})
     if (request.body !== null) {
       Readable.fromWeb(request.body as import('node:stream/web').ReadableStream).pipe(stream)
     }
     const abort = () => stream.close(http2.constants.NGHTTP2_CANCEL)
     request.signal.addEventListener('abort', abort, { once: true })
     stream.once('close', () => request.signal.removeEventListener('abort', abort))
-    const [answer] = (await once(stream, 'response')) as [http2.IncomingHttpHeaders]
+    const answer = await answered(stream)
     const status = Number(answer[':status'])
     const responseHeaders = new Headers()
     for (const [name, value] of Object.entries(answer)) {
@@ -118,7 +125,8 @@ export class Process {
       ':scheme': 'http',
       ':path': path,
     })
-    const [answer] = (await once(stream, 'response')) as [http2.IncomingHttpHeaders]
+    stream.on('error', () => {})
+    const answer = await answered(stream)
     const status = Number(answer[':status'])
     if (status !== 200) {
       throw new ProcessRefusal(status, await new Response(webBody(stream)).text())
@@ -142,6 +150,18 @@ export class ProcessRefusal extends Error {
     super(`The process refused the connection with ${status}: ${body}`)
     this.name = 'ProcessRefusal'
   }
+}
+
+/** The headers `stream` is answered with; throws when it closes unanswered. */
+function answered(stream: http2.ClientHttp2Stream): Promise<http2.IncomingHttpHeaders> {
+  return new Promise((resolve, reject) => {
+    const closed = () => reject(new Error(`The process closed the stream unanswered (${stream.rstCode ?? 'no code'})`))
+    stream.once('close', closed)
+    stream.once('response', (headers) => {
+      stream.off('close', closed)
+      resolve(headers)
+    })
+  })
 }
 
 /**

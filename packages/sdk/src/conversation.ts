@@ -64,8 +64,8 @@ export class Conversation {
   /** The permission requests told already. */
   private readonly told = new Set<string>()
   private readonly listeners = new Set<(event: ConversationEvent) => void>()
-  /** What waits for a change of the transcript or the metadata. */
-  private readonly changes = new Set<() => void>()
+  /** What waits for a change of the transcript or the metadata, and fails once the conversation closes. */
+  private readonly changes = new Set<{ changed: () => void; closed: () => void }>()
 
   constructor(readonly id: string, private readonly routes: CoreRoutes) {}
 
@@ -140,7 +140,7 @@ export class Conversation {
 
   private changed(): void {
     for (const change of [...this.changes]) {
-      change()
+      change.changed()
     }
   }
 
@@ -204,17 +204,27 @@ export class Conversation {
    */
   async run(input: Input): Promise<Turn> {
     const messageId = randomUUID()
-    const ended = new Promise<Turn>((resolve) => {
-      const check = () => {
-        const turn = this.turnOf(messageId)
-        if (turn !== null) {
-          this.changes.delete(check)
-          resolve(turn)
-        }
+    let change = { changed: () => {}, closed: () => {} }
+    const ended = new Promise<Turn>((resolve, reject) => {
+      change = {
+        changed: () => {
+          const turn = this.turnOf(messageId)
+          if (turn !== null) {
+            this.changes.delete(change)
+            resolve(turn)
+          }
+        },
+        closed: () => reject(new Error('The conversation was closed before its turn ended')),
       }
-      this.changes.add(check)
     })
-    await this.send(input, messageId)
+    this.changes.add(change)
+    try {
+      await this.send(input, messageId)
+    } catch (error) {
+      // A message never sent starts no turn to wait for.
+      this.changes.delete(change)
+      throw error
+    }
     return ended
   }
 
@@ -235,15 +245,27 @@ export class Conversation {
     return { outcome: last.outcome, blocks: after, text }
   }
 
-  /** Everything the conversation's lane tells from now on, until the loop that reads it stops. */
+  /**
+   * Everything the conversation's lane tells from now on, until the loop
+   * that reads it stops or the conversation closes.
+   */
   async *events(): AsyncGenerator<ConversationEvent, void, undefined> {
     const waiting: ConversationEvent[] = []
     let wake: (() => void) | null = null
+    let closed = false
     const listener = (event: ConversationEvent) => {
       waiting.push(event)
       wake?.()
     }
+    const change = {
+      changed: () => {},
+      closed: () => {
+        closed = true
+        wake?.()
+      },
+    }
     this.listeners.add(listener)
+    this.changes.add(change)
     try {
       await this.open()
       for (;;) {
@@ -252,20 +274,32 @@ export class Conversation {
           yield event
           continue
         }
+        if (closed) {
+          return
+        }
         await new Promise<void>((resolve) => (wake = resolve))
         wake = null
       }
     } finally {
       this.listeners.delete(listener)
+      this.changes.delete(change)
     }
   }
 
-  /** Closes the conversation's lane. */
-  async close(): Promise<void> {
+  /**
+   * Stops following the conversation: its lane closes, and a `run` that
+   * waits fails. Its agents run on in the core; the next action opens the
+   * lane again.
+   */
+  close(): void {
     const client = this.client
     this.client = null
     this.opening = null
-    await client?.close()
+    client?.dispose()
+    for (const change of [...this.changes]) {
+      this.changes.delete(change)
+      change.closed()
+    }
   }
 }
 

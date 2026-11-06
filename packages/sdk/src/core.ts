@@ -181,6 +181,7 @@ export class Core {
       return
     }
     this.closed = true
+    this.conversations.closeAll()
     this.connection.end()
     await this.closing()
   }
@@ -311,6 +312,9 @@ function processConnection(process: Process, path: string): ConnectionHost {
 export type ConversationOptions = Partial<CreateConversation>
 
 export class Conversations {
+  /** Each conversation the program drives, one for each id. */
+  private readonly opened = new Map<string, Conversation>()
+
   constructor(private readonly routes: CoreRoutes, private readonly state: () => CoreState) {}
 
   /** Creates a conversation; its workspace is the core's first unless named. */
@@ -321,12 +325,25 @@ export class Conversations {
     }
     const body: CreateConversation = { ...options, id: options.id ?? randomUUID(), workspaceId }
     const created = await this.routes.json('POST', '/conversations', createdConversationSchema, body)
-    return new Conversation(created.conversation.id, this.routes)
+    return this.open(created.conversation.id)
   }
 
   /** The conversation `id`, whose lane opens at its first use. */
   open(id: string): Conversation {
-    return new Conversation(id, this.routes)
+    let conversation = this.opened.get(id)
+    if (conversation === undefined) {
+      conversation = new Conversation(id, this.routes)
+      this.opened.set(id, conversation)
+    }
+    return conversation
+  }
+
+  /** Closes every conversation, as the core closes. */
+  closeAll(): void {
+    for (const conversation of this.opened.values()) {
+      conversation.close()
+    }
+    this.opened.clear()
   }
 }
 
