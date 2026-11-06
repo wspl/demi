@@ -17,8 +17,8 @@ use std::rc::{Rc, Weak};
 
 use demi_agent_server::instructions::ProjectFile;
 use demi_agent_store::Placement;
-use demi_backend_database::Selection;
-use demi_backend_database::conversation_index::ExecutionTarget;
+use demi_core_store::Selection;
+use demi_core_store::conversation_index::ExecutionTarget;
 use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::conversation_of;
 use demi_backend_host_access::kept::{Found, Kept, SearchError, Shown, Subscribe};
@@ -357,7 +357,7 @@ impl Shard {
         if loaded {
             kept.keep(id, device, directory.to_owned());
         }
-        match self.services().control.host_workflows(device.clone(), directory.to_owned()).await {
+        match self.store().host_workflows(device.clone(), directory.to_owned()).await {
             Ok(Some(stored)) => ConversationWorkflowList {
                 revision: stored.revision,
                 list: KeptWorkflowList::Read {
@@ -403,9 +403,7 @@ fn shown_workflows(shard: Weak<Shard>) -> Shown<String, Rc<ProjectWorkflows>> {
             Box::pin(async move {
                 let shard = shard.upgrade().ok_or("the backend is shutting down")?;
                 shard
-                    .services()
-                    .control
-                    .keep_host_workflows(device, directory, list)
+                    .store().keep_host_workflows(device, directory, list)
                     .await
                     .map_err(|error| error.to_string())
             })

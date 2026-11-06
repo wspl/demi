@@ -16,7 +16,7 @@
 
 use demi_core_store::StorageError;
 use demi_core_store::columns::decode;
-use demi_backend_database::conversation_index::ConversationRecord;
+use demi_core_store::conversation_index::ConversationRecord;
 use demi_core_store::{tree::{self, EndedTurn, SummaryFacts, Terminal}};
 use demi_shared_types::{ModelSelection, SessionPhase};
 use demi_web_api_protocol::conversations::{
@@ -40,10 +40,10 @@ impl Shard {
         &self,
         archived: bool,
     ) -> Result<Vec<ConversationSummary>, StorageError> {
-        let control = &self.services().control;
+        let store = self.store();
         let (records, mut panels) = futures_util::future::try_join(
-            control.conversations(self.user().clone(), archived),
-            control.panels(self.user().clone(), archived),
+            store.conversations(archived),
+            store.panels(archived),
         )
         .await?;
         try_join_all(records.into_iter().map(|record| {
@@ -63,7 +63,7 @@ impl Shard {
         &self,
         record: ConversationRecord,
     ) -> Result<ConversationSummary, StorageError> {
-        let panel = readable(&record.id, self.services().control.panel(record.id.clone()).await);
+        let panel = readable(&record.id, self.store().panel(record.id.clone()).await);
         self.summarize(record, panel).await
     }
 
@@ -104,7 +104,7 @@ impl Shard {
         let shares = self
             .services()
             .control
-            .shares_of(id.clone())
+            .shares_of(self.user().clone(), id.clone())
             .await?
             .into_iter()
             .map(|share| ConversationShare::new(share.token, share.target))
@@ -121,10 +121,7 @@ impl Shard {
         };
         let facts = self.summary_facts(&record.id).await;
         let resolved = self.host_shard().resolve_target(&record).await?;
-        let services = self.services();
-        let hosts = services
-            .control
-            .attached_host_listing(record.id.clone())
+        let hosts = self.store().attached_host_listing(record.id.clone())
             .await?
             .into_iter()
             .map(|(host, attached_at)| AttachedHost {
@@ -140,24 +137,22 @@ impl Shard {
             .await
             .map_err(StorageError::from)?;
         let permissions = demi_backend_permissions::read(self.permission_shard(), &record.id).await?;
-        let other_cost = services
-            .control
-            .conversation_costs(record.id.clone())
+        let other_cost = self.store().conversation_costs(record.id.clone())
             .await?
             .into_iter()
             .find(|kept| kept.agent.is_none())
             .map(|kept| kept.cost)
             .unwrap_or_default();
-        let first_call_at = services.control.conversation_first_call(record.id.clone()).await?;
+        let first_call_at = self.store().conversation_first_call(record.id.clone()).await?;
         let schedules = self.conversation_schedules(&record.id).await?;
-        let notifications_card = services.control.notifications_card(record.id.clone()).await?;
+        let notifications_card = self.store().notifications_card(record.id.clone()).await?;
         Ok(ConversationMetadata {
             model: record.model.as_ref().map(settings).transpose()?,
             workflow: record.workflow,
             cwd: resolved.path().to_owned(),
             last_turn: facts.last_turn.as_ref().map(last_turn),
             turn_speed: facts.turn_speed,
-            suggested_replies: services.control.suggested_replies(record.id.clone()).await?,
+            suggested_replies: self.store().suggested_replies(record.id.clone()).await?,
             plugins_changed,
             notifications_card,
             other_cost,
@@ -183,7 +178,7 @@ impl Shard {
     /// fails to open, and the user's other conversations and pages work on
     /// (`crates/backend-database/src/lib.rs`).
     pub(crate) async fn summary_facts(&self, id: &ConversationId) -> SummaryFacts {
-        match self.services().conversations.read(id, tree::summary).await {
+        match self.store().databases().read(id, tree::summary).await {
             Ok(facts) => facts.unwrap_or(SummaryFacts::EMPTY),
             Err(error) => {
                 tracing::error!(

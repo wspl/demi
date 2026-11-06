@@ -15,7 +15,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use demi_backend_database::conversation_index::{ConversationRecord, Creation};
+use demi_core_store::conversation_index::{ConversationRecord, Creation};
 use demi_core_store::{conversation_attachments::{self, AttachmentNumber}};
 use demi_core_store::tree;
 use demi_backend_page_sync::Part;
@@ -58,10 +58,11 @@ pub(super) async fn owned(
 ) -> Result<ConversationRecord, ApiError> {
     let id = ConversationId::try_from(id).map_err(|_| not_found())?;
     let record = services
-        .control
+        .stores
+        .of(user)
+        .await?
         .conversation(id)
         .await?
-        .filter(|record| record.owner == *user)
         .ok_or_else(not_found)?;
     tracing::Span::current().record("conversation_id", tracing::field::display(&record.id));
     Ok(record)
@@ -157,8 +158,7 @@ pub(super) async fn attachment_file(
         )
     };
     let number: AttachmentNumber = attachment.parse().map_err(|_| no_file())?;
-    let row = services
-        .conversations
+    let row = services.stores.of(&user.id).await?.databases()
         .read(&record.id, move |connection| conversation_attachments::read(connection, number))
         .await
         .map_err(ApiError::conversation_unreadable)?
@@ -409,8 +409,7 @@ pub(super) async fn read(
 ) -> Result<StatusCode, ApiError> {
     let services = &state.services;
     let record = owned(services, &user.id, &id).await?;
-    let output = services
-        .conversations
+    let output = services.stores.of(&user.id).await?.databases()
         .read(&record.id, tree::output_revision)
         .await
         .map_err(ApiError::conversation_unreadable)?
@@ -422,9 +421,7 @@ pub(super) async fn read(
             "Cannot read beyond current output",
         ));
     }
-    let read = services
-        .control
-        .mark_conversation_read(record.id.clone(), revision)
+    let read = services.stores.of(&user.id).await?.mark_conversation_read(record.id.clone(), revision)
         .await?;
     if read {
         services.sync.mark(&user.id, Part::Conversation(record.id));

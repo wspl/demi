@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket};
 use demi_backend_database::accounts::TokenHash;
+use demi_core_store::StorageError;
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::{self, HelloErrorCode, Inbound, Outbound, RunnerInfo};
 
@@ -64,10 +65,11 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
         return;
     };
     let lookup = async {
-        services
-            .control
-            .device_by_token(TokenHash::of(token.expose()))
-            .await
+        let Some((id, owner)) = services.control.device_by_token(TokenHash::of(token.expose())).await? else {
+            return Ok(None);
+        };
+        let device = services.stores.of(&owner).await?.device(id).await?;
+        Ok::<_, StorageError>(device.map(|device| (owner, device)))
     };
     let device = tokio::select! {
         device = lookup => device,
@@ -76,7 +78,7 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
         () = closed(&mut socket) => return,
     };
     let device = match device {
-        Ok(Some(device)) => device,
+        Ok(Some(found)) => found,
         Ok(None) => {
             refuse(
                 socket,
@@ -103,7 +105,7 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
             return;
         }
     };
-    let owner = device.user.clone();
+    let (owner, device) = device;
     // The devices of a disabled account cannot reach the backend: its
     // runners are turned away without a word and connect again, so enabling
     // the account brings them back.
@@ -288,11 +290,11 @@ async fn hand_over(
     grant: ClaimGrant,
 ) {
     let ClaimGrant {
+        owner,
         device,
         token,
         bound,
     } = grant;
-    let owner = device.user.clone();
     let adopted = shards
         .of(&owner)
         .adopt(move |shard| async move {

@@ -14,7 +14,7 @@
 
 use demi_backend_accounts::subagents::{self, ContextRefusal, ProfileTextError};
 use demi_core_store::StorageError;
-use demi_backend_database::subagents::ProfileRefusal as Stored;
+use demi_core_store::subagents::ProfileRefusal as Stored;
 use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::conversations::ModelSettings;
@@ -46,9 +46,7 @@ pub enum ProfileRefusal {
 impl Shard {
     /// Sets what `patch` names of the user's Subagents switch and limits.
     pub async fn patch_subagents(&self, patch: SubagentsPatch) -> Result<(), StorageError> {
-        self.services()
-            .control
-            .set_subagents(self.user().clone(), patch)
+        self.store().set_subagents(patch)
             .await?;
         self.mark_subagents();
         Ok(())
@@ -71,9 +69,7 @@ impl Shard {
         )?;
         profile.model = checked.map(|(model, _)| model);
         let created = self
-            .services()
-            .control
-            .create_profile(self.user().clone(), profile, enabled)
+            .store().create_profile(profile, enabled)
             .await??;
         self.mark_subagents();
         Ok(created)
@@ -112,9 +108,7 @@ impl Shard {
             patch.model = Some(model.map(|(model, _)| model));
         }
         let changed = self
-            .services()
-            .control
-            .patch_profile(self.user().clone(), id, move |stored| {
+            .store().patch_profile(id, move |stored| {
                 subagents::merge(stored, patch, window)
             })
             .await??;
@@ -125,9 +119,7 @@ impl Shard {
     /// Deletes the user's profile `id`.
     pub async fn delete_profile(&self, id: ProfileId) -> Result<(), ProfileRefusal> {
         let deleted = self
-            .services()
-            .control
-            .delete_profile(self.user().clone(), id)
+            .store().delete_profile(id)
             .await?;
         if !deleted {
             return Err(Stored::NotFound.into());
@@ -159,9 +151,7 @@ impl Shard {
     /// The user's profile `id` as stored.
     async fn stored_profile(&self, id: &ProfileId) -> Result<SubagentProfile, ProfileRefusal> {
         let settings = self
-            .services()
-            .control
-            .subagent_settings(self.user().clone())
+            .store().subagent_settings()
             .await?;
         settings
             .profiles

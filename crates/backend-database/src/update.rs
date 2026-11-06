@@ -32,6 +32,9 @@ use demi_web_api_protocol::state::UpdateState;
 
 use demi_core_store::schema::SchemaFit;
 
+use demi_core_store::store::{CONVERSATION_DATABASES, CORE_DATABASE};
+
+use super::core_stores::USER_DATA;
 use super::{DatabaseKind, StorageError, database_fit};
 
 /// How long an update runs before it estimates the time left: the first
@@ -409,11 +412,34 @@ pub struct Due {
 /// in `conversations` hold that a start migrates; none when
 /// every one has the current form. An empty file, which a start gives its
 /// schema at once, is none of them.
-pub fn due(control: &Path, conversations: &Path) -> Result<Option<Due>, StorageError> {
-    let control_bytes = due_bytes(control, DatabaseKind::Control)?;
-    let mut all = control_bytes;
-    let mut count = 0;
-    match std::fs::read_dir(conversations) {
+pub fn due(control: &Path, data: &Path) -> Result<Option<Due>, StorageError> {
+    let mut control_bytes = due_bytes(control, DatabaseKind::Control)?;
+    // The conversations an earlier release keeps beside the control database,
+    // which its migration moves, and those of each user's directory.
+    let (mut bytes, mut count) = conversations_due(&data.join("conversations"))?;
+    let users = match std::fs::read_dir(data.join(USER_DATA)) {
+        Ok(entries) => entries.map(|entry| Ok(entry?.path())).collect::<Result<Vec<_>, std::io::Error>>()?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(error) => return Err(error.into()),
+    };
+    for user in users {
+        control_bytes += due_bytes(&user.join(CORE_DATABASE), DatabaseKind::Core)?;
+        let (user_bytes, user_count) = conversations_due(&user.join(CONVERSATION_DATABASES))?;
+        bytes += user_bytes;
+        count += user_count;
+    }
+    let all = control_bytes + bytes;
+    Ok((all > 0).then_some(Due {
+        control: control_bytes,
+        conversations: count,
+        all,
+    }))
+}
+
+/// The bytes and the count of the databases in `directory` a start migrates.
+fn conversations_due(directory: &Path) -> Result<(u64, u64), StorageError> {
+    let (mut all, mut count) = (0, 0);
+    match std::fs::read_dir(directory) {
         Ok(entries) => {
             for entry in entries {
                 let path = entry?.path();
@@ -427,11 +453,7 @@ pub fn due(control: &Path, conversations: &Path) -> Result<Option<Due>, StorageE
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }
-    Ok((all > 0).then_some(Due {
-        control: control_bytes,
-        conversations: count,
-        all,
-    }))
+    Ok((all, count))
 }
 
 /// The size of the database at `path` when a start migrates it,

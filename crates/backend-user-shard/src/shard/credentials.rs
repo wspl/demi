@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use demi_core_store::StorageError;
-use demi_backend_database::credentials::{
+use demi_core_store::credentials::{
     CredentialChange, CredentialRefusal, CredentialSeal, NewCredential as NewRecord, Saved,
     keep_until,
 };
@@ -70,9 +70,7 @@ impl Shard {
 
     /// The user's credentials as a page lists them, in name order.
     pub async fn credential_list(&self) -> Result<Vec<CredentialDto>, StorageError> {
-        self.services()
-            .control
-            .user_credential_list(self.user().clone(), self.vault_seal())
+        self.store().user_credential_list(self.vault_seal())
             .await
     }
 
@@ -80,9 +78,7 @@ impl Shard {
     /// credential's field `field`, which its owner copies from a card.
     pub async fn reveal_credential(&self, id: UserCredentialId, field: String) -> Result<String, CredentialError> {
         let (_, mut values) = self
-            .services()
-            .control
-            .user_credential_values(self.user().clone(), id, self.vault_seal())
+            .store().user_credential_values(id, self.vault_seal())
             .await?
             .ok_or(CredentialRefusal::NotFound)?;
         Ok(values.remove(&field).ok_or(CredentialRefusal::NotFound)?)
@@ -90,7 +86,7 @@ impl Shard {
 
     /// `POST /credentials`.
     pub async fn create_credential(&self, new: NewCredential) -> Result<CredentialDto, CredentialError> {
-        let control = &self.services().control;
+        let store = self.store();
         let mut fields = Vec::with_capacity(new.fields.len());
         let mut values = std::collections::BTreeMap::new();
         for field in new.fields {
@@ -109,10 +105,9 @@ impl Shard {
             note: new.note.unwrap_or_default(),
             fields,
             values,
-            keep_until: keep_until(control.now(), new.keep)?,
+            keep_until: keep_until(store.now(), new.keep)?,
         };
-        let saved = control
-            .create_user_credential(self.user().clone(), record, self.vault_seal())
+        let saved = store.create_user_credential(record, self.vault_seal())
             .await??;
         Ok(self.saved(saved))
     }
@@ -123,16 +118,15 @@ impl Shard {
         id: UserCredentialId,
         patch: CredentialPatch,
     ) -> Result<CredentialDto, CredentialError> {
-        let control = &self.services().control;
+        let store = self.store();
         let change = CredentialChange {
             name: patch.name.map(|name| name.into_string()),
             note: patch.note,
             fields: patch.fields.map(|fields| fields.0),
             values: patch.values,
-            keep_until: patch.keep.map(|keep| keep_until(control.now(), keep)).transpose()?,
+            keep_until: patch.keep.map(|keep| keep_until(store.now(), keep)).transpose()?,
         };
-        let saved = control
-            .change_user_credential(self.user().clone(), id, change, self.vault_seal())
+        let saved = store.change_user_credential(id, change, self.vault_seal())
             .await??;
         Ok(self.saved(saved))
     }
@@ -152,9 +146,7 @@ impl Shard {
     /// credential goes, and a waiting request of its name no longer renews it.
     pub async fn remove_credential(&self, id: UserCredentialId) -> Result<(), CredentialError> {
         let removed = self
-            .services()
-            .control
-            .remove_user_credential(self.user().clone(), id)
+            .store().remove_user_credential(id)
             .await?
             .ok_or(CredentialRefusal::NotFound)?;
         for conversation in &removed {
@@ -173,8 +165,8 @@ impl Shard {
     /// removes what is past due.
     pub(crate) async fn follow_credential_expiry(self: Rc<Self>) {
         loop {
-            let control = &self.services().control;
-            let next = match control.expire_user_credentials(self.user().clone()).await {
+            let store = self.store();
+            let next = match store.expire_user_credentials().await {
                 Ok(expired) => {
                     if expired.removed {
                         self.services().sync.mark(self.user(), Part::Credentials);
@@ -190,7 +182,7 @@ impl Shard {
                 }
             };
             let wait = next.map(|next| {
-                let left = next.to_jiff().duration_since(control.now().to_jiff());
+                let left = next.to_jiff().duration_since(store.now().to_jiff());
                 // A time already past is due at once.
                 Duration::try_from(left).unwrap_or(Duration::ZERO)
             });

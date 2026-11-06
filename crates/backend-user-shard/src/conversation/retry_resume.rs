@@ -118,8 +118,7 @@ impl Shard {
     /// Resumes the conversation's failed turn whose record is `error`, as the
     /// user's Resume would, when the user's preference says so now.
     async fn resume_failed_turn(&self, conversation: &ConversationId, error: &BlockId) {
-        let services = self.services();
-        match services.control.preferences(self.user().clone()).await {
+        match self.store().preferences().await {
             Ok(preferences) if preferences.resume_at_retry == Some(true) => {}
             Ok(_) => {
                 tracing::info!(event = "failed_turn_retry.settled", %conversation, turn = %error, outcome = "held", reason = "user_preference", "a failed turn's retry time came; it waits for the user");

@@ -35,7 +35,7 @@ use std::time::Duration;
 
 use demi_core_store::StorageError;
 use demi_backend_database::accounts::TokenHash;
-use demi_backend_database::devices::{DeviceRecord, ManagedMachine};
+use demi_core_store::devices::{DeviceRecord, ManagedMachine};
 use demi_backend_database::managed::ManagedOperation;
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_runner_client::Admission;
@@ -49,7 +49,7 @@ use demi_runner_protocol::boot::ManagedBoot;
 use demi_shared_gates::{ActivityGate, GateLease, Purpose};
 use demi_web_api_protocol::cloud::CloudState;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::{DeviceId, OperationId};
+use demi_web_api_protocol::ids::{DeviceId, OperationId, UserId};
 use demi_web_api_protocol::users::CloudStorage;
 use futures_util::FutureExt as _;
 use futures_util::future::{LocalBoxFuture, Shared};
@@ -74,16 +74,17 @@ pub(crate) fn sandbox_machine(device: &DeviceRecord) -> SandboxMachine {
 /// Claude Code machine.
 pub(crate) async fn capacity(
     control: &ControlService,
+    user: &UserId,
     device: &DeviceRecord,
 ) -> Result<Capacity, StorageError> {
     let storage = match device.machine.unwrap_or(ManagedMachine::Cloud) {
         ManagedMachine::ClaudeCode => CloudStorage::DEFAULT,
         ManagedMachine::Cloud => control
-            .cloud_storage(device.user.clone())
+            .cloud_storage(user.clone())
             .await?
             .ok_or_else(|| StorageError::Corrupt {
-                table: "devices",
-                column: "user_id",
+                table: "users",
+                column: "id",
                 reason: format!("the Cloud {} names no account", device.id),
             })?,
     };
@@ -629,7 +630,7 @@ impl dyn CloudShard {
         let device = &machine.device.id;
         let token = new_device_token();
         self.control()
-            .rotate_device_token(device.clone(), TokenHash::of(token.expose()))
+            .rotate_device_token(device.clone(), self.user().clone(), TokenHash::of(token.expose()))
             .await?;
         let backend_url = self
             .public_url()
@@ -638,7 +639,7 @@ impl dyn CloudShard {
             .ok_or_else(|| CloudError::Failed("The backend does not listen yet".into()))?;
         let wake = WakeParams {
             device_id: device.to_string(),
-            capacity: capacity(self.control(), &machine.device).await?,
+            capacity: capacity(self.control(), self.user(), &machine.device).await?,
             boot: ManagedBoot {
                 backend_url,
                 device_token: token,
@@ -667,7 +668,7 @@ impl dyn CloudShard {
         }
         // The lifetime cap counts from here, also after a backend restart
         // takes the running Cloud over.
-        self.control().record_cloud_boot(device.clone()).await?;
+        self.store().record_cloud_boot(device.clone()).await?;
         Ok(())
     }
 

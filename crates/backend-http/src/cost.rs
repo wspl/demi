@@ -26,6 +26,6 @@ pub(super) async fn recent(
     Query(query): Query<RecentQuery>,
 ) -> Result<Json<RecentCost>, ApiError> {
     let record = owned(&state.services, &user.id, &id).await?;
-    let agents = state.services.control.conversation_recent(record.id, query.window).await?;
+    let agents = state.services.stores.of(&user.id).await?.conversation_recent(record.id, query.window).await?;
     Ok(Json(RecentCost { agents }))
 }

@@ -32,7 +32,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use demi_core_store::StorageError;
-use demi_backend_database::schedules::{NewCall, PendingCall, RunCause};
+use demi_core_store::schedules::{NewCall, PendingCall, RunCause};
 use demi_host_interface::{FileContents, Host, WhenExists, WriteOptions};
 use demi_shared_types::{ScheduleId, ScheduleRunId, Timestamp};
 use demi_web_api_protocol::schedules::{RunState, Trigger};
@@ -167,12 +167,11 @@ impl Shard {
     /// A call of the schedule `id`'s URL, which the edge found to be the
     /// user's.
     pub async fn hook_call(&self, id: &ScheduleId, call: HookCall) -> Result<HookAnswer, StorageError> {
-        let control = &self.services().control;
-        let schedule = control
-            .schedule(id.clone())
+        let store = self.store();
+        let schedule = store.schedule(id.clone())
             .await?
             .filter(|schedule| matches!(schedule.trigger, Trigger::Url {}));
-        let now = control.now();
+        let now = store.now();
         let secret = match &schedule {
             Some(_) => self.schedule_secret(id).await?,
             None => None,
@@ -206,7 +205,7 @@ impl Shard {
         };
         // Kept with its delivery ID at once: a delivery sent again is
         // answered as the first, and a restart loses no call.
-        if !control.accept_call(id.clone(), kept, since).await? {
+        if !store.accept_call(id.clone(), kept, since).await? {
             return Ok(HookAnswer::Taken);
         }
         if limited {
@@ -222,9 +221,7 @@ impl Shard {
     /// Whether a run of the schedule works now.
     async fn schedule_working(&self, id: &ScheduleId) -> Result<bool, StorageError> {
         Ok(self
-            .services()
-            .control
-            .schedule_runs(id.clone(), demi_web_api_protocol::schedules::RUNS_SHOWN)
+            .store().schedule_runs(id.clone(), demi_web_api_protocol::schedules::RUNS_SHOWN)
             .await?
             .iter()
             .any(|run| run.state == RunState::Running))
@@ -256,7 +253,7 @@ impl Shard {
     /// A run of the schedule ended: the calls that came while it worked
     /// start the next burst.
     pub(crate) async fn run_ended(&self, id: &ScheduleId) {
-        match self.services().control.has_pending_calls(id.clone()).await {
+        match self.store().has_pending_calls(id.clone()).await {
             Ok(true) => self.gather(id),
             Ok(false) => {}
             Err(error) => tracing::warn!(event = "schedule_calls.failed", schedule = %id, step = "run_ended", %error, "the calls waiting for a run were not read"),
@@ -267,7 +264,7 @@ impl Shard {
     /// waiting start their bursts again, unless a run left working takes
     /// them at its end.
     pub(crate) async fn resume_pending_calls(&self) {
-        let ids = match self.services().control.schedules_with_pending_calls(self.user().clone()).await {
+        let ids = match self.store().schedules_with_pending_calls().await {
             Ok(ids) => ids,
             Err(error) => {
                 tracing::warn!(event = "schedule_calls.failed", user = %self.user(), step = "read_all", %error, "the calls waiting for runs were not read");
@@ -364,8 +361,8 @@ async fn gather_until_quiet(
             drop(burst.timer.detach());
         }
     }
-    let control = &shard.services().control;
-    let schedule = match control.schedule(id.clone()).await {
+    let store = shard.store();
+    let schedule = match store.schedule(id.clone()).await {
         Ok(Some(schedule)) if schedule.on() && matches!(schedule.trigger, Trigger::Url {}) => schedule,
         Ok(_) => return,
         Err(error) => {
@@ -373,7 +370,7 @@ async fn gather_until_quiet(
             return;
         }
     };
-    let calls = match control.take_pending_calls(id.clone()).await {
+    let calls = match store.take_pending_calls(id.clone()).await {
         Ok(calls) => calls,
         Err(error) => {
             tracing::warn!(event = "schedule_url_run.deferred", schedule = %id, step = "take_calls", %error, "a URL's calls started no run yet");
@@ -384,7 +381,7 @@ async fn gather_until_quiet(
     if calls.is_empty() || !shard.schedule_current(&id, generation) {
         return;
     }
-    let at = control.now();
+    let at = store.now();
     shard
         .fire(
             &schedule,

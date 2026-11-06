@@ -4,13 +4,14 @@
 //!   (`PermissionShard`).
 //! - The delivery at start of the decisions a restart cut off.
 
+use demi_web_api_protocol::ids::UserId;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_core_store::StorageError;
-use demi_backend_database::control::ControlService;
-use demi_backend_database::credentials::CredentialSeal;
-use demi_backend_database::permissions::{AskingAgent, Undelivered};
+use demi_core_store::store::CoreStore;
+use demi_core_store::credentials::CredentialSeal;
+use demi_core_store::permissions::AskingAgent;
 use demi_backend_host_access::root_of;
 use demi_backend_page_sync::UserMarks;
 use demi_backend_page_sync::Revisions;
@@ -25,8 +26,8 @@ use futures_util::future::LocalBoxFuture;
 use super::{Shard, Shards};
 
 impl PermissionShard for Shard {
-    fn control(&self) -> &ControlService {
-        &self.services().control
+    fn store(&self) -> &CoreStore {
+        Shard::store(self)
     }
 
     fn marks(&self) -> UserMarks {
@@ -129,21 +130,23 @@ impl Shard {
 }
 
 /// Delivers at start each decision whose message a restart cut off: each
-/// owner's shard sends it to the agent that asked, opening its
-/// conversation's tree. Answers once each shard has its tasks.
-pub async fn deliver_decisions(control: &ControlService, shards: &Shards) -> Result<(), StorageError> {
-    for Undelivered { owner, request } in control.undelivered_permissions().await? {
-        let handed = shards
-            .of(&owner)
-            .adopt(move |shard| {
-                let shard: Rc<dyn PermissionShard> = shard;
-                deliver(shard, request)
-            })
-            .await;
-        if handed.is_err() {
-            // The backend is shutting down; the next start delivers what is
-            // left.
-            return Ok(());
+/// user's shard sends it to the agent that asked, opening its conversation's
+/// tree. Answers once each shard has its tasks.
+pub async fn deliver_decisions(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
+    for (owner, store) in cores {
+        for request in store.undelivered_permissions().await? {
+            let handed = shards
+                .of(owner)
+                .adopt(move |shard| {
+                    let shard: Rc<dyn PermissionShard> = shard;
+                    deliver(shard, request)
+                })
+                .await;
+            if handed.is_err() {
+                // The backend is shutting down; the next start delivers what
+                // is left.
+                return Ok(());
+            }
         }
     }
     Ok(())

@@ -46,8 +46,8 @@
 use std::collections::BTreeMap;
 use std::rc::{Rc, Weak};
 
-use demi_backend_database::credentials::StoredCredential;
-use demi_backend_database::permissions::CredentialAsk;
+use demi_core_store::credentials::StoredCredential;
+use demi_core_store::permissions::CredentialAsk;
 use demi_backend_permissions::{Answer, ask_credential, read_credential, save_credential};
 use demi_host_interface::{
     Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc,
@@ -301,9 +301,7 @@ pub(crate) async fn print_json(port: &RpcPort, value: &impl Serialize) -> Result
 
 async fn list(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let credentials = shard
-        .services()
-        .control
-        .user_credentials(shard.user().clone())
+        .store().user_credentials()
         .await
         .map_err(failed)?;
     let listed: Vec<Listed> = credentials.iter().map(listed).collect();
@@ -323,10 +321,9 @@ async fn list(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8,
 }
 
 async fn show(shard: Rc<Shard>, call: Call<NameArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let control = &shard.services().control;
+    let store = shard.store();
     let name = call.args.name;
-    let Some(credential) = control
-        .user_credential_named(shard.user().clone(), name.clone())
+    let Some(credential) = store.user_credential_named(name.clone())
         .await
         .map_err(failed)?
     else {
@@ -335,8 +332,7 @@ async fn show(shard: Rc<Shard>, call: Call<NameArgs>, port: RpcPort) -> Result<u
         )));
     };
     // A visible value is shown; a secret one never.
-    let mut values = control
-        .user_credential_values(shard.user().clone(), credential.id.clone(), shard.vault_seal())
+    let mut values = store.user_credential_values(credential.id.clone(), shard.vault_seal())
         .await
         .map_err(failed)?
         .map(|(_, values)| values)
@@ -551,9 +547,7 @@ async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u
 async fn remove(shard: Rc<Shard>, call: Call<NameArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let name = call.args.name;
     let Some(credential) = shard
-        .services()
-        .control
-        .user_credential_named(shard.user().clone(), name.clone())
+        .store().user_credential_named(name.clone())
         .await
         .map_err(failed)?
     else {

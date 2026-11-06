@@ -20,7 +20,7 @@ pub(super) async fn read(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<InstructionsAnswer>, ApiError> {
-    let instructions = state.services.control.instructions(user.id).await?;
+    let instructions = state.services.stores.of(&user.id).await?.instructions().await?;
     Ok(Json(InstructionsAnswer { instructions }))
 }
 

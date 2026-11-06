@@ -39,9 +39,7 @@ impl Shard {
         let cache_chart = tree.cache_chart(node);
         let transcript = Transcript::Agent(node.clone());
         let blocks = page.blocks.clone();
-        let (instructions, summaries) = self
-            .services()
-            .conversations
+        let (instructions, summaries) = self.store().databases()
             .read(id, move |connection| tree::read_context(connection, &transcript, &blocks))
             .await?
             .unwrap_or_default();

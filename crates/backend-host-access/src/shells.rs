@@ -21,7 +21,7 @@ use bytes::Bytes;
 use demi_agent_tools::{EnvironmentScope, ShellEnvironmentFactory};
 use demi_backend_blobs::blobs::UserBlobs;
 use demi_core_store::{command_outputs::{CommandOutput, OutputRow}};
-use demi_backend_database::control::ControlService;
+use demi_core_store::store::CoreStore;
 use demi_core_store::conversations::ConversationDb;
 use demi_core_store::running::{self, RunningCommand};
 use demi_runner_client::{
@@ -112,7 +112,7 @@ impl dyn HostShard + '_ {
     /// commands of the conversation `id` there, which admits nothing.
     async fn adopting_on(&self, id: &ConversationId, device: DeviceId, path: String) -> Result<Rc<RemoteHost>, HostError> {
         let device_record = self
-            .control()
+            .store()
             .device(device.clone())
             .await
             .map_err(|error| HostError::failed(None, error.to_string()))?;
@@ -226,7 +226,7 @@ impl dyn HostShard + '_ {
         if hosts.iter().any(|host| host.device == *device) {
             return Ok(());
         }
-        let name = match self.control().device(device.clone()).await {
+        let name = match self.store().device(device.clone()).await {
             Ok(Some(record)) => record.name,
             _ => device.to_string(),
         };
@@ -299,7 +299,7 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                         let shard = shard
                             .upgrade()
                             .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
-                        command_context(shard.control(), shard.user(), &conversation, caller)
+                        command_context(shard.store(), &conversation, caller)
                             .await
                             .map_err(|error| HostError::failed(None, error.to_string()))
                     })
@@ -328,7 +328,7 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                 device,
                 host: host.clone(),
                 db: shard.conversation_db(&conversation),
-                control: shard.control().clone(),
+                store: shard.store().clone(),
                 blobs: shard.blobs(),
                 clock: shard.clock().clone(),
             }));
@@ -422,7 +422,7 @@ struct Keeper {
     device: DeviceId,
     host: Rc<RemoteHost>,
     db: ConversationDb,
-    control: ControlService,
+    store: CoreStore,
     blobs: UserBlobs,
     clock: Arc<dyn Clock>,
 }
@@ -437,7 +437,7 @@ impl Keeper {
     /// as waiting is recorded again as sent once its job starts.
     async fn record(&self, command: &CommandId, job: &str, start: &KeptStart, unsent: Option<&UnsentStart>) {
         let indexed = self
-            .control
+            .store
             .record_running_job(job.to_owned(), self.device.clone(), self.conversation.clone(), unsent.is_none())
             .await;
         if let Err(error) = indexed {
@@ -575,7 +575,7 @@ async fn read_copies(
 }
 
 impl CommandKeeper for Keeper {
-    /// Records the job in the control database first, by its device, so a
+    /// Records the job in the core database first, by its device, so a
     /// runner's hello finds its conversation, then the command in the
     /// conversation's (`crates/backend-database/src/command_outputs.rs`).
     fn started<'a>(&'a self, command: &'a CommandId, job: &'a str, start: &'a KeptStart) -> LocalBoxFuture<'a, ()> {
@@ -724,7 +724,7 @@ impl CommandKeeper for Keeper {
                 .await;
             match recorded {
                 Ok(Some(job)) => {
-                    if let Err(error) = self.control.end_running_job(job).await {
+                    if let Err(error) = self.store.end_running_job(job).await {
                         // A runner's next hello lists no such job, and the
                         // backend finds nothing to take up.
                         tracing::warn!(event = "job_record.remove_failed", conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a running job's record was not removed");

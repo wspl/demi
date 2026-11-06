@@ -25,10 +25,10 @@
 //! it. The shard reserves the idle tree; host access holds the rest and runs the
 //! transition's steps (`demi_backend_host_access::transition`).
 
-use demi_backend_database::projects::ProjectDeletion;
-use demi_backend_database::Selection;
+use demi_core_store::projects::ProjectDeletion;
+use demi_core_store::Selection;
 use demi_core_store::StorageError;
-use demi_backend_database::conversation_index::{
+use demi_core_store::conversation_index::{
     ConversationChange, ConversationRecord, RecordChange, SettingsChange,
 };
 use demi_backend_host_access::access::Leaving;
@@ -187,9 +187,7 @@ impl Shard {
                 // archived brings it back (`crates/backend-database/src/projects.rs`).
                 let remakes = match &record.target {
                     Selection::Project { project_id, .. } => self
-                        .services()
-                        .control
-                        .project(project_id.clone())
+                        .store().project(project_id.clone())
                         .await?
                         .is_none_or(|project| project.deleted),
                     _ => false,
@@ -215,11 +213,8 @@ impl Shard {
 
     /// The user's conversation `id` as the index holds it now.
     async fn owned_record(&self, id: &ConversationId) -> Result<ConversationRecord, ChangeRefusal> {
-        self.services()
-            .control
-            .conversation(id.clone())
+        self.store().conversation(id.clone())
             .await?
-            .filter(|record| record.owner == *self.user())
             .ok_or(ChangeRefusal::NotFound)
     }
 
@@ -328,7 +323,7 @@ impl Shard {
         // a project's saved messages it joins with its own; the pages of the
         // conversations that share the list it shows now read it again.
         self.mark(Part::Projects);
-        if let Ok(sharers) = self.services().control.saved_sharers(record.id.clone()).await {
+        if let Ok(sharers) = self.store().saved_sharers(record.id.clone()).await {
             for sharer in sharers.conversations {
                 self.mark(Part::Metadata(sharer));
             }
@@ -399,24 +394,21 @@ impl Shard {
     /// its archive, and nothing changes; so does one that moved in or was created
     /// meanwhile.
     pub async fn delete_project(&self, id: &ProjectId) -> Result<(), ChangeRefusal> {
-        let control = &self.services().control;
+        let store = self.store();
         let host = self.host_shard();
-        let owned = control
-            .project(id.clone())
+        let owned = store.project(id.clone())
             .await?
-            .is_some_and(|project| project.user == *self.user());
+            .is_some();
         if !owned {
             return Err(ChangeRefusal::ProjectNotFound);
         }
-        let conversations = control
-            .project_conversations(self.user().clone(), id.clone())
+        let conversations = store.project_conversations(id.clone())
             .await?;
         let mut records = Vec::new();
         let mut released = Vec::new();
         let mut holds = Vec::new();
         for conversation in &conversations {
-            let record = control
-                .conversation(conversation.clone())
+            let record = store.conversation(conversation.clone())
                 .await?
                 .ok_or(ChangeRefusal::NotFound)?;
             let tree = self.reserve_idle_tree(conversation)?;
@@ -426,8 +418,7 @@ impl Shard {
         for record in &records {
             released.push((record.id.clone(), host.release_devices(record).await?));
         }
-        let deleted = control
-            .delete_project(self.user().clone(), id.clone(), conversations.clone())
+        let deleted = store.delete_project(id.clone(), conversations.clone())
             .await?;
         drop(holds);
         match deleted {
@@ -467,9 +458,7 @@ impl Shard {
             return Ok(None);
         };
         let paired = self
-            .services()
-            .control
-            .device(device.clone())
+            .store().device(device.clone())
             .await?
             .is_some_and(|device| device.kind == DeviceKind::User);
         Ok((paired && !self.devices().connected(device)).then(|| device.clone()))
@@ -498,13 +487,11 @@ impl Shard {
     /// conversation runs now, and that the command did not run
     /// (`crates/backend-host-access/src/access.rs`).
     async fn fail_waiting_for(&self, record: &ConversationRecord, device: &DeviceId) -> Result<(), ChangeRefusal> {
-        let control = &self.services().control;
-        let left = control
-            .device(device.clone())
+        let store = self.store();
+        let left = store.device(device.clone())
             .await?
             .map_or_else(|| device.to_string(), |left| left.name);
-        let record = control
-            .conversation(record.id.clone())
+        let record = store.conversation(record.id.clone())
             .await?
             .ok_or(ChangeRefusal::NotFound)?;
         let target = self.host_shard().resolve_target(&record).await?;
@@ -525,11 +512,9 @@ impl Shard {
         id: &ConversationId,
         patch: ConversationPatch,
     ) -> Result<Option<ConversationUpdate>, StorageError> {
-        let control = &self.services().control;
-        let owned = control
-            .conversation(id.clone())
-            .await?
-            .filter(|record| record.owner == *self.user());
+        let store = self.store();
+        let owned = store.conversation(id.clone())
+            .await?;
         if owned.is_none() {
             return Ok(None);
         }
@@ -590,7 +575,7 @@ impl Shard {
                 results.push(result);
             }
         }
-        let Some(record) = control.conversation(id.clone()).await? else {
+        let Some(record) = store.conversation(id.clone()).await? else {
             return Ok(None);
         };
         let conversation = self.conversation_summary(record.clone()).await?;

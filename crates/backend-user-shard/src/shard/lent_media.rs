@@ -152,7 +152,7 @@ impl Shard {
         }
         let entry = borrowing.entry.clone();
         let makes = services.provider_registry.media_shapes(&entry).makes(kind) && entry.generates(kind);
-        let found = match services.control.preferences(self.user().clone()).await {
+        let found = match self.store().preferences().await {
             Ok(preferences) => route(services, entry.clone(), &preferences, kind).await.map_err(|error| error.to_string()),
             Err(error) => Err(error.to_string()),
         };
@@ -176,7 +176,7 @@ impl Shard {
         // A revoke, or the entry's deletion, between the key's check and
         // `open` found no call to end: the key is checked again now that
         // one would be found.
-        let held = services.lent_keys(&entry.id).await;
+        let held = services.lent_keys(&entry).await;
         if !held.is_ok_and(|keys| keys.contains(&key)) {
             services.lent.ended(&key, &revoked);
             return Err(Unlent::Revoked);

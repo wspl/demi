@@ -144,9 +144,7 @@ impl ProductPort for ShardPort {
         Box::pin(async move {
             let shard = self.shard()?;
             let records = shard
-                .services()
-                .control
-                .paired_devices(shard.user().clone())
+                .store().paired_devices()
                 .await
                 .map_err(|error| failed(format!("the devices cannot be read: {error}")))?;
             Ok(records
@@ -461,9 +459,7 @@ impl Shard {
     pub(crate) async fn package_lost(&self, device: &DeviceId, lost: Lost<'_>) {
         self.cli_package_lost(device, &lost);
         let panelled = match self
-            .services()
-            .control
-            .panelled_conversations(self.user().clone())
+            .store().panelled_conversations()
             .await
         {
             Ok(panelled) => panelled,

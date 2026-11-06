@@ -62,13 +62,11 @@ impl Shard {
         conversation: ConversationId,
         target: ShareTarget,
     ) -> Result<ShareRecord, ShareRefusal> {
-        let control = &self.services().control;
-        let record = control
-            .conversation(conversation)
+        let store = self.store();
+        let record = store.conversation(conversation)
             .await?
-            .filter(|record| record.owner == *self.user())
             .ok_or(ShareRefusal::NoConversation)?;
-        if let Some(existing) = control.share_of(record.id.clone(), target.clone()).await? {
+        if let Some(existing) = self.services().control.share_of(self.user().clone(), record.id.clone(), target.clone()).await? {
             return Ok(existing);
         }
         // A reply block is shared from the conversation a reply of which
@@ -76,9 +74,7 @@ impl Shard {
         // it answers no facts of, on or off, is not the user's.
         if let ShareTarget::ReplyBlock { tag, id, .. } = &target {
             let (named_tag, named_id) = (tag.clone(), id.clone());
-            let named = self
-                .services()
-                .conversations
+            let named = self.store().databases()
                 .read(&record.id, move |connection| shares::names_block(connection, &named_tag, &named_id))
                 .await?
                 .unwrap_or(false);
@@ -103,7 +99,7 @@ impl Shard {
             title,
             taken_at: self.services().clock.now(),
         };
-        match control.add_share(share).await? {
+        match self.services().control.add_share(share).await? {
             Added::New(share) => {
                 // The token is the link's secret, which no line holds.
                 tracing::info!(
@@ -130,10 +126,6 @@ impl Shard {
                 self.drop_list(&record.id, token).await;
                 Ok(existing)
             }
-            Added::NoConversation => {
-                self.drop_list(&record.id, token).await;
-                Err(ShareRefusal::NoConversation)
-            }
         }
     }
 
@@ -148,13 +140,12 @@ impl Shard {
         if share.target != ShareTarget::Conversation {
             return Err(ShareRefusal::NotUpdatable);
         }
-        let control = &self.services().control;
-        let record = control
-            .conversation(share.conversation.clone())
+        let store = self.store();
+        let record = store.conversation(share.conversation.clone())
             .await?
             .ok_or(ShareRefusal::NoConversation)?;
         let _ = self.make_list(&record.id, &token, &share.target).await?;
-        let Some(share) = control
+        let Some(share) = self.services().control
             .retake_share(token.clone(), record.title, self.services().clock.now())
             .await?
         else {
@@ -177,7 +168,7 @@ impl Shard {
         if !self
             .services()
             .control
-            .remove_share(share.conversation.clone(), token.clone())
+            .remove_share(self.user().clone(), share.conversation.clone(), token.clone())
             .await?
         {
             return Err(ShareRefusal::NoShare);
@@ -209,9 +200,7 @@ impl Shard {
         target: &ShareTarget,
     ) -> Result<ShareCounts, ShareRefusal> {
         let (token, target) = (token.clone(), target.clone());
-        let taken = self
-            .services()
-            .conversations
+        let taken = self.store().databases()
             .db(conversation)
             .call(move |connection| {
                 let transaction = connection.transaction()?;
@@ -235,9 +224,7 @@ impl Shard {
     /// Removes a list no record names any more. One that stays costs
     /// storage only: nothing reads the rows of a token without its record.
     async fn drop_list(&self, conversation: &ConversationId, token: ShareToken) {
-        let removed = self
-            .services()
-            .conversations
+        let removed = self.store().databases()
             .db(conversation)
             .call(move |connection| shares::remove(connection, &token))
             .await;
@@ -262,9 +249,7 @@ impl Shard {
             token: share.token.clone(),
         };
         let started = std::time::Instant::now();
-        let read = self
-            .services()
-            .conversations
+        let read = self.store().databases()
             .read(&share.conversation, move |connection| {
                 let page = PageQuery {
                     blocks: None,
@@ -296,8 +281,7 @@ impl Shard {
         let transcript = Transcript::Shared {
             token: share.token.clone(),
         };
-        self.services()
-            .conversations
+        self.store().databases()
             .read(&share.conversation, move |connection| {
                 tree::read_block(connection, &transcript, &block)
             })
@@ -311,9 +295,7 @@ impl Shard {
         number: AttachmentNumber,
     ) -> Result<Option<AttachmentRow>, StorageError> {
         let token = share.token.clone();
-        Ok(self
-            .services()
-            .conversations
+        Ok(self.store().databases()
             .read(&share.conversation, move |connection| {
                 shares::shown_attachment(connection, &token, number)
             })
@@ -329,9 +311,7 @@ impl Shard {
             return Ok(*shared_tag == tag && *shared_id == id);
         }
         let token = share.token.clone();
-        Ok(self
-            .services()
-            .conversations
+        Ok(self.store().databases()
             .read(&share.conversation, move |connection| shares::shows_block(connection, &token, &tag, &id))
             .await?
             .unwrap_or(false))
@@ -341,9 +321,7 @@ impl Shard {
     pub async fn share_blob(&self, share: &ShareRecord, blob: BlobRef) -> Result<Option<Bytes>, ShareBlobError> {
         let token = share.token.clone();
         let wanted = blob.clone();
-        let shown = self
-            .services()
-            .conversations
+        let shown = self.store().databases()
             .read(&share.conversation, move |connection| {
                 shares::shows_blob(connection, &token, &wanted)
             })

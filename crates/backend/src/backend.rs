@@ -61,10 +61,10 @@ use demi_backend_cloud::isolation as cloud_isolation;
 use demi_backend_cloud::network::{self as cloud_network, stored_network_rules};
 use demi_backend_cloud::reset::recover_clouds;
 use demi_core_store::StorageError;
+use demi_web_api_protocol::ids::UserId;
 use demi_backend_database::update::Update;
 use demi_backend_http::{AppState, Edge, Listening, Site, WebBuildError, manage_socket, runner_socket, web_build};
-use demi_backend_user_shard::conversation::cost::follow_usage;
-use demi_backend_user_shard::conversation::search::{follow_resets, index_at_start};
+use demi_backend_user_shard::conversation::search::index_at_start;
 use demi_backend_user_shard::conversation::{
     arm_idle_compactions, finish_deletions, recover_forks, resume_after_restart,
 };
@@ -99,11 +99,6 @@ pub struct Backend {
     /// Marks the pages that show what the machine manager can do with each
     /// isolation changed when it says so.
     runtimes: AbortOnDropHandle<()>,
-    /// Has the users whose search index is reset index their conversations
-    /// again (`crates/backend-database/src/search.rs`).
-    resets: AbortOnDropHandle<()>,
-    /// Announces each ledger row to its conversation's pages.
-    usage: AbortOnDropHandle<()>,
     /// Logs the backend's resources every minute (`crate::sampling`).
     sampling: AbortOnDropHandle<()>,
 }
@@ -241,7 +236,7 @@ async fn recover_in_background(
     shards: demi_backend_user_shard::shard::Shards,
 ) {
     let running = loop {
-        match recover_clouds(&services.control, &services.cloud).await {
+        match recover_clouds(&services.control, &services.stores, &services.cloud).await {
             Ok(running) => break running,
             Err(demi_backend_cloud::reset::RecoveryError::Machines(
                 error @ demi_backend_cloud::client::MachinesError::Unavailable { .. },
@@ -258,18 +253,17 @@ async fn recover_in_background(
     start_step("cloud_take_over", take_over_clouds(running.clone(), &shards)).await;
     // A Cloud the manager does not run has no runner to wait for.
     start_step("stopped_clouds", forget_stopped_clouds(&running, &services)).await;
-    let taken: Vec<_> = running.iter().map(|device| device.id.clone()).collect();
-    start_step("cloud_commands", take_up_stopped_clouds(&taken, &services.control, &shards)).await;
+    let taken: Vec<_> = running.iter().map(|(_, device)| device.id.clone()).collect();
+    start_step("cloud_commands", take_up_stopped_clouds(&taken, &services, &shards)).await;
 }
 
 /// Hands each running Cloud to its owner's shard, which takes it over
 /// (`crates/machine-manager-protocol/src/lib.rs`).
 async fn take_over_clouds(
-    running: Vec<demi_backend_database::devices::DeviceRecord>,
+    running: Vec<(UserId, demi_core_store::devices::DeviceRecord)>,
     shards: &demi_backend_user_shard::shard::Shards,
 ) -> Result<(), String> {
-    for device in running {
-        let owner = device.user.clone();
+    for (owner, device) in running {
         shards
             .of(&owner)
             .call(move |shard, _| async move { shard.cloud_shard().take_over_cloud(&device).await })
@@ -284,15 +278,20 @@ async fn take_over_clouds(
 /// after an upgrade stopped it: no operation waits for its runner, which
 /// does not come back by itself (`crates/runner-client/src/device_jobs.rs`).
 async fn forget_stopped_clouds(
-    running: &[demi_backend_database::devices::DeviceRecord],
+    running: &[(UserId, demi_core_store::devices::DeviceRecord)],
     services: &demi_backend_user_shard::services::Services,
 ) -> Result<(), demi_core_store::StorageError> {
     for device in services.returning.devices() {
-        if running.iter().any(|running| running.id == device) {
+        if running.iter().any(|(_, running)| running.id == device) {
             continue;
         }
+        let Some(owner) = services.control.device_owner(device.clone()).await? else {
+            continue;
+        };
         let managed = services
-            .control
+            .stores
+            .of(&owner)
+            .await?
             .device(device.clone())
             .await?
             .is_some_and(|record| record.kind == demi_web_api_protocol::devices::DeviceKind::Managed);
@@ -307,22 +306,29 @@ async fn forget_stopped_clouds(
 /// than the `taken` ones, so their agents learn what became of them.
 async fn take_up_stopped_clouds(
     taken: &[demi_web_api_protocol::ids::DeviceId],
-    control: &demi_backend_database::control::ControlService,
+    services: &demi_backend_user_shard::services::Services,
     shards: &demi_backend_user_shard::shard::Shards,
 ) -> Result<(), String> {
-    let stopped = control
-        .clouds_with_running_jobs()
+    let cores = services
+        .stores
+        .all(&services.control)
         .await
         .map_err(|error| error.to_string())?;
-    for (device, owner) in stopped {
-        if taken.contains(&device) {
-            continue;
-        }
-        shards
-            .of(&owner)
-            .call(move |shard, _| async move { shard.take_up_stopped_cloud(device).await })
+    for (owner, store) in cores {
+        let stopped = store
+            .clouds_with_running_jobs()
             .await
             .map_err(|error| error.to_string())?;
+        for device in stopped {
+            if taken.contains(&device) {
+                continue;
+            }
+            shards
+                .of(&owner)
+                .call(move |shard, _| async move { shard.take_up_stopped_cloud(device).await })
+                .await
+                .map_err(|error| error.to_string())?;
+        }
     }
     Ok(())
 }
@@ -437,9 +443,14 @@ impl Backend {
         let objects = objects::open(data_dir, &config.storage).await?.store;
         let storage = Storage::open(data_dir, config.clock.clone(), objects, secret.vault_key()).await?;
         if due.is_some() {
+            // Opening each user's store brings its database to the current
+            // schema.
+            let cores = storage.stores.all(&storage.control).await?;
             update.control_finished();
             let started = std::time::Instant::now();
-            storage.conversations.prepare(|bytes| update.finished(bytes)).await;
+            for (_, store) in cores {
+                store.databases().prepare(|bytes| update.finished(bytes)).await;
+            }
             tracing::info!(
                 event = "update.ended",
                 ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
@@ -535,18 +546,17 @@ impl Backend {
             services.clone(),
         )));
         let runtimes = AbortOnDropHandle::new(tokio::spawn(announce_runtimes(notices.runtimes, services.clone())));
-        let resets = AbortOnDropHandle::new(tokio::spawn(follow_resets(
-            services.search.resets(),
-            services.control.clone(),
-            shards.shards(),
-        )));
-        let usage = AbortOnDropHandle::new(tokio::spawn(follow_usage(
-            services.control.usage_written(),
-            shards.shards(),
-        )));
         // Fork destinations whose root committed before their publication are
         // published before the backend serves.
-        if let Err(error) = recover_forks(&services.control, &services.conversations).await {
+        let cores = match services.stores.all(&services.control).await {
+            Ok(cores) => cores,
+            Err(error) => {
+                shards.close().await;
+                services.close_providers().await;
+                return Err(StartError::Storage(error));
+            }
+        };
+        if let Err(error) = recover_forks(&cores).await {
             shards.close().await;
             services.close_providers().await;
             return Err(StartError::Storage(error));
@@ -554,34 +564,36 @@ impl Backend {
         // Each deletion an earlier backend left pending is finished before
         // the backend serves. A failure does not stop the start: the next
         // start finishes it, and no request finds its conversation meanwhile.
-        start_step("pending_deletions", finish_deletions(&services.control, &shards.shards())).await;
+        start_step("pending_deletions", finish_deletions(&cores, &shards.shards())).await;
         // A credential request's command ended with the run before, so no one waits
         // for its answer; and a credential whose time came while the backend was down
         // is removed.
         //
         // A failure does not stop the start: the user's shard removes what is past due
         // when it starts, and the next start withdraws the requests.
-        start_step("credential_requests", services.control.withdraw_credential_requests()).await;
-        start_step("expired_credentials", services.control.expire_all_user_credentials()).await;
+        for (_, store) in &cores {
+            start_step("credential_requests", store.withdraw_credential_requests()).await;
+            start_step("expired_credentials", store.expire_all_user_credentials()).await;
+        }
         // Each permission decision whose message a restart cut off reaches
         // the agent that asked. A failure does not stop the start: the next
         // start delivers it.
-        start_step("permission_decisions", deliver_decisions(&services.control, &shards.shards())).await;
+        start_step("permission_decisions", deliver_decisions(&cores, &shards.shards())).await;
         // Each root's turn the last shutdown interrupted goes on, in the
         // background, as the user's Resume would, unless the user turned that
         // off. A failure does not stop the start: the marks stay for the next
         // start, and meanwhile the turns wait for the user's Resume.
-        start_step("interrupted_turns", resume_after_restart(&services.control, &shards.shards())).await;
+        start_step("interrupted_turns", resume_after_restart(&cores, &shards.shards())).await;
         // Each user's idle conversations compact at the times their last
         // requests set, which a restart keeps. A failure does not stop the
         // start: the next answered request sets its conversation's time again.
-        start_step("idle_compactions", arm_idle_compactions(&services.control, &shards.shards())).await;
+        start_step("idle_compactions", arm_idle_compactions(&cores, &shards.shards())).await;
         // Each user's schedules fire what a backend that was down missed
         // and wait for their next times. A failure does not stop the start: a
         // user's next call starts them.
         start_step(
             "schedule_users",
-            demi_backend_user_shard::schedules::start_schedulers(&services.control, &shards.shards()),
+            demi_backend_user_shard::schedules::start_schedulers(&cores, &shards.shards()),
         )
         .await;
         // Each media job a vendor took before the restart is followed to
@@ -589,14 +601,14 @@ impl Backend {
         // stop the start: a user's next call follows them.
         start_step(
             "media_jobs",
-            demi_backend_user_shard::shard::start_media_followers(&services.control, &shards.shards()),
+            demi_backend_user_shard::shard::start_media_followers(&cores, &shards.shards()),
         )
         .await;
         // Each user's search index catches up with the conversations, in the
         // background (`crates/backend-database/src/search.rs`). A failure
         // does not stop the start: a conversation not indexed here is
         // indexed by its next change.
-        start_step("search_index", index_at_start(&services.control, &shards.shards())).await;
+        start_step("search_index", index_at_start(&cores, &shards.shards())).await;
         let state = AppState {
             services: services.clone(),
             shards: shards.shards(),
@@ -655,8 +667,6 @@ impl Backend {
             statuses,
             cloud_settings,
             runtimes,
-            resets,
-            usage,
             sampling,
         })
     }
@@ -692,8 +702,6 @@ impl Backend {
         drop(self.statuses);
         drop(self.cloud_settings);
         drop(self.runtimes);
-        drop(self.resets);
-        drop(self.usage);
         drop(self.sampling);
         self.services.cloud.machines.close().await;
         if let Err(error) = self.edge.close().await {

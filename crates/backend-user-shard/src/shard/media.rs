@@ -46,8 +46,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_backend_database::media_jobs::{Follow, JobOfCall, Made, MediaJob, MediaJobStatus};
-use demi_backend_database::usage::{MadeVideoCall, UsageRow, merge_windows};
+use demi_core_store::media_jobs::{Follow, JobOfCall, Made, MediaJob, MediaJobStatus};
+use demi_core_store::usage::{MadeVideoCall, UsageRow, merge_windows};
 use demi_backend_providers::vault::entries::Vault;
 use demi_plugin_host::{MediaCall, VideoJob};
 use demi_provider_registry::store::StoreError;
@@ -149,7 +149,8 @@ async fn routes(
     user: &demi_web_api_protocol::ids::UserId,
     kind: MediaKind,
 ) -> Result<Vec<Route>, RegistryError> {
-    let preferences = services.control.preferences(user.clone()).await.map_err(StoreError::new)?;
+    let store = services.stores.of(user).await.map_err(StoreError::new)?;
+    let preferences = store.preferences().await.map_err(StoreError::new)?;
     let mut routes = Vec::new();
     for entry in services.vault.entries_for(user).await.map_err(StoreError::new)? {
         if !services.provider_registry.makes(&entry, kind) {
@@ -207,7 +208,8 @@ async fn current(
     let Some(entry) = services.vault.entry(route.entry.id.clone()).await.map_err(StoreError::new)? else {
         return Ok(None);
     };
-    let preferences = services.control.preferences(user.clone()).await.map_err(StoreError::new)?;
+    let store = services.stores.of(user).await.map_err(StoreError::new)?;
+    let preferences = store.preferences().await.map_err(StoreError::new)?;
     let Some(now) = self::route(services, entry, &preferences, route.kind).await? else {
         return Ok(None);
     };
@@ -791,7 +793,7 @@ pub(crate) async fn make_video(
         Some(source) => {
             let bytes = source.bytes.into_bytes();
             let digest = hex::encode(Sha256::digest(&bytes));
-            let made = match shard.services().control.made_video(shard.user().clone(), digest).await {
+            let made = match shard.store().made_video(digest).await {
                 Ok(made) => made,
                 // The file is sent instead, as for a video no call made.
                 Err(error) => {
@@ -829,7 +831,7 @@ pub(crate) async fn make_video(
 /// was handed over.
 async fn resumed_job(shard: &Shard, conversation: &ConversationId, media: &MediaCall, cancel: &CancellationToken) -> Result<MediaJob, PortFailure> {
     let of = JobOfCall { call: media.id.clone(), ordinal: media.ordinal };
-    let job = match shard.services().control.media_job(of).await.map_err(failed)? {
+    let job = match shard.store().media_job(of).await.map_err(failed)? {
         Some(job) if job.usage.conversation == *conversation => job,
         _ => {
             return Err(refused(MediaRefusal::Failed {
@@ -1375,7 +1377,7 @@ async fn keep_job(
         async move {
             // A job no row keeps is followed all the same, so its cost is
             // recorded; its call cannot collect it.
-            match shard.services().control.insert_media_job(kept.clone()).await {
+            match shard.store().insert_media_job(kept.clone()).await {
                 Ok(true) => {}
                 Ok(false) => tracing::info!(event = "media_job.unkept", cause = "conversation_gone", "a media job was not kept"),
                 Err(error) => tracing::warn!(event = "media_job.unkept", %error, "a media job was not kept"),
@@ -1612,7 +1614,6 @@ impl Making<'_> {
         );
         let now = services.clock.now();
         let row = UsageRow {
-            user: self.shard.user().clone(),
             conversation: self.conversation.clone(),
             agent: self.agent,
             turn: self.turn.as_ref().map(ToString::to_string),
@@ -1815,7 +1816,7 @@ impl OpenRow {
         let mut row = self.row.take().expect("a call's row is written once");
         row.ended_at = self.shard.services().clock.now();
         let lost = (row.conversation.clone(), row.provider.clone(), row.model.clone());
-        if let Err(error) = self.shard.services().control.append_usage(row).await {
+        if let Err(error) = self.shard.store().append_usage(row).await {
             // The row is lost; what the call made still comes back
             // (`crates/backend-database/src/usage.rs`).
             tracing::warn!(
@@ -1834,11 +1835,11 @@ impl Drop for OpenRow {
     fn drop(&mut self) {
         if let Some(mut row) = self.row.take() {
             row.ended_at = self.shard.services().clock.now();
-            let control = self.shard.services().control.clone();
+            let store = self.shard.store().clone();
             let lost = (row.conversation.clone(), row.provider.clone(), row.model.clone());
             // Nothing awaits a dropped call any more.
             tokio::spawn(async move {
-                if let Err(error) = control.append_usage(row).await {
+                if let Err(error) = store.append_usage(row).await {
                     tracing::warn!(
                         event = "usage_ledger.write_failed",
                         conversation = %lost.0,

@@ -11,8 +11,8 @@
 //! disconnected before the read makes the command fail.
 
 use demi_core_store::StorageError;
-use demi_backend_database::conversation_index::{AttachedHostRecord, ChangeOutcome, RecordChange};
-use demi_backend_database::devices::DeviceRecord;
+use demi_core_store::conversation_index::{AttachedHostRecord, ChangeOutcome, RecordChange};
+use demi_core_store::devices::DeviceRecord;
 use demi_shared_types::UserContentBlock;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
@@ -46,11 +46,10 @@ impl dyn HostShard + '_ {
         conversation: &ConversationId,
         files: &[RemoteFile],
     ) -> Result<Vec<UserContentBlock>, RemoteFileRefusal> {
-        let control = self.control();
-        let record = control
+        let store = self.store();
+        let record = store
             .conversation(conversation.clone())
             .await?
-            .filter(|record| record.owner == *self.user())
             .ok_or(RemoteFileRefusal::NotAccessible)?;
         let mut devices: Vec<DeviceRecord> = Vec::new();
         for file in files {
@@ -59,10 +58,10 @@ impl dyn HostShard + '_ {
             if devices.iter().any(|device| device.id == id) {
                 continue;
             }
-            let device = control
+            let device = store
                 .device(id)
                 .await?
-                .filter(|device| device.is_host_of(&record.owner))
+                .filter(DeviceRecord::is_host)
                 .ok_or(RemoteFileRefusal::NotAccessible)?;
             if !self.devices().online(&device.id) {
                 return Err(RemoteFileRefusal::Offline(device.name));
@@ -88,7 +87,7 @@ impl dyn HostShard + '_ {
                 device: device.id,
                 cwd: None,
             };
-            let attached = control
+            let attached = store
                 .change_conversation(record.id.clone(), RecordChange::Attach(host))
                 .await?;
             if attached != ChangeOutcome::Applied {

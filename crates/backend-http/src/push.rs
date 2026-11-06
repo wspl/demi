@@ -52,7 +52,7 @@ pub(super) async fn subscribe(
     // Each session says whether its browser has notifications on.
     services.sync.mark(&user.id, Part::Sessions);
     if agent_notifies {
-        for conversation in services.control.clear_notifications_cards(user.id.clone()).await? {
+        for conversation in services.stores.of(&user.id).await?.clear_notifications_cards().await? {
             services.sync.mark(&user.id, Part::Metadata(conversation));
         }
     }
@@ -67,7 +67,7 @@ pub(super) async fn dismiss_card(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
-    if services.control.dismiss_notifications_card(record.id.clone()).await? {
+    if services.stores.of(&user.id).await?.dismiss_notifications_card(record.id.clone()).await? {
         services.sync.mark(&user.id, Part::Metadata(record.id));
     }
     Ok(StatusCode::NO_CONTENT)

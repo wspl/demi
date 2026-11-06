@@ -10,11 +10,11 @@
 
 use rusqlite::Transaction;
 
-use super::super::{Migration, ResealSealed, corrupt, corrupt_text};
+use super::super::{Migration, ControlSteps, corrupt, corrupt_text};
 
 pub(super) const MIGRATION: Migration = Migration::Code(snapshots_with_window_kinds);
 
-fn snapshots_with_window_kinds(transaction: &Transaction<'_>, _: &dyn ResealSealed) -> rusqlite::Result<()> {
+fn snapshots_with_window_kinds(transaction: &Transaction<'_>, _: &dyn ControlSteps) -> rusqlite::Result<()> {
     // The shares made before a share held only what was said, each of
     // which held every block and its subagents, are removed, and their
     // links answer as ones that never existed; each conversation's database

@@ -40,6 +40,7 @@ use tracing::Instrument as _;
 
 use crate::conversation::claude_cli::{CrossPlacement, ProcessWork};
 use crate::services::Services;
+use demi_core_store::store::CoreStore;
 use crate::shard::Shard;
 use demi_backend_host_access::conversation_of;
 
@@ -75,6 +76,8 @@ pub(super) struct ConversationProviders {
     /// The user's shard, whose Cloud runs a provider's process.
     shard: Weak<Shard>,
     user: UserId,
+    /// The user's core, which holds their conversations and usage.
+    store: CoreStore,
     services: Arc<Services>,
     /// The shard's HTTP client, which its runtimes send with.
     http: reqwest::Client,
@@ -84,12 +87,14 @@ impl ConversationProviders {
     pub(super) fn new(
         shard: Weak<Shard>,
         user: UserId,
+        store: CoreStore,
         services: Arc<Services>,
         http: reqwest::Client,
     ) -> Self {
         Self {
             shard,
             user,
+            store,
             services,
             http,
         }
@@ -106,8 +111,7 @@ impl ProviderResolver for ConversationProviders {
     ) -> LocalBoxFuture<'a, Result<ModelSelection, ResolveError>> {
         Box::pin(async move {
             let record = self
-                .services
-                .control
+                .store
                 .conversation(conversation_of(root))
                 .await
                 .map_err(|error| ResolveError::Failed(error.to_string()))?;
@@ -133,6 +137,7 @@ impl ProviderResolver for ConversationProviders {
             let scope = Rc::new(Scope {
                 shard: self.shard.clone(),
                 services: self.services.clone(),
+                store: self.store.clone(),
                 user: self.user.clone(),
                 work: Work::Conversation(conversation_of(root)),
                 provider,
@@ -195,7 +200,7 @@ impl ProviderResolver for ConversationProviders {
             if own.is_some() {
                 return session_context_window(window, own, None);
             }
-            let preferences = match self.services.control.preferences(self.user.clone()).await {
+            let preferences = match self.store.preferences().await {
                 Ok(preferences) => preferences,
                 Err(error) => {
                     // The model's own window is what the session used before
@@ -304,6 +309,7 @@ async fn current_selection(
 struct Scope {
     shard: Weak<Shard>,
     services: Arc<Services>,
+    store: CoreStore,
     user: UserId,
     work: Work,
     provider: ProviderId,
@@ -349,6 +355,7 @@ pub(crate) fn lent_runtime(
     let scope = Rc::new(Scope {
         shard: Rc::downgrade(shard),
         services,
+        store: shard.store().clone(),
         user,
         work: Work::Lent { key },
         provider: provider.clone(),
@@ -392,6 +399,7 @@ pub(crate) async fn lent_limits(
     let scope = Rc::new(Scope {
         shard: Rc::downgrade(shard),
         services,
+        store: shard.store().clone(),
         user,
         work: Work::Lent { key },
         provider: entry.id.clone(),
@@ -934,9 +942,8 @@ fn metered(
         })
     };
     let ledger = Ledger {
-        control: scope.services.control.clone(),
+        store: scope.store.clone(),
         clock: scope.services.clock.clone(),
-        user: scope.user.clone(),
         conversation: conversation.clone(),
         provider: scope.provider.clone(),
         // The account the provider calls with: the agent's, else

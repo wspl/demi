@@ -377,9 +377,8 @@ impl Shard {
         device: &DeviceId,
         directory: &str,
     ) -> Result<KeptWorkflowList, DeviceWorkflowsRefusal> {
-        let control = &self.services().control;
-        let stored = control
-            .host_workflows(device.clone(), directory.to_owned())
+        let store = self.store();
+        let stored = store.host_workflows(device.clone(), directory.to_owned())
             .await
             .map_err(DeviceWorkflowsRefusal::Storage)?;
         if let Some(stored) = stored {
@@ -396,8 +395,7 @@ impl Shard {
             .map_err(DeviceWorkflowsRefusal::Host)?
             .map_err(|NoDirectory| DeviceWorkflowsRefusal::NoDirectory)?;
         let list = found.menu();
-        control
-            .keep_host_workflows(device.clone(), directory.to_owned(), list.clone())
+        store.keep_host_workflows(device.clone(), directory.to_owned(), list.clone())
             .await
             .map_err(DeviceWorkflowsRefusal::Storage)?;
         Ok(KeptWorkflowList::Read {
@@ -522,9 +520,7 @@ impl Shard {
     /// The Workflow menu choice of the conversation `id`.
     pub(crate) async fn workflow_choice(&self, id: &ConversationId) -> Result<WorkflowChoice, String> {
         let record = self
-            .services()
-            .control
-            .conversation(id.clone())
+            .store().conversation(id.clone())
             .await
             .map_err(|error| error.to_string())?
             .ok_or("the conversation is gone")?;

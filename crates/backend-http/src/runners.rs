@@ -28,7 +28,8 @@ use axum_extra::TypedHeader;
 use axum_extra::headers::{Authorization, Range};
 use axum_extra::headers::authorization::Bearer;
 use demi_backend_database::accounts::TokenHash;
-use demi_backend_database::devices::DeviceRecord;
+use demi_core_store::StorageError;
+use demi_web_api_protocol::ids::{DeviceId, UserId};
 use demi_runner_client::{
     ChunkEnd, ChunkRefusal, DeviceChunk, DeviceSource, PipeRefusal, SourceMessage, accept_call_sink, offer_response,
 };
@@ -105,21 +106,31 @@ async fn runner_update(
     }))
 }
 
+/// The device a runner's token names, and the user whose core holds it.
+#[derive(Clone)]
+pub(super) struct TokenDevice {
+    pub(super) owner: UserId,
+    pub(super) id: DeviceId,
+}
+
 /// The paired device whose token a runner's request carries in
 /// `Demi-Runner-Token`: none for a request without one, from a runner of a
 /// release before 0.1.14, or with one no paired device holds.
-pub(super) async fn paired_device(state: &AppState, headers: &HeaderMap) -> Option<DeviceRecord> {
+pub(super) async fn paired_device(state: &AppState, headers: &HeaderMap) -> Option<TokenDevice> {
     let token = headers
         .get(TOKEN_HEADER)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| DeviceToken::try_from(value.to_owned()).ok())?;
-    match state
-        .services
-        .control
-        .device_by_token(TokenHash::of(token.expose()))
-        .await
-    {
-        Ok(Some(device)) if device.kind == DeviceKind::User => Some(device),
+    let services = &state.services;
+    let read = async {
+        let Some((id, owner)) = services.control.device_by_token(TokenHash::of(token.expose())).await? else {
+            return Ok(None);
+        };
+        let device = services.stores.of(&owner).await?.device(id).await?;
+        Ok::<_, StorageError>(device.map(|device| (owner, device)))
+    };
+    match read.await {
+        Ok(Some((owner, device))) if device.kind == DeviceKind::User => Some(TokenDevice { owner, id: device.id }),
         Ok(_) => None,
         Err(error) => {
             // What the device's runner asked for goes ahead; its device shows
@@ -144,7 +155,7 @@ async fn updating(state: &AppState, headers: &HeaderMap) {
     let id = device.id;
     let shown = state
         .shards
-        .of(&device.user)
+        .of(&device.owner)
         .call(move |shard, _| async move { shard.runner_updating(&id) })
         .await;
     // A closing backend shows nothing more.
@@ -210,7 +221,7 @@ pub(super) async fn get(
         Ok(device) => device,
         Err(refusal) => return *refusal,
     };
-    let owner = device.user.clone();
+    let owner = device.owner.clone();
     let claimed = state
         .shards
         .of(&owner)
@@ -251,7 +262,7 @@ pub(super) async fn call_output(
         Ok(device) => device,
         Err(refusal) => return *refusal,
     };
-    let owner = device.user.clone();
+    let owner = device.owner.clone();
     let sink = state
         .shards
         .of(&owner)
@@ -282,7 +293,7 @@ pub(super) async fn offer(
         Ok(device) => device,
         Err(refusal) => return *refusal,
     };
-    let owner = device.user.clone();
+    let owner = device.owner.clone();
     let offered = state
         .shards
         .of(&owner)
@@ -305,9 +316,9 @@ pub(super) async fn offer(
 pub(super) async fn claim_source(
     state: &AppState,
     id: String,
-    device: DeviceRecord,
+    device: TokenDevice,
 ) -> Result<DeviceSource, (StatusCode, String)> {
-    let owner = device.user.clone();
+    let owner = device.owner.clone();
     let claimed = state
         .shards
         .of(&owner)
@@ -334,7 +345,7 @@ pub(super) async fn head(
         Ok(device) => device,
         Err(refusal) => return *refusal,
     };
-    let owner = device.user.clone();
+    let owner = device.owner.clone();
     let taken = state
         .shards
         .of(&owner)
@@ -354,10 +365,10 @@ pub(super) async fn head(
 async fn claim_chunk(
     state: &AppState,
     id: String,
-    device: DeviceRecord,
+    device: TokenDevice,
     offset: u64,
 ) -> Result<DeviceChunk, Box<Response>> {
-    let owner = device.user.clone();
+    let owner = device.owner.clone();
     let claimed = state
         .shards
         .of(&owner)
@@ -381,7 +392,7 @@ async fn claim_chunk(
 pub(super) async fn device_of(
     state: &AppState,
     authorization: Option<TypedHeader<Authorization<Bearer>>>,
-) -> Result<DeviceRecord, Box<Response>> {
+) -> Result<TokenDevice, Box<Response>> {
     let unauthorized =
         || Box::new((StatusCode::UNAUTHORIZED, "device token required").into_response());
     let TypedHeader(Authorization(bearer)) = authorization.ok_or_else(unauthorized)?;
@@ -391,7 +402,7 @@ pub(super) async fn device_of(
         .device_by_token(TokenHash::of(bearer.token()))
         .await
     {
-        Ok(Some(device)) => Ok(device),
+        Ok(Some((id, owner))) => Ok(TokenDevice { owner, id }),
         Ok(None) => Err(unauthorized()),
         Err(error) => {
             tracing::error!(

@@ -12,7 +12,8 @@
 //!
 //! The machinery, and the rules every step follows, are the core store's
 //! (`crates/core-store/src/schema/mod.rs`). A step of this history is handed
-//! the vault, which alone seals again what it re-encodes ([`ResealSealed`]).
+//! the vault, which alone seals again what it re-encodes, and the data
+//! directory ([`ControlSteps`]).
 //!
 //! The test of the crate (`tests/backend-database/`) takes every step of the
 //! history from an empty database of its schema and compares the result with
@@ -21,7 +22,7 @@
 use std::path::Path;
 
 use demi_core_store::StorageError;
-use demi_core_store::schema::{CONVERSATION, Schema, SchemaFit, schema_fit};
+use demi_core_store::schema::{CONVERSATION, CORE, Schema, SchemaFit, schema_fit};
 use demi_web_api_protocol::ids::ProviderId;
 
 pub(crate) use demi_core_store::schema::{corrupt, corrupt_text};
@@ -29,14 +30,14 @@ pub(crate) use demi_core_store::schema::{corrupt, corrupt_text};
 mod control;
 
 /// A step of the control database's history.
-pub(crate) type Migration = demi_core_store::schema::Migration<dyn ResealSealed>;
+pub(crate) type Migration = demi_core_store::schema::Migration<dyn ControlSteps>;
 /// A schema of the control database's history.
-pub(crate) type Shipped = demi_core_store::schema::Shipped<dyn ResealSealed>;
+pub(crate) type Shipped = demi_core_store::schema::Shipped<dyn ControlSteps>;
 
 /// The control database's schema. Its history holds every schema a server
 /// may hold before the current one (`upgrades.md` § A development build on
 /// a server).
-pub const CONTROL: Schema<dyn ResealSealed> = Schema {
+pub const CONTROL: Schema<dyn ControlSteps> = Schema {
     initial: "",
     sql: include_str!("control.sql"),
     history: control::HISTORY,
@@ -46,6 +47,7 @@ pub const CONTROL: Schema<dyn ResealSealed> = Schema {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseKind {
     Control,
+    Core,
     Conversation,
 }
 
@@ -54,14 +56,18 @@ pub enum DatabaseKind {
 pub fn database_fit(path: &Path, kind: DatabaseKind) -> Result<SchemaFit, StorageError> {
     match kind {
         DatabaseKind::Control => schema_fit(path, &CONTROL),
+        DatabaseKind::Core => schema_fit(path, &CORE),
         DatabaseKind::Conversation => schema_fit(path, &CONVERSATION),
     }
 }
 
-/// What the control migrations that re-encode sealed values work with: the
-/// vault, which alone holds the key they are sealed under and knows their
+/// What the control migrations work with: the data directory, and the vault,
+/// which alone holds the key sealed values are sealed under and knows their
 /// format.
-pub trait ResealSealed: Send + Sync {
+pub trait ControlSteps: Send + Sync {
+    /// The directory the control database is in, and the users' data with it.
+    fn data_directory(&self) -> &Path;
+
     /// Entry `id` of `family`'s configuration `sealed`, opened, decoded and
     /// checked in the format the schema before names, and sealed again in
     /// the format of the schema after it; an error, which never quotes the

@@ -64,8 +64,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use demi_core_store::StorageError;
-use demi_backend_database::devices::DeviceRecord;
-use demi_backend_database::port_forwards::{PortForwardChange, PortForwardRecord, PortForwardRefusal};
+use demi_core_store::devices::DeviceRecord;
+use demi_core_store::port_forwards::{PortForwardChange, PortForwardRecord, PortForwardRefusal};
 use demi_backend_page_sync::Part;
 use demi_runner_client::{DirectAnswer, ForwardEvent, Link, PeerEvent};
 use demi_runner_protocol::direct::{CONNECT_TIMEOUT, DialRefusal, Introduced, OfferRefusal};
@@ -130,7 +130,7 @@ impl Shard {
     /// The user's forwards as a page lists them, oldest first, each with
     /// what its Listen On runner last announced of it.
     pub async fn port_forward_list(&self) -> Result<Vec<PortForwardDto>, StorageError> {
-        let records = self.services().control.port_forwards(self.user().clone()).await?;
+        let records = self.store().port_forwards().await?;
         Ok(records.into_iter().map(|record| self.forward_dto(record)).collect())
     }
 
@@ -163,9 +163,7 @@ impl Shard {
             None => self.cloud_shard().cloud_device().await?.id,
         };
         let stored = self
-            .services()
-            .control
-            .create_port_forward(self.user().clone(), first, change_of(patch))
+            .store().create_port_forward(first, change_of(patch))
             .await??;
         self.forwards_changed().await;
         Ok(self.forward_dto(stored))
@@ -178,9 +176,7 @@ impl Shard {
         patch: PortForwardPatch,
     ) -> Result<PortForwardDto, PortForwardError> {
         let stored = self
-            .services()
-            .control
-            .change_port_forward(self.user().clone(), id, change_of(patch))
+            .store().change_port_forward(id, change_of(patch))
             .await??;
         self.forwards_changed().await;
         Ok(self.forward_dto(stored))
@@ -190,9 +186,7 @@ impl Shard {
     /// listener closes and its connections end.
     pub async fn remove_port_forward(&self, id: PortForwardId) -> Result<(), PortForwardError> {
         let removed = self
-            .services()
-            .control
-            .remove_port_forward(self.user().clone(), id.clone())
+            .store().remove_port_forward(id.clone())
             .await?;
         if !removed {
             return Err(PortForwardRefusal::NotFound.into());
@@ -206,7 +200,7 @@ impl Shard {
     /// runner does when its port was in use; nothing while that runner is
     /// offline, whose next start tries.
     pub async fn retry_port_forward(&self, id: PortForwardId) -> Result<(), PortForwardError> {
-        let records = self.services().control.port_forwards(self.user().clone()).await?;
+        let records = self.store().port_forwards().await?;
         let forward = records
             .into_iter()
             .find(|record| record.id == id)
@@ -220,9 +214,9 @@ impl Shard {
     /// The user's Hosts in the devices list's order: the paired devices
     /// oldest first, then the Cloud.
     pub(crate) async fn host_records(&self) -> Result<Vec<DeviceRecord>, StorageError> {
-        let control = &self.services().control;
-        let mut devices = control.paired_devices(self.user().clone()).await?;
-        devices.extend(control.managed_device(self.user().clone()).await?);
+        let store = self.store();
+        let mut devices = store.paired_devices().await?;
+        devices.extend(store.managed_device().await?);
         Ok(devices)
     }
 
@@ -231,7 +225,7 @@ impl Shard {
     pub(crate) async fn forwards_changed(&self) {
         self.mark(Part::PortForwards);
         let (records, devices) = match (
-            self.services().control.port_forwards(self.user().clone()).await,
+            self.store().port_forwards().await,
             self.host_records().await,
         ) {
             (Ok(records), Ok(devices)) => (records, devices),
@@ -357,7 +351,7 @@ impl Shard {
         let Some(link) = self.devices().link(&device) else {
             return;
         };
-        let (records, devices) = match (self.services().control.port_forwards(self.user().clone()).await, self.host_records().await) {
+        let (records, devices) = match (self.store().port_forwards().await, self.host_records().await) {
             (Ok(records), Ok(devices)) => (records, devices),
             (Err(error), _) => {
                 link.forward_opened(id, Err(error.to_string()));
@@ -414,7 +408,7 @@ impl Shard {
             refuse(DialRefusal::Unavailable, "No such Host");
             return;
         };
-        let route = match (self.services().control.port_forwards(self.user().clone()).await, self.host_records().await) {
+        let route = match (self.store().port_forwards().await, self.host_records().await) {
             (Ok(records), Ok(devices)) => {
                 let find = |id: &DeviceId| devices.iter().find(|device| device.id == *id);
                 // Either runner opens the pair's peer, for a forward between

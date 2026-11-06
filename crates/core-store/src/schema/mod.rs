@@ -47,6 +47,7 @@ use demi_shared_types::BlobRef;
 use super::StorageError;
 
 mod conversation;
+mod core;
 
 /// A database's schema: its SQL, whose digest names it, and the schemas a
 /// server may hold before it, oldest first. Each step of its history is
@@ -91,6 +92,14 @@ impl ReadBlob for NoBlobs {
         Err(format!("this database names no blob, yet a migration read {blob}"))
     }
 }
+
+/// A core's own database's schema: the records of the principal it serves,
+/// its conversations' index among them ([`crate::store::CoreStore`]).
+pub const CORE: Schema<()> = Schema {
+    initial: "",
+    sql: include_str!("core.sql"),
+    history: core::HISTORY,
+};
 
 /// Each conversation's database's schema: its nodes, the records of its
 /// rows and the contents they name, its paths, commands, attachments and

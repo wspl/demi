@@ -295,7 +295,7 @@ impl Shard {
     /// The conversation's title, null while it has none; none when the
     /// conversation is gone or cannot be read.
     async fn conversation_title(&self, conversation: &ConversationId) -> Option<Option<String>> {
-        match self.services().control.conversation(conversation.clone()).await {
+        match self.store().conversation(conversation.clone()).await {
             Ok(record) => record.map(|record| record.title),
             Err(error) => {
                 tracing::warn!(event = "notification.conversation_read_failed", %conversation, %error, "a conversation was not read for its notification");

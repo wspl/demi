@@ -72,7 +72,7 @@ use axum::extract::ws::close_code;
 use demi_agent_server::{ContentError, ContentResolver, FileReference, Outgoing, ResolvedFiles};
 use demi_agent_store::media::HeldMedia;
 use demi_core_store::StorageError;
-use demi_backend_database::conversation_index::ConversationRecord;
+use demi_core_store::conversation_index::ConversationRecord;
 use demi_backend_page_sync::Part;
 use demi_backend_permissions::Stops;
 use demi_core_store::conversation_attachments::uploaded_after;
@@ -404,13 +404,9 @@ impl Shard {
     /// model its record holds, and only when the backend would deliver an `open`.
     /// A tree that is live already is left as it is.
     pub(crate) async fn restore_tree(&self, conversation: &ConversationId) -> Result<(), String> {
-        let services = self.services();
-        services
-            .control
-            .conversation(conversation.clone())
+        self.store().conversation(conversation.clone())
             .await
             .map_err(|error| error.to_string())?
-            .filter(|record| record.owner == *self.user())
             .ok_or("the conversation is gone")?;
         let slot = self.conversations().slot(conversation);
         let _files = slot.file_gate().enter(Purpose::Demand).await;
@@ -580,13 +576,13 @@ impl Shard {
         // nothing to take off the list.
         let (frame, saved, from_list, _sending) = match frame {
             ClientFrame::SendSaved { id, turn_id, delivery, content } => {
-                let control = &self.services().control;
-                let list = match control.saved_sharers(conversation.clone()).await {
+                let store = self.store();
+                let list = match store.saved_sharers(conversation.clone()).await {
                     Ok(sharers) => sharers.key,
                     Err(error) => return Handled::Replies(vec![send_failed(error.to_string())]),
                 };
                 let sending = self.conversations().saved_list(&list).acquire().await;
-                match control.saved_message(conversation.clone(), id.clone()).await {
+                match store.saved_message(conversation.clone(), id.clone()).await {
                     Ok(Some(message)) => {
                         let content = content.unwrap_or_else(|| saved_content(message));
                         (
@@ -596,7 +592,7 @@ impl Shard {
                             Some(sending),
                         )
                     }
-                    Ok(None) => match control.sent_as(conversation.clone(), id).await {
+                    Ok(None) => match store.sent_as(conversation.clone(), id).await {
                         Ok(Some(turn)) if turn == turn_id => {
                             let at = self.agent().tree(&root_of(conversation)).map(|tree| tree.agents_version());
                             return Handled::Replies(sent_again(turn_id, delivery, at));
@@ -732,8 +728,8 @@ impl Shard {
         frame: &ClientFrame,
     ) -> Result<Prepared, StorageError> {
         let services = self.services();
-        let record = services.control.conversation(conversation.clone()).await?;
-        let Some(record) = record.filter(|record| record.owner == *self.user()) else {
+        let record = self.store().conversation(conversation.clone()).await?;
+        let Some(record) = record else {
             return Ok(Prepared::Refused(
                 ErrorCode::ConversationNotFound,
                 "No such conversation".into(),
@@ -773,9 +769,7 @@ impl Shard {
             }
             ClientFrame::Send(SendMessage { content, .. }) => {
                 self.title_first_message(&record, content).await?;
-                services
-                    .control
-                    .touch_conversation(record.id.clone())
+                self.store().touch_conversation(record.id.clone())
                     .await?;
                 self.mark(Part::Conversation(record.id));
             }
@@ -848,8 +842,8 @@ impl Shard {
     /// failure leaves it listed though sent; it is logged, since the send
     /// it follows has happened and has its own answer.
     async fn take_saved(&self, conversation: &ConversationId, id: String, turn: TurnId) {
-        match self.services().control.take_saved(conversation.clone(), id, turn).await {
-            Ok(true) => match self.services().control.saved_sharers(conversation.clone()).await {
+        match self.store().take_saved(conversation.clone(), id, turn).await {
+            Ok(true) => match self.store().saved_sharers(conversation.clone()).await {
                 Ok(sharers) => {
                     for sharer in sharers.conversations {
                         self.mark(Part::Metadata(sharer));
@@ -939,7 +933,7 @@ impl Shard {
                 let added = blocks_added(&patches);
                 let failures = failure_facts(&services.vault, provider_registry, &added).await;
                 let (attachments, reply_blocks) = streamed
-                    .named(&services.conversations, self.plugins(), conversation, &node, &patches)
+                    .named(&self.store().databases(), self.plugins(), conversation, &node, &patches)
                     .await;
                 let attachments = attachments.unwrap_or_else(|error| {
                     tracing::warn!(
@@ -982,20 +976,16 @@ impl Shard {
         if !shown.follows_any() {
             return true;
         }
-        let services = self.services();
         let read = async {
-            let Some(record) = services
-                .control
-                .conversation(conversation.clone())
+            let Some(record) = self.store().conversation(conversation.clone())
                 .await?
-                .filter(|record| record.owner == *self.user())
             else {
                 return Ok(None);
             };
             let draft_revision = record.draft_revision;
             let metadata = self.conversation_metadata(record).await?;
             let saved = match shown.saved {
-                Some(_) => Some(services.control.saved_listing(conversation.clone()).await?),
+                Some(_) => Some(self.store().saved_listing(conversation.clone()).await?),
                 None => None,
             };
             let workflows = match shown.workflows {
@@ -1007,13 +997,12 @@ impl Shard {
                 None => None,
             };
             let draft = if shown.draft.is_some_and(|held| draft_revision > held) {
-                Some(services.control.draft(conversation.clone()).await?)
+                Some(self.store().draft(conversation.clone()).await?)
             } else {
                 None
             };
             let uploaded = match shown.attached_through {
-                Some(held) if !opening && metadata.last_attachment > held => services
-                    .conversations
+                Some(held) if !opening && metadata.last_attachment > held => self.store().databases()
                     .read(conversation, move |connection| uploaded_after(connection, held))
                     .await?
                     .unwrap_or_default(),

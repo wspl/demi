@@ -1,0 +1,160 @@
+//! What names a user's blobs: the records a collection of the user's namespace
+//! reads before it removes a blob.
+//!
+//! In the control database:
+//!
+//! - the drafts of the user's conversations and the messages they keep saved for
+//!   later;
+//! - the plugins' values and Host directories;
+//! - the files of the media jobs no call collected yet.
+//!
+//! In each of the user's conversation databases:
+//!
+//! - its blocks with their media and edit copies;
+//! - the messages its checkpoints keep queued;
+//! - the conversation's attachments;
+//! - the records of its commands' outputs;
+//! - the shares' snapshots.
+//!
+//! An upload record names its blob too, but only a recent one keeps it: an upload
+//! goes with its blob.
+
+use std::collections::BTreeSet;
+
+use demi_agent_store::CheckpointState;
+use demi_agent_store::media::{comment_references, content_references};
+use demi_shared_types::{BlobRef, Timestamp};
+use demi_web_api_protocol::ids::ConversationId;
+use rusqlite::{Connection, params};
+
+use super::StorageError;
+use super::columns::{decode, json};
+use super::command_outputs::{self, OutputRow};
+use super::{conversation_attachments, shares};
+use super::store::CoreStore;
+use super::drafts::draft_blobs;
+use super::media_jobs::media_job_blobs;
+use super::plugin_values::plugin_blobs;
+
+/// What the control database says about a user's blobs.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ControlReferences {
+    /// The blobs its records name, and those of the uploads recorded since
+    /// the time asked about.
+    pub blobs: BTreeSet<BlobRef>,
+    /// The databases that may name more: the user's conversations', archived
+    /// ones included, and those of the Forks the user has under way, whose
+    /// destination is not published yet.
+    pub databases: Vec<ConversationId>,
+}
+
+impl CoreStore {
+    /// The references of `owner`'s blobs in the control database, read in
+    /// one transaction, with the blob of each upload recorded after
+    /// `uploads_since`.
+    pub async fn blob_references(
+        &self,
+        uploads_since: Timestamp,
+    ) -> Result<ControlReferences, StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            let mut references = ControlReferences::default();
+            references.blobs.extend(draft_blobs(&transaction)?);
+            references.blobs.extend(plugin_blobs(&transaction)?);
+            references.blobs.extend(media_job_blobs(&transaction)?);
+            {
+                let mut uploads = transaction.prepare(
+                    "SELECT sha256 FROM attachments WHERE created_at > ?1",
+                )?;
+                let mut rows =
+                    uploads.query(params![uploads_since.as_millisecond()])?;
+                while let Some(row) = rows.next()? {
+                    references.blobs.insert(decode(
+                        "attachments",
+                        "sha256",
+                        BlobRef::try_from(row.get::<_, String>(0)?),
+                    )?);
+                }
+                let mut databases = transaction.prepare(
+                    "SELECT id FROM conversations
+                     UNION SELECT f.id FROM conversation_fork_operations f
+                       LEFT JOIN conversations c ON c.id = f.id
+                       WHERE c.id IS NULL",
+                )?;
+                let mut rows = databases.query([])?;
+                while let Some(row) = rows.next()? {
+                    references.databases.push(decode(
+                        "conversations",
+                        "id",
+                        ConversationId::try_from(row.get::<_, String>(0)?),
+                    )?);
+                }
+            }
+            transaction.commit()?;
+            Ok(references)
+        })
+        .await
+    }
+
+    /// Removes `owner`'s upload records of `blobs`, whose blobs a collection
+    /// removed.
+    pub async fn remove_uploads(
+        &self,
+        blobs: Vec<BlobRef>,
+    ) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            {
+                let mut remove = transaction
+                    .prepare_cached("DELETE FROM attachments WHERE sha256 = ?1")?;
+                for blob in &blobs {
+                    remove.execute(params![blob.as_str()])?;
+                }
+            }
+            transaction.commit()?;
+            Ok(())
+        })
+        .await
+    }
+}
+
+/// Every blob a conversation's database names, read on `connection` in the read
+/// transaction it is given.
+///
+/// The blobs are:
+///
+/// - each block's media and edit copies, as `block_blobs` lists them for every
+///   row;
+/// - the media of the messages its checkpoints keep queued;
+/// - the agent's uploads;
+/// - each stored command output;
+/// - the shares' copies, which keep their blobs while they last.
+pub fn conversation_blobs(connection: &Connection) -> Result<BTreeSet<BlobRef>, StorageError> {
+    let mut blobs = BTreeSet::new();
+    let mut named = connection.prepare("SELECT DISTINCT blob FROM block_blobs")?;
+    let mut rows = named.query([])?;
+    while let Some(row) = rows.next()? {
+        blobs.insert(decode("block_blobs", "blob", BlobRef::try_from(row.get::<_, String>(0)?))?);
+    }
+    let mut states = connection.prepare("SELECT state FROM nodes")?;
+    let mut rows = states.query([])?;
+    while let Some(row) = rows.next()? {
+        let state: CheckpointState = json("nodes", "state", &row.get::<_, String>(0)?)?;
+        for queued in &state.queue {
+            blobs.extend(content_references(&queued.content).cloned());
+            blobs.extend(comment_references(&queued.comments).cloned());
+        }
+    }
+    blobs.extend(
+        conversation_attachments::all(connection)?
+            .into_iter()
+            .map(|attachment| attachment.row.blob),
+    );
+    for output in command_outputs::all(connection)? {
+        if let OutputRow::Stored { blob, .. } = output.output {
+            blobs.insert(blob);
+        }
+    }
+    blobs.extend(shares::copied_blobs(connection)?);
+    Ok(blobs)
+}

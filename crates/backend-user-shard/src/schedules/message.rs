@@ -8,7 +8,7 @@
 //!   body's file, with the bodies' first 16 KB in all, newest first, inside the
 //!   frame `demi web` puts around a page.
 
-use demi_backend_database::schedules::{RunCause, StoredSchedule};
+use demi_core_store::schedules::{RunCause, StoredSchedule};
 use demi_shared_types::Timestamp;
 
 use super::hooks::Call;

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::drafts::{DraftRefusal, Staged, StagedFile};
+use demi_core_store::drafts::{DraftRefusal, Staged, StagedFile};
 use demi_backend_page_sync::Part;
 use demi_conversation_lane_protocol::ClientContent;
 use demi_web_api_protocol::drafts::{
@@ -29,7 +29,7 @@ pub(super) async fn read(
     Path(id): Path<String>,
 ) -> Result<Json<DraftAnswer>, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
-    let draft = services.control.draft(record.id).await?;
+    let draft = services.stores.of(&user.id).await?.draft(record.id).await?;
     Ok(Json(DraftAnswer { draft }))
 }
 
@@ -55,11 +55,8 @@ pub(super) async fn save(
             Ok(comment.with_content::<Staged>(DraftMessage { text, files }))
         })
         .collect::<Result<Vec<_>, ApiError>>()?;
-    let saved = services
-        .control
-        .save_draft(
+    let saved = services.stores.of(&user.id).await?.save_draft(
             record.id.clone(),
-            user.id.clone(),
             save.text,
             files,
             comments,

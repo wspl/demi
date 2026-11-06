@@ -26,6 +26,32 @@ fn databases(data: &Path) -> io::Result<Vec<(PathBuf, DatabaseKind)>> {
     if data.join(&control).exists() {
         databases.push((control, DatabaseKind::Control));
     }
+    match std::fs::read_dir(data.join("users")) {
+        Ok(users) => {
+            for user in users {
+                let user = PathBuf::from("users").join(user?.file_name());
+                let core = user.join("core.sqlite");
+                if data.join(&core).exists() {
+                    databases.push((core, DatabaseKind::Core));
+                }
+                let conversations = user.join("conversations");
+                match std::fs::read_dir(data.join(&conversations)) {
+                    Ok(entries) => {
+                        for entry in entries {
+                            let name = entry?.file_name();
+                            if Path::new(&name).extension().is_some_and(|extension| extension == "sqlite") {
+                                databases.push((conversations.join(name), DatabaseKind::Conversation));
+                            }
+                        }
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error),
+                }
+            }
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
     match std::fs::read_dir(data.join("conversations")) {
         Ok(entries) => {
             for entry in entries {

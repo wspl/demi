@@ -355,8 +355,7 @@ impl dyn HostShard + '_ {
         args: Option<&Map<String, Value>>,
     ) -> Result<ResidentRequest, HostAccessError> {
         let context = command_context(
-            self.control(),
-            self.user(),
+            self.store(),
             conversation,
             CommandCaller::User {},
         )

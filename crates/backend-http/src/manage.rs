@@ -144,7 +144,7 @@ async fn announce(state: &AppState, request: &str) -> Result<Arc<NextRelease>, S
     let users = state
         .services
         .control
-        .paired_owners()
+        .device_holders()
         .await
         .map_err(|error| error.to_string())?;
     for user in users {

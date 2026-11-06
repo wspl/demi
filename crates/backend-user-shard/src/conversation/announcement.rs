@@ -17,10 +17,10 @@
 //! node once.
 
 use demi_core_store::StorageError;
-use demi_backend_database::conversation_index::{
+use demi_core_store::conversation_index::{
     AttachedHost, ExecutionTarget, TargetSwitch,
 };
-use demi_backend_database::devices::{CLOUD_NAME, DeviceRecord};
+use demi_core_store::devices::{CLOUD_NAME, DeviceRecord};
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_agent_store::Placement;
 use demi_conversation_lane_protocol::{AgentEntry, Version};
@@ -98,8 +98,8 @@ impl Shard {
         id: &ConversationId,
         seen: &[&str],
     ) -> Result<Option<String>, StorageError> {
-        let control = &self.services().control;
-        let Some(record) = control.conversation(id.clone()).await? else {
+        let store = self.store();
+        let Some(record) = store.conversation(id.clone()).await? else {
             return Ok(None);
         };
         let marker = format!("{CONTEXT}{}]", record.context_version);
@@ -107,11 +107,11 @@ impl Shard {
             return Ok(None);
         }
         let primary = self.host_shard().resolve_target(&record).await?;
-        let attached = control.attached_hosts(record.id.clone()).await?;
+        let attached = store.attached_hosts(record.id.clone()).await?;
         let mut lines = vec![marker, self.primary_host_line(&primary).await?];
         // A Cloud reset is announced to a node once
         // (`crates/backend-cloud/src/reset.rs`).
-        if let Some(reset) = control.announced_cloud_reset(record.id.clone()).await? {
+        if let Some(reset) = store.announced_cloud_reset(record.id.clone()).await? {
             let reset = format!("[Cloud reset {reset}]");
             if !seen.iter().any(|text| text.contains(&reset)) {
                 lines.push(reset);
@@ -121,7 +121,7 @@ impl Shard {
         // A node saw the switch when it read a block of the revision the
         // switch made or a later one, whatever the block called its targets:
         // their names may have changed since.
-        let announced = match control.last_switch(record.id.clone()).await? {
+        let announced = match store.last_switch(record.id.clone()).await? {
             Some((switch, revision))
                 if !seen.iter().any(|text| read_revision(text).is_some_and(|read| read >= revision)) =>
             {
@@ -158,7 +158,7 @@ impl Shard {
         target: &ExecutionTarget,
     ) -> Result<(Option<DeviceRecord>, String), StorageError> {
         let device = match target.device() {
-            Some(device) => self.services().control.device(device.clone()).await?,
+            Some(device) => self.store().device(device.clone()).await?,
             None => None,
         };
         let name = match (&device, target.device()) {
@@ -204,7 +204,7 @@ impl Shard {
     /// How the Host of `device` writes its paths, in the form of the system
     /// its runner reported; POSIX for a device not known.
     pub(crate) async fn device_paths(&self, device: &DeviceId) -> Result<HostPaths, StorageError> {
-        let record = self.services().control.device(device.clone()).await?;
+        let record = self.store().device(device.clone()).await?;
         Ok(record.map_or(HostPaths::Posix, |record| record.platform.paths()))
     }
 
@@ -212,7 +212,7 @@ impl Shard {
     /// the form of the system its runner reported, which the device keeps;
     /// a Cloud's is Linux's.
     pub(crate) async fn host_paths(&self, id: &ConversationId) -> Result<HostPaths, StorageError> {
-        let Some(record) = self.services().control.conversation(id.clone()).await? else {
+        let Some(record) = self.store().conversation(id.clone()).await? else {
             return Ok(HostPaths::Posix);
         };
         let target = self.host_shard().resolve_target(&record).await?;
@@ -259,11 +259,11 @@ impl Shard {
 
     /// A target as the model reads it.
     async fn describe(&self, target: &ExecutionTarget) -> Result<String, StorageError> {
-        let control = &self.services().control;
+        let store = self.store();
         let Some(device) = target.device() else {
             return Ok("Cloud (not allocated)".into());
         };
-        let name = match control.device(device.clone()).await? {
+        let name = match store.device(device.clone()).await? {
             Some(record) => format!("\"{}\"", record.name),
             None => device.to_string(),
         };
@@ -271,8 +271,7 @@ impl Shard {
             ExecutionTarget::Project {
                 project_id, path, ..
             } => {
-                let project = control
-                    .project(project_id.clone())
+                let project = store.project(project_id.clone())
                     .await?
                     .map_or_else(|| project_id.to_string(), |project| project.name);
                 format!("project \"{project}\" — directory {path} on device {name}")

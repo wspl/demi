@@ -7,7 +7,7 @@
 //! cannot reach another entry's accounts.
 
 use demi_core_store::StorageError;
-use demi_backend_database::providers::{CredentialRow, CredentialWrite};
+use demi_core_store::providers::{CredentialRow, CredentialWrite};
 use demi_provider_common::credentials::{
     AccountDocument, AccountMeta, CredentialPool, PoolError, RefreshPermit, Revision,
 };
@@ -78,7 +78,9 @@ impl CredentialPool for VaultCredentialPool {
         Box::pin(async {
             let row = self
                 .vault
-                .control()
+                .store_of(&self.provider)
+                .await
+                .map_err(store)?
                 .provider(self.provider.clone())
                 .await
                 .map_err(store)?;
@@ -145,7 +147,9 @@ impl CredentialPool for VaultCredentialPool {
             };
             let changed = self
                 .vault
-                .control()
+                .store_of(&self.provider)
+                .await
+                .map_err(store)?
                 .sign_out_credential(self.provider.clone(), account)
                 .await
                 .map_err(store)?;
@@ -171,7 +175,9 @@ impl CredentialPool for VaultCredentialPool {
                 return Ok(());
             };
             self.vault
-                .control()
+                .store_of(&self.provider)
+                .await
+                .map_err(store)?
                 .remove_credential(self.provider.clone(), account)
                 .await
                 .map_err(store)?;
@@ -243,7 +249,9 @@ impl AccountDocument for VaultDocument {
             let sealed = text.map(|text| self.vault.seal_secret(&self.provider, account, &text));
             let replaced = self
                 .vault
-                .control()
+                .store_of(&self.provider)
+                .await
+                .map_err(store)?
                 .replace_credential_secret(self.provider.clone(), account.clone(), sealed, version)
                 .await
                 .map_err(store)?;

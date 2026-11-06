@@ -8,7 +8,7 @@
 //! opened, as a page opening an old conversation opens it; a version of an
 //! answer brought back; a compaction; a turn that ended without text. What a
 //! request answered is stored with the answer it follows
-//! (`demi_backend_database::suggested_replies`), and stays; the conversation's
+//! (`demi_core_store::suggested_replies`), and stays; the conversation's
 //! metadata offers the newest, so a page the backend's restart reconnects
 //! shows what it showed; the page shows it only under that answer. Work that
 //! starts while a request runs cancels it, as does an
@@ -22,12 +22,12 @@ use std::rc::Rc;
 use demi_agent_server::small_request::SmallRequest;
 use demi_agent_server::suggested_replies::{answer_of, suggestion_request, suggestions_from_response};
 use demi_core_store::StorageError;
-use demi_backend_database::control::ControlService;
-use demi_backend_database::suggested_replies::AnsweredReplies;
+use demi_core_store::store::CoreStore;
+use demi_core_store::suggested_replies::AnsweredReplies;
 use demi_backend_host_access::root_of;
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_shared_types::{BlockId, ModelSelection, Timestamp};
-use demi_web_api_protocol::ids::{ConversationId, UserId};
+use demi_web_api_protocol::ids::ConversationId;
 use sha2::{Digest as _, Sha256};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -39,10 +39,9 @@ use crate::shard::Shard;
 /// The suggested replies of a shard's conversations.
 pub(crate) struct SuggestedReplies {
     small_requests: Rc<SmallRequests>,
-    control: ControlService,
+    store: CoreStore,
     /// The user's pages, which learn what a request kept.
     marks: UserMarks,
-    user: UserId,
     /// When each running tree started to run: only an answer written since
     /// asks for suggestions.
     working: RefCell<HashMap<ConversationId, Timestamp>>,
@@ -54,12 +53,11 @@ pub(crate) struct SuggestedReplies {
 }
 
 impl SuggestedReplies {
-    pub(super) fn new(small_requests: Rc<SmallRequests>, control: ControlService, marks: UserMarks, user: UserId) -> Self {
+    pub(super) fn new(small_requests: Rc<SmallRequests>, store: CoreStore, marks: UserMarks) -> Self {
         Self {
             small_requests,
-            control,
+            store,
             marks,
-            user,
             working: RefCell::default(),
             in_flight: Rc::default(),
             next: Cell::new(0),
@@ -93,8 +91,7 @@ impl SuggestedReplies {
             earlier.cancel();
         }
         let small_requests = self.small_requests.clone();
-        let control = self.control.clone();
-        let user = self.user.clone();
+        let store = self.store.clone();
         let marks = self.marks.clone();
         let in_flight = self.in_flight.clone();
         tasks.spawn_local(
@@ -103,7 +100,7 @@ impl SuggestedReplies {
                 // The small model, once resolved, which the end's log line names.
                 let mut small = None;
                 let ended = async {
-                    if !control.preferences(user).await?.suggests_replies() {
+                    if !store.preferences().await?.suggests_replies() {
                         return Ok::<_, Failure>("off");
                     }
                     let answering = small.insert(small_requests.resolve(&selection).await?).clone();
@@ -116,8 +113,7 @@ impl SuggestedReplies {
                     }
                     let replies = response.as_deref().map(suggestions_from_response).unwrap_or_default();
                     let outcome = if replies.is_empty() { "none" } else { "kept" };
-                    control
-                        .keep_suggested_replies(
+                    store.keep_suggested_replies(
                             id.clone(),
                             AnsweredReplies {
                                 block_id: answer.clone(),

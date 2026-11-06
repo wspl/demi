@@ -78,7 +78,7 @@ pub async fn failure_facts(vault: &Vault, provider_registry: &ProviderRegistry, 
             facts.signed_out = signed_out(vault, &reader.entry, error).await;
         }
         if offline {
-            facts.device_offline = through_device(vault.control(), &reader.entry).await;
+            facts.device_offline = through_device(vault.stores(), &reader.entry).await;
         }
         if facts.retry_at.is_some()
             || facts.continue_with.is_some()

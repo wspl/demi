@@ -16,8 +16,9 @@
 //!
 //! The owner's blob namespace is collected after it (`lifecycle::collection`).
 
+use demi_core_store::store::CoreStore;
+use demi_web_api_protocol::ids::UserId;
 use demi_core_store::StorageError;
-use demi_backend_database::control::ControlService;
 use demi_backend_host_access::access::Leaving;
 use demi_backend_host_access::root_of;
 use demi_backend_page_sync::Part;
@@ -29,26 +30,27 @@ use crate::shard::{Shard, Shards};
 /// (`crates/backend-database/src/deletions.rs`), in its owner's shard, and
 /// collects the owner's blobs after it. A deletion that fails again stays
 /// pending for the next start; only listing them fails the call.
-pub async fn finish_deletions(control: &ControlService, shards: &Shards) -> Result<(), StorageError> {
-    for pending in control.pending_deletions().await? {
-        let id = pending.id;
-        let finished = shards
-            .of(&pending.owner)
-            .call(move |shard, _| async move {
-                let finished = shard.finish_deletion(&id).await;
-                if finished.is_ok() {
-                    shard.collect_blobs();
+pub async fn finish_deletions(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
+    for (owner, store) in cores {
+        for id in store.pending_deletions().await? {
+            let finished = shards
+                .of(owner)
+                .call(move |shard, _| async move {
+                    let finished = shard.finish_deletion(&id).await;
+                    if finished.is_ok() {
+                        shard.collect_blobs();
+                    }
+                    finished.map_err(|error| (id, error))
+                })
+                .await;
+            match finished {
+                Ok(Ok(())) => {}
+                Ok(Err((id, error))) => {
+                    tracing::error!(event = "conversation_deletion.failed", conversation = %id, stage = "finish", outcome = "next_start", error = &error as &dyn std::error::Error, "a pending deletion was not finished");
                 }
-                finished.map_err(|error| (id, error))
-            })
-            .await;
-        match finished {
-            Ok(Ok(())) => {}
-            Ok(Err((id, error))) => {
-                tracing::error!(event = "conversation_deletion.failed", conversation = %id, stage = "finish", outcome = "next_start", error = &error as &dyn std::error::Error, "a pending deletion was not finished");
+                // The backend is shutting down; the next start finishes the rest.
+                Err(_) => return Ok(()),
             }
-            // The backend is shutting down; the next start finishes the rest.
-            Err(_) => return Ok(()),
         }
     }
     Ok(())
@@ -71,12 +73,11 @@ impl Shard {
         id: &ConversationId,
         workspace: Option<&WorkspaceId>,
     ) -> Result<bool, StorageError> {
-        let services = self.services();
-        let Some(record) = services
-            .control
+        let Some(record) = self
+            .store()
             .conversation(id.clone())
             .await?
-            .filter(|record| record.owner == *self.user() && workspace.is_none_or(|workspace| record.workspace == *workspace))
+            .filter(|record| workspace.is_none_or(|workspace| record.workspace == *workspace))
         else {
             return Ok(false);
         };
@@ -117,9 +118,7 @@ impl Shard {
         // fork of it under way finishes first, its plugins told
         // (`fork.rs`).
         let lifecycle = self.lifecycle().acquire().await;
-        let Some(id) = services
-            .control
-            .delete_conversation(self.user().clone(), record.id, workspace.cloned())
+        let Some(id) = self.store().delete_conversation(record.id, workspace.cloned())
             .await?
         else {
             return Ok(false);
@@ -163,9 +162,9 @@ impl Shard {
             .conversation_deleted(id)
             .await
             .map_err(|error| DeletionError::Plugin(error.to_string()))?;
-        let services = self.services();
-        services.conversations.remove(id).await?;
-        Ok(services.control.finish_deletion(id.clone()).await?)
+        self.services().control.remove_shares_of(self.user().clone(), id.clone()).await?;
+        self.store().databases().remove(id).await?;
+        Ok(self.store().finish_deletion(id.clone()).await?)
     }
 }
 

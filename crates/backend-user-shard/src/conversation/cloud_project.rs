@@ -4,7 +4,7 @@
 //! It is made through the Cloud's machine access
 //! (`crates/backend-host-access/src/lib.rs`), which wakes a stopped Cloud.
 
-use demi_backend_database::projects::{ProjectCreation, ProjectRecord, new_project_id};
+use demi_core_store::projects::{ProjectCreation, ProjectRecord, new_project_id};
 use demi_web_api_protocol::ids::WorkspaceId;
 use demi_host_interface::{Host as _, HostErrorKind, HostFs, MkdirOptions};
 
@@ -45,9 +45,8 @@ impl Shard {
         let paths = access.host.identity().paths;
         let projects = paths.join(&access.home, "projects");
         let path = paths.join(&projects, &name);
-        let control = &self.services().control;
-        let kept = control
-            .project_at(workspace.clone(), access.device.id.clone(), path.clone())
+        let store = self.store();
+        let kept = store.project_at(workspace.clone(), access.device.id.clone(), path.clone())
             .await?;
         match kept {
             Some(kept) if !kept.deleted => return Ok(CloudProject::NameTaken),
@@ -62,8 +61,7 @@ impl Shard {
                 }
             }
         }
-        match control
-            .create_project(new_project_id(), self.user().clone(), workspace, access.device.id.clone(), path)
+        match store.create_project(new_project_id(), workspace, access.device.id.clone(), path)
             .await?
         {
             ProjectCreation::Created(project) => Ok(CloudProject::Made(project)),

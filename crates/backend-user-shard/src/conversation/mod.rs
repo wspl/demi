@@ -48,6 +48,7 @@ pub(crate) mod titles;
 pub mod transition;
 pub mod workflows;
 
+use demi_core_store::store::CoreStore;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
@@ -102,6 +103,7 @@ pub(crate) struct ConversationParts {
 pub(crate) fn conversation_parts(
     shard: Weak<Shard>,
     user: UserId,
+    store: CoreStore,
     services: Arc<Services>,
     http: reqwest::Client,
 ) -> ConversationParts {
@@ -110,11 +112,12 @@ pub(crate) fn conversation_parts(
         let services = services.clone();
         let marks = marks.clone();
         let shard = shard.clone();
+        let databases = store.databases().clone();
         // The shard's user owns every conversation it hosts.
         let blobs: Arc<dyn BlobStore> = Arc::new(services.blobs.for_user(&user));
         Rc::new(move |root: &NodeId| {
             let conversation = conversation_of(root);
-            let db = services.conversations.db(&conversation);
+            let db = databases.db(&conversation);
             // The summary reads the root's checkpoint, which each save of it
             // changes, and the search index follows what each save of any
             // agent wrote.
@@ -146,14 +149,15 @@ pub(crate) fn conversation_parts(
     let providers = Rc::new(ConversationProviders::new(
         shard.clone(),
         user.clone(),
+        store.clone(),
         services.clone(),
         http,
     ));
     let small_requests = Rc::new(SmallRequests::new(providers.clone(), user.clone(), services.clone()));
-    let suggested_replies = SuggestedReplies::new(small_requests.clone(), services.control.clone(), marks.clone(), user);
+    let suggested_replies = SuggestedReplies::new(small_requests.clone(), store.clone(), marks.clone());
     let titles = Titles::new(
         small_requests,
-        services.control.clone(),
+        store.clone(),
         marks.clone(),
         services.conversation_tuning.titles,
     );

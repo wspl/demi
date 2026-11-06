@@ -18,7 +18,7 @@ use std::rc::Rc;
 
 use demi_agent_server::AgentServer;
 use demi_agent_store::StoreError;
-use demi_backend_database::schedules::{RunCause, StoredRun, StoredSchedule};
+use demi_core_store::schedules::{RunCause, StoredRun, StoredSchedule};
 use demi_backend_host_access::root_of;
 use demi_backend_page_sync::Part;
 use demi_shared_types::{
@@ -115,9 +115,9 @@ impl Shard {
     /// Whether `schedule`'s conversation can run a run now, or why not: it
     /// is archived or gone, or its Host is offline.
     pub(crate) async fn runnable(&self, schedule: &StoredSchedule) -> Result<(), Unrunnable> {
-        let control = &self.services().control;
-        let record = match control.conversation(schedule.conversation.clone()).await {
-            Ok(Some(record)) if record.owner == *self.user() && !record.archived() => record,
+        let store = self.store();
+        let record = match store.conversation(schedule.conversation.clone()).await {
+            Ok(Some(record)) if !record.archived() => record,
             _ => return Err(Unrunnable::Gone),
         };
         let device = self
@@ -159,7 +159,7 @@ impl Shard {
     /// runner; none for one that is online and for the Cloud, which a run
     /// wakes.
     pub(crate) async fn offline_device(&self, device: &DeviceId) -> Option<String> {
-        let record = self.services().control.device(device.clone()).await.ok().flatten()?;
+        let record = self.store().device(device.clone()).await.ok().flatten()?;
         (record.kind == DeviceKind::User && !self.devices().connected(device)).then_some(record.name)
     }
 
@@ -178,7 +178,7 @@ impl Shard {
     /// Fires a run of `schedule`: records it, skipped when its conversation
     /// cannot run it, and otherwise carries it in a task of its own.
     pub(crate) async fn fire(&self, schedule: &StoredSchedule, fired: Fired) {
-        let control = &self.services().control;
+        let store = self.store();
         let runnable = self.runnable(schedule).await;
         let skipped = matches!(runnable, Err(Unrunnable::Gone | Unrunnable::Offline(_)));
         let note = match &runnable {
@@ -197,7 +197,7 @@ impl Shard {
             turn: None,
             notified: false,
         };
-        if let Err(error) = control.insert_schedule_run(run.clone()).await {
+        if let Err(error) = store.insert_schedule_run(run.clone()).await {
             tracing::error!(event = "schedule_run.start_failed", user = %self.user(), schedule = %schedule.id, run = %run.id, %error, "a run was not recorded, and did not start");
             return;
         }
@@ -247,11 +247,11 @@ impl Shard {
     /// scratch directory, and sends the message, which waits in the queue
     /// behind a turn that runs.
     async fn carry(&self, schedule: &StoredSchedule, run: &mut StoredRun, fired: Fired) -> Result<(), String> {
-        let control = &self.services().control;
+        let store = self.store();
         let conversation = schedule.conversation.clone();
         let turn = TurnId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
         run.turn = Some(turn.clone());
-        control.update_schedule_run(run.clone()).await.map_err(|error| error.to_string())?;
+        store.update_schedule_run(run.clone()).await.map_err(|error| error.to_string())?;
         self.mark(Part::Conversation(conversation.clone()));
         let prompt = message::prompt_of(schedule, fired.task.as_deref());
         let text = match fired.payload {
@@ -307,7 +307,7 @@ impl Shard {
         // and one whose run was skipped or failed before its message went
         // stays, and its menu row says why.
         let spent = run.cause == RunCause::Time && run.turn.is_some();
-        let ms = u64::try_from(self.services().control.now().as_millisecond() - run.at.as_millisecond()).unwrap_or(0);
+        let ms = u64::try_from(self.store().now().as_millisecond() - run.at.as_millisecond()).unwrap_or(0);
         let outcome = match run.state {
             RunState::Running => "running",
             RunState::Done => "done",
@@ -315,7 +315,7 @@ impl Shard {
             RunState::Skipped => "skipped",
             RunState::Failed => "failed",
         };
-        if let Err(error) = self.services().control.update_schedule_run(run).await {
+        if let Err(error) = self.store().update_schedule_run(run).await {
             tracing::warn!(event = "schedule_run.end_record_failed", %schedule, run = %id, %error, "a run's end was not recorded");
         }
         tracing::info!(
@@ -358,7 +358,7 @@ impl Shard {
     }
 
     async fn settle_runs(&self, conversation: &ConversationId) {
-        let runs = match self.services().control.running_runs_in(conversation.clone()).await {
+        let runs = match self.store().running_runs_in(conversation.clone()).await {
             Ok(runs) => runs,
             Err(error) => {
                 tracing::warn!(event = "schedule_runs.read_failed", %conversation, %error, "the running runs were not read");
@@ -398,7 +398,7 @@ impl Shard {
     /// conversation no tree holds now ends as its checkpoint says; the
     /// others end with their turns.
     pub(crate) async fn settle_left_runs(&self) {
-        let runs = match self.services().control.running_runs(self.user().clone()).await {
+        let runs = match self.store().running_runs().await {
             Ok(runs) => runs,
             Err(error) => {
                 tracing::warn!(event = "schedule_runs.left_read_failed", user = %self.user(), %error, "the runs left running were not read");

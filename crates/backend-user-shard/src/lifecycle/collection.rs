@@ -16,7 +16,7 @@
 //! name a blob cannot be read, it removes nothing.
 
 use demi_backend_blobs::blobs::GRACE_MS;
-use demi_backend_database::references::conversation_blobs;
+use demi_core_store::references::conversation_blobs;
 use demi_shared_types::{BlobRef, Timestamp};
 use tokio::sync::watch;
 
@@ -105,15 +105,12 @@ impl Shard {
         if old.is_empty() {
             return Ok(0);
         }
-        let control = services
-            .control
-            .blob_references(self.user().clone(), cutoff)
+        let control = self.store().blob_references(cutoff)
             .await
             .map_err(|error| format!("the control records cannot be read: {error}"))?;
         let mut referenced = control.blobs;
         for id in control.databases {
-            let named = services
-                .conversations
+            let named = self.store().databases()
                 .read(&id, conversation_blobs)
                 .await
                 .map_err(|error| {
@@ -139,9 +136,7 @@ impl Shard {
             }
         }
         let count = removed.len();
-        services
-            .control
-            .remove_uploads(self.user().clone(), removed)
+        self.store().remove_uploads(removed)
             .await
             .map_err(|error| format!("the upload records of removed blobs stay: {error}"))?;
         Ok(count)

@@ -12,7 +12,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 
-use demi_backend_database::Worktree;
+use demi_core_store::Worktree;
 use demi_backend_page_sync::Part;
 use demi_runner_protocol::wire::LinkedWorktree;
 use demi_web_api_protocol::ids::DeviceId;
@@ -35,7 +35,7 @@ impl Shard {
     /// The user's projects changed: every connected runner whose projects'
     /// directories differ from what it was told hears them.
     pub(crate) async fn projects_changed(&self) {
-        let projects = match self.services().control.projects(self.user().clone()).await {
+        let projects = match self.store().projects().await {
             Ok(projects) => projects,
             Err(error) => {
                 // The runners keep the directories they were told last,
@@ -89,7 +89,7 @@ impl Shard {
                 .into_iter()
                 .map(|worktree| Worktree { name: worktree.name, path: worktree.path })
                 .collect();
-            let stored = match shard.services().control.store_worktrees(device.clone(), directory, worktrees).await {
+            let stored = match shard.store().store_worktrees(device.clone(), directory, worktrees).await {
                 Ok(stored) => stored,
                 Err(error) => {
                     tracing::warn!(event = "worktrees.store_failed", host_id = %device, error = &error as &dyn std::error::Error, "a project's worktrees were not stored");

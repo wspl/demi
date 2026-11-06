@@ -11,7 +11,7 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::devices::{DeviceChange, DeviceRecord};
+use demi_core_store::devices::{DeviceChange, DeviceRecord};
 use demi_web_api_protocol::text::Trimmed;
 use demi_backend_runners::claims::ClaimRefusal;
 use demi_backend_runners::files::browse_directory;
@@ -59,7 +59,7 @@ pub(super) async fn claim(
     JsonBody(Claim { code }): JsonBody<Claim>,
 ) -> Result<(StatusCode, Json<DeviceAnswer>), ApiError> {
     let services = &state.services;
-    match services.claims.claim(&services.control, &user.id, &code).await {
+    match services.claims.claim(&services.stores.of(&user.id).await?, &user.id, &code).await {
         Ok(device) => Ok((StatusCode::CREATED, Json(DeviceAnswer { device }))),
         Err(ClaimRefusal::TooManyAttempts) => Err(ApiError::new(
             StatusCode::TOO_MANY_REQUESTS,
@@ -241,11 +241,13 @@ pub(super) async fn owned_device(
     let id = DeviceId::try_from(id).map_err(|_| device_not_found())?;
     let device = state
         .services
-        .control
+        .stores
+        .of(user)
+        .await?
         .device(id)
         .await?
         .ok_or_else(device_not_found)?;
-    if !device.is_host_of(user) || kind.is_some_and(|kind| kind != device.kind) {
+    if !device.is_host() || kind.is_some_and(|kind| kind != device.kind) {
         return Err(device_not_found());
     }
     tracing::Span::current().record("host_id", tracing::field::display(&device.id));

@@ -10,8 +10,8 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::saved::ScopeSwitch;
-use demi_backend_database::projects::{ProjectChange, ProjectCreation, new_project_id};
+use demi_core_store::saved::ScopeSwitch;
+use demi_core_store::projects::{ProjectChange, ProjectCreation, new_project_id};
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ProjectId;
@@ -30,7 +30,7 @@ pub(super) async fn list(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<Projects>, ApiError> {
-    let projects = services.control.projects(user.id).await?;
+    let projects = services.stores.of(&user.id).await?.projects().await?;
     Ok(Json(Projects {
         projects: projects
             .into_iter()
@@ -60,9 +60,7 @@ pub(super) async fn create(
                 .await?
                 .map_err(super::hosts::refused)?;
             match state
-            .services
-            .control
-            .create_project(new_project_id(), user.id.clone(), workspace_id, device_id, path)
+            .services.stores.of(&user.id).await?.create_project(new_project_id(), workspace_id, device_id, path)
             .await?
         {
             ProjectCreation::Created(project) => project,
@@ -147,9 +145,7 @@ pub(super) async fn change(
         last_model: change.last_model,
         last_workflow: change.last_workflow,
     };
-    let project = services
-        .control
-        .change_project(user.id.clone(), id, change)
+    let project = services.stores.of(&user.id).await?.change_project(id, change)
         .await?
         .ok_or_else(not_found)?;
     services.sync.mark(&user.id, Part::Projects);
@@ -168,9 +164,7 @@ pub(super) async fn switch_saved_scope(
     JsonBody(switch): JsonBody<SavedScopeSwitch>,
 ) -> Result<Json<ProjectAnswer>, ApiError> {
     let id = project_id(id)?;
-    let switched = services
-        .control
-        .switch_saved_scope(user.id.clone(), id.clone(), switch.scope, switch.to)
+    let switched = services.stores.of(&user.id).await?.switch_saved_scope(id.clone(), switch.scope, switch.to)
         .await?;
     let changed = match switched {
         ScopeSwitch::Switched(changed) => changed,
@@ -194,7 +188,7 @@ pub(super) async fn switch_saved_scope(
         services.sync.mark(&user.id, Part::Metadata(conversation));
     }
     services.sync.mark(&user.id, Part::Projects);
-    let project = services.control.project(id).await?.ok_or_else(not_found)?;
+    let project = services.stores.of(&user.id).await?.project(id).await?.ok_or_else(not_found)?;
     Ok(Json(ProjectAnswer {
         project: project.dto(),
     }))

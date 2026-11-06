@@ -12,7 +12,7 @@
 //! which the tree takes when it next opens.
 
 use demi_agent_server::ResolveError;
-use demi_backend_database::conversation_index::{RecordChange, SettingsChange};
+use demi_core_store::conversation_index::{RecordChange, SettingsChange};
 use demi_shared_types::{ModelSelection, ProviderModel};
 use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
@@ -31,9 +31,7 @@ impl Shard {
         change: SettingsChange,
     ) -> Result<(), ChangeRefusal> {
         let record = self
-            .services()
-            .control
-            .conversation(id.clone())
+            .store().conversation(id.clone())
             .await?
             .ok_or(ChangeRefusal::NotFound)?;
         if record.archived() {

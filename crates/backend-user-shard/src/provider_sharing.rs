@@ -27,7 +27,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use demi_core_store::StorageError;
 use demi_backend_database::accounts::TokenHash;
-use demi_backend_database::providers::ShareKeyRow;
+use demi_backend_database::provider_keys::ShareKeyRow;
 use demi_backend_providers::vault::entries::Vault;
 use demi_provider_registry::entry::ProviderEntry;
 use demi_provider_relay::borrow::FAMILY as BORROWED;
@@ -35,7 +35,7 @@ use demi_provider_relay::key::ShareKey as KeyText;
 use demi_provider_relay::lend::Lends;
 use demi_provider_relay::wire::{ClientMessage, Lent, ModelLimits, ServerMessage};
 use demi_shared_types::{ProviderModelList, Timestamp};
-use demi_web_api_protocol::ids::{ProviderId, UserId};
+use demi_web_api_protocol::ids::UserId;
 use demi_web_api_protocol::providers::{NewShareKey, ShareKey, ShareKeyUse, ShareKeys};
 use futures_util::{Sink, Stream};
 use tokio_util::sync::CancellationToken;
@@ -108,7 +108,7 @@ impl Services {
     /// The share keys of the entry `id`, newest first.
     pub async fn share_keys(&self, user: &UserId, id: &str) -> Result<ShareKeys, ProviderRefusal> {
         let entry = self.lendable(user, id).await?;
-        let rows = self.control.share_keys(entry.id, self.unused_since()).await?;
+        let rows = self.control.share_keys(entry.owner, entry.id, self.unused_since()).await?;
         Ok(ShareKeys {
             keys: rows.into_iter().map(shown).collect(),
         })
@@ -126,14 +126,13 @@ impl Services {
         let token = URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>());
         let row = ShareKeyRow {
             id: URL_SAFE_NO_PAD.encode(rand::random::<[u8; 12]>()),
+            owner: entry.owner.clone(),
             provider: entry.id.clone(),
             created_by: user.clone(),
             created_at: self.clock.now(),
             used: None,
         };
-        if !self.control.insert_share_key(TokenHash::of(&token), row.clone()).await? {
-            return Err(ProviderRefusal::NotFound);
-        }
+        self.control.insert_share_key(TokenHash::of(&token), row.clone()).await?;
         Ok(NewShareKey {
             key: shown(row),
             text: KeyText { url, token }.text(),
@@ -144,7 +143,7 @@ impl Services {
     /// borrowed with it.
     pub async fn revoke_share_key(&self, user: &UserId, id: &str, key: &str) -> Result<(), ProviderRefusal> {
         let entry = self.lendable(user, id).await?;
-        if !self.control.delete_share_key(entry.id, key.to_owned()).await? {
+        if !self.control.delete_share_key(entry.owner, entry.id, key.to_owned()).await? {
             return Err(ProviderRefusal::NotFound);
         }
         self.end_lending(&[key.to_owned()]);
@@ -154,8 +153,8 @@ impl Services {
     /// The ids of the entry `entry`'s share keys, whose sessions
     /// [`end_lending`](Self::end_lending) closes once deleting the entry
     /// deleted them.
-    pub(crate) async fn lent_keys(&self, entry: &ProviderId) -> Result<Vec<String>, StorageError> {
-        let rows = self.control.share_keys(entry.clone(), self.unused_since()).await?;
+    pub(crate) async fn lent_keys(&self, entry: &ProviderEntry) -> Result<Vec<String>, StorageError> {
+        let rows = self.control.share_keys(entry.owner.clone(), entry.id.clone(), self.unused_since()).await?;
         Ok(rows.into_iter().map(|row| row.id).collect())
     }
 
@@ -210,7 +209,7 @@ impl Services {
     /// its `model`: they lend only what they have on in Settings ›
     /// Providers.
     async fn lends_model(&self, borrowing: &Borrowing, model: Option<&str>) -> Result<Lends, StorageError> {
-        let preferences = self.control.preferences(borrowing.key.created_by.clone()).await?;
+        let preferences = self.stores.of(&borrowing.key.created_by).await?.preferences().await?;
         let entry = &borrowing.entry.id;
         Ok(if preferences.hides_provider(entry) {
             Lends::TurnedOff
@@ -230,9 +229,13 @@ impl Shard {
         let services = self.shared_services();
         let registry = &services.provider_registry;
         let entry = &borrowing.entry;
-        let preferences = services
-            .control
-            .preferences(borrowing.key.created_by.clone())
+        let preferences = self
+            .services()
+            .stores
+            .of(&borrowing.key.created_by)
+            .await
+            .map_err(|error| error.to_string())?
+            .preferences()
             .await
             .map_err(|error| error.to_string())?;
         if preferences.hides_provider(&entry.id) {
@@ -301,7 +304,7 @@ impl Shard {
         // A revoke, or the entry's deletion, between the key's check and
         // `open` found no session to close: the key is checked again now
         // that one would be found.
-        let held = services.lent_keys(&borrowing.entry.id).await;
+        let held = services.lent_keys(&borrowing.entry).await;
         if !held.is_ok_and(|keys| keys.contains(&key)) {
             services.lent.ended(&key, &revoked);
             return;

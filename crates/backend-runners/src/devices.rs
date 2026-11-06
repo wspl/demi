@@ -37,7 +37,9 @@ use std::time::Duration;
 use axum::extract::ws::{Message, WebSocket};
 use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
-use demi_backend_database::devices::{DeviceRecord, FirstHome};
+use demi_backend_database::core_stores::CoreStores;
+use demi_core_store::store::CoreStore;
+use demi_core_store::devices::{DeviceRecord, FirstHome};
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_runner_client::{
     Admission, DeviceJobs, DeviceLink, DeviceSession, Link, LinkDriver, LinkEnd, RemoteHost, close_frame,
@@ -47,7 +49,7 @@ use demi_host_interface::{HostIdentity, HostKey};
 use demi_runner_protocol::wire::{self, AutostartUnavailable, HostArtifact, Inbound, OperatingSystem};
 use demi_runner_protocol::values::BackendUrl;
 use demi_web_api_protocol::devices::{DeviceDto, DeviceKind, DeviceLogo, DeviceMark, DeviceState};
-use demi_web_api_protocol::ids::{DeviceId, UserId};
+use demi_web_api_protocol::ids::DeviceId;
 use futures_util::future::ready;
 use futures_util::{SinkExt as _, StreamExt as _};
 use tokio::sync::watch;
@@ -94,12 +96,11 @@ impl Default for Returning {
 
 impl Returning {
     /// Takes what the last shutdown recorded, for the start now.
-    pub async fn take(control: &ControlService) -> Result<Self, StorageError> {
-        let devices: HashSet<DeviceId> = control
-            .take_devices_ended_by_shutdown()
-            .await?
-            .into_iter()
-            .collect();
+    pub async fn take(control: &ControlService, stores: &CoreStores) -> Result<Self, StorageError> {
+        let mut devices = HashSet::new();
+        for user in control.user_ids().await? {
+            devices.extend(stores.of(&user).await?.take_devices_ended_by_shutdown().await?);
+        }
         Ok(Self {
             devices: std::sync::Mutex::new(devices),
             until: Instant::now() + RETURN_GRACE,
@@ -823,16 +824,15 @@ impl Devices {
         }
     }
 
-    /// `user`'s devices as the web app sees them: the paired ones oldest
-    /// first, then the Cloud once its first use made it.
+    /// The devices as the web app sees them: the paired ones oldest first, then
+    /// the Cloud once its first use made it.
     pub async fn device_list(
         &self,
-        control: &ControlService,
-        user: &UserId,
+        store: &CoreStore,
         backend: Option<&BackendUrl>,
     ) -> Result<Vec<DeviceDto>, StorageError> {
-        let mut devices = control.paired_devices(user.clone()).await?;
-        if let Some(cloud) = control.managed_device(user.clone()).await? {
+        let mut devices = store.paired_devices().await?;
+        if let Some(cloud) = store.managed_device().await? {
             devices.push(cloud);
         }
         Ok(devices
@@ -881,7 +881,7 @@ impl Devices {
     /// Ends every connection as the backend shuts down, and records the
     /// devices whose connections it ended: their runners connect again by
     /// themselves, and the next start waits for them (`crates/runner-client/src/device_jobs.rs`).
-    pub async fn shut_down(&self, control: &ControlService) {
+    pub async fn shut_down(&self, store: &CoreStore) {
         let links: Vec<(DeviceId, Link)> = self
             .slots
             .borrow()
@@ -902,7 +902,7 @@ impl Devices {
         let sessions: Vec<_> = self.slots.borrow().values().map(|slot| slot.session.clone()).collect();
         futures_util::future::join_all(sessions.iter().map(|session| session.drain(SHUTTING_DOWN))).await;
         let ended = links.into_iter().map(|(device, _)| device).collect();
-        if let Err(error) = control.set_devices_ended_by_shutdown(ended).await {
+        if let Err(error) = store.set_devices_ended_by_shutdown(ended).await {
             // The next start then answers for these devices at once, as for
             // any device that is away, instead of waiting for their runners.
             tracing::warn!(event = "devices.shutdown_record_failed", error = &error as &dyn std::error::Error, "the devices the shutdown disconnected were not recorded");
@@ -1094,14 +1094,14 @@ pub async fn send(socket: &mut WebSocket, message: &Inbound) -> Result<(), axum:
 /// holds. Cloning it is cheap.
 #[derive(Clone)]
 pub struct DeviceRecorder {
-    control: ControlService,
+    store: CoreStore,
     /// The owner's pages, which show whether the device is online.
     marks: UserMarks,
 }
 
 impl DeviceRecorder {
-    pub fn new(control: ControlService, marks: UserMarks) -> Self {
-        Self { control, marks }
+    pub fn new(store: CoreStore, marks: UserMarks) -> Self {
+        Self { store, marks }
     }
 
     /// Records what `device`'s runner said in its hello: its operating system,
@@ -1123,7 +1123,7 @@ impl DeviceRecorder {
         autostart_unavailable: Option<AutostartUnavailable>,
     ) -> Option<FirstHome> {
         let first = match self
-            .control
+            .store
             .set_device_runner(device.clone(), os, version, instance, home, autostart_unavailable)
             .await
         {
@@ -1146,7 +1146,7 @@ impl DeviceRecorder {
     /// of `first`'s directories, `resolved`, and shows the pages the
     /// conversations and projects that moved.
     pub async fn settle_first_home(&self, device: DeviceId, first: FirstHome, resolved: HashMap<String, String>) {
-        match self.control.settle_first_home(device.clone(), first.home, resolved).await {
+        match self.store.settle_first_home(device.clone(), first.home, resolved).await {
             Ok(settled) => {
                 if settled.projects_changed {
                     self.marks.mark(Part::Projects);
@@ -1169,7 +1169,7 @@ impl DeviceRecorder {
 
     /// Records that `device`'s runner was connected just now.
     pub async fn touch(&self, device: DeviceId) {
-        if let Err(error) = self.control.touch_device_seen(device.clone()).await {
+        if let Err(error) = self.store.touch_device_seen(device.clone()).await {
             // The time is shown to the user and decides nothing.
             tracing::warn!(event = "device_hello.record_failed", host_id = %device, what = "last_seen", error = &error as &dyn std::error::Error, "last-seen time not recorded");
         }
@@ -1178,7 +1178,7 @@ impl DeviceRecorder {
 
     /// Records that `device`'s artifact cache holds `artifacts`.
     pub async fn installed(&self, device: DeviceId, artifacts: Vec<HostArtifact>) {
-        if let Err(error) = self.control.set_device_installed(device.clone(), artifacts).await {
+        if let Err(error) = self.store.set_device_installed(device.clone(), artifacts).await {
             // The list is shown to the user and offered to plugins; the next
             // report records it again.
             tracing::warn!(event = "device_hello.record_failed", host_id = %device, what = "artifacts", error = &error as &dyn std::error::Error, "installed artifacts not recorded");

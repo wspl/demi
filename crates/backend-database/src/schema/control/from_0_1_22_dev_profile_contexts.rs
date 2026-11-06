@@ -8,7 +8,7 @@
 
 use rusqlite::Transaction;
 
-use crate::schema::ResealSealed;
+use crate::schema::ControlSteps;
 use demi_web_api_protocol::ids::ProviderId;
 use super::super::{Migration, corrupt, corrupt_text};
 
@@ -16,7 +16,7 @@ pub(super) const MIGRATION: Migration = Migration::Code(control_sealed_config_fo
 
 fn control_sealed_config_format_2(
     transaction: &Transaction<'_>,
-    seals: &dyn ResealSealed,
+    seals: &dyn ControlSteps,
 ) -> rusqlite::Result<()> {
     let rows = transaction
         .prepare("SELECT id, provider_type, config FROM providers WHERE config IS NOT NULL")?

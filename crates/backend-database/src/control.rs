@@ -12,36 +12,24 @@ use demi_shared_types::{Clock, Timestamp};
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::UserId;
 use demi_web_api_protocol::server_upgrade::UpgradeChannel;
-use demi_web_api_protocol::settings::{CustomNetworkPolicy, InstanceMode, Isolation, NetworkPolicy, Preferences};
+use demi_web_api_protocol::settings::{CustomNetworkPolicy, InstanceMode, Isolation, NetworkPolicy};
 use demi_web_api_protocol::text::EmailAddress;
 use demi_web_api_protocol::users::{CloudStorage, ListedUser};
 use jiff::SignedDuration;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
-use tokio::sync::broadcast;
 
 use super::accounts::{
     Account, ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash, PasswordHash, TokenHash,
 };
-use super::columns::{decode, instant, json, to_json};
-use super::schema::ResealSealed;
-use super::usage::UsageWritten;
+use super::columns::{decode, instant};
+use super::schema::ControlSteps;
 use super::{StorageError, schema, sqlite};
 
 #[derive(Clone)]
 pub struct ControlService {
     db: tokio_rusqlite::Connection,
     clock: Arc<dyn Clock>,
-    /// Each usage ledger row as it is written, for whoever shows its
-    /// conversation's cost (`crates/backend-database/src/usage.rs`).
-    usage_written: broadcast::Sender<UsageWritten>,
 }
-
-/// How many written rows wait for a follower that fell behind before it
-/// misses the oldest.
-///
-/// Bounded because the rows wait in memory for each follower, and a follower
-/// that never reads would grow them without end.
-const USAGE_WAITING: usize = 1024;
 
 /// What `user_row` reads.
 pub(crate) const USER_COLUMNS: &str = "users.id, users.email, users.nickname, users.role, users.created_at,
@@ -53,13 +41,12 @@ impl ControlService {
     pub async fn open(
         path: &Path,
         clock: Arc<dyn Clock>,
-        seals: Arc<dyn ResealSealed>,
+        seals: Arc<dyn ControlSteps>,
     ) -> Result<Self, StorageError> {
         let db = tokio_rusqlite::Connection::open(path).await?;
         let control = Self {
             db,
             clock,
-            usage_written: broadcast::channel(USAGE_WAITING).0,
         };
         let path = path.to_owned();
         control
@@ -69,16 +56,6 @@ impl ControlService {
             })
             .await?;
         Ok(control)
-    }
-
-    /// Each usage ledger row written from now on.
-    pub fn usage_written(&self) -> broadcast::Receiver<UsageWritten> {
-        self.usage_written.subscribe()
-    }
-
-    pub(crate) fn announce_usage(&self, written: UsageWritten) {
-        // No follower is no one to tell: the backend follows from its start.
-        let _ = self.usage_written.send(written);
     }
 
     /// The wall-clock time the records it writes carry.
@@ -102,6 +79,16 @@ impl ControlService {
             .call(move |connection| work(connection, clock.now()))
             .await
             .map_err(sqlite::flatten)
+    }
+
+    /// Every account's id, in the order they were created.
+    pub async fn user_ids(&self) -> Result<Vec<UserId>, StorageError> {
+        self.call(|connection, _| {
+            let mut statement = connection.prepare_cached("SELECT id FROM users ORDER BY created_at, rowid")?;
+            let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+            rows.map(|id| decode("users", "id", UserId::try_from(id?))).collect()
+        })
+        .await
     }
 
     pub async fn has_users(&self) -> Result<bool, StorageError> {
@@ -142,7 +129,6 @@ impl ControlService {
                     now.as_millisecond()
                 ],
             )?;
-            super::workspaces::insert_first(&transaction, &id, now)?;
             transaction.commit()?;
             Ok(Some(UserDto {
                 id,
@@ -231,9 +217,6 @@ impl ControlService {
                     now.as_millisecond()
                 ],
             )?;
-            if created > 0 {
-                super::workspaces::insert_first(&transaction, &id, now)?;
-            }
             transaction.commit()?;
             Ok((created > 0).then(|| UserDto {
                 id,
@@ -570,35 +553,6 @@ impl ControlService {
         .await
     }
 
-    /// The user's saved preferences; a user who saved none has no overrides.
-    pub async fn preferences(&self, user: UserId) -> Result<Preferences, StorageError> {
-        self.call(move |connection, _| saved_preferences(connection, &user))
-            .await
-    }
-
-    /// Merges a patch into the user's preferences with `merge`, which takes
-    /// the saved preferences and answers them patched, and answers them as
-    /// saved. The read, the merge and the write are one transaction, so
-    /// patches of different fields that arrive together all stay.
-    pub async fn patch_preferences(
-        &self,
-        user: UserId,
-        merge: impl FnOnce(Preferences) -> Preferences + Send + 'static,
-    ) -> Result<Preferences, StorageError> {
-        self.call(move |connection, _| {
-            let transaction = connection.transaction()?;
-            let preferences = merge(saved_preferences(&transaction, &user)?);
-            transaction.execute(
-                "INSERT INTO user_preferences (user_id, preferences) VALUES (?1, ?2)
-                 ON CONFLICT (user_id) DO UPDATE SET preferences = excluded.preferences",
-                params![user.as_str(), to_json(&preferences)],
-            )?;
-            transaction.commit()?;
-            Ok(preferences)
-        })
-        .await
-    }
-
     /// Stores a challenge in place of the user's previous one and answers
     /// when it expires; `None` while the previous one was sent less than the
     /// cooldown ago.
@@ -760,20 +714,6 @@ fn pending_challenge(
         expires_at: instant(row, "email_challenges", "expires_at")?,
         attempts: row.get("attempts")?,
     }))
-}
-
-fn saved_preferences(connection: &Connection, user: &UserId) -> Result<Preferences, StorageError> {
-    let saved: Option<String> = connection
-        .query_row(
-            "SELECT preferences FROM user_preferences WHERE user_id = ?1",
-            [user.as_str()],
-            |row| row.get(0),
-        )
-        .optional()?;
-    match saved {
-        Some(text) => json("user_preferences", "preferences", &text),
-        None => Ok(Preferences::default()),
-    }
 }
 
 /// A `users` row, read from its columns in `USER_COLUMNS`.

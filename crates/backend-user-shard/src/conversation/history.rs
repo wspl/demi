@@ -268,17 +268,15 @@ impl Reader {
             (other, agent) => {
                 let conversation = match other {
                     // Another user's conversation is none of the caller's.
-                    Some(id) => match shard.services().control.conversation(id.clone()).await.map_err(failed)? {
-                        Some(record) if record.owner == *shard.user() => record.id,
+                    Some(id) => match shard.store().conversation(id.clone()).await.map_err(failed)? {
+                        Some(record) => record.id,
                         _ => return Err(no_transcript()),
                     },
                     None => here,
                 };
                 let node = match agent {
                     None => root_of(&conversation),
-                    Some(number) => shard
-                        .services()
-                        .conversations
+                    Some(number) => shard.store().databases()
                         .read(&conversation, move |connection| tree::node_numbered(connection, u64::from(number)))
                         .await
                         .map_err(failed)?
@@ -313,9 +311,7 @@ impl Reader {
             return Ok(u64::from(agent));
         }
         let node = self.node.clone();
-        shard
-            .services()
-            .conversations
+        shard.store().databases()
             .read(&self.conversation, move |connection| tree::agent_number(connection, &node))
             .await
             .map_err(failed)?
@@ -369,9 +365,7 @@ impl Reader {
         range: RangeInclusive<usize>,
     ) -> Result<(Vec<Block>, usize), RpcError> {
         let node = self.node.clone();
-        let read = shard
-            .services()
-            .conversations
+        let read = shard.store().databases()
             .read(&self.conversation, move |connection| {
                 let length = Transcript::Agent(node.clone()).length(connection)?.unwrap_or(0);
                 let end = (*range.end() + 1).min(length);
@@ -479,18 +473,13 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
         limit: None,
     };
     let node = reader.node.clone();
-    let agent = shard
-        .services()
-        .conversations
+    let agent = shard.store().databases()
         .read(&reader.conversation, move |connection| tree::agent_number(connection, &node))
         .await
         .map_err(failed)?
         .flatten()
         .ok_or_else(|| failed("the transcript has no blocks yet"))?;
-    let hits: Vec<usize> = shard
-        .services()
-        .search
-        .find_in(shard.user(), &reader.conversation, agent, query)
+    let hits: Vec<usize> = shard.store().search().find_in(&reader.conversation, agent, query)
         .await
         .map_err(failed)?
         .into_iter()
@@ -853,9 +842,7 @@ async fn cost(shard: Rc<Shard>, call: Call<CostArgs>, port: RpcPort) -> Result<u
         .collect();
     let ids = turns.iter().map(|(id, _, _)| id.clone()).collect();
     let calls = shard
-        .services()
-        .control
-        .turn_calls(reader.conversation.clone(), agent, ids)
+        .store().turn_calls(reader.conversation.clone(), agent, ids)
         .await
         .map_err(failed)?;
     let command = "demi conversation history cost";

@@ -6,7 +6,7 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_backend_database::permissions::DEVICES;
+use demi_core_store::permissions::DEVICES;
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_runner_protocol::forward::ForwardRunState;
 use demi_web_api_protocol::devices::DeviceState;

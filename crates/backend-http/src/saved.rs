@@ -19,7 +19,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::saved::{SavedRefusal, SavedSharers};
+use demi_core_store::saved::{SavedRefusal, SavedSharers};
 use demi_backend_page_sync::Part;
 use demi_backend_user_shard::services::Services;
 use demi_web_api_protocol::error::ErrorCode;
@@ -43,7 +43,7 @@ pub(super) async fn list(
     Path(id): Path<String>,
 ) -> Result<Json<SavedListing>, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
-    Ok(Json(services.control.saved_listing(record.id).await?))
+    Ok(Json(services.stores.of(&user.id).await?.saved_listing(record.id).await?))
 }
 
 /// `GET /conversations/:id/saved/:messageId`: the message whole, which the
@@ -54,9 +54,7 @@ pub(super) async fn read(
     Path((id, message)): Path<(String, String)>,
 ) -> Result<Json<SavedMessage>, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
-    services
-        .control
-        .saved_message(record.id, message)
+    services.stores.of(&user.id).await?.saved_message(record.id, message)
         .await?
         .map(Json)
         .ok_or_else(|| refused(SavedRefusal::NotFound))
@@ -72,9 +70,7 @@ pub(super) async fn from_draft(
     let record = owned(&services, &user.id, &id).await?;
     let JsonBody(save) = body?;
     let files = staged_files(&save.text, save.files)?;
-    let answer = services
-        .control
-        .save_from_draft(record.id.clone(), user.id.clone(), save.id, save.text, files)
+    let answer = services.stores.of(&user.id).await?.save_from_draft(record.id.clone(), save.id, save.text, files)
         .await?
         .map_err(refused)?;
     mark_sharers(&services, &user.id, record.id).await;
@@ -91,9 +87,7 @@ pub(super) async fn save(
     let record = owned(&services, &user.id, &id).await?;
     let JsonBody(save) = body?;
     let files = staged_files(&save.text, save.files)?;
-    let answer = services
-        .control
-        .add_saved(record.id.clone(), user.id.clone(), save.id, save.text, files)
+    let answer = services.stores.of(&user.id).await?.add_saved(record.id.clone(), save.id, save.text, files)
         .await?
         .map_err(refused)?;
     mark_sharers(&services, &user.id, record.id).await;
@@ -111,9 +105,7 @@ pub(super) async fn write(
     let record = owned(&services, &user.id, &id).await?;
     let JsonBody(write) = body?;
     let files = staged_files(&write.text, write.files)?;
-    let answer = services
-        .control
-        .write_saved(record.id.clone(), user.id.clone(), message, write.text, files)
+    let answer = services.stores.of(&user.id).await?.write_saved(record.id.clone(), message, write.text, files)
         .await?
         .map_err(refused)?;
     mark_sharers(&services, &user.id, record.id).await;
@@ -127,9 +119,7 @@ pub(super) async fn remove(
     Path((id, message)): Path<(String, String)>,
 ) -> Result<Json<SavedRemoved>, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
-    let (revisions, message) = services
-        .control
-        .delete_saved(record.id.clone(), message)
+    let (revisions, message) = services.stores.of(&user.id).await?.delete_saved(record.id.clone(), message)
         .await?
         .map_err(refused)?;
     mark_sharers(&services, &user.id, record.id).await;
@@ -172,7 +162,8 @@ fn refused(refusal: SavedRefusal) -> ApiError {
 /// the list changed, and the projects' record its count when it is a
 /// project's. A failed read tells the conversation's own pages.
 async fn mark_sharers(services: &Services, user: &UserId, conversation: ConversationId) {
-    let sharers = match services.control.saved_sharers(conversation.clone()).await {
+    let read = async { services.stores.of(user).await?.saved_sharers(conversation.clone()).await };
+    let sharers = match read.await {
         Ok(sharers) => sharers,
         Err(error) => {
             tracing::warn!(

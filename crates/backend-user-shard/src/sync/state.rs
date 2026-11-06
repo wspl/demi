@@ -105,11 +105,11 @@ impl Shard {
         // this read is learned from the logins part, and its account is
         // then read below or with that part.
         let logins = services.logins.listed(self.user());
-        let preferences = timed(&mut ms.preferences, services.control.preferences(self.user().clone())).await?;
+        let preferences = timed(&mut ms.preferences, self.store().preferences()).await?;
         let providers = timed(&mut ms.providers, self.provider_states(&user)).await?;
         let models = timed(&mut ms.models, services.known_model_catalog(self.user())).await?;
-        let workspaces = timed(&mut ms.workspaces, services.control.workspaces(self.user().clone())).await?;
-        let projects = timed(&mut ms.projects, services.control.projects(self.user().clone())).await?;
+        let workspaces = timed(&mut ms.workspaces, self.store().workspaces()).await?;
+        let projects = timed(&mut ms.projects, self.store().projects()).await?;
         let devices = timed(&mut ms.devices, self.device_list()).await?;
         let mut conversations = timed(&mut ms.conversations, self.conversation_summaries(false)).await?;
         let active = conversations.len();
@@ -201,13 +201,14 @@ impl Shard {
         user: &UserDto,
         reader: &TokenHash,
     ) -> Result<Option<SyncEvent>, StateError> {
+        let store = self.store();
         let control = &self.services().control;
         let event = match part {
             // No channel of a page's sidebar follows it.
             Part::Metadata(_) => return Ok(None),
             Part::Conversation(id) => {
-                let record = control.conversation(id.clone()).await?;
-                let Some(record) = record.filter(|record| record.owner == *self.user()) else {
+                let record = store.conversation(id.clone()).await?;
+                let Some(record) = record else {
                     return Ok(Some(SyncEvent::ConversationDeleted { id: id.clone() }));
                 };
                 SyncEvent::Conversation {
@@ -215,14 +216,14 @@ impl Shard {
                 }
             }
             Part::ConversationOrder => SyncEvent::ConversationOrder {
-                ids: control.conversation_order(self.user().clone()).await?,
+                ids: store.conversation_order().await?,
             },
             Part::Instance => SyncEvent::Instance {
                 mode: self.services().vault.mode(),
                 manages: self.services().vault.managed_kinds(self.user()).await?,
             },
             Part::Preferences => SyncEvent::Preferences {
-                preferences: control.preferences(self.user().clone()).await?,
+                preferences: store.preferences().await?,
             },
             Part::User => {
                 let Some(account) = control.account(self.user().clone()).await? else {
@@ -231,16 +232,14 @@ impl Shard {
                 SyncEvent::User { user: account.user }
             }
             Part::Workspaces => SyncEvent::Workspaces {
-                workspaces: control
-                    .workspaces(self.user().clone())
+                workspaces: store.workspaces()
                     .await?
                     .into_iter()
                     .map(|workspace| workspace.dto())
                     .collect(),
             },
             Part::Projects => SyncEvent::Projects {
-                projects: control
-                    .projects(self.user().clone())
+                projects: store.projects()
                     .await?
                     .into_iter()
                     .map(|project| project.dto())
@@ -250,14 +249,14 @@ impl Shard {
                 devices: self.device_list().await?,
             },
             Part::Subagents => {
-                let subagents = control.subagent_settings(self.user().clone()).await?;
+                let subagents = store.subagent_settings().await?;
                 SyncEvent::Subagents {
                     etag: etag_of(&subagents),
                     subagents,
                 }
             }
             Part::Instructions => {
-                let instructions = control.instructions(self.user().clone()).await?;
+                let instructions = store.instructions().await?;
                 SyncEvent::Instructions {
                     etag: etag_of(&InstructionsAnswer { instructions: instructions.clone() }),
                     instructions,

@@ -26,7 +26,7 @@
 //! - A model added with a taken id takes the first free `-2`, `-3` suffix.
 
 use demi_core_store::StorageError;
-use demi_backend_database::providers::EntrySwitches;
+use demi_core_store::providers::EntrySwitches;
 use demi_provider_registry::families::{ProviderFamily, family_name};
 use demi_provider_registry::entry::{ApiKeyConfig, EntryCredential, ProviderEntry};
 use demi_backend_providers::vault::entries::Vault;
@@ -686,7 +686,7 @@ impl Services {
         let _held = self.hold_entry(&entry)?;
         // Deleting the entry deletes its share keys; their sessions close
         // with them, as a revoke closes them.
-        let lent = self.lent_keys(&entry.id).await?;
+        let lent = self.lent_keys(&entry).await?;
         self.vault.delete(&entry).await?;
         self.end_lending(&lent);
         self.provider_registry.forget(&entry.id).await?;
@@ -727,7 +727,7 @@ impl Services {
         waits: Option<bool>,
     ) -> Result<demi_web_api_protocol::providers::ModelCatalog, CatalogError> {
         let entries = self.vault.entries_for(user).await?;
-        let preferences = self.control.preferences(user.clone()).await?;
+        let preferences = self.stores.of(user).await?.preferences().await?;
         let mut providers = match waits {
             Some(refresh) => self.provider_registry.model_catalog(&entries, refresh).await,
             None => self.provider_registry.known_model_catalog(&entries).await,
@@ -807,9 +807,9 @@ impl Services {
         if !self.provider_registry.families().connects_through(family) {
             return Err(ProviderRefusal::ConnectsDirectly(label.to_owned()));
         }
-        let control = self.vault.control();
-        let mut devices = control.paired_devices(owner.clone()).await?;
-        devices.extend(control.managed_device(owner.clone()).await?);
+        let store = self.vault.stores().of(owner).await?;
+        let mut devices = store.paired_devices().await?;
+        devices.extend(store.managed_device().await?);
         if !devices.iter().any(|owned| owned.id == device) {
             return Err(ProviderRefusal::UnknownDevice);
         }

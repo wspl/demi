@@ -1,5 +1,5 @@
 //! The media jobs vendors took, followed to their ends whatever happens to
-//! the calls that asked for them (`demi_backend_database::media_jobs`).
+//! the calls that asked for them (`demi_core_store::media_jobs`).
 //!
 //! ```text
 //! make_video ---- ask ----> vendor          (the call)
@@ -34,8 +34,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
-use demi_backend_database::media_jobs::{JobEnd, JobOfCall, Made, MediaJob, MediaJobStatus};
-use demi_backend_database::usage::{UsageRow, merge_windows};
+use demi_core_store::media_jobs::{JobEnd, JobOfCall, Made, MediaJob, MediaJobStatus};
+use demi_core_store::usage::{UsageRow, merge_windows};
 use demi_backend_host_access::HostShard;
 use demi_host_interface::PortError;
 use demi_plugin_host::{MediaCall, VideoJob};
@@ -145,7 +145,7 @@ impl Shard {
 
     /// Follows each of the user's running jobs, as the shard starts.
     pub(crate) async fn follow_media_jobs(self: Rc<Self>) {
-        let jobs = match self.services().control.running_media_jobs(self.user().clone()).await {
+        let jobs = match self.store().running_media_jobs().await {
             Ok(jobs) => jobs,
             Err(error) => {
                 tracing::warn!(event = "media_job.list_failed", %error, "the running media jobs were not read");
@@ -166,7 +166,7 @@ impl Shard {
             None => {
                 // A job whose follower ended between its collector's read
                 // and its start is not read again.
-                if !matches!(self.services().control.media_job(job.of.clone()).await, Ok(Some(MediaJob { status: MediaJobStatus::Running, .. }))) {
+                if !matches!(self.store().media_job(job.of.clone()).await, Ok(Some(MediaJob { status: MediaJobStatus::Running, .. }))) {
                     return;
                 }
                 match self.reader_of(&job).await {
@@ -355,7 +355,7 @@ impl Shard {
         row.ended_at = self.services().clock.now();
         let outcome = row.outcome.clone();
         let end = JobEnd { of: job.of.clone(), status, usage: row, kept: !followed.abandoned() };
-        match self.services().control.end_media_job(end).await {
+        match self.store().end_media_job(end).await {
             Ok(true) => tracing::info!(event = "media.ended", kind = job.kind.plural(), stage = "job", outcome, "a media job ended"),
             Ok(false) => tracing::info!(event = "media_job.ended_already", "a media job had ended already"),
             Err(error) => tracing::warn!(event = "media_job.end_failed", %error, "a media job's end was not kept"),
@@ -369,9 +369,9 @@ impl Shard {
     pub(crate) fn collect(&self, of: JobOfCall) -> LocalBoxStream<'static, Result<Collected, PortFailure>> {
         let shard = self.this();
         async_stream::stream! {
-            let control = shard.services().control.clone();
+            let store = shard.store().clone();
             let gone = || refused(MediaRefusal::Failed { message: "the server no longer keeps the job".to_owned() });
-            let job = match control.media_job(of.clone()).await {
+            let job = match store.media_job(of.clone()).await {
                 Ok(Some(job)) => job,
                 Ok(None) => {
                     yield Err(gone());
@@ -403,7 +403,7 @@ impl Shard {
                     }
                 }
             }
-            let ended = match control.media_job(of.clone()).await {
+            let ended = match store.media_job(of.clone()).await {
                 Ok(Some(job)) => job,
                 Ok(None) => {
                     yield Err(gone());
@@ -435,7 +435,7 @@ impl Shard {
                 MediaJobStatus::Failed { refusal } => Err(refused(refusal)),
                 MediaJobStatus::Cancelled => Err(PortFailure::from(PortError::Ended("the call was stopped".into()))),
             };
-            if let Err(error) = control.delete_media_job(of).await {
+            if let Err(error) = store.delete_media_job(of).await {
                 tracing::warn!(event = "media_job.delete_failed", %error, "a collected media job was not deleted");
             }
             yield collected;
@@ -494,7 +494,7 @@ impl Shard {
             match followed {
                 Some(followed) => followed.abandon(),
                 None => {
-                    if let Err(error) = shard.services().control.delete_media_job(of).await {
+                    if let Err(error) = shard.store().delete_media_job(of).await {
                         tracing::warn!(event = "media_job.delete_failed", %error, "a stopped call's media job was not deleted");
                     }
                 }
@@ -548,12 +548,15 @@ fn with_bytes(made: Made, bytes: B64Bytes) -> Made {
 /// Starts the shard of each user with a running job, whose start follows
 /// them.
 pub async fn start_media_followers(
-    control: &demi_backend_database::control::ControlService,
+    cores: &[(demi_web_api_protocol::ids::UserId, demi_core_store::store::CoreStore)],
     shards: &super::Shards,
 ) -> Result<(), demi_core_store::StorageError> {
-    for user in control.media_job_owners().await? {
+    for (user, store) in cores {
+        if !store.has_running_media_jobs().await? {
+            continue;
+        }
         // A shard that cannot be reached follows them at its next call.
-        if let Err(error) = shards.of(&user).call(|_, _| async {}).await {
+        if let Err(error) = shards.of(user).call(|_, _| async {}).await {
             tracing::warn!(event = "media_job.start_failed", %user, %error, "the media jobs were not followed");
         }
     }

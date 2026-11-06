@@ -37,13 +37,14 @@ use std::rc::Rc;
 
 use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
-use demi_backend_database::devices::DeviceRecord;
+use demi_backend_database::core_stores::CoreStores;
+use demi_core_store::devices::DeviceRecord;
 use demi_backend_database::managed::ManagedOperation;
 use demi_machine_manager_protocol::{
     Capacity, CurrentBaseVersionParams, ReconcileParams, ResetParams,
 };
 use demi_web_api_protocol::cloud::ResetPhase;
-use demi_web_api_protocol::ids::{DeviceId, OperationId};
+use demi_web_api_protocol::ids::{DeviceId, OperationId, UserId};
 use tokio::time::Instant;
 
 use crate::machine::{CloudError, Machine, Phase};
@@ -216,14 +217,12 @@ impl dyn CloudShard {
         self.save(machine).await?;
         self.record_phase(machine, &operation, ResetPhase::Rebuilding, None)
             .await?;
-        let capacity = crate::machine::capacity(self.control(), &machine.device).await?;
+        let capacity = crate::machine::capacity(self.control(), self.user(), &machine.device).await?;
         self.cloud_services()
             .machines
             .call(reset_params(machine, &operation, capacity))
             .await?;
-        self.control()
-            .announce_cloud_reset(self.user().clone(), operation.id.clone())
-            .await?;
+        self.store().announce_cloud_reset(operation.id.clone()).await?;
         machine.clear_deaths();
         self.record_phase(machine, &operation, ResetPhase::Booting, None)
             .await?;
@@ -278,12 +277,18 @@ fn reset_params(machine: &Machine, operation: &ManagedOperation, capacity: Capac
 /// which their shards take over.
 pub async fn recover_clouds(
     control: &ControlService,
+    stores: &CoreStores,
     cloud: &CloudServices,
-) -> Result<Vec<DeviceRecord>, RecoveryError> {
+) -> Result<Vec<(UserId, DeviceRecord)>, RecoveryError> {
     let reconciled = cloud.machines.call(ReconcileParams {}).await?;
     let mut reset = Vec::new();
     for (device, operation) in control.unfinished_managed_operations().await? {
-        let record = control
+        let user = control
+            .device_owner(device.clone())
+            .await?
+            .ok_or_else(|| RecoveryError::MissingDevice(device.to_string()))?;
+        let store = stores.of(&user).await?;
+        let record = store
             .device(device.clone())
             .await?
             .ok_or_else(|| RecoveryError::MissingDevice(device.to_string()))?;
@@ -291,14 +296,12 @@ pub async fn recover_clouds(
             device_id: device.to_string(),
             operation_id: operation.id.to_string(),
             base_version: operation.base_version.to_string(),
-            capacity: crate::machine::capacity(control, &record).await?,
+            capacity: crate::machine::capacity(control, &user, &record).await?,
             machine: crate::machine::sandbox_machine(&record),
         };
         // The reset stops a sandbox that still runs before its disk step.
         cloud.machines.call(params).await?;
-        control
-            .announce_cloud_reset(record.user, operation.id.clone())
-            .await?;
+        store.announce_cloud_reset(operation.id.clone()).await?;
         let failed = ManagedOperation {
             phase: ResetPhase::Failed,
             error: Some(RECOVERED.to_owned()),
@@ -316,7 +319,11 @@ pub async fn recover_clouds(
         if reset.contains(&id) {
             continue;
         }
-        match control.device(id.clone()).await? {
+        let record = match control.device_owner(id.clone()).await? {
+            Some(user) => stores.of(&user).await?.device(id.clone()).await?.map(|record| (user, record)),
+            None => None,
+        };
+        match record {
             Some(record) => running.push(record),
             // A device the backend no longer has is no one's Cloud; the
             // manager's own stop saves it.

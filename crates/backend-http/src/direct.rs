@@ -341,7 +341,7 @@ impl Signaling {
         let Reported {
             locale,
             color_scheme,
-        } = reported(&self.state.services.control, &self.user)
+        } = reported(&self.state.services.stores.of(&self.user).await.ok()?)
             .await
             .ok()?;
         let answered = self

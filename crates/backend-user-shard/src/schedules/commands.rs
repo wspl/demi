@@ -24,7 +24,7 @@ use jiff::civil::DateTime;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use demi_backend_database::schedules::StoredSchedule;
+use demi_core_store::schedules::StoredSchedule;
 
 use super::ScheduleError;
 use crate::conversation::organize::{failed, verb};
@@ -476,7 +476,7 @@ async fn patch(
     let current_prompt = current.map(|schedule| schedule.prompt.clone()).unwrap_or_default();
     let today = || {
         let zone = super::plan::zone(&zone).map_err(failed)?;
-        Ok::<_, RpcError>(shard.services().control.now().to_jiff().to_zoned(zone).date().to_string())
+        Ok::<_, RpcError>(shard.store().now().to_jiff().to_zoned(zone).date().to_string())
     };
     let start = |every: u32, kept: Option<&str>| -> Result<Option<String>, RpcError> {
         match (&args.start, every > 1) {
@@ -738,7 +738,7 @@ fn if_busy(text: &str) -> Result<IfBusy, RpcError> {
 }
 
 async fn user_zone(shard: &Shard) -> Result<String, RpcError> {
-    let reported = demi_backend_runners::command_context::reported(&shard.services().control, shard.user())
+    let reported = demi_backend_runners::command_context::reported(shard.store())
         .await
         .map_err(failed)?;
     Ok(reported.locale.time_zone)

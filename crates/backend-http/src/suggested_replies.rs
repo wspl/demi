@@ -21,6 +21,6 @@ pub(super) async fn used(
 ) -> Result<StatusCode, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
     let JsonBody(used) = body?;
-    services.control.suggested_reply_used(record.id, used).await?;
+    services.stores.of(&user.id).await?.suggested_reply_used(record.id, used).await?;
     Ok(StatusCode::NO_CONTENT)
 }

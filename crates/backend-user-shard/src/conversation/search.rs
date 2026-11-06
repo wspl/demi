@@ -37,13 +37,13 @@
 //! A whole read that fails leaves the index behind, so the next save or start
 //! reads the conversation whole again.
 
+use demi_core_store::store::CoreStore;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 use demi_core_store::StorageError;
-use demi_backend_database::control::ControlService;
-use demi_backend_database::conversation_index::ConversationRecord;
+use demi_core_store::conversation_index::ConversationRecord;
 use demi_core_store::{search::{HistoryQuery, IndexedConversation, SearchKind, TranscriptChange, match_line, title_ranges}};
 use demi_core_store::tree;
 use demi_web_api_protocol::ids::WorkspaceId;
@@ -53,7 +53,7 @@ use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::search::{
     MessageAuthor, MessageResult, MessageResults, RESULTS_MAX, SearchMatch, SearchResult, SearchText,
 };
-use tokio::sync::broadcast::{self, error::RecvError};
+use tokio::sync::broadcast::error::RecvError;
 
 use crate::services::Services;
 use crate::shard::{Shard, Shards};
@@ -137,8 +137,7 @@ impl Shard {
                 let Some(change) = next else {
                     return;
                 };
-                let services = shard.services();
-                let applied = services.search.apply(shard.user(), &id, change).await;
+                let applied = shard.store().search().apply(&id, change).await;
                 match applied {
                     Ok(true) => continue,
                     Ok(false) => {}
@@ -156,7 +155,7 @@ impl Shard {
                 //
                 // A failed read leaves the index behind the conversation, so the
                 // next save, or the next start, reads it whole again.
-                let caught_up = match services.control.conversation(id.clone()).await {
+                let caught_up = match shard.store().conversation(id.clone()).await {
                     Ok(record) => shard.catch_up(&id, record, true).await,
                     Err(error) => Err(error),
                 };
@@ -179,7 +178,7 @@ impl Shard {
         let interval = self.services().conversation_tuning.search_interval;
         self.tasks().spawn_local(async move {
             loop {
-                let record = shard.services().control.conversation(id.clone()).await;
+                let record = shard.store().conversation(id.clone()).await;
                 let indexed = match record {
                     Ok(record) => {
                         let _turn = shard.search_indexer().turns.acquire(id.clone()).await;
@@ -214,20 +213,17 @@ impl Shard {
         record: Option<ConversationRecord>,
         versions: bool,
     ) -> Result<(), StorageError> {
-        let services = self.services();
-        let user = self.user();
-        let Some(record) = record.filter(|record| record.owner == *user) else {
-            return services.search.remove_conversation(user, id).await;
+        let Some(record) = record else {
+            return self.store().search().remove_conversation(id).await;
         };
         // The placeholder holds no words, which no query finds.
         let title = record.title.unwrap_or_default();
-        let indexed = services.search.indexed(user, &record.id).await?;
+        let indexed = self.store().search().indexed(&record.id).await?;
         let whole = match &indexed {
             None => true,
             Some(_) if !versions => false,
             Some(indexed) => {
-                let versions = services
-                    .conversations
+                let versions = self.store().databases()
                     .read(&record.id, tree::search_versions)
                     .await?
                     .unwrap_or_default();
@@ -236,7 +232,7 @@ impl Shard {
         };
         if !whole {
             if indexed.is_some_and(|indexed| indexed.title != title) {
-                services.search.retitle(user, &record.id, title).await?;
+                self.store().search().retitle(&record.id, title).await?;
             }
             return Ok(());
         }
@@ -245,13 +241,12 @@ impl Shard {
         if let Some(waiting) = self.search_indexer().saves.borrow_mut().get_mut(&record.id) {
             waiting.clear();
         }
-        let agents = services
-            .conversations
+        let agents = self.store().databases()
             .read(&record.id, tree::search_texts)
             .await?
             .unwrap_or_default();
         let conversation = IndexedConversation { title, agents };
-        services.search.index(user, &record.id, conversation).await
+        self.store().search().index(&record.id, conversation).await
     }
 
     /// Brings every conversation of the user's in step, in the background, at
@@ -286,10 +281,8 @@ impl Shard {
     }
 
     async fn index_everything(&self) -> Result<(), StorageError> {
-        let services = self.services();
-        let user = self.user();
-        let mut records = services.control.conversations(user.clone(), false).await?;
-        records.extend(services.control.conversations(user.clone(), true).await?);
+        let mut records = self.store().conversations(false).await?;
+        records.extend(self.store().conversations(true).await?);
         records.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         // The index holds each conversation under its record's spelling.
         let present: HashSet<ConversationId> =
@@ -303,7 +296,7 @@ impl Shard {
             let caught_up = self.catch_up(&id, Some(record), true).await;
             report_catch_up(&id, caught_up);
         }
-        for id in services.search.conversations(user).await? {
+        for id in self.store().search().conversations().await? {
             if !present.contains(&id) {
                 let _turn = self.search_indexer().turns.acquire(id.clone()).await;
                 let caught_up = self.catch_up(&id, None, true).await;
@@ -329,15 +322,15 @@ fn report_catch_up(id: &ConversationId, caught_up: Result<(), StorageError>) {
 }
 
 /// Brings each user's search index in step with the conversations at start
-/// (`crates/backend-database/src/search.rs`): every user who has a
-/// conversation has their shard index it in the background, while the
-/// backend serves. Answers once each shard has its task.
-pub async fn index_at_start(
-    control: &ControlService,
-    shards: &Shards,
-) -> Result<(), StorageError> {
-    for owner in control.conversation_owners().await? {
-        let handed = shards.of(&owner).adopt(Shard::catch_up_everything).await;
+/// (`crates/core-store/src/search.rs`): every user who has a conversation has
+/// their shard index it in the background, while the backend serves. Answers
+/// once each shard has its task.
+pub async fn index_at_start(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
+    for (owner, store) in cores {
+        if store.conversations(false).await?.is_empty() && store.conversations(true).await?.is_empty() {
+            continue;
+        }
+        let handed = shards.of(owner).adopt(Shard::catch_up_everything).await;
         if handed.is_err() {
             // The backend is shutting down; the next start indexes what is
             // left.
@@ -347,36 +340,20 @@ pub async fn index_at_start(
     Ok(())
 }
 
-/// Has each user whose search index is reset, from `resets`, index every
-/// conversation again as at start, until the backend closes. A follower that
-/// fell behind and missed some resets has every user do so.
-pub async fn follow_resets(
-    mut resets: broadcast::Receiver<UserId>,
-    control: ControlService,
-    shards: Shards,
-) {
-    loop {
-        let handed = match resets.recv().await {
-            Ok(user) => shards.of(&user).adopt(Shard::catch_up_everything).await.is_ok(),
-            Err(RecvError::Lagged(_)) => match index_at_start(&control, &shards).await {
-                Ok(()) => true,
-                Err(error) => {
-                    // The users not reached are brought in step at the next
-                    // start; their conversations' changes meanwhile apply as
-                    // they come.
-                    tracing::warn!(
-                        event = "search_index.list_failed",
-                        error = &error as &dyn std::error::Error,
-                        "the conversations to index for search cannot be listed"
-                    );
-                    true
-                }
-            },
-            Err(RecvError::Closed) => false,
-        };
-        if !handed {
-            // The backend is shutting down.
-            return;
+impl Shard {
+    /// Indexes every conversation again as at start each time the user's
+    /// search index is reset, until the shard closes. A follower that fell
+    /// behind and missed some resets does it once.
+    pub(crate) async fn follow_search_resets(self: Rc<Self>) {
+        let mut resets = self.store().search().resets();
+        loop {
+            tokio::select! {
+                () = self.closed() => return,
+                reset = resets.recv() => match reset {
+                    Ok(()) | Err(RecvError::Lagged(_)) => self.clone().catch_up_everything().await,
+                    Err(RecvError::Closed) => return,
+                },
+            }
         }
     }
 }
@@ -388,8 +365,7 @@ pub async fn follow_resets(
 /// activity, and their order: title matches first, then the rest, each kind most
 /// recently active first. A conversation whose record is gone is left out.
 pub async fn search(
-    services: &Services,
-    user: &UserId,
+    store: &CoreStore,
     query: &SearchText,
     workspace: Option<&WorkspaceId>,
 ) -> Result<Vec<SearchResult>, StorageError> {
@@ -397,14 +373,14 @@ pub async fn search(
     // The index holds each conversation under its record's spelling.
     let mut records: Vec<ConversationRecord> = Vec::new();
     for archived in [false, true] {
-        records.extend(services.control.conversations(user.clone(), archived).await?);
+        records.extend(store.conversations(archived).await?);
     }
     records.retain(|record| workspace.is_none_or(|workspace| record.workspace == *workspace));
     records.sort_by(|a, b| b.updated_at.cmp(&a.updated_at).then_with(|| a.id.cmp(&b.id)));
     let ranked = records.iter().map(|record| record.id.clone()).collect();
     let mut records: HashMap<ConversationId, ConversationRecord> =
         records.into_iter().map(|record| (record.id.clone(), record)).collect();
-    let found = services.search.find(user, words.clone(), ranked, RESULTS_MAX).await?;
+    let found = store.search().find(words.clone(), ranked, RESULTS_MAX).await?;
     Ok(found
         .into_iter()
         .filter_map(|found| {
@@ -436,16 +412,14 @@ pub async fn search(
 /// answers, that hold every word of `query`, newest first, each cut to its
 /// line around the first match as [`search`] cuts it.
 pub async fn search_in(
-    services: &Services,
-    user: &UserId,
+    store: &CoreStore,
     conversation: &ConversationId,
     query: &SearchText,
 ) -> Result<MessageResults, StorageError> {
     let words = query.words();
-    let mut found = services
-        .search
+    let mut found = store
+        .search()
         .find_in(
-            user,
             conversation,
             0,
             HistoryQuery {

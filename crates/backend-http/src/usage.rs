@@ -1,4 +1,4 @@
-//! The usage ledger's totals (`crates/backend-database/src/usage.rs`).
+//! The usage ledger's totals (`crates/core-store/src/usage.rs`).
 //!
 //! Each user's own, and on a shared instance every account's for an
 //! administrator.
@@ -9,7 +9,7 @@ use axum::Json;
 use axum::extract::State;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::settings::InstanceMode;
-use demi_web_api_protocol::usage::{InstanceUsage, UsageTotals};
+use demi_web_api_protocol::usage::{InstanceUsage, UsageTotals, UserUsage};
 
 use super::error::ApiError;
 use super::gate::AuthUser;
@@ -19,7 +19,7 @@ pub(super) async fn totals(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<UsageTotals>, ApiError> {
-    let totals = services.control.usage_totals(user.id).await?;
+    let totals = services.stores.of(&user.id).await?.usage_totals().await?;
     Ok(Json(UsageTotals { totals }))
 }
 
@@ -37,6 +37,14 @@ pub(super) async fn instance(
             "The instance's usage is for administrators",
         ));
     }
-    let users = services.control.instance_usage().await?;
+    let mut users = Vec::new();
+    for listed in services.control.users().await? {
+        let totals = services.stores.of(&listed.user.id).await?.usage_totals().await?;
+        users.push(UserUsage {
+            user_id: listed.user.id,
+            email: listed.user.email,
+            totals,
+        });
+    }
     Ok(Json(InstanceUsage { users }))
 }

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use demi_backend_database::sidebar::Reorder;
+use demi_core_store::sidebar::Reorder;
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::sidebar::SidebarReorder;
@@ -20,18 +20,18 @@ pub(super) async fn reorder(
     AuthUser(user): AuthUser,
     JsonBody(request): JsonBody<SidebarReorder>,
 ) -> Result<StatusCode, ApiError> {
-    let control = &services.control;
+    let store = services.stores.of(&user.id).await?;
     let (reorder, changed, missing) = match request {
         SidebarReorder::Conversation { id, before_id } => (
-            control
-                .reorder_conversations(user.id.clone(), id, before_id)
+            store
+                .reorder_conversations(id, before_id)
                 .await?,
             Part::ConversationOrder,
             (ErrorCode::ConversationNotFound, "No such conversation"),
         ),
         SidebarReorder::Project { id, before_id } => (
-            control
-                .reorder_projects(user.id.clone(), id, before_id)
+            store
+                .reorder_projects(id, before_id)
                 .await?,
             Part::Projects,
             (ErrorCode::ProjectNotFound, "No such project"),

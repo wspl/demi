@@ -17,7 +17,8 @@ use std::time::Duration;
 use demi_core_store::StorageError;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::control::ControlService;
-use demi_backend_database::devices::DeviceRecord;
+use demi_core_store::store::CoreStore;
+use demi_core_store::devices::DeviceRecord;
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::RunnerInfo;
 use demi_web_api_protocol::devices::DeviceDto;
@@ -34,6 +35,7 @@ const ATTEMPT_WINDOW: Duration = Duration::from_secs(60);
 
 /// The runners waiting to be paired, and each user's recent claims.
 pub struct PendingClaims {
+    control: ControlService,
     /// A `std` mutex: the edge's threads share the waiting runners, and no
     /// section awaits.
     state: Mutex<State>,
@@ -72,18 +74,20 @@ pub enum ClaimRefusal {
     Storage(#[from] StorageError),
 }
 
-/// What a claim hands its runner: the device made for it, the token only
-/// the runner receives, and where the device's answer goes once the runner's
-/// socket is bound in the user's shard.
+/// What a claim hands its runner: the user who claimed it, the device made
+/// for it, the token only the runner receives, and where the device's answer
+/// goes once the runner's socket is bound in the user's shard.
 pub struct ClaimGrant {
+    pub owner: UserId,
     pub device: DeviceRecord,
     pub token: DeviceToken,
     pub bound: oneshot::Sender<DeviceDto>,
 }
 
 impl PendingClaims {
-    pub fn new(attempts_per_minute: usize) -> Self {
+    pub fn new(control: ControlService, attempts_per_minute: usize) -> Self {
         Self {
+            control,
             state: Mutex::default(),
             attempts: RateWindow::new(attempts_per_minute, ATTEMPT_WINDOW),
         }
@@ -102,7 +106,7 @@ impl PendingClaims {
     /// both claim this way.
     pub async fn claim(
         &self,
-        control: &ControlService,
+        store: &CoreStore,
         user: &UserId,
         code: &str,
     ) -> Result<DeviceDto, ClaimRefusal> {
@@ -113,21 +117,20 @@ impl PendingClaims {
             .and_then(|code| self.take(&code))
             .ok_or(ClaimRefusal::UnknownCode)?;
         let token = new_device_token();
-        let device = control
-            .create_device(
-                user.clone(),
-                pending.runner.name.clone(),
-                pending.runner.platform,
-                TokenHash::of(token.expose()),
-            )
+        let device = store
+            .create_device(pending.runner.name.clone(), pending.runner.platform)
             .await?;
         let id = device.id.clone();
-        match pending.grant(device, token).await {
+        self.control
+            .record_device_owner(id.clone(), user.clone(), Some(TokenHash::of(token.expose())))
+            .await?;
+        match pending.grant(user.clone(), device, token).await {
             Ok(device) => Ok(device),
             Err(_) => {
                 // The runner went away before it held its token: the device
                 // it would have been goes too.
-                control.delete_device(id).await?;
+                store.delete_device(id.clone()).await?;
+                self.control.forget_device_owner(id).await?;
                 Err(ClaimRefusal::UnknownCode)
             }
         }
@@ -179,11 +182,12 @@ impl PendingClaims {
 impl PendingRunner {
     /// Hands the runner its device and token. The answer is the device as it
     /// is once the runner is bound; none when the runner went away before.
-    pub fn grant(self, device: DeviceRecord, token: DeviceToken) -> oneshot::Receiver<DeviceDto> {
+    pub fn grant(self, owner: UserId, device: DeviceRecord, token: DeviceToken) -> oneshot::Receiver<DeviceDto> {
         let (bound, answer) = oneshot::channel();
         // A runner that went away dropped its end, and `answer` then resolves
         // without a device.
         let _ = self.grant.send(ClaimGrant {
+            owner,
             device,
             token,
             bound,

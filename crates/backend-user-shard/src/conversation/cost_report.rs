@@ -18,7 +18,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use demi_core_store::tree;
-use demi_backend_database::usage::{LedgerCall, add_call, turn_hit_rate, window_ms};
+use demi_core_store::usage::{LedgerCall, add_call, turn_hit_rate, window_ms};
 use demi_backend_host_access::host_commands::conversation_of;
 use demi_backend_providers::vault::accounts as vault_accounts;
 use demi_backend_providers::vault::entries::Vault;
@@ -301,20 +301,18 @@ impl Labels {
 
 /// `demi conversation cost`.
 pub(super) async fn cost(shard: Rc<Shard>, call: Call<CostArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let services = shard.services();
     let id = match &call.args.conversation {
         Some(id) => id.clone(),
         None => conversation_of(&call.invocation)?,
     };
     // Another user's conversation is none of the caller's.
-    let record = match services.control.conversation(id.clone()).await.map_err(failed)? {
-        Some(record) if record.owner == *shard.user() => record,
+    let record = match shard.store().conversation(id.clone()).await.map_err(failed)? {
+        Some(record) => record,
         _ => return Err(failed(format!("no conversation {id}"))),
     };
     let (conversation, title) = (record.id, record.title);
-    let (calls, now) = services.control.conversation_calls(conversation.clone()).await.map_err(failed)?;
-    let profiles: BTreeMap<u64, Option<String>> = services
-        .conversations
+    let (calls, now) = shard.store().conversation_calls(conversation.clone()).await.map_err(failed)?;
+    let profiles: BTreeMap<u64, Option<String>> = shard.store().databases()
         .read(&conversation, tree::subagents)
         .await
         .map_err(failed)?

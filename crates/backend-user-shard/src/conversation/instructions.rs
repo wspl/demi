@@ -110,9 +110,7 @@ impl ContextSource for Instructions {
                 return Ok(None);
             };
             let personal = shard
-                .services()
-                .control
-                .instructions(shard.user().clone())
+                .store().instructions()
                 .await
                 .map_err(|error| format!("the personal instructions cannot be read: {error}"))?;
             let placement = shard

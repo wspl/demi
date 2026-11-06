@@ -151,9 +151,7 @@ impl Shard {
     /// The user's profile `name`, enabled or not.
     async fn named_profile(&self, name: &str) -> Result<SubagentProfile, String> {
         let settings = self
-            .services()
-            .control
-            .subagent_settings(self.user().clone())
+            .store().subagent_settings()
             .await
             .map_err(|error| error.to_string())?;
         settings
@@ -208,7 +206,7 @@ impl Shard {
         let services = self.services();
         let entries = services.vault.entries_for(self.user()).await?;
         let catalog = services.provider_registry.model_catalog(&entries, false).await;
-        let preferences = services.control.preferences(self.user().clone()).await?;
+        let preferences = self.store().preferences().await?;
         Ok(Scope {
             entries,
             catalog,

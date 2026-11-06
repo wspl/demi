@@ -30,6 +30,8 @@
 //! read when it started is read through its marker once it ends. Until that
 //! is stored, its entry is listed read.
 
+use demi_core_store::store::CoreStore;
+use demi_web_api_protocol::ids::UserId;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -37,8 +39,7 @@ use std::time::Duration;
 
 use demi_agent_session::IdleCompactionDue;
 use demi_core_store::StorageError;
-use demi_backend_database::control::ControlService;
-use demi_backend_database::idle_compactions::IdleCompaction;
+use demi_core_store::idle_compactions::IdleCompaction;
 use demi_backend_host_access::root_of;
 use demi_backend_page_sync::Part;
 use demi_shared_types::{IDLE_COMPACTION_CONTEXT, SessionPhase};
@@ -136,7 +137,7 @@ impl Shard {
     /// Arms a timer for each of the user's stored times, as the shard opens
     /// at the backend's start.
     async fn arm_idle_compactions(self: Rc<Self>) {
-        match self.services().control.idle_compactions(self.user().clone()).await {
+        match self.store().idle_compactions().await {
             Ok(stored) => {
                 for (conversation, due) in stored {
                     self.arm_idle_compaction(conversation, Some(due), false);
@@ -151,8 +152,8 @@ impl Shard {
     /// Compacts the conversation's root as its time `due` came, when the
     /// user's preferences say so now. Answers how it settled.
     async fn compact_idle(&self, conversation: &ConversationId, due: IdleCompaction) -> &'static str {
-        let control = &self.services().control;
-        match control.take_idle_compaction(conversation.clone(), due.due_at).await {
+        let store = self.store();
+        match store.take_idle_compaction(conversation.clone(), due.due_at).await {
             Ok(true) => {}
             Ok(false) => return "replaced",
             Err(error) => {
@@ -170,7 +171,7 @@ impl Shard {
         if self.services().clock.now() >= reported.expires_at() {
             return "expired";
         }
-        let preferences = match control.preferences(self.user().clone()).await {
+        let preferences = match store.preferences().await {
             Ok(preferences) => preferences,
             Err(error) => {
                 tracing::warn!(event = "idle_compaction.preferences_read_failed", %conversation, %error, "the preferences were not read for an idle compaction");
@@ -209,7 +210,7 @@ impl Shard {
 
     /// Whether the user read all of the conversation's output.
     async fn read_through(&self, conversation: &ConversationId) -> bool {
-        match self.services().control.conversation(conversation.clone()).await {
+        match self.store().conversation(conversation.clone()).await {
             Ok(Some(record)) => self.summary_facts(conversation).await.revision <= record.read_revision,
             Ok(None) => false,
             Err(error) => {
@@ -241,7 +242,7 @@ impl Shard {
         let conversation = conversation.clone();
         self.tasks().spawn_local(async move {
             let revision = this.summary_facts(&conversation).await.revision;
-            if let Err(error) = this.services().control.mark_output_read(conversation.clone(), revision).await {
+            if let Err(error) = this.store().mark_output_read(conversation.clone(), revision).await {
                 tracing::warn!(event = "idle_compaction.mark_read_failed", %conversation, %error, "an idle compaction's marker was not marked read");
             }
             this.idle_compactions().read.borrow_mut().remove(&conversation);
@@ -263,7 +264,7 @@ async fn idle_compaction_timer(
         let Some(live) = shard.upgrade() else {
             return;
         };
-        if write && let Err(error) = live.services().control.set_idle_compaction(conversation.clone(), due).await {
+        if write && let Err(error) = live.store().set_idle_compaction(conversation.clone(), due).await {
             tracing::warn!(event = "idle_compaction.write_failed", %conversation, %error, "an idle compaction's time was not stored");
         }
         let Some(due) = due else {
@@ -297,9 +298,12 @@ async fn idle_compaction_timer(
 
 /// Opens at start the shard of each user with a stored idle compaction time,
 /// which arms its timers in the background, so the start waits for none.
-pub async fn arm_idle_compactions(control: &ControlService, shards: &Shards) -> Result<(), StorageError> {
-    for owner in control.idle_compaction_owners().await? {
-        let handed = shards.of(&owner).adopt(Shard::arm_idle_compactions).await;
+pub async fn arm_idle_compactions(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
+    for (owner, store) in cores {
+        if store.idle_compactions().await?.is_empty() {
+            continue;
+        }
+        let handed = shards.of(owner).adopt(Shard::arm_idle_compactions).await;
         if handed.is_err() {
             // The backend is shutting down; the rows stay for the next start.
             return Ok(());

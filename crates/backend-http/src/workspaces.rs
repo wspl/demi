@@ -7,7 +7,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::workspaces::{MoveRefusal, WorkspaceChange};
+use demi_core_store::workspaces::{MoveRefusal, WorkspaceChange};
 use demi_backend_page_sync::Part;
 use demi_backend_user_shard::services::Services;
 use demi_backend_user_shard::shard::workspaces::WorkspaceRefusal;
@@ -27,7 +27,7 @@ pub(super) async fn list(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<Workspaces>, ApiError> {
-    let workspaces = services.control.workspaces(user.id).await?;
+    let workspaces = services.stores.of(&user.id).await?.workspaces().await?;
     Ok(Json(Workspaces { workspaces: workspaces.into_iter().map(|workspace| workspace.dto()).collect() }))
 }
 
@@ -36,7 +36,7 @@ pub(super) async fn create(
     AuthUser(user): AuthUser,
     JsonBody(request): JsonBody<CreateWorkspace>,
 ) -> Result<(StatusCode, Json<WorkspaceAnswer>), ApiError> {
-    let workspace = services.control.create_workspace(user.id.clone(), request.name.into_string()).await?;
+    let workspace = services.stores.of(&user.id).await?.create_workspace(request.name.into_string()).await?;
     services.sync.mark(&user.id, Part::Workspaces);
     Ok((StatusCode::CREATED, Json(WorkspaceAnswer { workspace: workspace.dto() })))
 }
@@ -53,9 +53,7 @@ pub(super) async fn change(
         icon: change.icon,
         color: change.color,
     };
-    let workspace = services
-        .control
-        .change_workspace(user.id.clone(), id, change)
+    let workspace = services.stores.of(&user.id).await?.change_workspace(id, change)
         .await?
         .ok_or_else(workspace_not_found)?;
     services.sync.mark(&user.id, Part::Workspaces);
@@ -67,7 +65,7 @@ pub(super) async fn order(
     AuthUser(user): AuthUser,
     JsonBody(order): JsonBody<WorkspaceOrder>,
 ) -> Result<StatusCode, ApiError> {
-    if !services.control.order_workspaces(user.id.clone(), order.ids).await? {
+    if !services.stores.of(&user.id).await?.order_workspaces(order.ids).await? {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
             ErrorCode::InvalidOrder,

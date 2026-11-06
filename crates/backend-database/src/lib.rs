@@ -100,50 +100,21 @@
 //!   them.
 
 pub mod accounts;
-pub mod attachments;
-pub mod schedules;
 pub mod control;
-pub mod credentials;
-pub mod conversation_index;
-pub mod deletions;
-pub mod devices;
-pub mod drafts;
-pub mod host_workflows;
-pub mod forks;
-pub mod instructions;
-pub mod idle_compactions;
-pub mod interrupted_turns;
+pub mod core_stores;
+pub mod owners;
+pub mod provider_keys;
 pub mod managed;
-pub mod media_jobs;
-pub mod panels;
-pub mod plugin_reports;
 pub mod passkeys;
-pub mod permissions;
-pub mod plugin_secrets;
-mod plugin_store;
-pub mod plugin_values;
-pub mod port_forwards;
-pub mod providers;
 pub mod push;
-pub mod references;
-pub mod running;
-pub mod saved;
 pub mod schema;
 pub use schema::{DatabaseKind, database_fit};
 
 use demi_core_store::{StorageError, columns, sqlite};
 #[cfg(feature = "testing")]
 pub mod testing;
-mod selection;
-pub use selection::{CLOUD_HOME, Selection, Unselectable, Worktree};
 pub mod server_log;
 pub mod shares;
-pub mod sidebar;
-pub mod subagents;
-pub mod suggested_replies;
 pub mod update;
-pub mod usage;
 pub mod web_sessions;
-pub mod projects;
-pub mod workspaces;
 

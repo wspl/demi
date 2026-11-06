@@ -37,12 +37,14 @@
 
 use std::sync::Arc;
 
+use demi_backend_database::core_stores::CoreStores;
 use demi_core_store::StorageError;
+use demi_core_store::store::CoreStore;
 use demi_backend_database::control::ControlService;
-use demi_backend_database::providers::{
+use demi_core_store::providers::{
     CredentialRow, CredentialWrite, EntrySwitches, NewProvider, ProviderRow,
 };
-use demi_backend_database::schema::ResealSealed;
+use demi_backend_database::schema::ControlSteps;
 use demi_backend_page_sync::{Part, SyncRegistry};
 use demi_provider_common::credentials::{
     AccountMeta, CredentialPool, MemoryCredentialPool, NewAccount, RefreshGates,
@@ -68,6 +70,11 @@ pub struct Vault(Arc<Shared>);
 
 struct Shared {
     control: ControlService,
+    stores: CoreStores,
+    /// Whose core holds each entry, read from the cores at the start and kept
+    /// as entries are made. An entry deleted stays: its store answers that it
+    /// has none.
+    holders: std::sync::Mutex<std::collections::HashMap<ProviderId, UserId>>,
     key: VaultKey,
     /// The mode the control store holds, which `set_mode` writes after it.
     mode: std::sync::RwLock<InstanceMode>,
@@ -163,15 +170,24 @@ impl Owners {
 
 impl Vault {
     /// The vault of an instance whose control store holds `mode`.
-    pub fn new(
+    pub async fn new(
         control: ControlService,
+        stores: CoreStores,
         key: VaultKey,
         mode: InstanceMode,
         shared_subscriptions: bool,
         sync: SyncRegistry,
-    ) -> Self {
-        Self(Arc::new(Shared {
+    ) -> Result<Self, StorageError> {
+        let mut holders = std::collections::HashMap::new();
+        for user in control.user_ids().await? {
+            for row in stores.of(&user).await?.providers().await? {
+                holders.insert(row.id, user.clone());
+            }
+        }
+        Ok(Self(Arc::new(Shared {
             control,
+            stores,
+            holders: std::sync::Mutex::new(holders),
             key,
             mode: std::sync::RwLock::new(mode),
             shared_subscriptions,
@@ -179,7 +195,37 @@ impl Vault {
             gates: RefreshGates::new(),
             sync,
             account_changes: tokio::sync::broadcast::Sender::new(ACCOUNT_CHANGES_KEPT),
-        }))
+        })))
+    }
+
+    /// The core store that holds the entry `id`. An id no entry ever had is
+    /// looked up in the master's, which answers that it has none.
+    pub async fn store_of(&self, id: &ProviderId) -> Result<CoreStore, StorageError> {
+        let holder = self.holder_of(id);
+        match holder {
+            Some(holder) => self.0.stores.of(&holder).await,
+            None => {
+                let master = self.master().await?.clone();
+                self.0.stores.of(&master).await
+            }
+        }
+    }
+
+    fn holder_of(&self, id: &ProviderId) -> Option<UserId> {
+        self.0
+            .holders
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(id)
+            .cloned()
+    }
+
+    fn hold(&self, id: ProviderId, owner: UserId) {
+        self.0
+            .holders
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(id, owner);
     }
 
     /// Makes `account` the one the entry `entry` infers with, and announces
@@ -191,8 +237,8 @@ impl Vault {
         account: CredentialId,
     ) -> Result<bool, StorageError> {
         let selected = self
-            .0
-            .control
+            .store_of(entry)
+            .await?
             .set_active_credential(entry.clone(), account)
             .await?;
         if selected {
@@ -211,8 +257,8 @@ impl Vault {
         account: CredentialWrite,
     ) -> Result<bool, StorageError> {
         let written = self
-            .0
-            .control
+            .store_of(entry)
+            .await?
             .write_credential(entry.clone(), account)
             .await?;
         if written.is_some_and(|written| written.activated) {
@@ -230,8 +276,8 @@ impl Vault {
     ) -> Result<Option<CredentialId>, StorageError> {
         let was_active = entry.active() == Some(&account);
         let active = self
-            .0
-            .control
+            .store_of(&entry.id)
+            .await?
             .remove_credential(entry.id.clone(), account)
             .await?;
         if was_active {
@@ -255,6 +301,11 @@ impl Vault {
 
     pub fn control(&self) -> &ControlService {
         &self.0.control
+    }
+
+    /// Each user's core store.
+    pub fn stores(&self) -> &CoreStores {
+        &self.0.stores
     }
 
     pub fn key(&self) -> &VaultKey {
@@ -370,8 +421,16 @@ impl Vault {
     /// `id`. A lookup that fails is logged: the pages then show the change
     /// with the entry's next one.
     pub async fn mark_entry_changed(&self, id: &ProviderId) {
-        match self.0.control.provider(id.clone()).await {
-            Ok(Some(row)) => self.mark_changed(&row.owner, row.kind).await,
+        let found = match self.store_of(id).await {
+            Ok(store) => store.provider(id.clone()).await,
+            Err(error) => Err(error),
+        };
+        match found {
+            Ok(Some(row)) => {
+                if let Some(owner) = self.holder_of(id) {
+                    self.mark_changed(&owner, row.kind).await;
+                }
+            }
             // An entry deleted meanwhile marked its owner as it went.
             Ok(None) => {}
             Err(error) => tracing::warn!(
@@ -411,14 +470,17 @@ impl Vault {
     /// Every entry `owner` holds, in their order, whether or not anyone
     /// infers with it now.
     pub async fn entries(&self, owner: UserId) -> Result<Vec<ProviderEntry>, StorageError> {
-        let rows = self.0.control.providers(owner).await?;
-        rows.into_iter().map(|row| self.decode(row)).collect()
+        let rows = self.0.stores.of(&owner).await?.providers().await?;
+        rows.into_iter().map(|row| self.decode(row, owner.clone())).collect()
     }
 
     /// The entry `id`.
     pub async fn entry(&self, id: ProviderId) -> Result<Option<ProviderEntry>, StorageError> {
-        let row = self.0.control.provider(id).await?;
-        row.map(|row| self.decode(row)).transpose()
+        let row = self.store_of(&id).await?.provider(id.clone()).await?;
+        let (Some(row), Some(owner)) = (row, self.holder_of(&id)) else {
+            return Ok(None);
+        };
+        self.decode(row, owner).map(Some)
     }
 
     /// Stores a new API-key entry.
@@ -434,7 +496,6 @@ impl Vault {
         let sealed = self.seal_config(&id, &config);
         let provider = NewProvider {
             id,
-            owner,
             family,
             kind: CredentialKind::ApiKey,
             label,
@@ -443,11 +504,12 @@ impl Vault {
             cache_ttl,
             through_device: None,
         };
-        let row = self.0.control.insert_provider(provider, Vec::new()).await?;
+        let row = self.0.stores.of(&owner).await?.insert_provider(provider, Vec::new()).await?;
         // An API-key entry is under no uniqueness rule.
         let row = row.expect("an API-key entry is always stored");
-        self.mark_changed(&row.owner, row.kind).await;
-        self.decode(row)
+        self.hold(row.id.clone(), owner.clone());
+        self.mark_changed(&owner, row.kind).await;
+        self.decode(row, owner)
     }
 
     /// Stores a new subscription entry that connects through `through_device`
@@ -496,7 +558,6 @@ impl Vault {
             .map(|account| account.id.clone());
         let provider = NewProvider {
             id,
-            owner,
             family,
             kind: CredentialKind::Subscription,
             label,
@@ -505,11 +566,12 @@ impl Vault {
             cache_ttl: None,
             through_device,
         };
-        let row = self.0.control.insert_provider(provider, accounts).await?;
+        let row = self.0.stores.of(&owner).await?.insert_provider(provider, accounts).await?;
         if let Some(row) = &row {
-            self.mark_changed(&row.owner, row.kind).await;
+            self.hold(row.id.clone(), owner.clone());
+            self.mark_changed(&owner, row.kind).await;
         }
-        row.map(|row| self.decode(row)).transpose()
+        row.map(|row| self.decode(row, owner)).transpose()
     }
 
     /// Makes the owner's entry of the family hold `seeded`'s account, as a
@@ -600,15 +662,16 @@ impl Vault {
         through_device: Option<Option<DeviceId>>,
     ) -> Result<Option<ProviderEntry>, StorageError> {
         let sealed = config.map(|config| self.seal_config(&id, &config));
-        let row = self
-            .0
-            .control
+        let store = self.store_of(&id).await?;
+        let owner = self.holder_of(&id);
+        let row = store
             .update_provider(id, label, family, sealed, rotation, switches, cache_ttl, through_device)
             .await?;
-        if let Some(row) = &row {
-            self.mark_changed(&row.owner, row.kind).await;
-        }
-        row.map(|row| self.decode(row)).transpose()
+        let (Some(row), Some(owner)) = (row, owner) else {
+            return Ok(None);
+        };
+        self.mark_changed(&owner, row.kind).await;
+        self.decode(row, owner).map(Some)
     }
 
     /// Puts the entries `user` owns and infers with in the order `ids` names
@@ -627,7 +690,7 @@ impl Vault {
             }
         }
         all.extend(ids);
-        let ordered = self.0.control.set_provider_order(user.clone(), all).await?;
+        let ordered = self.0.stores.of(user).await?.set_provider_order(all).await?;
         if ordered {
             for kind in kinds {
                 self.mark_changed(user, kind).await;
@@ -638,7 +701,8 @@ impl Vault {
 
     /// Deletes the entry with its accounts and catalog record.
     pub async fn delete(&self, entry: &ProviderEntry) -> Result<(), StorageError> {
-        self.0.control.delete_provider(entry.id.clone()).await?;
+        self.0.stores.of(&entry.owner).await?.delete_provider(entry.id.clone()).await?;
+        self.0.control.delete_share_keys_of(entry.owner.clone(), entry.id.clone()).await?;
         self.mark_changed(&entry.owner, entry.kind()).await;
         Ok(())
     }
@@ -651,7 +715,7 @@ impl Vault {
     /// The entry's account records in the list's order, their secrets
     /// unopened.
     pub async fn accounts(&self, id: ProviderId) -> Result<Vec<CredentialRow>, StorageError> {
-        self.0.control.credentials(id).await
+        self.store_of(&id).await?.credentials(id).await
     }
 
     pub async fn account(
@@ -659,7 +723,7 @@ impl Vault {
         id: ProviderId,
         account: CredentialId,
     ) -> Result<Option<CredentialRow>, StorageError> {
-        self.0.control.credential(id, account).await
+        self.store_of(&id).await?.credential(id, account).await
     }
 
     pub fn seal_secret(
@@ -677,7 +741,7 @@ impl Vault {
         seal_config(&self.0.key, id, config)
     }
 
-    fn decode(&self, row: ProviderRow) -> Result<ProviderEntry, StorageError> {
+    fn decode(&self, row: ProviderRow, owner: UserId) -> Result<ProviderEntry, StorageError> {
         let credential = match (row.kind, row.config) {
             (CredentialKind::ApiKey, Some(sealed)) => {
                 EntryCredential::ApiKey(self.open_config(&row.id, &sealed)?)
@@ -697,7 +761,7 @@ impl Vault {
         };
         Ok(ProviderEntry {
             id: row.id,
-            owner: row.owner,
+            owner,
             family: row.family,
             label: row.label,
             credential,
@@ -750,31 +814,38 @@ impl Vault {
 /// - To entries that connect through a device, it reads each endpoint and
 ///   seals again one that named a device by its id, the endpoint now on the
 ///   device itself.
-pub struct VaultReseal(VaultKey);
+pub struct VaultReseal {
+    key: VaultKey,
+    data_directory: std::path::PathBuf,
+}
 
 impl VaultReseal {
-    pub fn new(key: VaultKey) -> Self {
-        Self(key)
+    pub fn new(key: VaultKey, data_directory: std::path::PathBuf) -> Self {
+        Self { key, data_directory }
     }
 }
 
-impl ResealSealed for VaultReseal {
+impl ControlSteps for VaultReseal {
+    fn data_directory(&self) -> &std::path::Path {
+        &self.data_directory
+    }
+
     fn provider_config(&self, id: &ProviderId, family: &str, sealed: &[u8]) -> Result<Vec<u8>, String> {
-        let text = open_text(&self.0, id, sealed)?;
+        let text = open_text(&self.key, id, sealed)?;
         let config = decode_secret::<serde_json::Value>(&text).map_err(|error| error.to_string())?;
         let mut config = without_media_shapes(config)?;
         if config.vendor_id.is_none() && config.base_url.is_none() {
             config.vendor_id = Some(family.to_owned());
         }
-        Ok(seal_config(&self.0, id, &config))
+        Ok(seal_config(&self.key, id, &config))
     }
 
     fn schedule_secret(&self, id: &str, sealed: &[u8]) -> Result<Vec<u8>, String> {
         let secret = self
-            .0
+            .key
             .open(seal::Row::AutomationSecret(id), sealed)
             .map_err(|error| error.to_string())?;
-        Ok(self.0.seal(seal::Row::ScheduleSecret(id), &secret))
+        Ok(self.key.seal(seal::Row::ScheduleSecret(id), &secret))
     }
 
     fn provider_endpoint_on_device(
@@ -783,7 +854,7 @@ impl ResealSealed for VaultReseal {
         sealed: &[u8],
         owned: &dyn Fn(&str) -> bool,
     ) -> Result<Option<(String, Vec<u8>)>, String> {
-        let mut config = open_format(&self.0, id, sealed, &[2, CONFIG_FORMAT])?;
+        let mut config = open_format(&self.key, id, sealed, &[2, CONFIG_FORMAT])?;
         let Some(endpoint) = &config.base_url else {
             return Ok(None);
         };
@@ -795,15 +866,15 @@ impl ResealSealed for VaultReseal {
         let host = if url.scheme() == "https" { "localhost" } else { "127.0.0.1" };
         url.set_host(Some(host)).map_err(|error| error.to_string())?;
         config.base_url = Some(EndpointUrl::try_from(String::from(url)).map_err(|_| "the endpoint on the device is not one".to_owned())?);
-        Ok(Some((device, seal_config(&self.0, id, &config))))
+        Ok(Some((device, seal_config(&self.key, id, &config))))
     }
 
     fn provider_config_format_3(&self, id: &ProviderId, sealed: &[u8]) -> Result<Option<Vec<u8>>, String> {
-        let text = open_text(&self.0, id, sealed)?;
+        let text = open_text(&self.key, id, sealed)?;
         let document = decode_secret::<SealedDocument>(&text).map_err(|error| error.to_string())?;
         match document.format {
             CONFIG_FORMAT => Ok(None),
-            2 => Ok(Some(seal_config(&self.0, id, &without_media_shapes(document.config)?))),
+            2 => Ok(Some(seal_config(&self.key, id, &without_media_shapes(document.config)?))),
             format => Err(format!("the configuration's format {format} is neither 2 nor {CONFIG_FORMAT}")),
         }
     }

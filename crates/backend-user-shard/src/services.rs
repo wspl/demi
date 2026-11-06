@@ -16,11 +16,12 @@ use demi_backend_blobs::blobs::BlobStores;
 use demi_backend_cloud::CloudServices;
 use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
-use demi_core_store::{conversations::{self, ConversationStores}};
-use demi_core_store::search::SearchIndexes;
+use demi_backend_database::core_stores::{CoreStores, UserBlobs as BlobsOfUser};
+use demi_core_store::conversations::ConversationBlobs;
+use demi_core_store::schema::ReadBlob;
 use demi_backend_database::server_log::ServerLog;
 use demi_shared_types::BlobRef;
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::UserId;
 use demi_backend_host_access::stream::UserStreams;
 use demi_backend_page_sync::SyncRegistry;
 use demi_plugin_host::{Registry, RegistryError};
@@ -52,8 +53,6 @@ use crate::conversation::claude_cli::{CliInstalls, MachineSlot};
 use crate::tuning::{ConversationTuning, LifecycleTuning, MediaTuning, PageTuning, RunnerTuning};
 
 const CONTROL_DATABASE: &str = "control.sqlite";
-const CONVERSATION_DATABASES: &str = "conversations";
-const SEARCH_INDEXES: &str = "search";
 
 /// The services that span users, or that are needed before the user is
 /// known. The edge and every shard share them.
@@ -61,9 +60,8 @@ pub struct Services {
     /// The wall clock the backend reads times from.
     pub clock: Arc<dyn Clock>,
     pub control: ControlService,
-    pub conversations: ConversationStores,
-    /// Each user's search index, which the user's shard keeps.
-    pub search: SearchIndexes,
+    /// Each user's core store.
+    pub stores: CoreStores,
     pub blobs: BlobStores,
     pub hasher: PasswordHasher,
     pub sessions: WebSessions,
@@ -221,46 +219,46 @@ pub enum ServicesError {
 #[derive(Clone)]
 pub struct Storage {
     pub control: ControlService,
-    pub conversations: ConversationStores,
-    pub search: SearchIndexes,
+    pub stores: CoreStores,
     pub blobs: BlobStores,
 }
 
-/// The blobs a conversation database's migration reads: those of the
-/// conversation owner's namespace.
-struct OwnersBlobs {
-    control: ControlService,
+/// The blobs a conversation database's migration reads: those of its user's
+/// namespace.
+struct UsersBlobs {
     blobs: BlobStores,
     /// The backend's runtime, which the reads run on.
     runtime: tokio::runtime::Handle,
 }
 
-impl conversations::ConversationBlobs for OwnersBlobs {
-    fn read(&self, conversation: &ConversationId, blob: &BlobRef) -> Result<Option<Bytes>, String> {
+impl BlobsOfUser for UsersBlobs {
+    fn of(&self, user: &UserId) -> Arc<ConversationBlobs> {
+        Arc::new(OneUsersBlobs {
+            blobs: self.blobs.for_user(user),
+            runtime: self.runtime.clone(),
+        })
+    }
+}
+
+struct OneUsersBlobs {
+    blobs: demi_backend_blobs::blobs::UserBlobs,
+    runtime: tokio::runtime::Handle,
+}
+
+impl ReadBlob for OneUsersBlobs {
+    fn read(&self, blob: &BlobRef) -> Result<Option<Bytes>, String> {
         // A migration runs on its database's thread, outside the runtime,
         // and its transaction waits for the read: it blocks on it there.
-        self.runtime.block_on(async {
-            let record = self
-                .control
-                .conversation(conversation.clone())
-                .await
-                .map_err(|error| error.to_string())?;
-            let Some(record) = record else {
-                return Ok(None);
-            };
-            self.blobs
-                .for_user(&record.owner)
-                .get(blob)
-                .await
-                .map_err(|error| error.to_string())
-        })
+        self.runtime
+            .block_on(self.blobs.get(blob))
+            .map_err(|error| error.to_string())
     }
 }
 
 /// A database that did not close.
 #[derive(Debug, thiserror::Error)]
 pub enum CloseError {
-    #[error("a conversation database did not close: {0}")]
+    #[error("a user's database did not close: {0}")]
     Conversation(StorageError),
     #[error("the control database did not close: {0}")]
     Control(StorageError),
@@ -270,7 +268,7 @@ impl Storage {
     /// The bytes of the databases in `data_dir` that the next start
     /// migrates or converts; none when all have the current form.
     pub fn due(data_dir: &Path) -> Result<Option<demi_backend_database::update::Due>, StorageError> {
-        demi_backend_database::update::due(&data_dir.join(CONTROL_DATABASE), &data_dir.join(CONVERSATION_DATABASES))
+        demi_backend_database::update::due(&data_dir.join(CONTROL_DATABASE), data_dir)
     }
 
     /// The databases in `data_dir`, beside the object store `objects`; an
@@ -284,53 +282,26 @@ impl Storage {
         let control = ControlService::open(
             &data_dir.join(CONTROL_DATABASE),
             clock.clone(),
-            Arc::new(VaultReseal::new(vault)),
+            Arc::new(VaultReseal::new(vault, data_dir.to_owned())),
         )
         .await?;
-        let rest = async {
-            let blobs = BlobStores::new(objects, clock.clone());
-            let conversations = ConversationStores::open(
-                data_dir.join(CONVERSATION_DATABASES),
-                conversations::MAX_WRITERS,
-                Arc::new(OwnersBlobs {
-                    control: control.clone(),
-                    blobs: blobs.clone(),
-                    runtime: tokio::runtime::Handle::current(),
-                }),
-            )
-            .await?;
-            let search = SearchIndexes::open(data_dir.join(SEARCH_INDEXES)).await?;
-            Ok::<_, StorageError>((conversations, search, blobs))
-        }
-        .await;
-        match rest {
-            Ok((conversations, search, blobs)) => Ok(Self {
-                control,
-                conversations,
-                search,
-                blobs,
+        let blobs = BlobStores::new(objects, clock.clone());
+        let stores = CoreStores::new(
+            data_dir.to_owned(),
+            clock.clone(),
+            Arc::new(UsersBlobs {
+                blobs: blobs.clone(),
+                runtime: tokio::runtime::Handle::current(),
             }),
-            Err(error) => {
-                // Opening the rest left no connection open; the control
-                // database has one.
-                if let Err(failure) = control.close().await {
-                    tracing::error!(
-                        event = "control_db.close_failed",
-                        after = "start_failed",
-                        error = &failure as &dyn std::error::Error,
-                        "the control database did not close after a failed start"
-                    );
-                }
-                Err(error)
-            }
-        }
+        );
+        Ok(Self { control, stores, blobs })
     }
 
-    /// Closes the conversation databases, then the control database, and
+    /// Closes the users' core stores, then the control database, and
     /// answers every step that failed.
     pub async fn close(&self) -> Vec<CloseError> {
         let mut failures: Vec<CloseError> = self
-            .conversations
+            .stores
             .close()
             .await
             .into_iter()
@@ -354,8 +325,7 @@ impl Services {
     ) -> Result<Self, ServicesError> {
         let Storage {
             control,
-            conversations,
-            search,
+            stores,
             blobs,
         } = storage;
         let native = &settings.native;
@@ -364,7 +334,7 @@ impl Services {
         })?;
         let hasher = PasswordHasher::new().await?;
         let clock = providers.clock.clone();
-        let returning = Arc::new(Returning::take(&control).await?);
+        let returning = Arc::new(Returning::take(&control, &stores).await?);
         let edge = tokio::runtime::Handle::current();
         // The shared services' own client; each shard thread builds its own.
         let http = reqwest::Client::builder()
@@ -386,7 +356,15 @@ impl Services {
         let push_transport = public_push()?;
         let push = Pusher::new(control.clone(), keys.push, push_transport);
         let mode = control.instance_mode().await?;
-        let vault = Vault::new(control.clone(), keys.vault, mode, settings.shared_subscriptions, sync.clone());
+        let vault = Vault::new(
+            control.clone(),
+            stores.clone(),
+            keys.vault,
+            mode,
+            settings.shared_subscriptions,
+            sync.clone(),
+        )
+        .await?;
         // A data directory that predates the development sign-in, or holds
         // an earlier one, is brought to the current one before anything
         // infers with it.
@@ -458,15 +436,16 @@ impl Services {
             limiter: LoginLimiter::new(),
             email: EmailChanges::new(
                 control.clone(),
+                stores.clone(),
                 hasher.clone(),
                 settings.mail,
                 keys.email_codes,
             ),
             push,
             hasher,
+            claims: PendingClaims::new(control.clone(), settings.runners.claims_per_minute),
             control,
-            conversations,
-            search,
+            stores,
             blobs,
             vault,
             master_account: providers.master_account,
@@ -477,7 +456,6 @@ impl Services {
             claude_machine: providers.claude_machine,
             operations,
             logins,
-            claims: PendingClaims::new(settings.runners.claims_per_minute),
             log: settings.log,
             hook_limits: crate::schedules::HookLimits::default(),
             runners: settings.runners,

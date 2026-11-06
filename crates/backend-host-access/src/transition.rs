@@ -73,16 +73,16 @@
 //! attachment set. A move of directory on the same device adds no duplicate.
 //! Files do not move, and a path keeps referring to its original device.
 
-use demi_backend_database::conversation_index::{
+use demi_core_store::conversation_index::{
     ChangeOutcome, ConversationRecord, RecordChange, SwitchEnds, SwitchWrite, TargetSwitch,
 };
-use demi_backend_database::projects::ProjectRecord;
-use demi_backend_database::{Selection, Unselectable};
+use demi_core_store::projects::ProjectRecord;
+use demi_core_store::{Selection, Unselectable};
 use demi_core_store::StorageError;
 use demi_shared_gates::Reservation;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
 use crate::HostShard;
 use crate::access::HostAccessError;
@@ -251,7 +251,7 @@ impl dyn HostShard + '_ {
         change: RecordChange,
     ) -> Result<(), ChangeRefusal> {
         match self
-            .control()
+            .store()
             .change_conversation(id.clone(), change)
             .await?
         {
@@ -270,8 +270,8 @@ impl dyn HostShard + '_ {
         to: &ConversationTarget,
     ) -> Result<Selection, ChangeRefusal> {
         Ok(self
-            .control()
-            .selection_for(record.owner.clone(), record.id.clone(), to.clone())
+            .store()
+            .selection_for(record.id.clone(), to.clone())
             .await??)
     }
 
@@ -279,21 +279,19 @@ impl dyn HostShard + '_ {
     /// use made its device.
     async fn destination_device(
         &self,
-        owner: &UserId,
         to: &ConversationTarget,
     ) -> Result<Option<DeviceId>, ChangeRefusal> {
-        let control = self.control();
+        let store = self.store();
         Ok(match to {
-            ConversationTarget::Cloud { .. } => control
-                .managed_device(owner.clone())
+            ConversationTarget::Cloud { .. } => store
+                .managed_device()
                 .await?
                 .map(|device| device.id),
             ConversationTarget::Device { device_id, .. } => Some(device_id.clone()),
             ConversationTarget::Project { project_id } => Some(
-                control
+                store
                     .project(project_id.clone())
                     .await?
-                    .filter(|project| project.user == *owner)
                     .ok_or(ChangeRefusal::ProjectNotFound)?
                     .device,
             ),
@@ -316,8 +314,8 @@ impl dyn HostShard + '_ {
         expected: &ConversationRecord,
         to: ConversationTarget,
     ) -> Result<Option<Switched>, ChangeRefusal> {
-        let control = self.control();
-        let current = control
+        let store = self.store();
+        let current = store
             .conversation(expected.id.clone())
             .await?
             .ok_or(ChangeRefusal::NotFound)?;
@@ -325,12 +323,12 @@ impl dyn HostShard + '_ {
             return Err(ChangeRefusal::Archived);
         }
         let from = self.resolve_target(expected).await?;
-        let arriving = self.destination_device(&expected.owner, &to).await?;
+        let arriving = self.destination_device(&to).await?;
         let ends = SwitchEnds {
             departed: from.device().cloned().map(|device| (device, from.path().to_owned())),
             arriving,
         };
-        match control
+        match store
             .switch_conversation_target(expected.id.clone(), expected.target.clone(), from, to, ends)
             .await?
         {
@@ -348,7 +346,7 @@ impl dyn HostShard + '_ {
     /// known. A release that fails is logged and fails nothing.
     pub async fn release_departed(&self, id: &ConversationId, device: &DeviceId) {
         self.conversations().slot(id).jobs_ended_on(device).await;
-        let primary = match self.control().conversation(id.clone()).await {
+        let primary = match self.store().conversation(id.clone()).await {
             Ok(Some(record)) => match self.resolve_target(&record).await {
                 Ok(target) => target.device().cloned(),
                 // As for a record that cannot be read: where the conversation
@@ -396,14 +394,14 @@ impl dyn HostShard + '_ {
         record: &ConversationRecord,
         device: DeviceId,
     ) -> Result<bool, ChangeRefusal> {
-        let attached = self.control().attached_hosts(record.id.clone()).await?;
+        let attached = self.store().attached_hosts(record.id.clone()).await?;
         let Some(host) = attached.into_iter().find(|host| host.device == device) else {
             return Ok(false);
         };
         let slot = self.conversations().slot(&record.id);
         let transfers = slot.transfers.close_device(&device).await;
         let committed = self
-            .control()
+            .store()
             .change_conversation(record.id.clone(), RecordChange::Detach(device.clone()))
             .await;
         drop(transfers);

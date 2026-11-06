@@ -103,7 +103,7 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
     };
     // The run whose message this turn works for notified: it ends Notified.
     if let Some((mark, _)) = shard.schedule_input(&conversation)
-        && shard.services().control.notify_run(mark.run_id).await.map_err(failed)?
+        && shard.store().notify_run(mark.run_id).await.map_err(failed)?
     {
         shard.mark(demi_backend_page_sync::Part::Metadata(conversation.clone()));
     }
@@ -177,9 +177,7 @@ async fn status(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u
 /// `conversation`, unless it shows it or the user dismissed it there.
 async fn ask_to_turn_on(shard: &Shard, conversation: &ConversationId) -> Result<(), RpcError> {
     if shard
-        .services()
-        .control
-        .raise_notifications_card(conversation.clone())
+        .store().raise_notifications_card(conversation.clone())
         .await
         .map_err(failed)?
     {

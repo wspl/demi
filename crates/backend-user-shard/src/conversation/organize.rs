@@ -20,7 +20,7 @@
 use std::future::Future;
 use std::rc::{Rc, Weak};
 
-use demi_backend_database::conversation_index::{ConversationRecord, ConversationStart, Creation, RecordChange};
+use demi_core_store::conversation_index::{ConversationRecord, ConversationStart, Creation, RecordChange};
 use demi_conversation_lane_protocol::ClientContent;
 use demi_shared_types::WorkflowChoice;
 use demi_web_api_protocol::conversations::{ConversationPatch, ConversationTarget, FieldResult};
@@ -30,10 +30,10 @@ use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, Ty
 use demi_shared_types::output::{self, Cell, Table};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, Sender as AgentSender, SenderConversation, Timestamp};
 use demi_web_api_protocol::devices::DeviceKind;
-use demi_backend_database::workspaces::WorkspaceRecord;
+use demi_core_store::workspaces::WorkspaceRecord;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProjectId, WorkspaceId};
 use demi_web_api_protocol::search::{RESULTS_MAX, SearchText};
-use demi_backend_database::Selection;
+use demi_core_store::Selection;
 use demi_web_api_protocol::text::Trimmed;
 use futures_util::future::LocalBoxFuture;
 use schemars::JsonSchema;
@@ -205,9 +205,9 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
         return Err(refused("the message is empty"));
     }
     let target = call.args.conversation.clone();
-    let control = &shard.services().control;
-    let recipient = match control.conversation(target.clone()).await.map_err(failed)? {
-        Some(record) if record.owner == *shard.user() => record,
+    let store = shard.store();
+    let recipient = match store.conversation(target.clone()).await.map_err(failed)? {
+        Some(record) => record,
         // Another user's conversation is none of the caller's.
         _ => return Err(failed(format!("no conversation {target} (see `demi conversation list`)"))),
     };
@@ -217,8 +217,7 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
     if recipient.archived() {
         return Err(failed(format!("conversation {target} is archived, and only the user restores it")));
     }
-    let sending = control
-        .conversation(here.clone())
+    let sending = store.conversation(here.clone())
         .await
         .map_err(failed)?
         .ok_or_else(|| failed("the sending conversation is gone"))?;
@@ -297,16 +296,15 @@ async fn new(shard: Rc<Shard>, call: Call<NewArgs>, port: RpcPort) -> Result<u8,
         return Err(refused("the brief is empty"));
     }
     let title = call.args.title.as_deref().map(str::trim).filter(|title| !title.is_empty());
-    let control = &shard.services().control;
-    let starting = control
-        .conversation(here.clone())
+    let store = shard.store();
+    let starting = store.conversation(here.clone())
         .await
         .map_err(failed)?
         .ok_or_else(|| failed("the starting conversation is gone"))?;
     let sender = sender_of(&shard, &call, &starting)?;
     let (workspace, target, workflow) = match &call.args.project {
         Some(id) => {
-            let projects = control.projects(shard.user().clone()).await.map_err(failed)?;
+            let projects = store.projects().await.map_err(failed)?;
             let project = projects
                 .iter()
                 .find(|project| project.id == *id)
@@ -372,7 +370,7 @@ async fn new(shard: Rc<Shard>, call: Call<NewArgs>, port: RpcPort) -> Result<u8,
         .map_err(|reason| unsent("the brief was not delivered", reason))?;
     let shown = match title {
         Some(title) => Some(title.to_owned()),
-        None => control.conversation(record.id.clone()).await.ok().flatten().and_then(|record| record.title),
+        None => store.conversation(record.id.clone()).await.ok().flatten().and_then(|record| record.title),
     };
     let shown = shown.unwrap_or_else(|| "untitled".to_owned());
     port.stdout(format!("Started \u{201c}{shown}\u{201d} ({id}).\n")).await?;
@@ -391,7 +389,7 @@ async fn place_of(shard: &Shard, starting: &ConversationRecord) -> Result<Conver
         // A worktree is named by its directory, which selects it in its
         // project: the Cloud's as a Cloud directory.
         Selection::Project { device_id, worktree: Some(worktree), .. } => {
-            let device = shard.services().control.device(device_id.clone()).await.map_err(failed)?;
+            let device = shard.store().device(device_id.clone()).await.map_err(failed)?;
             match device {
                 Some(device) if device.kind == DeviceKind::Managed => ConversationTarget::Cloud {
                     path: Some(worktree.path.clone()),
@@ -421,12 +419,10 @@ struct ListedProject {
 
 async fn projects(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let kept = shard
-        .services()
-        .control
-        .projects(shard.user().clone())
+        .store().projects()
         .await
         .map_err(failed)?;
-    let workspaces = shard.services().control.workspaces(shard.user().clone()).await.map_err(failed)?;
+    let workspaces = shard.store().workspaces().await.map_err(failed)?;
     let mut projects = Vec::new();
     for project in &kept {
         projects.push(ListedProject {
@@ -486,20 +482,19 @@ struct ListedConversation {
 const LISTED_PER_PAGE: usize = 20;
 
 async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let services = shard.services();
     let given = call.args.words.clone().unwrap_or_default();
     let words = given.join(" ");
     // Whether the app's Search stopped at its most: more may match.
     let mut capped = false;
     let mut records = if words.trim().is_empty() {
-        services.control.conversations(shard.user().clone(), false).await.map_err(failed)?
+        shard.store().conversations(false).await.map_err(failed)?
     } else {
         let query = SearchText::try_from(words).map_err(|error| refused(error))?;
         let mut records = Vec::new();
-        let results = search(services, shard.user(), &query, None).await.map_err(failed)?;
+        let results = search(shard.store(), &query, None).await.map_err(failed)?;
         capped = results.len() >= RESULTS_MAX;
         for found in results {
-            if let Some(record) = services.control.conversation(found.conversation_id).await.map_err(failed)?
+            if let Some(record) = shard.store().conversation(found.conversation_id).await.map_err(failed)?
                 && !record.archived()
             {
                 records.push(record);
@@ -513,8 +508,8 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
     if page > pages {
         return Err(failed(format!("the list has {pages} pages")));
     }
-    let projects = services.control.projects(shard.user().clone()).await.map_err(failed)?;
-    let workspaces = services.control.workspaces(shard.user().clone()).await.map_err(failed)?;
+    let projects = shard.store().projects().await.map_err(failed)?;
+    let workspaces = shard.store().workspaces().await.map_err(failed)?;
     let project = |selection: &Selection| match selection {
         Selection::Project { project_id, .. } => projects
             .iter()
@@ -583,7 +578,7 @@ impl Shard {
     /// A device's name, or Cloud for the user's Cloud, as Demi's commands
     /// name it.
     pub(crate) async fn host_name(&self, device: &DeviceId) -> String {
-        match self.services().control.device(device.clone()).await {
+        match self.store().device(device.clone()).await {
             Ok(Some(record)) if record.kind == DeviceKind::Managed => "Cloud".to_owned(),
             Ok(Some(record)) => record.name,
             _ => device.to_string(),

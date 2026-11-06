@@ -21,14 +21,14 @@
 
 use rusqlite::Transaction;
 
-use super::super::{Migration, ResealSealed, corrupt_text};
+use super::super::{Migration, ControlSteps, corrupt_text};
 
 pub(super) const MIGRATION: Migration = Migration::Code(control_from_0_1_5614);
 
 /// The schema this step leads to, whose tables it takes.
 const NEXT: &str = include_str!("from_0_1_5658.sql");
 
-fn control_from_0_1_5614(transaction: &Transaction<'_>, _: &dyn ResealSealed) -> rusqlite::Result<()> {
+fn control_from_0_1_5614(transaction: &Transaction<'_>, _: &dyn ControlSteps) -> rusqlite::Result<()> {
     transaction.execute_batch(CONTROL_SERVER_SETTINGS_FROM_0_1_5614)?;
     transaction.execute_batch(
         "

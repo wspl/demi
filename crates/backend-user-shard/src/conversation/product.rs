@@ -126,9 +126,7 @@ impl SubagentSource for ShardSubagents {
         Box::pin(async move {
             let shard = self.shard()?;
             let settings = shard
-                .services()
-                .control
-                .subagent_settings(shard.user().clone())
+                .store().subagent_settings()
                 .await
                 .map_err(|error| error.to_string())?;
             let entries = entries(&shard).await.map_err(|error| error.to_string())?;
@@ -301,7 +299,7 @@ impl HostResolver for ShardHosts {
     async fn host_name(&self, device: &str) -> Option<String> {
         let shard = self.shard.upgrade()?;
         let device = DeviceId::try_from(device.to_owned()).ok()?;
-        shard.services().control.device(device).await.ok().flatten().map(|record| record.name)
+        shard.store().device(device).await.ok().flatten().map(|record| record.name)
     }
 
     /// The conversation's target, read without reaching the Host.
@@ -441,8 +439,7 @@ impl demi_agent_server::AgentsSource for ShardAgents {
                 return kept;
             };
             let conversation = demi_backend_host_access::conversation_of(root);
-            let services = shard.services();
-            match services.control.conversation_costs(conversation.clone()).await {
+            match shard.store().conversation_costs(conversation.clone()).await {
                 Ok(costs) => {
                     kept.costs = costs
                         .into_iter()
@@ -458,8 +455,9 @@ impl demi_agent_server::AgentsSource for ShardAgents {
                     "a conversation's kept costs were not read"
                 ),
             }
-            match services
-                .conversations
+            match shard
+                .store()
+                .databases()
                 .read(&conversation, demi_core_store::side_questions::cards)
                 .await
             {
@@ -492,7 +490,7 @@ impl demi_agent_server::AgentsSource for ShardAgents {
                 return std::collections::HashMap::new();
             };
             let conversation = demi_backend_host_access::conversation_of(root);
-            match shard.services().control.conversation_charts(conversation.clone()).await {
+            match shard.store().conversation_charts(conversation.clone()).await {
                 Ok(charts) => charts.into_iter().collect(),
                 // The cards show no rate and no chart until the agent's next
                 // turn call.

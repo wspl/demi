@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use demi_backend_database::providers::CredentialRow;
+use demi_core_store::providers::CredentialRow;
 use demi_provider_common::credentials::CredentialPool;
 use demi_provider_registry::store::{RegistryStore, StoreError, StoredAccount};
 use demi_shared_types::{CatalogRecord, QuotaSnapshot, Timestamp};
@@ -57,8 +57,7 @@ impl RegistryStore for Vault {
         snapshot: Arc<QuotaSnapshot>,
     ) -> BoxFuture<'_, Result<(), StoreError>> {
         async move {
-            self.control()
-                .set_credential_quota(entry, account, snapshot)
+            self.store_of(&entry).await.map_err(StoreError::new)?.set_credential_quota(entry, account, snapshot)
                 .await
                 .map_err(StoreError::new)
         }
@@ -70,13 +69,12 @@ impl RegistryStore for Vault {
     }
 
     fn catalog(&self, entry: ProviderId) -> BoxFuture<'_, Result<Option<CatalogRecord>, StoreError>> {
-        async move { self.control().catalog_record(entry).await.map_err(StoreError::new) }.boxed()
+        async move { self.store_of(&entry).await.map_err(StoreError::new)?.catalog_record(entry).await.map_err(StoreError::new) }.boxed()
     }
 
     fn put_catalog(&self, entry: ProviderId, record: CatalogRecord) -> BoxFuture<'_, Result<(), StoreError>> {
         async move {
-            self.control()
-                .put_catalog_record(entry, record)
+            self.store_of(&entry).await.map_err(StoreError::new)?.put_catalog_record(entry, record)
                 .await
                 .map_err(StoreError::new)
         }
@@ -84,11 +82,11 @@ impl RegistryStore for Vault {
     }
 
     fn delete_catalog(&self, entry: ProviderId) -> BoxFuture<'_, Result<(), StoreError>> {
-        async move { self.control().delete_catalog_record(entry).await.map_err(StoreError::new) }.boxed()
+        async move { self.store_of(&entry).await.map_err(StoreError::new)?.delete_catalog_record(entry).await.map_err(StoreError::new) }.boxed()
     }
 
     fn retired_models(&self, entry: ProviderId, key_digest: String) -> BoxFuture<'_, Result<Vec<String>, StoreError>> {
-        async move { self.control().retired_models(entry, key_digest).await.map_err(StoreError::new) }.boxed()
+        async move { self.store_of(&entry).await.map_err(StoreError::new)?.retired_models(entry, key_digest).await.map_err(StoreError::new) }.boxed()
     }
 
     fn retire_model(
@@ -100,8 +98,7 @@ impl RegistryStore for Vault {
         at: Timestamp,
     ) -> BoxFuture<'_, Result<bool, StoreError>> {
         async move {
-            self.control()
-                .retire_model(entry, key_digest, model, answered_by, at)
+            self.store_of(&entry).await.map_err(StoreError::new)?.retire_model(entry, key_digest, model, answered_by, at)
                 .await
                 .map_err(StoreError::new)
         }

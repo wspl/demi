@@ -69,10 +69,10 @@ use std::rc::Rc;
 use demi_backend_blobs::ObjectError;
 use demi_backend_cloud::machine::{CloudAdmission, CloudError};
 use demi_core_store::StorageError;
-use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTarget};
-use demi_backend_database::devices::DeviceRecord;
+use demi_core_store::conversation_index::{ConversationRecord, ExecutionTarget};
+use demi_core_store::devices::DeviceRecord;
 use demi_agent_tools::duration;
-use demi_backend_database::projects::TypedDirectory;
+use demi_core_store::projects::TypedDirectory;
 use demi_runner_client::{Admission, Link, RemoteHost, WeakLink, Withdrawal};
 use demi_backend_runners::file_gate::{FileGate, FileLease};
 use demi_host_interface::{Host as _, HostError, HostErrorKind, HostFs};
@@ -345,7 +345,7 @@ impl ConversationSlot {
 
 impl Conversations {
     /// The gate of the list of saved messages `key` names
-    /// (`ControlService::saved_sharers`).
+    /// (`CoreStore::saved_sharers`).
     pub fn saved_list(&self, key: &str) -> Rc<SerialGate> {
         self.saved_lists.borrow_mut().entry(key.to_owned()).or_default().clone()
     }
@@ -691,10 +691,7 @@ impl dyn HostShard + '_ {
         &self,
         id: &ConversationId,
     ) -> Result<ConversationRecord, HostAccessError> {
-        let record = self.control().conversation(id.clone()).await?;
-        record
-            .filter(|record| record.owner == *self.user())
-            .ok_or(HostAccessError::Missing)
+        self.store().conversation(id.clone()).await?.ok_or(HostAccessError::Missing)
     }
 
     /// Runs `operation` once on the conversation's Host: its primary Host, or
@@ -979,7 +976,7 @@ impl dyn HostShard + '_ {
         allocate: bool,
         agent: bool,
     ) -> Result<Selected, HostAccessError> {
-        let control = self.control();
+        let store = self.store();
         let record = self.owned_conversation(id).await?;
         if record.archived() {
             return Err(Refusal::Archived.into());
@@ -996,13 +993,13 @@ impl dyn HostShard + '_ {
             ),
         };
         let found = match (&named, &target) {
-            (Some(host), _) => control.device(host.device.clone()).await?,
+            (Some(host), _) => store.device(host.device.clone()).await?,
             (None, ExecutionTarget::Cloud { .. }) if allocate => {
                 Some(self.cloud_shard().cloud_device().await?)
             }
             (None, ExecutionTarget::Cloud { .. }) => Some(
-                control
-                    .managed_device(record.owner.clone())
+                store
+                    .managed_device()
                     .await?
                     .ok_or(Refusal::Stopped)?,
             ),
@@ -1010,10 +1007,10 @@ impl dyn HostShard + '_ {
                 None,
                 ExecutionTarget::Device { device_id, .. }
                 | ExecutionTarget::Project { device_id, .. },
-            ) => control.device(device_id.clone()).await?,
+            ) => store.device(device_id.clone()).await?,
         };
         let device = found
-            .filter(|device| device.is_host_of(&record.owner))
+            .filter(DeviceRecord::is_host)
             .ok_or(Refusal::DeviceGone)?;
         let (root, typed, primary) = match named {
             // A subagent's own Host starts its shells where the device does,
@@ -1098,7 +1095,7 @@ impl dyn HostShard + '_ {
     /// The first time a conversation's work reaches its directory over a
     /// connection: its Host creates the directory with its parents and names
     /// it as its file system keeps it, once per connection, and the name
-    /// replaces what the user typed (`ControlService::name_directory`).
+    /// replaces what the user typed (`CoreStore::name_directory`).
     /// Answers the name when it replaced the typed one.
     ///
     /// A directory the Host cannot make fails this use with the reason its
@@ -1125,7 +1122,7 @@ impl dyn HostShard + '_ {
             return Ok(None);
         }
         let named = self
-            .control()
+            .store()
             .name_directory(conversation.clone(), typed.clone(), canonical.clone())
             .await?;
         if named.conversations.is_empty() {
@@ -1170,11 +1167,11 @@ impl dyn HostShard + '_ {
         record: &ConversationRecord,
         target: &ExecutionTarget,
     ) -> Result<Vec<ReachableHost>, StorageError> {
-        let control = self.control();
+        let store = self.store();
         let primary = target.device();
         let mut hosts = Vec::new();
         if let Some(device) = primary {
-            let name = control
+            let name = store
                 .device(device.clone())
                 .await?
                 .map_or_else(|| device.to_string(), |record| record.name);
@@ -1185,7 +1182,7 @@ impl dyn HostShard + '_ {
                 role: HostRole::Primary,
             });
         }
-        for attached in control.attached_hosts(record.id.clone()).await? {
+        for attached in store.attached_hosts(record.id.clone()).await? {
             if Some(&attached.device) == primary {
                 continue;
             }
@@ -1207,7 +1204,7 @@ impl dyn HostShard + '_ {
             if hosts.iter().any(|host| host.device == device) {
                 continue;
             }
-            let name = control
+            let name = store
                 .device(device.clone())
                 .await?
                 .map_or_else(|| device.to_string(), |record| record.name);
@@ -1266,14 +1263,14 @@ impl dyn HostShard + '_ {
 
     /// Every device of the user, paired and managed.
     async fn user_devices(&self) -> Result<Vec<DeviceId>, StorageError> {
-        let control = self.control();
-        let mut devices: Vec<DeviceId> = control
-            .paired_devices(self.user().clone())
+        let store = self.store();
+        let mut devices: Vec<DeviceId> = store
+            .paired_devices()
             .await?
             .into_iter()
             .map(|device| device.id)
             .collect();
-        devices.extend(control.managed_device(self.user().clone()).await?.map(|device| device.id));
+        devices.extend(store.managed_device().await?.map(|device| device.id));
         Ok(devices)
     }
 }

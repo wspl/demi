@@ -241,8 +241,7 @@ impl AccountMachine for ClaudeMachine {
             let entry = ProviderId::try_from(entry).map_err(|error| StartError(error.to_string()))?;
             machine
                 .on_machine(move |shard, abandoned| async move {
-                    let control = &shard.services().control;
-                    let context = match provider_context(control, shard.user(), &entry).await {
+                    let context = match provider_context(shard.store(), &entry).await {
                         Ok(context) => context,
                         Err(error) => {
                             tracing::warn!(event = "claude_code.command_context_missing", account = %entry, %error, "Claude Code account work found no command context");
@@ -318,12 +317,11 @@ impl CrossPlacement {
 
     /// The command context the package's operations run under for the work.
     async fn context(&self, shard: &Shard) -> Result<CommandContext, StartError> {
-        let control = &shard.services().control;
         let context = match &self.work {
             ProcessWork::Conversation(id) => {
-                command_context(control, shard.user(), id, CommandCaller::User {}).await
+                command_context(shard.store(), id, CommandCaller::User {}).await
             }
-            ProcessWork::Account(provider) => provider_context(control, shard.user(), provider).await,
+            ProcessWork::Account(provider) => provider_context(shard.store(), provider).await,
         };
         context.map_err(|error| StartError(format!("The command context could not be read: {error}")))
     }
@@ -1621,7 +1619,7 @@ impl Shard {
         let machine = self
             .claude_machine()
             .ok_or("The Claude Code machine is not available")?;
-        let context = provider_context(&self.services().control, self.user(), entry)
+        let context = provider_context(self.store(), entry)
             .await
             .map_err(|error| format!("The command context could not be read: {error}"))?;
         let user = self.user().clone();

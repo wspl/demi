@@ -72,21 +72,58 @@
 //! its completion instead. The crate holds no domain's policy: the domains
 //! above it decide and it stores.
 
+pub mod attachments;
+pub mod cloud;
 pub mod columns;
 pub mod command_outputs;
 mod contents;
 pub mod conversation_attachments;
+pub mod conversation_index;
 pub mod conversations;
+pub mod credentials;
+pub mod deletions;
+pub mod devices;
+pub mod drafts;
+pub mod forks;
+pub mod host_workflows;
+pub mod idle_compactions;
+pub mod instructions;
+pub mod interrupted_turns;
+pub mod media_jobs;
+pub mod notifications_card;
+pub mod panels;
+pub mod preferences;
 mod path;
+pub mod permissions;
+pub mod plugin_reports;
+pub mod plugin_secrets;
+mod plugin_store;
+pub mod plugin_values;
+pub mod port_forwards;
+pub mod projects;
+pub mod providers;
 mod records;
+pub mod references;
 pub mod running;
+pub mod running_jobs;
+pub mod saved;
+pub mod schedules;
 pub mod schema;
 pub mod search;
+mod selection;
 pub mod sequences;
 pub mod shares;
 pub mod side_questions;
+pub mod sidebar;
 pub mod sqlite;
+pub mod store;
+pub mod subagents;
+pub mod suggested_replies;
 pub mod tree;
+pub mod usage;
+pub mod workspaces;
+
+pub use selection::{CLOUD_HOME, Selection, Unselectable, Worktree};
 
 /// Why a storage operation failed.
 #[derive(Debug, thiserror::Error)]

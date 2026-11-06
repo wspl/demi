@@ -38,7 +38,7 @@ impl dyn HostShard + '_ {
         let Ok(attachment) = AttachmentId::try_from(reference) else {
             return not_available();
         };
-        let record = self.control().attachment(attachment).await.map_err(|error| error.to_string())?;
+        let record = self.store().attachment(attachment).await.map_err(|error| error.to_string())?;
         let resolved = |outcome: &'static str| {
             tracing::info!(
                 event = "attachment.resolved",
@@ -49,7 +49,7 @@ impl dyn HostShard + '_ {
                 "an upload a message names was looked up"
             );
         };
-        let Some(record) = record.filter(|record| record.owner == *self.user()) else {
+        let Some(record) = record else {
             resolved("unknown");
             return not_available();
         };

@@ -79,9 +79,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_core_store::StorageError;
-use demi_backend_database::control::ControlService;
-use demi_backend_database::credentials::{CredentialSeal, StoredCredential};
-use demi_backend_database::permissions::{
+use demi_core_store::store::CoreStore;
+use demi_core_store::credentials::{CredentialSeal, StoredCredential};
+use demi_core_store::permissions::{
     AnswerProblem, Answered, Asked, AskingAgent, Checked, CredentialAsk, CredentialRead,
     Needed, PermissionRefusal, SavedByAgent, StoredAsk, StoredRequest, Undecided,
 };
@@ -101,7 +101,7 @@ use tokio::sync::oneshot;
 
 /// What the permissions need of their user's shard.
 pub trait PermissionShard {
-    fn control(&self) -> &ControlService;
+    fn store(&self) -> &CoreStore;
 
     /// The marks of the user's changes, which reach each of the user's
     /// pages.
@@ -290,7 +290,7 @@ impl Drop for Wait {
         let conversation = self.conversation.clone();
         let request = self.request.clone();
         self.shard.spawn(Box::pin(async move {
-            match shard.control().withdraw_credential_request(request.clone()).await {
+            match shard.store().withdraw_credential_request(request.clone()).await {
                 Ok(true) => changed(&*shard, &conversation),
                 Ok(false) => {}
                 // The next start withdraws every credential request left.
@@ -393,7 +393,7 @@ pub async fn check(
         request: request.clone(),
     };
     let checked = shard
-        .control()
+        .store()
         .check_permission(conversation.clone(), request.clone(), needed, command, agent)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
@@ -515,7 +515,7 @@ pub async fn ask_credential(
         request: request.clone(),
     };
     let asked = shard
-        .control()
+        .store()
         .ask_credential(conversation.clone(), request.clone(), name.clone(), ask, command, agent)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
@@ -543,8 +543,8 @@ pub async fn save_credential(
 ) -> Result<Answered, RpcError> {
     let Asking { conversation, .. } = asking(shard, invocation)?;
     let saved = shard
-        .control()
-        .save_credential(conversation.clone(), name.clone(), ask, values, shard.credential_seal())
+        .store()
+        .save_credential(name.clone(), ask, values, shard.credential_seal())
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     match saved {
@@ -599,10 +599,10 @@ pub async fn read_credential(
     name: String,
     field: String,
 ) -> Result<String, RpcError> {
-    let Asking { conversation, .. } = asking(shard, invocation)?;
+    asking(shard, invocation)?;
     let read = shard
-        .control()
-        .read_credential(conversation, name.clone(), field.clone(), shard.credential_seal())
+        .store()
+        .read_credential(name.clone(), field.clone(), shard.credential_seal())
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     match read {
@@ -642,7 +642,7 @@ pub async fn read(
     conversation: &ConversationId,
 ) -> Result<ConversationPermissions, StorageError> {
     let revision = shard.revisions().of(conversation);
-    let requests = shard.control().permission_requests(conversation.clone()).await?;
+    let requests = shard.store().permission_requests(conversation.clone()).await?;
     let categories = declared(shard).await;
     let category = |id: &str| {
         let declared = categories.iter().find(|category| category.id == id);
@@ -709,7 +709,7 @@ pub async fn decide(
     match (decision, credential) {
         (PermissionDecision::Allow, Some(RequestedValues { values })) => {
             let Answered { credential, keep, others } = shard
-                .control()
+                .store()
                 .answer_credential(
                     conversation.clone(),
                     request.clone(),
@@ -733,7 +733,7 @@ pub async fn decide(
         )),
         (decision, None) => {
             let decided = shard
-                .control()
+                .store()
                 .decide_permission(conversation.clone(), request, decision)
                 .await??;
             let outcome = match decision {
@@ -838,7 +838,7 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
         .await;
     match admitted {
         Ok(_) => {
-            if let Err(error) = shard.control().delivered_permission(request.id.clone()).await {
+            if let Err(error) = shard.store().delivered_permission(request.id.clone()).await {
                 // The request stays decided, and the next start delivers it
                 // again under its id, which the agent admits once.
                 tracing::warn!(event = "permission_decision.forget_failed", request = %request.id, conversation = %request.conversation, %error, "a delivered permission decision was not forgotten");

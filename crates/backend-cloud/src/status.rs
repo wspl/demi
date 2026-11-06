@@ -16,7 +16,7 @@ use crate::CloudShard;
 
 impl dyn CloudShard {
     pub async fn cloud_status(&self) -> Result<CloudStatus, StorageError> {
-        let Some(device) = self.control().managed_device(self.user().clone()).await? else {
+        let Some(device) = self.store().managed_device().await? else {
             return Ok(CloudStatus {
                 device: None,
                 state: CloudState::Unallocated,

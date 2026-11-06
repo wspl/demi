@@ -16,13 +16,12 @@
 
 use std::rc::Rc;
 
-use demi_backend_database::usage::UsageWritten;
+use demi_core_store::usage::UsageWritten;
 use demi_backend_host_access::root_of;
 use demi_backend_page_sync::Part;
-use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::RecvError;
 
-use crate::shard::{Shard, Shards};
+use crate::shard::Shard;
 
 impl Shard {
     /// Tells the conversation of the row `written` what its agent costs now.
@@ -38,23 +37,23 @@ impl Shard {
     }
 }
 
-/// Hands each ledger row from `written` to its user's shard, which announces
-/// it to the conversation's pages, until the backend closes. A follower that
-/// fell behind misses the rows it lost, which it logs.
-pub async fn follow_usage(mut written: broadcast::Receiver<UsageWritten>, shards: Shards) {
-    loop {
-        match written.recv().await {
-            Ok(row) => {
-                let user = row.user.clone();
-                if shards.of(&user).adopt(move |shard| shard.announce_cost(row)).await.is_err() {
-                    // The backend is shutting down.
-                    return;
-                }
+impl Shard {
+    /// Announces each ledger row of the user's to the conversation's pages,
+    /// until the shard closes. A follower that fell behind misses the rows it
+    /// lost, which it logs.
+    pub(crate) async fn follow_usage(self: Rc<Self>) {
+        let mut written = self.store().usage_written();
+        loop {
+            tokio::select! {
+                () = self.closed() => return,
+                row = written.recv() => match row {
+                    Ok(row) => self.clone().announce_cost(row).await,
+                    Err(RecvError::Lagged(missed)) => {
+                        tracing::warn!(event = "usage_ledger.announce_missed", missed, "ledger rows were not announced to their conversations");
+                    }
+                    Err(RecvError::Closed) => return,
+                },
             }
-            Err(RecvError::Lagged(missed)) => {
-                tracing::warn!(event = "usage_ledger.announce_missed", missed, "ledger rows were not announced to their conversations");
-            }
-            Err(RecvError::Closed) => return,
         }
     }
 }

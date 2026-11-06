@@ -12,6 +12,7 @@ use std::time::Duration;
 use demi_backend_cloud::machine::Cloud;
 use demi_backend_cloud::{CloudServices, CloudShard, ConversationHold};
 use demi_backend_database::control::ControlService;
+use demi_core_store::store::CoreStore;
 use demi_backend_idle_watch::Activity;
 use demi_backend_page_sync::UserMarks;
 use demi_plugin_host::Lost;
@@ -46,6 +47,10 @@ impl CloudShard for Shard {
 
     fn control(&self) -> &ControlService {
         &self.services.control
+    }
+
+    fn store(&self) -> &CoreStore {
+        &self.store
     }
 
     fn cloud_services(&self) -> &CloudServices {
@@ -209,8 +214,8 @@ pub async fn route_deaths(
         let Ok(id) = DeviceId::try_from(device.as_str()) else {
             continue;
         };
-        let owner = match services.control.device(id.clone()).await {
-            Ok(Some(record)) => record.user,
+        let owner = match services.control.device_owner(id.clone()).await {
+            Ok(Some(owner)) => owner,
             // A device the backend no longer has is no one's to stop.
             Ok(None) => continue,
             Err(error) => {
@@ -237,8 +242,8 @@ pub async fn route_statuses(
         let Ok(id) = DeviceId::try_from(device.as_str()) else {
             continue;
         };
-        let owner = match services.control.device(id.clone()).await {
-            Ok(Some(record)) => record.user,
+        let owner = match services.control.device_owner(id.clone()).await {
+            Ok(Some(owner)) => owner,
             // A device the backend no longer has shows on no page.
             Ok(None) => continue,
             Err(error) => {

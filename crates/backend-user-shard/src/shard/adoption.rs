@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use axum::extract::ws::Message;
 use demi_core_store::StorageError;
-use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval, FirstHome};
+use demi_core_store::devices::{DeviceChange, DeviceRecord, DeviceRemoval, FirstHome};
 use demi_backend_page_sync::Part;
 use demi_plugin_host::Lost;
 use demi_runner_client::{Beginning, Hello, Link, LinkOptions, RemoteHost, host_identity};
@@ -67,7 +67,7 @@ impl Shard {
         }
         // The jobs the backend recorded on the device, which a backend that
         // started again takes up (`crates/runner-client/src/device_jobs.rs`).
-        let recorded = match self.services().control.running_jobs(device.id.clone()).await {
+        let recorded = match self.store().running_jobs(device.id.clone()).await {
             Ok(recorded) => recorded,
             Err(error) => {
                 // Without them a restarted backend stops the device's jobs
@@ -83,9 +83,7 @@ impl Shard {
         // Without them the runner would remove every one, so a runner whose
         // welcome cannot name them is dropped and connects again.
         let conversations = match self
-            .services()
-            .control
-            .conversation_order(self.user().clone())
+            .store().conversation_order()
             .await
         {
             Ok(conversations) => conversations.iter().map(ToString::to_string).collect(),
@@ -94,7 +92,7 @@ impl Shard {
                 return;
             }
         };
-        let archived = match self.services().control.conversations(self.user().clone(), true).await {
+        let archived = match self.store().conversations(true).await {
             Ok(archived) => archived.iter().map(|record| record.id.to_string()).collect(),
             Err(error) => {
                 tracing::warn!(event = "runner_adoption.read_failed", host_id = %device.id, what = "archived_conversations", outcome = "runner_reconnects", error = &error as &dyn std::error::Error, "the user's archived conversations could not be read");
@@ -109,7 +107,7 @@ impl Shard {
         // Beside the conversations whose records name the device, those with a
         // live subagent there, which a move of the conversation left on it.
         let with_agents = self.conversations_with_agents_on(&device.id);
-        let held = match self.services().control.conversations_on(self.user().clone(), device.id.clone()).await {
+        let held = match self.store().conversations_on(device.id.clone()).await {
             Ok(held) => held
                 .into_iter()
                 .chain(with_agents)
@@ -347,7 +345,7 @@ impl Shard {
             hello,
         });
         let seen = DeviceRecorder::new(
-            self.services().control.clone(),
+            self.store().clone(),
             self.services().sync.of(self.user()),
         );
         let serving = self
@@ -392,7 +390,7 @@ impl Shard {
     /// says they were lost, to the upgrade when the release changed
     /// (`crates/runner-client/src/device_jobs.rs`).
     pub async fn take_up_stopped_cloud(self: Rc<Self>, device: DeviceId) {
-        match self.services().control.running_jobs(device.clone()).await {
+        match self.store().running_jobs(device.clone()).await {
             Ok(recorded) => self.take_up(recorded.into_iter().map(|recorded| recorded.conversation)),
             Err(error) => {
                 tracing::warn!(event = "runner_adoption.read_failed", host_id = %device, what = "stopped_cloud_jobs", error = &error as &dyn std::error::Error, "the stopped Cloud's running jobs could not be read");
@@ -529,7 +527,7 @@ impl Shard {
     /// connected download `next` ahead while it serves (`crates/runner/src/update.rs`): each is counted at once, and `next` hears how its
     /// download went, a connection that ends failing it.
     pub async fn prefetch(self: &Rc<Self>, next: Arc<NextRelease>) {
-        let devices = match self.services().control.paired_devices(self.user().clone()).await {
+        let devices = match self.store().paired_devices().await {
             Ok(devices) => devices,
             Err(error) => {
                 // Their runners download after the switch.
@@ -580,9 +578,7 @@ impl Shard {
     /// come here.
     pub async fn revoke_device(self: &Rc<Self>, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
         let removal = self
-            .services()
-            .control
-            .delete_device(device.clone())
+            .store().delete_device(device.clone())
             .await?;
         self.mark(Part::Devices);
         if !removal.projects.is_empty() {
@@ -610,9 +606,9 @@ impl Shard {
     /// enabled again. Their runners connect again by themselves and are turned
     /// away without a word.
     pub async fn disconnect_runners(&self, reason: &str) -> Result<(), StorageError> {
-        let control = &self.services().control;
-        let mut devices = control.paired_devices(self.user().clone()).await?;
-        devices.extend(control.managed_device(self.user().clone()).await?);
+        let store = self.store();
+        let mut devices = store.paired_devices().await?;
+        devices.extend(store.managed_device().await?);
         for device in devices {
             self.devices().disconnect(&device.id, reason);
         }
@@ -628,7 +624,7 @@ impl Shard {
         device: DeviceId,
         change: DeviceChange,
     ) -> Result<Option<DeviceDto>, StorageError> {
-        let Some(changed) = self.services().control.change_device(device, change).await? else {
+        let Some(changed) = self.store().change_device(device, change).await? else {
             return Ok(None);
         };
         self.mark(Part::Devices);
@@ -647,8 +643,7 @@ impl Shard {
     pub async fn device_list(&self) -> Result<Vec<DeviceDto>, StorageError> {
         self.devices()
             .device_list(
-                &self.services().control,
-                self.user(),
+                self.store(),
                 self.services().public_url.get(),
             )
             .await

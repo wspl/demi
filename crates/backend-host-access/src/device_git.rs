@@ -152,11 +152,11 @@ impl dyn HostShard + '_ {
     /// The Host of the user's paired device `device`, while it is connected.
     async fn git_device(&self, device: &DeviceId) -> Result<RemoteHost, DeviceGitError> {
         let paired = self
-            .control()
+            .store()
             .device(device.clone())
             .await
             .map_err(|error| DeviceGitError::Failed(error.to_string()))?
-            .is_some_and(|record| record.user == *self.user() && record.kind == DeviceKind::User);
+            .is_some_and(|record| record.kind == DeviceKind::User);
         if !paired {
             return Err(DeviceGitError::NotFound);
         }

@@ -3,7 +3,7 @@
 //! changes the user's pages and the conversations' sockets hear of.
 
 use demi_core_store::StorageError;
-use demi_backend_database::workspaces::{MoveRefusal, WorkspaceDeletion};
+use demi_core_store::workspaces::{MoveRefusal, WorkspaceDeletion};
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::ids::{ConversationId, ProjectId, WorkspaceId};
 
@@ -32,23 +32,22 @@ impl Shard {
     /// anything is deleted.
     pub async fn delete_workspace(&self, id: &WorkspaceId) -> Result<(), WorkspaceRefusal> {
         let _one_at_a_time = self.workspace_deletions().acquire().await;
-        let control = &self.services().control;
-        let workspaces = control.workspaces(self.user().clone()).await?;
+        let store = self.store();
+        let workspaces = store.workspaces().await?;
         if !workspaces.iter().any(|workspace| workspace.id == *id) {
             return Err(WorkspaceRefusal::NotFound);
         }
         if workspaces.len() == 1 {
             return Err(WorkspaceRefusal::Last);
         }
-        let conversations = control
-            .workspace_conversations(self.user().clone(), id.clone())
+        let conversations = store.workspace_conversations(id.clone())
             .await?
             .ok_or(WorkspaceRefusal::NotFound)?;
         // One moved to another workspace meanwhile stays.
         for conversation in &conversations {
             self.delete_conversation_in(conversation, Some(id)).await?;
         }
-        match control.delete_workspace(self.user().clone(), id.clone()).await? {
+        match store.delete_workspace(id.clone()).await? {
             WorkspaceDeletion::Deleted => {}
             WorkspaceDeletion::Missing => return Err(WorkspaceRefusal::NotFound),
             WorkspaceDeletion::Last => return Err(WorkspaceRefusal::Last),
@@ -68,9 +67,7 @@ impl Shard {
         projects: Vec<ProjectId>,
     ) -> Result<Result<(), MoveRefusal>, StorageError> {
         let moved = match self
-            .services()
-            .control
-            .move_to_workspace(self.user().clone(), id.clone(), conversations, projects)
+            .store().move_to_workspace(id.clone(), conversations, projects)
             .await?
         {
             Ok(moved) => moved,
@@ -83,7 +80,7 @@ impl Shard {
         // the receiving project's others included, read it again.
         for conversation in &moved.saved {
             self.mark(Part::Metadata(conversation.clone()));
-            if let Ok(sharers) = self.services().control.saved_sharers(conversation.clone()).await {
+            if let Ok(sharers) = self.store().saved_sharers(conversation.clone()).await {
                 for sharer in sharers.conversations {
                     self.mark(Part::Metadata(sharer));
                 }

@@ -30,7 +30,7 @@ use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument as _;
 
-use demi_backend_database::devices::ManagedMachine;
+use demi_core_store::devices::ManagedMachine;
 use demi_web_api_protocol::ids::ConversationId;
 
 use crate::CloudShard;

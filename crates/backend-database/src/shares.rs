@@ -33,8 +33,6 @@ pub enum Added {
     New(ShareRecord),
     /// The conversation has a share of that target already, which stays.
     Existing(ShareRecord),
-    /// The conversation is gone.
-    NoConversation,
 }
 
 const SHARE_COLUMNS: &str =
@@ -106,6 +104,7 @@ fn target_columns(target: &ShareTarget) -> TargetColumns<'_> {
 
 fn share_of(
     connection: &Connection,
+    owner: &UserId,
     conversation: &ConversationId,
     target: &ShareTarget,
 ) -> Result<Option<ShareRecord>, StorageError> {
@@ -115,7 +114,7 @@ fn share_of(
             &format!(
                 "SELECT {SHARE_COLUMNS} FROM shares
                  WHERE conversation_id = ?1 AND kind = ?2 AND block_id IS ?3
-                   AND reply_block_tag IS ?4 AND reply_block_id IS ?5"
+                   AND reply_block_tag IS ?4 AND reply_block_id IS ?5 AND user_id = ?6"
             ),
             params![
                 conversation.as_str(),
@@ -123,6 +122,7 @@ fn share_of(
                 columns.block,
                 columns.reply_block_tag,
                 columns.reply_block_id,
+                owner.as_str(),
             ],
             |row| Ok(share_row(row)),
         )
@@ -149,22 +149,23 @@ impl ControlService {
     /// The conversation's share of `target`, if it has one.
     pub async fn share_of(
         &self,
+        owner: UserId,
         conversation: ConversationId,
         target: ShareTarget,
     ) -> Result<Option<ShareRecord>, StorageError> {
-        self.call(move |connection, _| share_of(connection, &conversation, &target))
+        self.call(move |connection, _| share_of(connection, &owner, &conversation, &target))
             .await
     }
 
     /// The conversation's shares, its own first, then its answers' and its
     /// reply blocks' in the order they were taken.
-    pub async fn shares_of(&self, conversation: ConversationId) -> Result<Vec<ShareRecord>, StorageError> {
+    pub async fn shares_of(&self, owner: UserId, conversation: ConversationId) -> Result<Vec<ShareRecord>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare(&format!(
-                "SELECT {SHARE_COLUMNS} FROM shares WHERE conversation_id = ?1
+                "SELECT {SHARE_COLUMNS} FROM shares WHERE user_id = ?1 AND conversation_id = ?2
                  ORDER BY kind <> 'conversation', taken_at, token"
             ))?;
-            let mut rows = statement.query([conversation.as_str()])?;
+            let mut rows = statement.query([owner.as_str(), conversation.as_str()])?;
             let mut shares = Vec::new();
             while let Some(row) = rows.next()? {
                 shares.push(share_row(row)?);
@@ -175,18 +176,18 @@ impl ControlService {
     }
 
     /// Adds `share`, unless its conversation has a share of its target
-    /// already or is gone.
+    /// already. Its caller read that the conversation exists.
     pub async fn add_share(&self, share: ShareRecord) -> Result<Added, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
-            if let Some(existing) = share_of(&transaction, &share.conversation, &share.target)? {
+            if let Some(existing) = share_of(&transaction, &share.owner, &share.conversation, &share.target)? {
                 return Ok(Added::Existing(existing));
             }
             let columns = target_columns(&share.target);
-            let added = transaction.execute(
+            transaction.execute(
                 "INSERT INTO shares
                    (token, user_id, conversation_id, kind, block_id, reply_block_tag, reply_block_id, title, taken_at)
-                 SELECT ?1, ?2, id, ?3, ?4, ?8, ?9, ?5, ?6 FROM conversations WHERE id = ?7 AND user_id = ?2",
+                 VALUES (?1, ?2, ?7, ?3, ?4, ?8, ?9, ?5, ?6)",
                 params![
                     share.token.as_str(),
                     share.owner.as_str(),
@@ -200,7 +201,7 @@ impl ControlService {
                 ],
             )?;
             transaction.commit()?;
-            Ok(if added == 1 { Added::New(share) } else { Added::NoConversation })
+            Ok(Added::New(share))
         })
         .await
     }
@@ -233,15 +234,28 @@ impl ControlService {
     /// From this commit on, no request finds it.
     pub async fn remove_share(
         &self,
+        owner: UserId,
         conversation: ConversationId,
         token: ShareToken,
     ) -> Result<bool, StorageError> {
         self.call(move |connection, _| {
             let removed = connection.execute(
-                "DELETE FROM shares WHERE token = ?1 AND conversation_id = ?2",
-                params![token.as_str(), conversation.as_str()],
+                "DELETE FROM shares WHERE token = ?1 AND user_id = ?2 AND conversation_id = ?3",
+                params![token.as_str(), owner.as_str(), conversation.as_str()],
             )?;
             Ok(removed == 1)
+        })
+        .await
+    }
+
+    /// Removes every share of the conversation, as its deletion does.
+    pub async fn remove_shares_of(&self, owner: UserId, conversation: ConversationId) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "DELETE FROM shares WHERE user_id = ?1 AND conversation_id = ?2",
+                params![owner.as_str(), conversation.as_str()],
+            )?;
+            Ok(())
         })
         .await
     }

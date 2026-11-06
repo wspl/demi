@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 
 use demi_plugin_interface::{HostDirectory, WorkspaceName};
 use demi_shared_types::{BlobRef, Timestamp};
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, WorkspaceId};
 use demi_web_api_protocol::panel::{PanelChange, PanelEffect, WorkPanel};
 use futures_util::future::LocalBoxFuture;
 use serde_json::Value;
@@ -48,7 +48,6 @@ pub struct PluginValue {
 
 /// A write of a plugin value.
 pub struct ValueWrite {
-    pub user: UserId,
     pub plugin: String,
     pub key: String,
     pub document: Value,
@@ -75,11 +74,10 @@ pub struct SealedSecret {
     pub revision: u64,
 }
 
-/// Where a secret is: its plugin, its user and its name, which its sealing
-/// binds it to.
+/// Where a secret is: its plugin and its name, which its sealing binds it to
+/// with the principal.
 #[derive(Debug, Clone)]
 pub struct SecretRow {
-    pub user: UserId,
     pub plugin: String,
     pub name: String,
 }
@@ -125,31 +123,31 @@ pub enum PanelOutcome {
 pub trait PluginStore {
     /// Whether the user turned each plugin on, by its id; a plugin the user
     /// never switched is on.
-    fn switches(&self, user: UserId) -> Stored<'_, BTreeMap<String, bool>>;
+    fn switches(&self) -> Stored<'_, BTreeMap<String, bool>>;
 
-    fn set_switch(&self, user: UserId, plugin: String, enabled: bool) -> Stored<'_, ()>;
+    fn set_switch(&self, plugin: String, enabled: bool) -> Stored<'_, ()>;
 
     /// Whether the user turned each plugin's feature on, by the plugin's id
     /// and the feature's; a feature the user never switched takes its
     /// default.
-    fn feature_switches(&self, user: UserId) -> Stored<'_, BTreeMap<(String, String), bool>>;
+    fn feature_switches(&self) -> Stored<'_, BTreeMap<(String, String), bool>>;
 
-    fn set_feature_switch(&self, user: UserId, plugin: String, feature: String, enabled: bool) -> Stored<'_, ()>;
+    fn set_feature_switch(&self, plugin: String, feature: String, enabled: bool) -> Stored<'_, ()>;
 
-    fn value(&self, user: UserId, plugin: String, key: String) -> Stored<'_, Option<PluginValue>>;
+    fn value(&self, plugin: String, key: String) -> Stored<'_, Option<PluginValue>>;
 
-    fn values(&self, user: UserId, plugin: String) -> Stored<'_, BTreeMap<String, PluginValue>>;
+    fn values(&self, plugin: String) -> Stored<'_, BTreeMap<String, PluginValue>>;
 
     /// Writes the value if it is still at the revision the write read.
     fn write_value(&self, write: ValueWrite) -> Stored<'_, Written>;
 
     /// Removes the value if it is still at `revision`.
-    fn remove_value(&self, user: UserId, plugin: String, key: String, revision: u64) -> Stored<'_, Written>;
+    fn remove_value(&self, plugin: String, key: String, revision: u64) -> Stored<'_, Written>;
 
     /// Each plugin's Host directories for the user, by the plugin's id.
-    fn directories(&self, user: UserId) -> Stored<'_, BTreeMap<String, Vec<HostDirectory>>>;
+    fn directories(&self) -> Stored<'_, BTreeMap<String, Vec<HostDirectory>>>;
 
-    fn set_directories(&self, user: UserId, plugin: String, directories: Vec<HostDirectory>) -> Stored<'_, ()>;
+    fn set_directories(&self, plugin: String, directories: Vec<HostDirectory>) -> Stored<'_, ()>;
 
     fn secret(&self, row: SecretRow) -> Stored<'_, Option<SealedSecret>>;
 
@@ -193,7 +191,7 @@ pub trait PluginStore {
 
     /// Removes the tabs of `kinds` from every panel of `owner`'s
     /// conversations, and answers the conversations whose panel changed.
-    fn close_panel_kinds(&self, owner: UserId, kinds: Vec<String>) -> Stored<'_, Vec<ConversationId>>;
+    fn close_panel_kinds(&self, kinds: Vec<String>) -> Stored<'_, Vec<ConversationId>>;
 
     /// The device the conversation works on, from the records: none for a
     /// conversation whose Host does not exist yet. It asks no Host.
@@ -201,7 +199,7 @@ pub trait PluginStore {
 
     /// The user's workspaces in the user's order, each with its name as
     /// Demi's commands say it.
-    fn workspaces(&self, user: UserId) -> Stored<'_, Vec<WorkspaceName>>;
+    fn workspaces(&self) -> Stored<'_, Vec<WorkspaceName>>;
 
     /// The workspace the conversation is in; none when no conversation has
     /// the id.

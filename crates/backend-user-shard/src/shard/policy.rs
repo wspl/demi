@@ -243,9 +243,7 @@ impl LinkPolicy for ShardPolicy {
         Box::pin(async move {
             let shard = shard?;
             let conversation = shard
-                .services()
-                .control
-                .running_jobs(device)
+                .store().running_jobs(device)
                 .await
                 .map_err(|error| error.to_string())?
                 .into_iter()
@@ -271,9 +269,7 @@ impl LinkPolicy for ShardPolicy {
         Box::pin(async move {
             let shard = shard?;
             let record = shard
-                .services()
-                .control
-                .device(device.clone())
+                .store().device(device.clone())
                 .await
                 .map_err(|error| error.to_string())?
                 .ok_or_else(|| "the device is gone".to_owned())?;
@@ -306,9 +302,7 @@ impl LinkPolicy for ShardPolicy {
                 ResidentSequence::Tab => Sequence::Tab,
                 ResidentSequence::Device => Sequence::Device,
             };
-            shard
-                .services()
-                .conversations
+            shard.store().databases()
                 .db(&conversation)
                 .call(move |connection| sequences::reserve(connection, sequence, count))
                 .await

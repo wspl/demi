@@ -14,25 +14,24 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_backend_database::control::ControlService;
-use demi_backend_database::usage::{ApiPrice, ObservedWindow, UsageRow, merge_windows};
+use demi_core_store::store::CoreStore;
+use demi_core_store::usage::{ApiPrice, ObservedWindow, UsageRow, merge_windows};
 use demi_provider_common::{
     Ahead, CallEvent, CallOutcome, ErrorCode, InferenceRequest, ProviderEvent, ProviderRun,
     ProviderRuntime, RequestLimits, RequestPurpose, VendorCall,
 };
 use demi_shared_types::{Clock, Model, ModelCost, QuotaWindow, Timestamp, TokenUsage};
-use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId};
 use futures_util::future::LocalBoxFuture;
 use futures_util::{Stream, StreamExt, stream};
 
 
-/// Whose calls a runtime makes: the ledger rows' user, conversation, entry
+/// Whose calls a runtime makes: the ledger rows' store, conversation, entry
 /// and account.
 #[derive(Clone)]
 pub struct Ledger {
-    pub control: ControlService,
+    pub store: CoreStore,
     pub clock: Arc<dyn Clock>,
-    pub user: UserId,
     pub conversation: ConversationId,
     pub provider: ProviderId,
     /// The subscription account the runtime calls with; none for an API key.
@@ -66,10 +65,10 @@ fn prompt_hashes(request: &InferenceRequest) -> (Option<String>, Option<String>)
 
 /// Writes `row` and answers its id; a failure is logged and the row is
 /// lost.
-async fn write(control: &ControlService, row: UsageRow) -> Option<String> {
+async fn write(store: &CoreStore, row: UsageRow) -> Option<String> {
     let (conversation, user, provider, model, request) =
-        (row.conversation.clone(), row.user.clone(), row.provider.clone(), row.model.clone(), row.request.clone());
-    match control.append_usage(row).await {
+        (row.conversation.clone(), store.principal().clone(), row.provider.clone(), row.model.clone(), row.request.clone());
+    match store.append_usage(row).await {
         Ok(id) => Some(id),
         Err(error) => {
             // The row is lost; the request goes on (`crates/backend-providers/src/usage/mod.rs`).
@@ -217,7 +216,7 @@ impl Calls {
         let Some(id) = self.last_row.clone() else {
             return;
         };
-        if let Err(error) = self.ledger.control.add_usage_quota(id, windows).await {
+        if let Err(error) = self.ledger.store.add_usage_quota(id, windows).await {
             // The windows are lost from the row; the request goes on.
             tracing::warn!(
                 event = "usage_ledger.quota_write_failed",
@@ -236,7 +235,7 @@ impl Calls {
             let prices = (self.ledger.prices)(row.model.clone()).await;
             row.price = prices.and_then(|prices| ApiPrice::of(&prices, &usage, row.cache_write_1h_tokens));
         }
-        self.last_row = write(&self.ledger.control, row).await;
+        self.last_row = write(&self.ledger.store, row).await;
     }
 
     /// The row of the call open now, ended as `outcome` says with the
@@ -273,7 +272,6 @@ impl Calls {
         let observed = std::mem::take(&mut self.observed);
         UsageRow {
             media_digest: None,
-            user: self.ledger.user.clone(),
             conversation: self.ledger.conversation.clone(),
             agent: self.agent,
             turn: self.turn.clone(),
@@ -354,9 +352,9 @@ impl Drop for Calls {
         }
         let span = self.span.clone();
         let row = span.in_scope(|| self.row(unreported(None), Outcome::Cancelled));
-        let control = self.ledger.control.clone();
+        let store = self.ledger.store.clone();
         tokio::spawn(async move {
-            write(&control, row).await;
+            write(&store, row).await;
         });
     }
 }
@@ -378,7 +376,7 @@ impl ProviderRuntime for MeteredRuntime {
             "provider_call",
             provider_request_id = %request.request_id,
             conversation = %self.ledger.conversation,
-            user = %self.ledger.user,
+            user = %self.ledger.store.principal(),
             turn = tracing::field::Empty,
             agent = tracing::field::Empty,
             account = tracing::field::Empty,

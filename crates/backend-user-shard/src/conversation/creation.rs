@@ -14,7 +14,7 @@
 //! it, which makes the directory's project when there is none, by the
 //! directory's name on its Host (`crates/backend-database/src/selection.rs`).
 
-use demi_backend_database::conversation_index::{ConversationStart, Creation};
+use demi_core_store::conversation_index::{ConversationStart, Creation};
 use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::conversations::{
@@ -53,13 +53,9 @@ impl Shard {
         &self,
         request: CreateConversation,
     ) -> Result<Creation, ChangeRefusal> {
-        let control = &self.services().control;
-        if let Some(record) = control.conversation(request.id.clone()).await? {
-            return Ok(if record.owner == *self.user() {
-                Creation::Existing(record)
-            } else {
-                Creation::Unavailable
-            });
+        let store = self.store();
+        if let Some(record) = store.conversation(request.id.clone()).await? {
+            return Ok(Creation::Existing(record));
         }
         let id = request.id.clone();
         let start = self.conversation_start(request).await?;
@@ -74,11 +70,10 @@ impl Shard {
         id: ConversationId,
         mut start: ConversationStart,
     ) -> Result<Creation, ChangeRefusal> {
-        let control = &self.services().control;
+        let store = self.store();
         // Its directory is the one its Host names (§ Resolve a target).
         start.target = self.host_shard().resolved_destination(start.target).await?;
-        let (created, made) = control
-            .create_conversation_selecting(self.user().clone(), id, start)
+        let (created, made) = store.create_conversation_selecting(id, start)
             .await?;
         if made.is_some() {
             self.mark(Part::Projects);

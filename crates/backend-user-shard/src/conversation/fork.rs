@@ -52,13 +52,13 @@
 //! stood, so the context blocks its copied transcript holds are older than any
 //! announced later, its first switch included.
 
-use demi_backend_database::Selection;
+use demi_core_store::store::CoreStore;
+use demi_web_api_protocol::ids::UserId;
+use demi_core_store::Selection;
 use demi_agent_session::ForkError;
 use demi_core_store::StorageError;
-use demi_backend_database::control::ControlService;
-use demi_backend_database::conversation_index::{AttachedHost, ConversationRecord};
-use demi_core_store::conversations::ConversationStores;
-use demi_backend_database::forks::{ForkMetadata, ForkOperation};
+use demi_core_store::conversation_index::{AttachedHost, ConversationRecord};
+use demi_core_store::forks::{ForkMetadata, ForkOperation};
 use demi_core_store::tree;
 use demi_core_store::{command_outputs, conversation_attachments, sequences};
 use demi_backend_page_sync::Part;
@@ -117,19 +117,17 @@ impl Shard {
             .await;
         let _lifecycle = self.lifecycle().acquire().await;
         let services = self.services();
-        let control = &services.control;
-        let source = control
-            .conversation(source)
+        let store = self.store();
+        let source = store.conversation(source)
             .await?
-            .filter(|record| record.owner == *self.user())
             .ok_or(ForkRefusal::SourceNotFound)?;
-        let reserved = control.fork_operation(destination.clone()).await?;
+        let reserved = store.fork_operation(destination.clone()).await?;
         if let Some(operation) = &reserved
-            && !operation.same_attempt(self.user(), &source.id, &block)
+            && !operation.same_attempt(&source.id, &block)
         {
             return Err(ForkRefusal::Conflict);
         }
-        if let Some(existing) = control.conversation(destination.clone()).await? {
+        if let Some(existing) = store.conversation(destination.clone()).await? {
             // A published destination, found again by a retry.
             if reserved.is_none() {
                 return Err(ForkRefusal::Unavailable);
@@ -142,12 +140,11 @@ impl Shard {
         if reserved.is_some() {
             // A retry of an attempt whose root committed before it was
             // published publishes it; one that did not commit starts again.
-            let committed = services
-                .conversations
+            let committed = self.store().databases()
                 .read(&destination, tree::has_root)
                 .await?;
             if committed == Some(true) {
-                let (record, made) = control.publish_fork(destination).await?;
+                let (record, made) = store.publish_fork(destination).await?;
                 self.published(&record, made.is_some());
                 return Ok(Forked {
                     record,
@@ -174,7 +171,6 @@ impl Shard {
                 };
                 let operation = ForkOperation {
                     id: destination.clone(),
-                    owner: self.user().clone(),
                     source: source.id.clone(),
                     block,
                     metadata: ForkMetadata {
@@ -186,8 +182,7 @@ impl Shard {
                         // And its workflow.
                         workflow: source.workflow.clone(),
                         created_at: services.clock.now(),
-                        attached_hosts: control
-                            .attached_hosts(source.id.clone())
+                        attached_hosts: store.attached_hosts(source.id.clone())
                             .await?
                             .iter()
                             .map(AttachedHost::record)
@@ -195,8 +190,7 @@ impl Shard {
                         context_version: source.context_version,
                     },
                 };
-                control
-                    .reserve_fork(operation)
+                store.reserve_fork(operation)
                     .await?
                     .ok_or(ForkRefusal::Unavailable)?
             }
@@ -210,8 +204,7 @@ impl Shard {
         // source's database, as the rows are copied there.
         let mut commands = command_outputs::commands_of(&seed.checkpoint.transcript);
         let prefix = seed.prefix.clone();
-        let rows = services
-            .conversations
+        let rows = self.store().databases()
             .read(&source.id, move |connection| {
                 if let Some(prefix) = &prefix {
                     for command in command_outputs::commands_of_prefix(connection, prefix)? {
@@ -225,8 +218,7 @@ impl Shard {
             .await?
             .unwrap_or_default();
         if !rows.is_empty() {
-            services
-                .conversations
+            self.store().databases()
                 .db(&destination)
                 .call(move |connection| command_outputs::insert(connection, &rows))
                 .await?;
@@ -238,8 +230,7 @@ impl Shard {
         // The source's root uploaded what the destination's root, which holds its
         // history, did; another agent's uploads stay recorded under that agent.
         let (source_root, destination_root) = (root_of(&source.id), root_of(&destination));
-        let attachments: Vec<_> = services
-            .conversations
+        let attachments: Vec<_> = self.store().databases()
             .read(&source.id, conversation_attachments::all)
             .await?
             .unwrap_or_default()
@@ -252,8 +243,7 @@ impl Shard {
             })
             .collect();
         if !attachments.is_empty() {
-            services
-                .conversations
+            self.store().databases()
                 .db(&destination)
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
@@ -266,13 +256,11 @@ impl Shard {
         // Its sequences go on from the source's, read after the seed and its
         // records, so a number its history names is never given to
         // something new.
-        let numbers = services
-            .conversations
+        let numbers = self.store().databases()
             .read(&source.id, sequences::all)
             .await?
             .unwrap_or_default();
-        services
-            .conversations
+        self.store().databases()
             .db(&destination)
             .call(move |connection| sequences::continue_from(connection, &numbers))
             .await?;
@@ -287,7 +275,7 @@ impl Shard {
             .initialize_fork(&root_of(&destination), seed)
             .await
             .map_err(refused)?;
-        let (record, made) = control.publish_fork(destination).await?;
+        let (record, made) = store.publish_fork(destination).await?;
         self.published(&record, made.is_some());
         Ok(Forked {
             record,
@@ -319,14 +307,13 @@ fn refused(error: ForkError) -> ForkRefusal {
 /// Publishes the reserved destinations whose root committed before they were
 /// published (`crates/backend/src/backend.rs`); the others stay hidden until
 /// their attempt is retried. It runs before the backend serves.
-pub async fn recover_forks(
-    control: &ControlService,
-    conversations: &ConversationStores,
-) -> Result<(), StorageError> {
-    for operation in control.pending_forks().await? {
-        let committed = conversations.read(&operation.id, tree::has_root).await?;
-        if committed == Some(true) {
-            control.publish_fork(operation.id).await?;
+pub async fn recover_forks(cores: &[(UserId, CoreStore)]) -> Result<(), StorageError> {
+    for (_, store) in cores {
+        for operation in store.pending_forks().await? {
+            let committed = store.databases().read(&operation.id, tree::has_root).await?;
+            if committed == Some(true) {
+                store.publish_fork(operation.id).await?;
+            }
         }
     }
     Ok(())

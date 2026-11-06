@@ -9,6 +9,7 @@ use demi_backend_database::accounts::{
     ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash,
 };
 use demi_backend_database::control::ControlService;
+use demi_backend_database::core_stores::CoreStores;
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::auth::{EmailChallengeDto, Password};
 use demi_web_api_protocol::ids::UserId;
@@ -117,6 +118,7 @@ pub enum EmailChangeError {
 
 pub struct EmailChanges {
     control: ControlService,
+    stores: CoreStores,
     hasher: PasswordHasher,
     mail: Option<Arc<dyn AccountMail>>,
     key: CodeKey,
@@ -125,12 +127,14 @@ pub struct EmailChanges {
 impl EmailChanges {
     pub fn new(
         control: ControlService,
+        stores: CoreStores,
         hasher: PasswordHasher,
         mail: Option<Arc<dyn AccountMail>>,
         key: CodeKey,
     ) -> Self {
         Self {
             control,
+            stores,
             hasher,
             mail,
             key,
@@ -185,7 +189,7 @@ impl EmailChanges {
         };
         // The recipient's chosen language, or with System the one their
         // page last resolved.
-        let preferences = self.control.preferences(user.clone()).await?;
+        let preferences = self.stores.of(&user).await?.preferences().await?;
         let language = preferences
             .language
             .unwrap_or(LanguageChoice::System)

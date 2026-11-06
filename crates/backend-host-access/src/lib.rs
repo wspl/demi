@@ -99,16 +99,16 @@ use std::sync::Arc;
 
 use demi_backend_blobs::blobs::UserBlobs;
 use demi_backend_cloud::CloudShard;
-use demi_backend_database::control::ControlService;
+use demi_core_store::store::CoreStore;
 use demi_core_store::conversations::ConversationDb;
-use demi_backend_database::projects::DirectoryNamed;
+use demi_core_store::projects::DirectoryNamed;
 use demi_runner_client::Pipes;
 use demi_backend_runners::claims::PendingClaims;
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_backend_runners::router::CommandRouter;
-use demi_backend_database::conversation_index::ConversationChange;
+use demi_core_store::conversation_index::ConversationChange;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_agent_store::Placement;
 use demi_shared_types::{Clock, NodeId};
@@ -126,7 +126,7 @@ use self::transition::{ChangeRefusal, Switched};
 /// use, and the conversation's idle watch, which every Host admission starts.
 pub trait HostShard {
     fn user(&self) -> &UserId;
-    fn control(&self) -> &ControlService;
+    fn store(&self) -> &CoreStore;
     /// The wall clock the backend reads times from.
     fn clock(&self) -> &Arc<dyn Clock>;
     /// The user's devices, each with its runner connection.
@@ -190,7 +190,7 @@ pub trait HostShard {
     ) -> LocalBoxFuture<'a, Result<Option<Switched>, ChangeRefusal>>;
     /// Tells the user's pages and the agents that a directory a Host named
     /// at its first use replaced the one typed, for `conversation` and each
-    /// conversation `named` lists (`ControlService::name_directory`).
+    /// conversation `named` lists (`CoreStore::name_directory`).
     /// Never waits: the operation that named it holds the conversation's
     /// file gate.
     fn directory_named(&self, conversation: &ConversationId, named: DirectoryNamed);

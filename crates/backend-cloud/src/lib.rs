@@ -115,6 +115,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use demi_backend_database::control::ControlService;
+use demi_core_store::store::CoreStore;
 use demi_backend_idle_watch::Activity;
 use demi_backend_page_sync::UserMarks;
 use demi_provider_registry::registry::ProviderRegistry;
@@ -166,6 +167,8 @@ pub trait CloudShard {
     /// The user's devices, the Cloud among them.
     fn devices(&self) -> &Devices;
     fn control(&self) -> &ControlService;
+    /// The user's core store, which holds the records of the devices.
+    fn store(&self) -> &CoreStore;
     fn cloud_services(&self) -> &CloudServices;
     /// Where a booting Cloud's runner reaches this backend.
     fn public_url(&self) -> &PublicUrl;

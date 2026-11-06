@@ -20,9 +20,7 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use bytes::Bytes;
 use demi_shared_gates::{KeyedPermit, KeyedSerialGate};
-use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::ConversationId;
 use hashlink::LruCache;
 use rusqlite::{Connection, OpenFlags};
@@ -37,30 +35,9 @@ use super::{StorageError, schema, sqlite};
 pub const MAX_WRITERS: NonZeroUsize = NonZeroUsize::new(64).expect("64 is not zero");
 
 /// How a migration of a conversation's database reads a blob its values
-/// name, in the conversation owner's namespace; none when the namespace
-/// does not hold it. It is called on the database's thread, which waits
-/// for it, never on an async task.
-pub trait ConversationBlobs: Send + Sync {
-    fn read(&self, conversation: &ConversationId, blob: &BlobRef) -> Result<Option<Bytes>, String>;
-}
-
-impl ConversationBlobs for schema::NoBlobs {
-    fn read(&self, _: &ConversationId, blob: &BlobRef) -> Result<Option<Bytes>, String> {
-        schema::ReadBlob::read(self, blob)
-    }
-}
-
-/// One conversation's blobs, as its database's migration reads them.
-struct BlobsOf {
-    blobs: Arc<dyn ConversationBlobs>,
-    conversation: ConversationId,
-}
-
-impl schema::ReadBlob for BlobsOf {
-    fn read(&self, blob: &BlobRef) -> Result<Option<Bytes>, String> {
-        self.blobs.read(&self.conversation, blob)
-    }
-}
+/// name: called on the database's thread, which waits for it, never on an
+/// async task.
+pub type ConversationBlobs = dyn schema::ReadBlob + Send + Sync;
 
 /// Every conversation's database. Cloning it is cheap.
 #[derive(Clone)]
@@ -69,7 +46,7 @@ pub struct ConversationStores(Arc<Stores>);
 struct Stores {
     directory: PathBuf,
     /// Where a migration reads the blobs a conversation's values name.
-    blobs: Arc<dyn ConversationBlobs>,
+    blobs: Arc<ConversationBlobs>,
     /// A `std` mutex: the edge and the shard threads share the writers, and
     /// each section looks up, inserts or takes writers without awaiting.
     writers: Mutex<Writers>,
@@ -168,7 +145,6 @@ impl DatabaseFile {
 pub struct ConversationDb {
     stores: Arc<Stores>,
     file: DatabaseFile,
-    conversation: ConversationId,
 }
 
 impl ConversationStores {
@@ -177,7 +153,7 @@ impl ConversationStores {
     pub async fn open(
         directory: PathBuf,
         max_writers: NonZeroUsize,
-        blobs: Arc<dyn ConversationBlobs>,
+        blobs: Arc<ConversationBlobs>,
     ) -> Result<Self, StorageError> {
         tokio::fs::create_dir_all(&directory).await?;
         Ok(Self(Arc::new(Stores {
@@ -196,7 +172,6 @@ impl ConversationStores {
         ConversationDb {
             stores: self.0.clone(),
             file: DatabaseFile::of(conversation),
-            conversation: conversation.clone(),
         }
     }
 
@@ -323,12 +298,8 @@ impl ConversationStores {
             return Ok(());
         }
         let path = db.file.path(&self.0.directory);
-        let (blobs, conversation) = (self.0.blobs.clone(), conversation.clone());
+        let blobs = self.0.blobs.clone();
         holding(turn, move || {
-            let blobs = BlobsOf {
-                blobs,
-                conversation,
-            };
             if !path.try_exists()? {
                 return Ok(());
             }
@@ -336,7 +307,7 @@ impl ConversationStores {
                 &path,
                 OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
             )?;
-            migrate(&mut connection, &path, &blobs)
+            migrate(&mut connection, &path, &*blobs)
         })
         .await
         .map(|_| ())
@@ -388,7 +359,6 @@ impl ConversationDb {
         let (writer, _turn) = open_writer(
             &self.file.path(&self.stores.directory),
             self.stores.blobs.clone(),
-            self.conversation.clone(),
             turn,
         )
         .await?;
@@ -449,14 +419,8 @@ impl ConversationDb {
         // conversation listed without its facts (0.1.22).
         //
         let turn = self.stores.opening.acquire(self.file.clone()).await;
-        let (blobs, conversation) = (self.stores.blobs.clone(), self.conversation.clone());
-        holding(turn, move || {
-            let blobs = BlobsOf {
-                blobs,
-                conversation,
-            };
-            migrate_and_read(&path, &blobs, work)
-        })
+        let blobs = self.stores.blobs.clone();
+        holding(turn, move || migrate_and_read(&path, &*blobs, work))
         .await
         .map(|(read, _)| read)
     }
@@ -475,20 +439,13 @@ impl ConversationDb {
 /// `turn`; gives the turn back with the writer.
 async fn open_writer(
     path: &Path,
-    blobs: Arc<dyn ConversationBlobs>,
-    conversation: ConversationId,
+    blobs: Arc<ConversationBlobs>,
     turn: Turn,
 ) -> Result<(tokio_rusqlite::Connection, Turn), StorageError> {
     let writer = tokio_rusqlite::Connection::open(path).await?;
     let path = path.to_owned();
     writer
-        .call(move |connection| {
-            let blobs = BlobsOf {
-                blobs,
-                conversation,
-            };
-            migrate(connection, &path, &blobs)
-        })
+        .call(move |connection| migrate(connection, &path, &*blobs))
         .await
         .map_err(sqlite::flatten)?;
     Ok((writer, turn))
@@ -514,7 +471,7 @@ async fn holding<T: Send + 'static>(
 fn migrate(
     connection: &mut Connection,
     path: &Path,
-    blobs: &BlobsOf,
+    blobs: &(dyn schema::ReadBlob + 'static),
 ) -> Result<(), StorageError> {
     schema::CONVERSATION.prepare_new(connection)?;
     sqlite::configure(connection)?;
@@ -566,7 +523,7 @@ where
 /// opens only once the database is migrated.
 fn migrate_and_read<T, W>(
     path: &Path,
-    blobs: &BlobsOf,
+    blobs: &(dyn schema::ReadBlob + 'static),
     work: W,
 ) -> Result<Option<T>, StorageError>
 where

@@ -8,7 +8,7 @@
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::conversation_index::{ConversationChange, RecordChange};
+use demi_core_store::conversation_index::{ConversationChange, RecordChange};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 
 use super::AppState;

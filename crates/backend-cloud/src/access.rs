@@ -6,7 +6,7 @@
 //! running reset, and no conversation's file gate.
 
 use demi_core_store::StorageError;
-use demi_backend_database::devices::{DeviceRecord, ManagedMachine};
+use demi_core_store::devices::{DeviceRecord, ManagedMachine};
 use demi_backend_page_sync::Part;
 use demi_runner_client::RemoteHost;
 
@@ -27,13 +27,11 @@ impl dyn CloudShard {
     /// The user's Cloud device, made on its first use, which the user's
     /// pages then show among the devices and as the Cloud.
     pub async fn cloud_device(&self) -> Result<DeviceRecord, StorageError> {
-        let control = self.control();
-        if let Some(device) = control.managed_device(self.user().clone()).await? {
+        let store = self.store();
+        if let Some(device) = store.managed_device().await? {
             return Ok(device);
         }
-        let device = control
-            .managed_device_or_create(self.user().clone())
-            .await?;
+        let device = store.managed_device_or_create().await?;
         let marks = self.marks();
         marks.mark(Part::Devices);
         marks.mark(Part::Cloud);
@@ -51,8 +49,8 @@ impl dyn CloudShard {
     /// is.
     pub async fn claude_code_access(&self) -> Result<MachineAccess, CloudError> {
         let device = self
-            .control()
-            .managed_machine_or_create(self.user().clone(), ManagedMachine::ClaudeCode)
+            .store()
+            .managed_machine_or_create(ManagedMachine::ClaudeCode)
             .await?;
         self.access(device).await
     }

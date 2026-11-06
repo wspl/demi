@@ -64,12 +64,9 @@ impl dyn CloudShard {
     /// Each of the user's conversations that uses the Cloud, with its
     /// strongest role.
     pub(crate) async fn cloud_uses(&self) -> Result<Vec<(ConversationId, Role)>, StorageError> {
-        let control = self.control();
-        let cloud = control
-            .managed_device(self.user().clone())
-            .await?
-            .map(|device| device.id);
-        let conversations = control.cloud_uses(self.user().clone(), cloud).await?;
+        let store = self.store();
+        let cloud = store.managed_device().await?.map(|device| device.id);
+        let conversations = store.cloud_uses(cloud).await?;
         Ok(conversations
             .into_iter()
             .filter_map(|conversation| {

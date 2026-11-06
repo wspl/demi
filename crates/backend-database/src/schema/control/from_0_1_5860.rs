@@ -15,13 +15,13 @@ use std::collections::HashSet;
 
 use rusqlite::Transaction;
 
-use crate::schema::ResealSealed;
+use crate::schema::ControlSteps;
 use demi_web_api_protocol::ids::ProviderId;
 use super::super::{Migration, corrupt, corrupt_text};
 
 pub(super) const MIGRATION: Migration = Migration::Code(control_from_0_1_5860);
 
-fn control_from_0_1_5860(transaction: &Transaction<'_>, seals: &dyn ResealSealed) -> rusqlite::Result<()> {
+fn control_from_0_1_5860(transaction: &Transaction<'_>, seals: &dyn ControlSteps) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "ALTER TABLE providers ADD COLUMN through_device_id TEXT
            CHECK (through_device_id IS NULL OR credential_kind = 'api_key');",

@@ -8,11 +8,11 @@
 
 use rusqlite::Transaction;
 
-use super::super::{Migration, ResealSealed, corrupt};
+use super::super::{Migration, ControlSteps, corrupt};
 
 pub(super) const MIGRATION: Migration = Migration::Code(control_from_0_1_21);
 
-fn control_from_0_1_21(transaction: &Transaction<'_>, _: &dyn ResealSealed) -> rusqlite::Result<()> {
+fn control_from_0_1_21(transaction: &Transaction<'_>, _: &dyn ControlSteps) -> rusqlite::Result<()> {
     transaction.execute_batch(CONTROL_FROM_0_1_21)?;
     let records = transaction
         .prepare("SELECT provider_id, record FROM model_catalogs")?

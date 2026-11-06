@@ -483,7 +483,7 @@ impl Shared {
         if let Some(enabled) = &*self.enabled.borrow() {
             return Ok(enabled.clone());
         }
-        let choices = self.store.switches(self.user.clone()).await?;
+        let choices = self.store.switches().await?;
         let enabled: Vec<bool> = self
             .registry
             .plugins
@@ -505,7 +505,7 @@ impl Shared {
         if let Some(features) = &*self.features.borrow() {
             return Ok(features.clone());
         }
-        let choices = self.store.feature_switches(self.user.clone()).await?;
+        let choices = self.store.feature_switches().await?;
         let features: Vec<Vec<bool>> = self
             .registry
             .plugins
@@ -651,7 +651,7 @@ impl Shared {
         if let Some(directories) = &*self.directories.borrow() {
             return Ok(directories.clone());
         }
-        let mut stored = self.store.directories(self.user.clone()).await?;
+        let mut stored = self.store.directories().await?;
         let directories: Vec<Vec<HostDirectory>> = self
             .registry
             .plugins
@@ -673,7 +673,6 @@ impl Shared {
         let mut current = self.directories().await.map_err(storage)?;
         self.store
             .set_directories(
-                self.user.clone(),
                 self.plugin_id(plugin),
                 directories.clone(),
             )
@@ -793,7 +792,7 @@ impl UserPlugins {
         }
         self.0
             .store
-            .set_switch(self.0.user.clone(), plugin.to_owned(), enabled)
+            .set_switch(plugin.to_owned(), enabled)
             .await?;
         current[index] = enabled;
         self.0.enabled.replace(Some(current.clone()));
@@ -841,7 +840,7 @@ impl UserPlugins {
         }
         self.0
             .store
-            .set_feature_switch(self.0.user.clone(), plugin.to_owned(), feature.to_owned(), enabled)
+            .set_feature_switch(plugin.to_owned(), feature.to_owned(), enabled)
             .await?;
         current[index][position] = enabled;
         self.0.features.replace(Some(current));
@@ -900,7 +899,7 @@ impl UserPlugins {
         let closed = self
             .0
             .store
-            .close_panel_kinds(self.0.user.clone(), page.panel_kinds.clone())
+            .close_panel_kinds(page.panel_kinds.clone())
             .await?;
         for conversation in closed {
             self.0.changes.conversation_changed(conversation);
@@ -1605,7 +1604,7 @@ impl RequestPort {
             PortMessage::ReadValue { key } => {
                 let value = shared
                     .store
-                    .value(shared.user.clone(), shared.plugin_id(self.plugin), key)
+                    .value(shared.plugin_id(self.plugin), key)
                     .await
                     .map_err(storage)?;
                 PortAnswer::Value {
@@ -1615,7 +1614,7 @@ impl RequestPort {
             PortMessage::ListValues => {
                 let values = shared
                     .store
-                    .values(shared.user.clone(), shared.plugin_id(self.plugin))
+                    .values(shared.plugin_id(self.plugin))
                     .await
                     .map_err(storage)?;
                 PortAnswer::Values {
@@ -1632,7 +1631,6 @@ impl RequestPort {
                 blobs,
             } => {
                 let write = ValueWrite {
-                    user: shared.user.clone(),
                     plugin: shared.plugin_id(self.plugin),
                     key,
                     document: value,
@@ -1653,7 +1651,6 @@ impl RequestPort {
                 let removed = shared
                     .store
                     .remove_value(
-                        shared.user.clone(),
                         shared.plugin_id(self.plugin),
                         key,
                         revision,
@@ -1757,7 +1754,7 @@ impl RequestPort {
                     .await?,
             },
             PortMessage::Workspaces => {
-                let workspaces = shared.store.workspaces(shared.user.clone()).await.map_err(storage)?;
+                let workspaces = shared.store.workspaces().await.map_err(storage)?;
                 let current = match &self.conversation {
                     Some(conversation) => shared
                         .store

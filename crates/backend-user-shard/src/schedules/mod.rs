@@ -27,7 +27,7 @@ use std::time::Duration;
 
 use base64::Engine;
 use demi_core_store::StorageError;
-use demi_backend_database::schedules::{StoredRun, StoredSchedule};
+use demi_core_store::schedules::{StoredRun, StoredSchedule};
 use demi_backend_page_sync::Part;
 use demi_backend_providers::vault::seal::Row;
 use demi_shared_types::{ScheduleId, Timestamp};
@@ -191,7 +191,7 @@ impl Shard {
     /// The conversation's schedules as `demi schedule list` shows them,
     /// newest first.
     pub async fn schedule_list(&self, conversation: &ConversationId) -> Result<Vec<ScheduleDto>, StorageError> {
-        let stored = self.services().control.conversation_schedules(conversation.clone()).await?;
+        let stored = self.store().conversation_schedules(conversation.clone()).await?;
         let mut listed = Vec::with_capacity(stored.len());
         for schedule in stored {
             listed.push(self.schedule_dto(schedule).await?);
@@ -204,14 +204,12 @@ impl Shard {
         &self,
         conversation: &ConversationId,
     ) -> Result<Vec<ConversationSchedule>, StorageError> {
-        let stored = self.services().control.conversation_schedules(conversation.clone()).await?;
+        let stored = self.store().conversation_schedules(conversation.clone()).await?;
         let mut listed = Vec::with_capacity(stored.len());
         for schedule in stored {
             let next_at = self.next_fire(&schedule).await?;
             let last_run = self
-                .services()
-                .control
-                .schedule_runs(schedule.id.clone(), 1)
+                .store().schedule_runs(schedule.id.clone(), 1)
                 .await?
                 .into_iter()
                 .next()
@@ -242,18 +240,14 @@ impl Shard {
         conversation: &ConversationId,
         id: &ScheduleId,
     ) -> Result<StoredSchedule, ScheduleError> {
-        self.services()
-            .control
-            .owned_schedule(self.user().clone(), conversation.clone(), id.clone())
+        self.store().owned_schedule(conversation.clone(), id.clone())
             .await?
             .ok_or(ScheduleError::NotFound)
     }
 
     async fn schedule_dto(&self, schedule: StoredSchedule) -> Result<ScheduleDto, StorageError> {
         let runs = self
-            .services()
-            .control
-            .schedule_runs(schedule.id.clone(), RUNS_SHOWN)
+            .store().schedule_runs(schedule.id.clone(), RUNS_SHOWN)
             .await?;
         let next_at = self.next_fire(&schedule).await?;
         Ok(ScheduleDto {
@@ -276,13 +270,13 @@ impl Shard {
         if !schedule.on() {
             return Ok(None);
         }
-        let now = self.services().control.now();
+        let now = self.store().now();
         Ok(match &schedule.trigger {
             Trigger::Time { timing } => {
                 let Ok(plan) = Plan::new(timing, &schedule.time_zone, schedule.since.to_jiff()) else {
                     return Ok(None);
                 };
-                let last = self.services().control.schedule_last_fired(schedule.id.clone()).await?;
+                let last = self.store().schedule_last_fired(schedule.id.clone()).await?;
                 let after = last.map_or(now, |last| last.max(now));
                 plan.next_after(after.to_jiff()).map(Timestamp::truncate)
             }
@@ -310,10 +304,9 @@ impl Shard {
         conversation: &ConversationId,
         patch: SchedulePatch,
     ) -> Result<(ScheduleDto, Option<String>), ScheduleError> {
-        let control = &self.services().control;
-        let now = control.now();
-        let names: HashSet<String> = control
-            .conversation_schedules(conversation.clone())
+        let store = self.store();
+        let now = store.now();
+        let names: HashSet<String> = store.conversation_schedules(conversation.clone())
             .await?
             .into_iter()
             .map(|schedule| schedule.name)
@@ -325,7 +318,7 @@ impl Shard {
             })
             .find(|name| !names.contains(name))
             .expect("the numbers run out after the names");
-        let reported = demi_backend_runners::command_context::reported(control, self.user()).await?;
+        let reported = demi_backend_runners::command_context::reported(store).await?;
         let defaults = StoredSchedule {
             id: new_schedule_id(),
             conversation: conversation.clone(),
@@ -383,8 +376,8 @@ impl Shard {
         // so a schedule a later time zone or holiday table no longer takes can
         // still be turned off.
         let only_paused = !new && patch == SchedulePatch { paused: patch.paused, ..SchedulePatch::default() };
-        let control = &self.services().control;
-        let now = control.now();
+        let store = self.store();
+        let now = store.now();
         let before = schedule.clone();
         if let Some(name) = patch.name {
             schedule.name = name.into_string();
@@ -460,9 +453,9 @@ impl Shard {
             None
         };
         schedule.updated_at = now;
-        control.put_schedule(schedule.clone(), secret).await?;
+        store.put_schedule(schedule.clone(), secret).await?;
         if drops {
-            control.drop_pending_calls(schedule.id.clone()).await?;
+            store.drop_pending_calls(schedule.id.clone()).await?;
         }
         // A watch whose command changed, or that was turned on, records its
         // output first: a change while it was off fires nothing.
@@ -470,7 +463,7 @@ impl Shard {
             (&before.trigger, &schedule.trigger)
             && (old != command || (before.paused && !schedule.paused))
         {
-            control.set_watch_output(schedule.id.clone(), None).await?;
+            store.set_watch_output(schedule.id.clone(), None).await?;
         }
         self.schedules().tried.borrow_mut().remove(&schedule.id);
         self.schedules_changed(&schedule.conversation);
@@ -485,7 +478,7 @@ impl Shard {
     /// The schedule's URL secret, opened; none for a schedule that has none.
     /// It checks a call of the URL; the agent is shown it once, when it is made.
     pub(crate) async fn schedule_secret(&self, id: &ScheduleId) -> Result<Option<String>, StorageError> {
-        let Some(sealed) = self.services().control.schedule_secret(id.clone()).await? else {
+        let Some(sealed) = self.store().schedule_secret(id.clone()).await? else {
             return Ok(None);
         };
         let corrupt = |reason: String| StorageError::Corrupt {
@@ -507,7 +500,7 @@ impl Shard {
     pub async fn delete_schedule(&self, conversation: &ConversationId, id: &ScheduleId) -> Result<(), ScheduleError> {
         let schedule = self.stored_schedule(conversation, id).await?;
         self.forget_schedule(&schedule.id);
-        if !self.services().control.delete_schedule(schedule.id.clone()).await? {
+        if !self.store().delete_schedule(schedule.id.clone()).await? {
             return Err(ScheduleError::NotFound);
         }
         self.schedules_changed(conversation);
@@ -529,7 +522,7 @@ impl Shard {
     /// before its records go, to forget them once they have
     /// ([`Self::conversation_deleted_schedules`]).
     pub(crate) async fn conversation_schedule_ids(&self, conversation: &ConversationId) -> Vec<ScheduleId> {
-        match self.services().control.conversation_schedules(conversation.clone()).await {
+        match self.store().conversation_schedules(conversation.clone()).await {
             Ok(schedules) => schedules.into_iter().map(|schedule| schedule.id).collect(),
             Err(error) => {
                 tracing::warn!(event = "schedules.forget_failed", %conversation, %error, "the schedules of a deleted conversation were not read");
@@ -567,11 +560,11 @@ impl Shard {
         if task.is_some_and(|task| demi_shared_types::is_blank(&task.prompt)) {
             return Err(ScheduleError::NoMessage);
         }
-        let at = self.services().control.now();
+        let at = self.store().now();
         self.fire(
             &schedule,
             runs::Fired {
-                cause: demi_backend_database::schedules::RunCause::Now,
+                cause: demi_core_store::schedules::RunCause::Now,
                 at,
                 task: task.map(|task| task.id.clone()),
                 payload: runs::Payload::None,
@@ -597,11 +590,11 @@ impl Shard {
 
     /// Drops what each of the conversation's schedules has under way.
     async fn drop_pending_of(&self, conversation: &ConversationId) {
-        match self.services().control.conversation_schedules(conversation.clone()).await {
+        match self.store().conversation_schedules(conversation.clone()).await {
             Ok(schedules) => {
                 for schedule in &schedules {
                     self.drop_pending(&schedule.id);
-                    if let Err(error) = self.services().control.drop_pending_calls(schedule.id.clone()).await {
+                    if let Err(error) = self.store().drop_pending_calls(schedule.id.clone()).await {
                         tracing::warn!(event = "schedules.calls_not_dropped", schedule = %schedule.id, %error, "a held schedule's pending calls stay");
                     }
                 }
@@ -629,7 +622,7 @@ impl Shard {
                     None
                 }
             };
-            let now = self.services().control.now();
+            let now = self.store().now();
             let wait = next.map(|next| {
                 Duration::try_from(next.to_jiff().duration_since(now.to_jiff())).unwrap_or(Duration::ZERO)
             });
@@ -654,11 +647,11 @@ impl Shard {
     /// Fires every schedule whose time came, and answers the nearest next
     /// time.
     async fn fire_due(&self) -> Result<Option<Timestamp>, StorageError> {
-        let control = &self.services().control;
-        let now = control.now();
+        let store = self.store();
+        let now = store.now();
         let mut nearest: Option<Timestamp> = None;
         let mut keep = |at: Timestamp| nearest = Some(nearest.map_or(at, |nearest| nearest.min(at)));
-        for schedule in control.schedules(self.user().clone()).await? {
+        for schedule in store.schedules().await? {
             if !schedule.on() {
                 continue;
             }
@@ -668,7 +661,7 @@ impl Shard {
                     else {
                         continue;
                     };
-                    let last = control.schedule_last_fired(schedule.id.clone()).await?;
+                    let last = store.schedule_last_fired(schedule.id.clone()).await?;
                     let mut after = last.unwrap_or(schedule.since).to_jiff();
                     // Each task due runs as its own run, once for its
                     // latest missed time; in time order, so the last fired
@@ -735,9 +728,7 @@ impl Shard {
         };
         let (today, tomorrow) = plan::day_bounds(now.to_jiff(), &zone);
         let ran = self
-            .services()
-            .control
-            .schedule_runs_since(schedule.id.clone(), Timestamp::truncate(today))
+            .store().schedule_runs_since(schedule.id.clone(), Timestamp::truncate(today))
             .await?;
         Ok((ran >= limit).then(|| Timestamp::truncate(tomorrow)))
     }
@@ -746,8 +737,8 @@ impl Shard {
     /// run, *Skipped, the limit of 10 runs a day was reached, 7 calls
     /// since*, made by the first and grown by each later one.
     async fn count_held_back(&self, schedule: &StoredSchedule, calls: u32) -> Result<(), StorageError> {
-        let control = &self.services().control;
-        let now = control.now();
+        let store = self.store();
+        let now = store.now();
         let Some(limit) = schedule.max_runs_per_day else {
             return Ok(());
         };
@@ -755,19 +746,17 @@ impl Shard {
             return Ok(());
         };
         let (today, _) = plan::day_bounds(now.to_jiff(), &zone);
-        match control
-            .schedule_limit_run(schedule.id.clone(), Timestamp::truncate(today))
+        match store.schedule_limit_run(schedule.id.clone(), Timestamp::truncate(today))
             .await?
         {
             Some(mut run) => {
                 if let Some(demi_web_api_protocol::schedules::RunNote::Limit { calls: count, .. }) = &mut run.note {
                     *count += calls;
                 }
-                control.update_schedule_run(run).await?;
+                store.update_schedule_run(run).await?;
             }
             None => {
-                control
-                    .insert_schedule_run(runs::skipped(
+                store.insert_schedule_run(runs::skipped(
                         schedule,
                         runs::cause_of(&schedule.trigger),
                         now,
@@ -785,13 +774,16 @@ impl Shard {
 /// then fires what a backend that was down missed and waits for the next
 /// times.
 pub async fn start_schedulers(
-    control: &demi_backend_database::control::ControlService,
+    cores: &[(demi_web_api_protocol::ids::UserId, demi_core_store::store::CoreStore)],
     shards: &crate::shard::Shards,
 ) -> Result<(), StorageError> {
-    for user in control.users_with_schedules().await? {
+    for (user, store) in cores {
+        if !store.has_schedules().await? {
+            continue;
+        }
         // The shard's first call starts its scheduler; a shard that cannot
         // be reached starts it on its next call.
-        if let Err(error) = shards.of(&user).call(|_, _| async {}).await {
+        if let Err(error) = shards.of(user).call(|_, _| async {}).await {
             tracing::warn!(event = "schedule_scheduler.start_failed", %user, %error, "the schedules' scheduler did not start");
         }
     }

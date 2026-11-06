@@ -20,7 +20,6 @@ use crate::user::{Shared, storage};
 impl Shared {
     fn secret_row(&self, plugin: usize, name: &str) -> SecretRow {
         SecretRow {
-            user: self.user.clone(),
             plugin: self.plugin_id(plugin),
             name: name.to_owned(),
         }

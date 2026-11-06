@@ -104,7 +104,8 @@ pub async fn reorder(
 ) -> Result<(), AccountRefusal> {
     subscription(entry)?;
     let ordered = vault
-        .control()
+        .store_of(&entry.id)
+        .await?
         .set_credential_order(entry.id.clone(), accounts)
         .await?;
     if !ordered {

@@ -14,9 +14,7 @@ impl Shard {
     /// Replaces the user's personal instructions with `text`, which was
     /// checked; an empty text removes them.
     pub async fn set_instructions(&self, text: String) -> Result<(), StorageError> {
-        self.services()
-            .control
-            .set_instructions(self.user().clone(), text)
+        self.store().set_instructions(text)
             .await?;
         self.services().sync.mark(self.user(), Part::Instructions);
         Ok(())

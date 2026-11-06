@@ -53,7 +53,7 @@ impl SmallRequests {
     pub(crate) async fn resolve(&self, conversation: &ModelSelection) -> Result<ModelSelection, StorageError> {
         let services = &self.services;
         let entries = services.vault.entries_for(&self.user).await?;
-        let preferences = services.control.preferences(self.user.clone()).await?;
+        let preferences = services.stores.of(&self.user).await?.preferences().await?;
         let catalog = services.provider_registry.model_catalog(&entries, false).await;
         Ok(small_model(&catalog, &preferences, conversation))
     }

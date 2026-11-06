@@ -1,0 +1,218 @@
+//! Work panels: each conversation's tabs, the ids it ever had and the revision
+//! that counts its changes.
+//!
+//! A request of changes reads the row and writes it in one transaction, so one
+//! conversation's requests apply one at a time, each whole or not at all. The
+//! backend never interprets a tab.
+
+use std::collections::HashMap;
+
+use demi_plugin_host::store::PanelOutcome;
+use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::panel::{PanelChange, PanelDocument, Refused, WorkPanel};
+use rusqlite::{Connection, OptionalExtension, params};
+
+use super::StorageError;
+use super::columns::{decode, json, to_json};
+use super::store::CoreStore;
+
+impl CoreStore {
+    /// `owner`'s conversations that are not archived and whose panel has
+    /// a tab: those a lost package's plugin may have something to correct
+    /// in (`crates/command-protocol/src/messages.rs`).
+    pub async fn panelled_conversations(
+        &self,
+    ) -> Result<Vec<ConversationId>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare(
+                "SELECT conversations.id FROM conversations
+                 JOIN conversation_panels ON conversation_panels.conversation_id = conversations.id
+                 WHERE conversations.archived_at IS NULL
+                   AND json_array_length(conversation_panels.document, '$.tabs') > 0",
+            )?;
+            let ids = statement
+                .query_map([], |row| row.get::<_, String>(0))?
+                .map(|id| {
+                    let id = id?;
+                    decode("conversations", "id", ConversationId::try_from(id.as_str()))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(ids)
+        })
+        .await
+    }
+
+    /// The conversation's panel; the empty one when it never changed. A
+    /// stored document that no longer matches the panel's shape is corrupt,
+    /// not repaired.
+    pub async fn panel(&self, conversation: ConversationId) -> Result<WorkPanel, StorageError> {
+        self.call(move |connection, _| {
+            let (revision, document) = stored(connection, &conversation)?;
+            Ok(WorkPanel {
+                revision,
+                tabs: document.tabs,
+            })
+        })
+        .await
+    }
+
+    /// The panels of `owner`'s conversations that are archived, or that are
+    /// not, by conversation; one that never changed has no entry. A stored
+    /// document that no longer matches the panel's shape is that
+    /// conversation's own failure, not the read's, so the list the panels go
+    /// in does not fail for it.
+    pub async fn panels(
+        &self,
+        archived: bool,
+    ) -> Result<HashMap<ConversationId, Result<WorkPanel, StorageError>>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare(
+                "SELECT conversations.id, conversation_panels.revision, conversation_panels.document
+                 FROM conversation_panels
+                 JOIN conversations ON conversations.id = conversation_panels.conversation_id
+                 WHERE (conversations.archived_at IS NOT NULL) = ?1",
+            )?;
+            let mut rows = statement.query(params![archived])?;
+            let mut panels = HashMap::new();
+            while let Some(row) = rows.next()? {
+                let id = decode("conversations", "id", ConversationId::try_from(row.get::<_, String>(0)?))?;
+                let revision = row.get::<_, i64>(1)?;
+                let document = row.get::<_, String>(2)?;
+                let panel = decode("conversation_panels", "revision", u64::try_from(revision)).and_then(|revision| {
+                    let document: PanelDocument = json("conversation_panels", "document", &document)?;
+                    Ok(WorkPanel { revision, tabs: document.tabs })
+                });
+                panels.insert(id, panel);
+            }
+            Ok(panels)
+        })
+        .await
+    }
+
+    /// Applies `changes` to the conversation's panel in order, all or none,
+    /// as one change of its revision.
+    pub async fn change_panel(
+        &self,
+        conversation: ConversationId,
+        changes: Vec<PanelChange>,
+    ) -> Result<PanelOutcome, StorageError> {
+        self.call(move |connection, now| {
+            let transaction = connection.transaction()?;
+            let exists: Option<i64> = transaction
+                .query_row(
+                    "SELECT 1 FROM conversations WHERE id = ?1",
+                    [conversation.as_str()],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if exists.is_none() {
+                return Ok(PanelOutcome::Missing);
+            }
+            let (revision, mut document) = stored(&transaction, &conversation)?;
+            let effects = match document.apply_all(changes) {
+                Ok(effects) if effects.is_empty() => {
+                    return Ok(PanelOutcome::Unchanged { revision });
+                }
+                Ok(effects) => effects,
+                Err(Refused::Full) => return Ok(PanelOutcome::Full),
+                Err(Refused::TooLarge) => return Ok(PanelOutcome::TooLarge),
+            };
+            let revision = revision + 1;
+            store(&transaction, &conversation, revision, &document, now.as_millisecond())?;
+            transaction.commit()?;
+            Ok(PanelOutcome::Changed { revision, effects })
+        })
+        .await
+    }
+
+    /// Removes the tabs of `kinds` from every panel of `owner`'s
+    /// conversations, archived ones included, in one transaction, and
+    /// answers the conversations whose panel changed. The plugin that owns
+    /// the kinds is off, and a tab only it draws would show as one that
+    /// cannot be shown once its conversation is unarchived.
+    pub async fn close_panel_kinds(
+        &self,
+        kinds: Vec<String>,
+    ) -> Result<Vec<ConversationId>, StorageError> {
+        self.call(move |connection, now| {
+            let transaction = connection.transaction()?;
+            let panelled = {
+                let mut statement = transaction.prepare(
+                    "SELECT conversations.id FROM conversations
+                     JOIN conversation_panels ON conversation_panels.conversation_id = conversations.id
+                     WHERE json_array_length(conversation_panels.document, '$.tabs') > 0",
+                )?;
+                statement
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .map(|id| {
+                        let id = id?;
+                        decode("conversations", "id", ConversationId::try_from(id.as_str()))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            let mut changed = Vec::new();
+            for conversation in panelled {
+                let (revision, mut document) = stored(&transaction, &conversation)?;
+                let removals: Vec<PanelChange> = document
+                    .tabs
+                    .iter()
+                    .filter(|tab| kinds.contains(&tab.kind))
+                    .map(|tab| PanelChange::Remove { id: tab.id.clone() })
+                    .collect();
+                if removals.is_empty() {
+                    continue;
+                }
+                document
+                    .apply_all(removals)
+                    .expect("removing tabs takes no room");
+                store(&transaction, &conversation, revision + 1, &document, now.as_millisecond())?;
+                changed.push(conversation);
+            }
+            transaction.commit()?;
+            Ok(changed)
+        })
+        .await
+    }
+}
+
+/// Writes the conversation's panel at `revision`.
+fn store(
+    connection: &Connection,
+    conversation: &ConversationId,
+    revision: u64,
+    document: &PanelDocument,
+    now: i64,
+) -> Result<(), StorageError> {
+    connection.execute(
+        "INSERT INTO conversation_panels (conversation_id, revision, document, updated_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT (conversation_id) DO UPDATE SET revision = excluded.revision, document = excluded.document, updated_at = excluded.updated_at",
+        params![
+            conversation.as_str(),
+            i64::try_from(revision).expect("a revision fits in 63 bits"),
+            to_json(document),
+            now
+        ],
+    )?;
+    Ok(())
+}
+
+/// The conversation's revision and document; 0 and the empty one before
+/// its first change.
+fn stored(
+    connection: &Connection,
+    conversation: &ConversationId,
+) -> Result<(u64, PanelDocument), StorageError> {
+    let row: Option<(i64, String)> = connection
+        .query_row(
+            "SELECT revision, document FROM conversation_panels WHERE conversation_id = ?1",
+            [conversation.as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((revision, document)) = row else {
+        return Ok((0, PanelDocument::default()));
+    };
+    let revision = decode("conversation_panels", "revision", u64::try_from(revision))?;
+    let document = json("conversation_panels", "document", &document)?;
+    Ok((revision, document))
+}

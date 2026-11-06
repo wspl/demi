@@ -14,7 +14,7 @@ use demi_agent_server::{AskError, resolve_content};
 use demi_agent_store::media::HeldMedia;
 use demi_agent_store::SideOf;
 use demi_core_store::StorageError;
-use demi_backend_database::conversation_index::ConversationRecord;
+use demi_core_store::conversation_index::ConversationRecord;
 use demi_core_store::side_questions;
 use demi_backend_host_access::root_of;
 use demi_conversation_lane_protocol::ClientContent;
@@ -70,11 +70,8 @@ impl Shard {
     /// changes only while it is not archived.
     async fn side_conversation(&self, id: &ConversationId, change: bool) -> Result<ConversationRecord, SideRefusal> {
         let record = self
-            .services()
-            .control
-            .conversation(id.clone())
+            .store().conversation(id.clone())
             .await?
-            .filter(|record| record.owner == *self.user())
             .ok_or(SideRefusal::ConversationNotFound)?;
         if change && record.archived() {
             return Err(SideRefusal::Archived);
@@ -134,9 +131,7 @@ impl Shard {
                     Box::pin(async move {
                         let written = {
                             let side = side.clone();
-                            shard
-                                .services()
-                                .conversations
+                            shard.store().databases()
                                 .db(&conversation)
                                 .call(move |connection| side_questions::set_title(connection, &side, &title))
                                 .await?
@@ -215,8 +210,7 @@ impl Shard {
         let record = self.side_conversation(&id, false).await?;
         let folded = {
             let side = side.clone();
-            self.services()
-                .conversations
+            self.store().databases()
                 .db(&record.id)
                 .call(move |connection| side_questions::set_folded(connection, &side, folded))
                 .await?
@@ -228,8 +222,7 @@ impl Shard {
 
     async fn side_question(&self, conversation: &ConversationId, side: &NodeId) -> Result<SideQuestion, SideRefusal> {
         let side = side.clone();
-        self.services()
-            .conversations
+        self.store().databases()
             .read(conversation, move |connection| side_questions::one(connection, &side))
             .await?
             .flatten()

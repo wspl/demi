@@ -31,9 +31,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use demi_shared_gates::KeyedSerialGate;
 use demi_shared_types::{Block, BlockId, Timestamp, UserContentBlock};
-use demi_web_api_protocol::ids::{ConversationId, UserId};
+use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::search::LINE_MAX;
 use tokio::sync::broadcast;
 use rusqlite::types::Value;
@@ -103,16 +102,16 @@ END;
 /// word is matched by a scan of the user's texts.
 const TRIGRAM: usize = 3;
 
-/// Every user's search index. Cloning it is cheap.
+/// A core's search index. Cloning it is cheap.
 #[derive(Clone)]
-pub struct SearchIndexes(Arc<Indexes>);
+pub struct SearchIndex(Arc<Index>);
 
-struct Indexes {
-    directory: PathBuf,
-    /// One operation at a time per user.
-    turns: KeyedSerialGate<UserId>,
-    /// Each user whose index was deleted and built again empty.
-    resets: broadcast::Sender<UserId>,
+struct Index {
+    path: PathBuf,
+    /// One operation at a time.
+    turn: tokio::sync::Mutex<()>,
+    /// Sent when the index was deleted and built again empty.
+    resets: broadcast::Sender<()>,
 }
 
 /// How many resets wait for a slow follower before it hears that it missed
@@ -290,40 +289,36 @@ pub struct WrittenBlock {
     pub text: Option<Searchable>,
 }
 
-impl SearchIndexes {
-    /// The indexes in `directory`, which is created if it is missing.
-    pub async fn open(directory: PathBuf) -> Result<Self, StorageError> {
-        tokio::fs::create_dir_all(&directory).await?;
-        Ok(Self(Arc::new(Indexes {
-            directory,
-            turns: KeyedSerialGate::new(),
+impl SearchIndex {
+    /// The index at `path`, made when it is first used.
+    pub fn new(path: PathBuf) -> Self {
+        Self(Arc::new(Index {
+            path,
+            turn: tokio::sync::Mutex::new(()),
             resets: broadcast::channel(RESETS_WAITING).0,
-        })))
+        }))
     }
 
-    /// Each user whose index is deleted and built again empty from now on,
-    /// whose conversations the backend then indexes again.
-    pub fn resets(&self) -> broadcast::Receiver<UserId> {
+    /// A message each time the index is deleted and built again empty from
+    /// now on, whose conversations the core then indexes again.
+    pub fn resets(&self) -> broadcast::Receiver<()> {
         self.0.resets.subscribe()
     }
 
-    /// Runs `work` on a connection of `user`'s index, in the user's turn, on
-    /// the blocking pool.
+    /// Runs `work` on a connection of the index, in its turn, on the blocking
+    /// pool.
     async fn with<T: Send + 'static>(
         &self,
-        user: &UserId,
         work: impl FnOnce(&mut Connection) -> Result<T, StorageError> + Send + 'static,
     ) -> Result<T, StorageError> {
-        let _turn = self.0.turns.acquire(user.clone()).await;
-        let path = self.0.directory.join(format!("{user}.sqlite"));
-        let indexes = self.0.clone();
-        let user = user.clone();
+        let _turn = self.0.turn.lock().await;
+        let index = self.0.clone();
         tokio::task::spawn_blocking(move || {
-            let (mut connection, reset) = open_index(&path)?;
+            let (mut connection, reset) = open_index(&index.path)?;
             if reset {
-                // No follower is the backend starting or a test without
-                // one: the start indexes every conversation anyway.
-                let _ = indexes.resets.send(user);
+                // No follower is the core starting or a test without one:
+                // the start indexes every conversation anyway.
+                let _ = index.resets.send(());
             }
             work(&mut connection)
         })
@@ -333,11 +328,10 @@ impl SearchIndexes {
     /// What the index holds of the conversation; none when it holds nothing.
     pub async fn indexed(
         &self,
-        user: &UserId,
         conversation: &ConversationId,
     ) -> Result<Option<Indexed>, StorageError> {
         let conversation = conversation.clone();
-        self.with(user, move |connection| {
+        self.with(move |connection| {
             let title: Option<String> = connection
                 .query_row(
                     "SELECT t.text FROM conversations c
@@ -366,8 +360,8 @@ impl SearchIndexes {
     }
 
     /// Every conversation the index holds.
-    pub async fn conversations(&self, user: &UserId) -> Result<Vec<ConversationId>, StorageError> {
-        self.with(user, |connection| {
+    pub async fn conversations(&self) -> Result<Vec<ConversationId>, StorageError> {
+        self.with(|connection| {
             let mut statement = connection.prepare("SELECT id FROM conversations")?;
             let mut rows = statement.query([])?;
             let mut ids = Vec::new();
@@ -387,12 +381,11 @@ impl SearchIndexes {
     /// so a search sees it either as it was or as it is.
     pub async fn index(
         &self,
-        user: &UserId,
         conversation: &ConversationId,
         indexed: IndexedConversation,
     ) -> Result<(), StorageError> {
         let conversation = conversation.clone();
-        self.with(user, move |connection| {
+        self.with(move |connection| {
             let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             remove_rows(&transaction, &conversation)?;
             transaction.execute("INSERT INTO conversations (id) VALUES (?1)", [conversation.as_str()])?;
@@ -425,12 +418,11 @@ impl SearchIndexes {
     /// or a change before this one, and the conversation has to be read whole.
     pub async fn apply(
         &self,
-        user: &UserId,
         conversation: &ConversationId,
         change: TranscriptChange,
     ) -> Result<bool, StorageError> {
         let conversation = conversation.clone();
-        self.with(user, move |connection| {
+        self.with(move |connection| {
             let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             if !holds(&transaction, &conversation)? {
                 return Ok(false);
@@ -496,12 +488,11 @@ impl SearchIndexes {
     /// nothing, when the index does not hold the conversation.
     pub async fn retitle(
         &self,
-        user: &UserId,
         conversation: &ConversationId,
         title: String,
     ) -> Result<bool, StorageError> {
         let conversation = conversation.clone();
-        self.with(user, move |connection| {
+        self.with(move |connection| {
             let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             if !holds(&transaction, &conversation)? {
                 return Ok(false);
@@ -521,11 +512,10 @@ impl SearchIndexes {
     /// index does not hold removes nothing.
     pub async fn remove_conversation(
         &self,
-        user: &UserId,
         conversation: &ConversationId,
     ) -> Result<(), StorageError> {
         let conversation = conversation.clone();
-        self.with(user, move |connection| {
+        self.with(move |connection| {
             let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             remove_rows(&transaction, &conversation)?;
             transaction.commit()?;
@@ -544,13 +534,12 @@ impl SearchIndexes {
     /// or by a scan when it is shorter.
     pub async fn find_in(
         &self,
-        user: &UserId,
         conversation: &ConversationId,
         agent: u64,
         query: HistoryQuery,
     ) -> Result<Vec<FoundText>, StorageError> {
         let conversation = conversation.clone();
-        self.with(user, move |connection| {
+        self.with(move |connection| {
             let mut matches = Vec::new();
             // `?1` and `?2` come first, so each `?` after them is the next
             // condition's, in the order the conditions are written.
@@ -624,13 +613,12 @@ impl SearchIndexes {
     /// fewer than three characters is matched by a scan.
     pub async fn find(
         &self,
-        user: &UserId,
         words: Vec<String>,
         ranked: Vec<ConversationId>,
         limit: usize,
     ) -> Result<Vec<Found>, StorageError> {
         let found = self
-            .with(user, move |connection| {
+            .with(move |connection| {
                 let transaction = connection.transaction()?;
                 let (long, short): (Vec<&String>, Vec<&String>) = words
                     .iter()

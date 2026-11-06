@@ -82,8 +82,7 @@ pub(super) async fn transcript(
             let latest = query.latest.0;
             let transcript = Transcript::Agent(node.clone());
             let saved_node = node.clone();
-            let (read, saved) = services
-                .conversations
+            let (read, saved) = services.stores.of(&user.id).await?.databases()
                 .read(&record.id, move |connection| {
                     let read = tree::read_page(connection, &transcript, PageQuery::from(&query))?;
                     let saved = tree::saved_versions(connection)?.nodes.get(&saved_node).copied();
@@ -133,7 +132,7 @@ pub(super) async fn transcript(
     };
     // Error blocks come whole, so their facts read as the stream's.
     page.failures = failure_facts(&services.vault, &services.provider_registry, &page.blocks).await;
-    page.attachments = attachment_facts(&services.conversations, &record.id, replies(&page.blocks))
+    page.attachments = attachment_facts(&services.stores.of(&user.id).await?.databases(), &record.id, replies(&page.blocks))
         .await
         .map_err(ApiError::conversation_unreadable)?;
     let named = named_blocks(replies(&page.blocks));
@@ -269,8 +268,7 @@ pub(super) async fn block(
     let record = owned(services, &user.id, &id).await?;
     let block = BlockId::try_from(block).map_err(|_| no_block())?;
     let transcript = Transcript::Agent(NodeId::try_from(node).map_err(|_| no_node())?);
-    let read = services
-        .conversations
+    let read = services.stores.of(&user.id).await?.databases()
         .read(&record.id, move |connection| {
             tree::read_block(connection, &transcript, &block)
         })
@@ -316,8 +314,7 @@ pub(super) async fn command(
     };
     let command_id = CommandId::try_from(command.clone()).map_err(|_| no_command())?;
     let wanted = command_id.clone();
-    let (node, call) = services
-        .conversations
+    let (node, call) = services.stores.of(&user.id).await?.databases()
         .read(&record.id, move |connection| tree::command_call(connection, &wanted))
         .await
         .map_err(ApiError::conversation_unreadable)?

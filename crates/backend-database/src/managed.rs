@@ -1,19 +1,13 @@
-//! The records of each user's Cloud (`crates/backend-cloud/src/reset.rs`).
-//!
-//! - Its reset operations.
-//! - The token each boot mints.
-//! - The announcement of a reset to the user's conversations.
-//! - Which of the user's conversations use the Cloud.
+//! The reset operations of each user's Cloud
+//! (`crates/backend-cloud/src/reset.rs`).
 
 use demi_machine_manager_protocol::BaseVersion;
-use demi_shared_types::ModelSelection;
 use demi_web_api_protocol::cloud::ResetPhase;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, OperationId, ProviderId, UserId};
+use demi_web_api_protocol::ids::{DeviceId, OperationId};
 use rusqlite::{OptionalExtension, Row, params};
 
 use super::StorageError;
-use super::accounts::TokenHash;
-use super::columns::{decode, json};
+use super::columns::decode;
 use super::control::ControlService;
 
 /// A reset of a Cloud, as its intent is kept: the base it selected when it
@@ -25,18 +19,6 @@ pub struct ManagedOperation {
     pub base_version: BaseVersion,
     pub phase: ResetPhase,
     pub error: Option<String>,
-}
-
-/// One of the user's conversations as the Cloud's lifecycle weighs it
-/// (`crates/backend-cloud/src/uses.rs`): whether
-/// its files and commands are on the Cloud, the provider entry it infers
-/// with, and whether the Cloud is attached to it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CloudUseRecord {
-    pub id: ConversationId,
-    pub on_cloud: bool,
-    pub provider: Option<ProviderId>,
-    pub attached: bool,
 }
 
 const TABLE: &str = "managed_operations";
@@ -138,121 +120,6 @@ impl ControlService {
         .await
     }
 
-    /// Replaces the token of the user's Cloud device with the one a boot
-    /// minted: the token of an earlier boot opens no connection any more.
-    pub async fn rotate_device_token(
-        &self,
-        device: DeviceId,
-        token: TokenHash,
-    ) -> Result<(), StorageError> {
-        self.call(move |connection, _| {
-            let changed = connection.execute(
-                "UPDATE devices SET token_hash = ?1 WHERE id = ?2 AND kind = 'managed'",
-                [token.as_str(), device.as_str()],
-            )?;
-            if changed == 0 {
-                return Err(StorageError::Corrupt {
-                    table: "devices",
-                    column: "id",
-                    reason: format!("device {device} is not a Cloud device"),
-                });
-            }
-            Ok(())
-        })
-        .await
-    }
-
-    /// Tells every conversation of the user that its Cloud was reset by
-    /// `operation`: each one's execution context advances once per reset,
-    /// so every node reads the reset in its next context block.
-    pub async fn announce_cloud_reset(
-        &self,
-        user: UserId,
-        operation: OperationId,
-    ) -> Result<(), StorageError> {
-        self.call(move |connection, _| {
-            connection.execute(
-                "UPDATE conversations SET context_version = context_version + 1, cloud_reset_id = ?2
-                 WHERE user_id = ?1 AND (cloud_reset_id IS NULL OR cloud_reset_id <> ?2)",
-                [user.as_str(), operation.as_str()],
-            )?;
-            Ok(())
-        })
-        .await
-    }
-
-    /// The Cloud reset the conversation was last told of.
-    pub async fn announced_cloud_reset(
-        &self,
-        id: ConversationId,
-    ) -> Result<Option<OperationId>, StorageError> {
-        self.call(move |connection, _| {
-            let reset: Option<Option<String>> = connection
-                .query_row(
-                    "SELECT cloud_reset_id FROM conversations WHERE id = ?1",
-                    [id.as_str()],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            reset
-                .flatten()
-                .map(|reset| {
-                    decode(
-                        "conversations",
-                        "cloud_reset_id",
-                        OperationId::try_from(reset),
-                    )
-                })
-                .transpose()
-        })
-        .await
-    }
-
-    /// The user's conversations that are not archived, as the Cloud's
-    /// lifecycle weighs them; `cloud` is the user's Cloud device, once its
-    /// first use made it.
-    pub async fn cloud_uses(
-        &self,
-        user: UserId,
-        cloud: Option<DeviceId>,
-    ) -> Result<Vec<CloudUseRecord>, StorageError> {
-        const TABLE: &str = "conversations";
-        self.call(move |connection, _| {
-            let cloud = cloud.as_ref().map(DeviceId::as_str);
-            let mut statement = connection.prepare_cached(
-                "SELECT c.id, c.target_kind, c.target_device_id, w.device_id AS project_device, c.model,
-                        EXISTS (SELECT 1 FROM conversation_hosts h
-                                WHERE h.conversation_id = c.id AND h.device_id = ?2) AS attached
-                 FROM conversations c LEFT JOIN projects w ON w.id = c.target_project_id
-                 WHERE c.user_id = ?1 AND c.archived_at IS NULL
-                 ORDER BY c.id",
-            )?;
-            let mut rows = statement.query(params![user.as_str(), cloud])?;
-            let mut uses = Vec::new();
-            while let Some(row) = rows.next()? {
-                let kind: String = row.get("target_kind")?;
-                let device: Option<String> = row.get("target_device_id")?;
-                let project_device: Option<String> = row.get("project_device")?;
-                let target_device = device.or(project_device);
-                let on_cloud = kind == "cloud" || (cloud.is_some() && target_device.as_deref() == cloud);
-                let provider = row
-                    .get::<_, Option<String>>("model")?
-                    .map(|model| {
-                        let selection: ModelSelection = json(TABLE, "model", &model)?;
-                        decode(TABLE, "model", ProviderId::try_from(selection.provider_id))
-                    })
-                    .transpose()?;
-                uses.push(CloudUseRecord {
-                    id: decode(TABLE, "id", ConversationId::try_from(row.get::<_, String>("id")?))?,
-                    on_cloud,
-                    provider,
-                    attached: row.get("attached")?,
-                });
-            }
-            Ok(uses)
-        })
-        .await
-    }
 }
 
 /// An operation's row, read from its columns in `OPERATION_COLUMNS`.

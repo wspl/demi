@@ -36,13 +36,14 @@
 //! shows as failed a turn Demi is about to run. The shard holds the set in
 //! memory alone, since it lasts no longer than the process.
 
+use demi_core_store::store::CoreStore;
+use demi_web_api_protocol::ids::UserId;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 
 use demi_agent_transcript::INTERRUPTED_CODE;
 use demi_core_store::StorageError;
-use demi_backend_database::control::ControlService;
 use demi_backend_host_access::{conversation_of, root_of};
 use demi_backend_page_sync::Part;
 use demi_shared_types::{ErrorBlock, SessionPhase};
@@ -107,9 +108,9 @@ impl Shard {
                 (phase != SessionPhase::Idle).then(|| (conversation_of(&root), phase))
             })
             .collect();
-        let control = &self.services().control;
+        let store = self.store();
         for (conversation, phase) in running {
-            match control.mark_interrupted_turn(conversation.clone()).await {
+            match store.mark_interrupted_turn(conversation.clone()).await {
                 Ok(_) => tracing::info!(
                     event = "recovery.candidate_chosen",
                     %conversation,
@@ -132,9 +133,8 @@ impl Shard {
     /// Takes up the user's turns a shutdown interrupted, each in its own
     /// course, so that one slow to open holds up no other.
     async fn resume_interrupted_turns(self: Rc<Self>) {
-        let services = self.services();
         let started = std::time::Instant::now();
-        let marked = match services.control.interrupted_turns(self.user().clone()).await {
+        let marked = match self.store().interrupted_turns().await {
             Ok(marked) => marked,
             Err(error) => {
                 // The marks stay for the next start.
@@ -142,7 +142,7 @@ impl Shard {
                 return;
             }
         };
-        let on = match services.control.preferences(self.user().clone()).await {
+        let on = match self.store().preferences().await {
             Ok(preferences) => preferences.resume_after_restart != Some(false),
             Err(error) => {
                 tracing::warn!(event = "interrupted_turns.read_failed", user = %self.user(), step = "preferences", %error, "the preferences were not read for the turns the shutdown interrupted");
@@ -176,7 +176,7 @@ impl Shard {
         if self.is_closing() {
             return "skipped";
         }
-        match self.services().control.take_interrupted_turn(conversation.clone()).await {
+        match self.store().take_interrupted_turn(conversation.clone()).await {
             Ok(true) => {}
             Ok(false) => return "skipped",
             Err(error) => {
@@ -220,9 +220,12 @@ impl Shard {
 
 /// Takes up at start the turns the last shutdown interrupted: each owner's
 /// shard resumes its own in the background, so the start waits for none.
-pub async fn resume_after_restart(control: &ControlService, shards: &Shards) -> Result<(), StorageError> {
-    for owner in control.interrupted_turn_owners().await? {
-        let handed = shards.of(&owner).adopt(Shard::resume_interrupted_turns).await;
+pub async fn resume_after_restart(cores: &[(UserId, CoreStore)], shards: &Shards) -> Result<(), StorageError> {
+    for (owner, store) in cores {
+        if store.interrupted_turns().await?.is_empty() {
+            continue;
+        }
+        let handed = shards.of(owner).adopt(Shard::resume_interrupted_turns).await;
         if handed.is_err() {
             // The backend is shutting down; the next start takes up what is
             // left.

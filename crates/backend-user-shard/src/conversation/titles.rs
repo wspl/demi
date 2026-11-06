@@ -20,8 +20,8 @@ use std::rc::Rc;
 
 use demi_agent_server::title::{title_from_message, title_from_response, title_request};
 use demi_core_store::StorageError;
-use demi_backend_database::control::ControlService;
-use demi_backend_database::conversation_index::ConversationRecord;
+use demi_core_store::store::CoreStore;
+use demi_core_store::conversation_index::ConversationRecord;
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_conversation_lane_protocol::ClientContent;
 use demi_shared_types::{ModelSelection, NodeId};
@@ -44,7 +44,7 @@ pub(crate) struct TitleRequest {
 /// The title requests of a shard's conversations.
 pub(crate) struct Titles {
     small_requests: Rc<SmallRequests>,
-    control: ControlService,
+    store: CoreStore,
     /// The user's pages, which learn the title a request wrote.
     marks: UserMarks,
     /// Off, no request starts: titles stay the ones the first messages give.
@@ -64,13 +64,13 @@ pub(crate) type WriteSideTitle = Box<dyn FnOnce(String) -> LocalBoxFuture<'stati
 impl Titles {
     pub(super) fn new(
         small_requests: Rc<SmallRequests>,
-        control: ControlService,
+        store: CoreStore,
         marks: UserMarks,
         enabled: bool,
     ) -> Self {
         Self {
             small_requests,
-            control,
+            store,
             marks,
             enabled,
             in_flight: Rc::default(),
@@ -139,13 +139,13 @@ impl Titles {
         let cancel = CancellationToken::new();
         self.in_flight.borrow_mut().insert(id.clone(), cancel.clone());
         let small_requests = self.small_requests.clone();
-        let control = self.control.clone();
+        let store = self.store.clone();
         let marks = self.marks.clone();
         let in_flight = self.in_flight.clone();
         // The title logs under what asked for it, such as a socket's send.
         tasks.spawn_local(async move {
             let started = std::time::Instant::now();
-            let titled = generate(&small_requests, &control, &id, &selection, request, &cancel).await;
+            let titled = generate(&small_requests, &store, &id, &selection, request, &cancel).await;
             log_title(&id, None, &selection, started, &titled);
             in_flight.borrow_mut().remove(&id);
             marks.mark(Part::Conversation(id));
@@ -215,7 +215,7 @@ fn log_title(
 /// title in it, or `aborted`.
 async fn generate(
     small_requests: &SmallRequests,
-    control: &ControlService,
+    store: &CoreStore,
     id: &ConversationId,
     selection: &ModelSelection,
     request: TitleRequest,
@@ -234,8 +234,7 @@ async fn generate(
     if cancel.is_cancelled() {
         return Ok("aborted");
     }
-    control
-        .generated_title(id.clone(), title, request.from)
+    store.generated_title(id.clone(), title, request.from)
         .await?;
     Ok("set")
 }
@@ -262,9 +261,7 @@ impl Shard {
             return Ok(());
         }
         let titled = self
-            .services()
-            .control
-            .title_from_first_message(record.id.clone(), title.clone())
+            .store().title_from_first_message(record.id.clone(), title.clone())
             .await?;
         if let (true, Some(selection)) = (titled, &record.model) {
             let request = TitleRequest {

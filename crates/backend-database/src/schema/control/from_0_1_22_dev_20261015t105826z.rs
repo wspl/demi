@@ -9,14 +9,14 @@
 
 use rusqlite::Transaction;
 
-use super::super::{Migration, ResealSealed, corrupt};
+use super::super::{Migration, ControlSteps, corrupt};
 use super::shared::{fork_format_2};
 
 pub(super) const MIGRATION: Migration = Migration::Code(control_from_0_1_22_dev_20261015t105826z);
 
 fn control_from_0_1_22_dev_20261015t105826z(
     transaction: &Transaction<'_>,
-    _: &dyn ResealSealed,
+    _: &dyn ControlSteps,
 ) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "

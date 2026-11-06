@@ -133,9 +133,7 @@ async fn record(
     // The record keeps the snippet, so a draft that names the upload shows
     // it on every page.
     let snippet = is_text(name, &media_type).then(|| snippet(opening));
-    let record = services
-        .control
-        .create_attachment(user.clone(), media_type, size_bytes, sha256, snippet)
+    let record = services.stores.of(user).await?.create_attachment(media_type, size_bytes, sha256, snippet)
         .await?;
     // The request's span names the user; no conversation holds the upload
     // until a message sends it.

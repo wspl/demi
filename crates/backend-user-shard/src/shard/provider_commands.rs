@@ -876,9 +876,7 @@ async fn set_context(shard: Rc<Shard>, call: Call<ContextArgs>, port: RpcPort) -
     };
     let checked = demi_backend_accounts::settings::check(patch).map_err(failed)?;
     let services = shard.services();
-    services
-        .control
-        .patch_preferences(user.id.clone(), move |saved| demi_backend_accounts::settings::merge(saved, checked))
+    shard.store().patch_preferences(move |saved| demi_backend_accounts::settings::merge(saved, checked))
         .await
         .map_err(failed)?;
     services.sync.mark(&user.id, Part::Preferences);
@@ -943,9 +941,7 @@ async fn show_in_menu(
     }
     let services = shard.services();
     let provider = id.clone();
-    services
-        .control
-        .patch_preferences(user.id.clone(), move |mut saved| {
+    shard.store().patch_preferences(move |mut saved| {
             match args.model {
                 Some(model_id) => {
                     saved

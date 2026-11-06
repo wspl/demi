@@ -6,11 +6,11 @@ use demi_command_protocol::{
     ColorScheme, CommandCaller, CommandContext, CommandLocale,
     PROVIDER_SCOPE_PREFIX,
 };
-use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 use demi_web_api_protocol::settings::BrowserLocale;
 
 use demi_core_store::StorageError;
-use demi_backend_database::control::ControlService;
+use demi_core_store::store::CoreStore;
 
 /// The locale commands receive until the user's browser reports one.
 pub fn default_locale() -> CommandLocale {
@@ -20,28 +20,25 @@ pub fn default_locale() -> CommandLocale {
     }
 }
 
-/// The context of work `caller` starts for `conversation`, whose owner is
-/// `user`: the user's reported locale, or the default before one.
+/// The context of work `caller` starts for `conversation`: the reported
+/// locale, or the default before one.
 pub async fn command_context(
-    control: &ControlService,
-    user: &UserId,
+    store: &CoreStore,
     conversation: &ConversationId,
     caller: CommandCaller,
 ) -> Result<CommandContext, StorageError> {
-    context(control, user, conversation.to_string(), caller).await
+    context(store, conversation.to_string(), caller).await
 }
 
-/// The context of `user`'s work for the provider entry `provider` that
+/// The context of work for the provider entry `provider` that
 /// belongs to no conversation, such as installing its CLI
 /// (`crates/command-package-claude-code/src/lib.rs`): it names the entry.
 pub async fn provider_context(
-    control: &ControlService,
-    user: &UserId,
+    store: &CoreStore,
     provider: &ProviderId,
 ) -> Result<CommandContext, StorageError> {
     context(
-        control,
-        user,
+        store,
         format!("{PROVIDER_SCOPE_PREFIX}{provider}"),
         CommandCaller::User {},
     )
@@ -49,15 +46,14 @@ pub async fn provider_context(
 }
 
 async fn context(
-    control: &ControlService,
-    user: &UserId,
+    store: &CoreStore,
     scope: String,
     caller: CommandCaller,
 ) -> Result<CommandContext, StorageError> {
     let Reported {
         locale,
         color_scheme,
-    } = reported(control, user).await?;
+    } = reported(store).await?;
     Ok(CommandContext {
         conversation: scope,
         caller,
@@ -69,16 +65,16 @@ async fn context(
 /// The color scheme commands receive until the user's page reports one.
 pub const DEFAULT_COLOR_SCHEME: ColorScheme = ColorScheme::Light;
 
-/// What `user`'s commands receive of what their page reported: its
+/// What commands receive of what their page reported: its
 /// browser's locale and the color scheme it shows.
 pub struct Reported {
     pub locale: CommandLocale,
     pub color_scheme: ColorScheme,
 }
 
-/// What `user`'s page last reported, each part the default before one.
-pub async fn reported(control: &ControlService, user: &UserId) -> Result<Reported, StorageError> {
-    let preferences = control.preferences(user.clone()).await?;
+/// What the page last reported, each part the default before one.
+pub async fn reported(store: &CoreStore) -> Result<Reported, StorageError> {
+    let preferences = store.preferences().await?;
     Ok(Reported {
         locale: preferences
             .locale

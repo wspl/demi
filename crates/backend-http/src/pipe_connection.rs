@@ -31,7 +31,6 @@ use axum::response::Response;
 use axum_extra::TypedHeader;
 use axum_extra::headers::Authorization;
 use axum_extra::headers::authorization::Bearer;
-use demi_backend_database::devices::DeviceRecord;
 use demi_runner_client::{DeviceSource, FromSource, ToSource, relay_stream_pipe};
 use demi_runner_protocol::wire::{PIPE_LANE_CREDIT, PipeLaneRefusal, PipeLaneTarget, STREAM_PIPE_MESSAGE_BYTES};
 use demi_shared_lanes::{Assembly, AssemblyError, Frame, LANE_PIECE_BYTES, Message as LaneMessage, pieces};
@@ -41,7 +40,7 @@ use tokio::task::AbortHandle;
 use tracing::Instrument as _;
 
 use super::AppState;
-use super::runners::{claim_source, device_of};
+use super::runners::{TokenDevice, claim_source, device_of};
 
 /// The most bytes of one message the runner sends on the connection: a
 /// piece and its header, or an open and its target, with room to spare.
@@ -93,7 +92,7 @@ enum Told {
 
 struct Connection {
     state: AppState,
-    device: DeviceRecord,
+    device: TokenDevice,
     lanes: HashMap<u32, Lane>,
     /// The number of the last lane the runner opened.
     last_lane: u32,
@@ -104,7 +103,7 @@ struct Connection {
     refused: u64,
 }
 
-async fn serve(socket: WebSocket, state: AppState, device: DeviceRecord) {
+async fn serve(socket: WebSocket, state: AppState, device: TokenDevice) {
     let (mut sink, mut stream) = socket.split();
     let (to_writer, mut writes) = mpsc::unbounded_channel::<Bytes>();
     let mut writer = tokio::spawn(async move {

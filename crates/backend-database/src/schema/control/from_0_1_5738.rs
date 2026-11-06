@@ -10,11 +10,11 @@
 
 use rusqlite::Transaction;
 
-use super::super::{Migration, ResealSealed, corrupt_text};
+use super::super::{Migration, ControlSteps, corrupt_text};
 
 pub(super) const MIGRATION: Migration = Migration::Code(control_from_0_1_5738);
 
-fn control_from_0_1_5738(transaction: &Transaction<'_>, _: &dyn ResealSealed) -> rusqlite::Result<()> {
+fn control_from_0_1_5738(transaction: &Transaction<'_>, _: &dyn ControlSteps) -> rusqlite::Result<()> {
     let version: i64 = transaction.pragma_query_value(None, "schema_version", |row| row.get(0))?;
     transaction.pragma_update(None, "writable_schema", true)?;
     transaction.execute(

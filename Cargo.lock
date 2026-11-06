@@ -2540,8 +2540,11 @@ dependencies = [
  "demi-agent-store",
  "demi-conversation-lane-protocol",
  "demi-host-interface",
+ "demi-host-paths",
  "demi-plugin-host",
+ "demi-plugin-interface",
  "demi-runner-client",
+ "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-gates",
  "demi-shared-types",
@@ -2559,6 +2562,7 @@ dependencies = [
  "tokio",
  "tokio-rusqlite",
  "tracing",
+ "uuid",
  "zstd 0.13.3",
 ]
 

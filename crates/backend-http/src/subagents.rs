@@ -8,7 +8,7 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::subagents::ProfileRefusal as Stored;
+use demi_core_store::subagents::ProfileRefusal as Stored;
 use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_user_shard::shard::subagents::ProfileRefusal;
 use demi_web_api_protocol::error::ErrorCode;
@@ -25,7 +25,7 @@ pub(super) async fn read(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<SubagentSettings>, ApiError> {
-    Ok(Json(state.services.control.subagent_settings(user.id).await?))
+    Ok(Json(state.services.stores.of(&user.id).await?.subagent_settings().await?))
 }
 
 /// `PUT /subagents`: any of `{ enabled, maxLive, maxDepth }`; a limit

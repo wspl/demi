@@ -204,7 +204,7 @@ impl dyn HostShard + '_ {
             .await
             .map_err(|error| HostError::failed(None, error))?;
         let workspace = self
-            .control()
+            .store()
             .conversation(conversation.clone())
             .await
             .map_err(|error| HostError::failed(None, error.to_string()))?

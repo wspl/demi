@@ -45,6 +45,7 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use demi_agent_server::AgentServer;
+use demi_core_store::store::CoreStore;
 use demi_backend_cloud::machine::Cloud;
 use demi_plugin_host::UserPlugins;
 use demi_runner_client::{ARRIVAL, Pipes};
@@ -96,6 +97,8 @@ const QUEUE: usize = 256;
 /// them.
 pub struct Shard {
     user: UserId,
+    /// The user's core store.
+    store: CoreStore,
     /// The shard itself, for the tasks its methods start.
     this: Weak<Shard>,
     services: Arc<Services>,
@@ -211,6 +214,7 @@ impl Shard {
     fn new(
         shard: Weak<Shard>,
         user: UserId,
+        store: CoreStore,
         services: Arc<Services>,
         http: reqwest::Client,
         web: reqwest::Client,
@@ -223,12 +227,13 @@ impl Shard {
                 services: services.clone(),
                 web,
             }),
-            Rc::new(services.control.clone()),
+            Rc::new(store.clone()),
             Rc::new(services.sync.of(&user)),
         );
         let ConversationParts { agent, titles, suggested_replies } = conversation::conversation_parts(
             shard.clone(),
             user.clone(),
+            store.clone(),
             services.clone(),
             http.clone(),
         );
@@ -241,6 +246,7 @@ impl Shard {
         Self {
             search: SearchIndexer::new(&services, &user),
             user,
+            store,
             this: shard,
             services,
             http,
@@ -327,6 +333,11 @@ impl Shard {
 
     pub fn services(&self) -> &Services {
         &self.services
+    }
+
+    /// The user's core store.
+    pub fn store(&self) -> &CoreStore {
+        &self.store
     }
 
     /// The services, for work the shard builds that keeps them.
@@ -456,7 +467,7 @@ impl Shard {
         closed("the running roots were marked", self.mark_running_roots()).await;
         closed("the agents were disposed", self.agent.shutdown()).await;
         closed("the Cloud closed", self.cloud_shard().close_cloud()).await;
-        closed("the devices were shut down", self.devices.shut_down(&self.services.control)).await;
+        closed("the devices were shut down", self.devices.shut_down(&self.store)).await;
         self.tasks.close();
         closed("the tasks ended", self.tasks.wait()).await;
         closed("the pipes closed", self.pipes.close()).await;
@@ -883,13 +894,30 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
     while let Some(message) = queue.recv().await {
         match message {
             Message::Call(job) => {
+                // The first call opens the user's store. Waiting for it holds
+                // this thread's other users' calls back only at that call,
+                // and the start opened every user's store that existed.
+                let store = if shards.contains_key(job.user()) {
+                    None
+                } else {
+                    match services.stores.of(job.user()).await {
+                        Ok(store) => Some(store),
+                        Err(error) => {
+                            tracing::error!(event = "shard.store_open_failed", user = %job.user(), error = &error as &dyn std::error::Error, "a user's core store did not open");
+                            job.refuse();
+                            continue;
+                        }
+                    }
+                };
                 let shard = shards
                     .entry(job.user().clone())
                     .or_insert_with_key(|user| {
+                        let store = store.expect("a user with no shard had the store opened above");
                         let shard = Rc::new_cyclic(|shard| {
                             Shard::new(
                                 shard.clone(),
                                 user.clone(),
+                                store,
                                 services.clone(),
                                 http.clone(),
                                 web.clone(),
@@ -898,6 +926,9 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                         // The search index follows the user's changes from
                         // the shard's first call until it closes.
                         shard.tasks.spawn_local(shard.clone().follow_for_search());
+                        shard.tasks.spawn_local(shard.clone().follow_search_resets());
+                        // So does the pages' news of what a call cost.
+                        shard.tasks.spawn_local(shard.clone().follow_usage());
                         // So do the processes prepared ahead, the changes of
                         // the accounts they were started with.
                         let changes = services.vault.account_changes();

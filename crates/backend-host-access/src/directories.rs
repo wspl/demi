@@ -10,7 +10,7 @@
 //! the name then replaces what was typed, and the project of a directory that
 //! another project has is that project.
 
-use demi_backend_database::devices::DeviceRecord;
+use demi_core_store::devices::DeviceRecord;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::DeviceId;
@@ -42,10 +42,10 @@ impl dyn HostShard + '_ {
 
     /// The user's paired device `device_id`.
     async fn paired_device(&self, device_id: &DeviceId) -> Result<DeviceRecord, ChangeRefusal> {
-        self.control()
+        self.store()
             .device(device_id.clone())
             .await?
-            .filter(|device| device.user == *self.user() && device.kind == DeviceKind::User)
+            .filter(|device| device.kind == DeviceKind::User)
             .ok_or(ChangeRefusal::DeviceNotFound)
     }
 
@@ -68,10 +68,9 @@ impl dyn HostShard + '_ {
                 Ok(ConversationTarget::Device { device_id, path })
             }
             ConversationTarget::Project { project_id } => {
-                self.control()
+                self.store()
                     .project(project_id.clone())
                     .await?
-                    .filter(|project| project.user == *self.user())
                     .ok_or(ChangeRefusal::ProjectNotFound)?;
                 Ok(ConversationTarget::Project { project_id })
             }
@@ -93,7 +92,7 @@ fn typed_directory(device: &DeviceRecord, path: &str) -> Result<String, ChangeRe
     let path = match paths.home_relative(path) {
         Some(_) => {
             let home = match device.kind {
-                DeviceKind::Managed => device.home.as_deref().unwrap_or(demi_backend_database::CLOUD_HOME),
+                DeviceKind::Managed => device.home.as_deref().unwrap_or(demi_core_store::CLOUD_HOME),
                 DeviceKind::User => device.home.as_deref().ok_or(ChangeRefusal::DeviceHomeUnknown)?,
             };
             paths.from_home(home, path)

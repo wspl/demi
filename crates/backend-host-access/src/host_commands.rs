@@ -51,9 +51,9 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::rc::{Rc, Weak};
 
-use demi_backend_database::permissions::DEVICES;
+use demi_core_store::permissions::DEVICES;
 use demi_runner_protocol::pairs::PairRoute;
-use demi_backend_database::conversation_index::{
+use demi_core_store::conversation_index::{
     AttachedHostRecord, ExecutionTarget, RecordChange,
 };
 use demi_runner_client::{JobEnd, JobStart, Pipe, RemoteJob, Withdrawal};
@@ -295,14 +295,14 @@ async fn devices_named(
     wanted: &str,
 ) -> Result<Vec<NamedDevice>, RpcError> {
     let failed = |error: demi_core_store::StorageError| RpcError::Failed(error.to_string());
-    let control = shard.control();
+    let store = shard.store();
     let mut found: Vec<NamedDevice> = Vec::new();
     let mut push = |named: NamedDevice| {
         if !found.iter().any(|each| each.device == named.device) {
             found.push(named);
         }
     };
-    let cloud = control.managed_device(shard.user().clone()).await.map_err(failed)?;
+    let cloud = store.managed_device().await.map_err(failed)?;
     let is_cloud = |device: &DeviceId| cloud.as_ref().is_some_and(|cloud| cloud.id == *device);
     for host in reachable(shard, conversation).await? {
         if host.name == wanted || host.device.as_str() == wanted {
@@ -313,7 +313,7 @@ async fn devices_named(
             });
         }
     }
-    let paired = control.paired_devices(shard.user().clone()).await.map_err(failed)?;
+    let paired = store.paired_devices().await.map_err(failed)?;
     for device in paired.iter().filter(|device| device.id.as_str() == wanted || device.name == wanted) {
         push(NamedDevice {
             device: device.id.clone(),
@@ -358,7 +358,7 @@ where
 }
 
 /// The user's Hosts, each by the name `demi host devices` gives it.
-pub(crate) struct HostNames(Vec<demi_backend_database::devices::DeviceRecord>);
+pub(crate) struct HostNames(Vec<demi_core_store::devices::DeviceRecord>);
 
 impl HostNames {
     /// The name of Host `id`: `Cloud` for the Cloud, the id for a Host the
@@ -386,10 +386,10 @@ impl HostNames {
 
 /// The user's Hosts, paired devices and the Cloud, for naming them.
 pub(crate) async fn host_names(shard: &dyn HostShard) -> Result<HostNames, RpcError> {
-    let control = shard.control();
+    let store = shard.store();
     let failed = |error: demi_core_store::StorageError| RpcError::Failed(error.to_string());
-    let mut devices = control.paired_devices(shard.user().clone()).await.map_err(failed)?;
-    devices.extend(control.managed_device(shard.user().clone()).await.map_err(failed)?);
+    let mut devices = store.paired_devices().await.map_err(failed)?;
+    devices.extend(store.managed_device().await.map_err(failed)?);
     Ok(HostNames(devices))
 }
 
@@ -512,14 +512,14 @@ async fn devices(
 ) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
     let hosts = reachable(&*shard, &conversation).await?;
-    let control = shard.control();
+    let store = shard.store();
     let failed = |error: demi_core_store::StorageError| RpcError::Failed(error.to_string());
-    let cloud = control
-        .managed_device(shard.user().clone())
+    let cloud = store
+        .managed_device()
         .await
         .map_err(failed)?;
-    let paired = control
-        .paired_devices(shard.user().clone())
+    let paired = store
+        .paired_devices()
         .await
         .map_err(failed)?;
     if cloud.is_none() {
@@ -666,7 +666,7 @@ async fn pair(shard: Rc<dyn HostShard>, call: Call<PairArgs>, port: RpcPort) -> 
         invocation,
     } = call;
     let conversation = conversation_of(&invocation)?;
-    let device = match shard.claims().claim(shard.control(), shard.user(), &code).await {
+    let device = match shard.claims().claim(shard.store(), shard.user(), &code).await {
         Ok(device) => device,
         Err(ClaimRefusal::UnknownCode) => {
             return Err(RpcError::Failed(format!(
@@ -777,7 +777,7 @@ async fn current(
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
-    let control = shard.control();
+    let store = shard.store();
     let record = shard
         .owned_conversation(&conversation)
         .await
@@ -796,14 +796,14 @@ async fn current(
             directory,
         },
         Some(device) => {
-            let name = control
+            let name = store
                 .device(device.clone())
                 .await
                 .map_err(|error| RpcError::Failed(error.to_string()))?
                 .map_or_else(|| device.to_string(), |device| device.name);
             let project = match &target {
                 ExecutionTarget::Project { project_id, .. } => Some(
-                    control
+                    store
                         .project(project_id.clone())
                         .await
                         .map_err(|error| RpcError::Failed(error.to_string()))?
@@ -983,7 +983,7 @@ async fn run_on_host(
                 // The primary Host, admitted while its runner is away,
                 // answers with its offline error as an attached one is
                 // refused with it.
-                return Err(match shard.control().device(target.device.clone()).await {
+                return Err(match shard.store().device(target.device.clone()).await {
                     Ok(Some(record)) => shard.offline(&record).message,
                     _ => format!("{} is offline", target.name),
                 });

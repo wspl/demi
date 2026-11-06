@@ -20,6 +20,9 @@ demi-shared-gates = { path = "../shared-gates" }
 demi-runner-client = { path = "../runner-client" }
 demi-host-interface = { path = "../host-interface" }
 demi-plugin-host = { path = "../plugin-host" }
+demi-plugin-interface = { path = "../plugin-interface" }
+demi-host-paths = { path = "../host-paths" }
+demi-runner-protocol = { path = "../runner-protocol" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 base64.workspace = true
 bytes.workspace = true
@@ -37,6 +40,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-rusqlite = "0.8"
 tracing.workspace = true
+uuid = { version = "1", features = ["v4"] }
 # The contents and the records' bodies are stored compressed; the records of a
 # conversation share a dictionary trained on its own (`records.rs`).
 zstd = { version = "0.13", default-features = false, features = ["zdict_builder"] }

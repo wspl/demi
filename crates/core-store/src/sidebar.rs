@@ -1,0 +1,152 @@
+//! The sidebar's explicit order: a move of one row before another, or to the end,
+//! within its partition, which the move writes whole in one transaction.
+//!
+//! Activity never reorders a row.
+
+use demi_web_api_protocol::ids::{ConversationId, ProjectId};
+use rusqlite::{Connection, OptionalExtension, params};
+
+use super::StorageError;
+use super::store::CoreStore;
+
+/// What a move of a row in the sidebar's order did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reorder {
+    Moved,
+    /// The row moved or the one it goes before is not the user's, as one
+    /// another page deleted meanwhile; nothing is written.
+    Missing,
+    /// Both are the user's, but not in one partition; nothing is written.
+    OutOfPartition,
+}
+
+impl CoreStore {
+    /// Moves the user's conversation `moved` before `before`, or to the end, within
+    /// its partition: the conversations that are not archived, pinned as it is, and
+    /// in the same project or in none.
+    ///
+    /// Nothing is written when either is not the user's, or not in that partition,
+    /// an archived one included.
+    pub async fn reorder_conversations(
+        &self,
+        moved: ConversationId,
+        before: Option<ConversationId>,
+    ) -> Result<Reorder, StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            let before = before.as_ref().map(ConversationId::as_str);
+            if !owns(&transaction, "conversations", moved.as_str(), before)? {
+                return Ok(Reorder::Missing);
+            }
+            let partition = transaction
+                .query_row(
+                    "SELECT archived_at IS NOT NULL, pinned, target_project_id FROM conversations WHERE id = ?1",
+                    params![moved.as_str()],
+                    |row| Ok((row.get::<_, bool>(0)?, row.get::<_, bool>(1)?, row.get::<_, Option<String>>(2)?)),
+                )
+                .optional()?;
+            let Some((false, pinned, project)) = partition else {
+                return Ok(Reorder::OutOfPartition);
+            };
+            let peers = {
+                let mut statement = transaction.prepare_cached(
+                    "SELECT id FROM conversations
+                     WHERE archived_at IS NULL AND pinned = ?1 AND target_project_id IS ?2
+                     ORDER BY sort_order, id",
+                )?;
+                let rows = statement.query_map(params![pinned, project], |row| row.get::<_, String>(0))?;
+                rows.collect::<Result<Vec<String>, _>>()?
+            };
+            if !write_order(&transaction, "conversations", peers, moved.as_str(), before)? {
+                return Ok(Reorder::OutOfPartition);
+            }
+            transaction.commit()?;
+            Ok(Reorder::Moved)
+        })
+        .await
+    }
+
+    /// Moves the user's project `moved` before `before`, or to the end;
+    /// `Missing` when either is not one of the user's projects in the
+    /// sidebar.
+    pub async fn reorder_projects(
+        &self,
+        moved: ProjectId,
+        before: Option<ProjectId>,
+    ) -> Result<Reorder, StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            let peers = {
+                let mut statement = transaction.prepare_cached(
+                    "SELECT id FROM projects WHERE deleted_at IS NULL ORDER BY sort_order, id",
+                )?;
+                let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+                rows.collect::<Result<Vec<String>, _>>()?
+            };
+            let before = before.as_ref().map(ProjectId::as_str);
+            // The user's projects are one partition: a row not in it is not the user's.
+            if !write_order(&transaction, "projects", peers, moved.as_str(), before)? {
+                return Ok(Reorder::Missing);
+            }
+            transaction.commit()?;
+            Ok(Reorder::Moved)
+        })
+        .await
+    }
+}
+
+/// Whether `moved`, and `before` when given, are rows of `table`.
+fn owns(
+    connection: &Connection,
+    table: &'static str,
+    moved: &str,
+    before: Option<&str>,
+) -> Result<bool, StorageError> {
+    let mut statement =
+        connection.prepare_cached(&format!("SELECT 1 FROM {table} WHERE id = ?1"))?;
+    for id in std::iter::once(moved).chain(before) {
+        if statement.query_row(params![id], |_| Ok(())).optional()?.is_none() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// Moves `moved` before `before`, or to the end, among `peers`, a
+/// partition in its order, and writes the partition's new order to `table`;
+/// false, writing nothing, when either row is not in the partition. Ids
+/// compare in any case, as the index compares them.
+fn write_order(
+    connection: &Connection,
+    table: &'static str,
+    mut peers: Vec<String>,
+    moved: &str,
+    before: Option<&str>,
+) -> Result<bool, StorageError> {
+    let Some(from) = peers
+        .iter()
+        .position(|peer| peer.eq_ignore_ascii_case(moved))
+    else {
+        return Ok(false);
+    };
+    if before.is_some_and(|before| !peers.iter().any(|peer| peer.eq_ignore_ascii_case(before))) {
+        return Ok(false);
+    }
+    let row = peers.remove(from);
+    let to = match before {
+        Some(before) => peers
+            .iter()
+            .position(|peer| peer.eq_ignore_ascii_case(before))
+            // The row moves before itself: it stays where it was.
+            .unwrap_or(from),
+        None => peers.len(),
+    };
+    peers.insert(to, row);
+    let mut statement =
+        connection.prepare_cached(&format!("UPDATE {table} SET sort_order = ?1 WHERE id = ?2"))?;
+    for (position, peer) in peers.iter().enumerate() {
+        let position = i64::try_from(position).expect("a partition's size fits an i64");
+        statement.execute(params![position, peer])?;
+    }
+    Ok(true)
+}

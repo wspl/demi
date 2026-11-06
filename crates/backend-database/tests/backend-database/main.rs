@@ -4,7 +4,7 @@
 //! server that upgraded and one installed afresh hold the same tables.
 
 use demi_backend_database::DatabaseKind;
-use demi_backend_database::schema::ResealSealed;
+use demi_backend_database::schema::ControlSteps;
 use demi_backend_database::testing::{current, history, migrate, migrate_control, version_of};
 use demi_web_api_protocol::ids::ProviderId;
 use rusqlite::Connection;
@@ -145,7 +145,11 @@ fn each_configuration_of_format_2_is_sealed_again_in_format_3() {
     /// any other.
     struct Formats;
 
-    impl ResealSealed for Formats {
+    impl ControlSteps for Formats {
+        fn data_directory(&self) -> &std::path::Path {
+            std::path::Path::new("test")
+        }
+
         fn provider_config(&self, id: &ProviderId, _: &str, _: &[u8]) -> Result<Vec<u8>, String> {
             Err(format!("entry {id} is no configuration of format 1"))
         }

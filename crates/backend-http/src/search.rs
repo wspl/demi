@@ -19,7 +19,7 @@ pub(super) async fn search(
     AuthUser(user): AuthUser,
     QueryParams(SearchQuery { q, workspace }): QueryParams<SearchQuery>,
 ) -> Result<Json<SearchResults>, ApiError> {
-    let results = search::search(&state.services, &user.id, &q, workspace.as_ref()).await?;
+    let results = search::search(&state.services.stores.of(&user.id).await?, &q, workspace.as_ref()).await?;
     Ok(Json(SearchResults { results }))
 }
 
@@ -32,5 +32,5 @@ pub(super) async fn search_in(
     QueryParams(SearchQuery { q, .. }): QueryParams<SearchQuery>,
 ) -> Result<Json<MessageResults>, ApiError> {
     let record = owned(&state.services, &user.id, &id).await?;
-    Ok(Json(search::search_in(&state.services, &user.id, &record.id, &q).await?))
+    Ok(Json(search::search_in(&state.services.stores.of(&user.id).await?, &record.id, &q).await?))
 }

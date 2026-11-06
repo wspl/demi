@@ -16,7 +16,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
-use demi_backend_database::schedules::{RunCause, StoredSchedule, WatchOutput};
+use demi_core_store::schedules::{RunCause, StoredSchedule, WatchOutput};
 use demi_backend_page_sync::Part;
 use demi_runner_client::{ContextSource, EnvironmentOptions, RemoteHost, RemoteShellEnvironment};
 use demi_command_protocol::{CommandCaller, CommandContext, Viewable};
@@ -185,7 +185,7 @@ impl Shard {
         let shard = self.this();
         self.tasks().spawn_local(async move {
             shard.check_watch(&schedule, generation, &stop).await;
-            let now = shard.services().control.now();
+            let now = shard.store().now();
             shard.schedules().tried.borrow_mut().insert(schedule.id.clone(), now);
             let done = {
                 let mut pending = shard.schedules().pending.borrow_mut();
@@ -206,9 +206,9 @@ impl Shard {
         let Trigger::Change { command, .. } = &schedule.trigger else {
             return;
         };
-        let control = &self.services().control;
+        let store = self.store();
         let checked = self.run_watch_command(schedule, command.clone(), stop).await;
-        let now = control.now();
+        let now = store.now();
         if !self.schedule_current(&schedule.id, generation) {
             return;
         }
@@ -233,7 +233,7 @@ impl Shard {
         };
         let mut run = super::runs::skipped(schedule, RunCause::Change, now, note.1);
         run.state = note.0;
-        match control.insert_schedule_run(run).await {
+        match store.insert_schedule_run(run).await {
             Ok(()) => self.mark(Part::Metadata(schedule.conversation.clone())),
             Err(error) => tracing::warn!(event = "schedule_watch.record_failed", schedule = %schedule.id, what = "run", %error, "a watch's run was not recorded"),
         }
@@ -251,7 +251,7 @@ impl Shard {
         generation: u64,
         now: Timestamp,
     ) -> Result<(), demi_core_store::StorageError> {
-        let control = &self.services().control;
+        let store = self.store();
         let record = WatchOutput {
             stdout: output.stdout.clone(),
             digest,
@@ -259,10 +259,10 @@ impl Shard {
             checked_at: now,
         };
         let Some(before) = &schedule.watch else {
-            return control.set_watch_output(schedule.id.clone(), Some(record)).await;
+            return store.set_watch_output(schedule.id.clone(), Some(record)).await;
         };
         if before.digest == record.digest && before.exit == output.exit {
-            return control.set_watch_output(schedule.id.clone(), Some(record)).await;
+            return store.set_watch_output(schedule.id.clone(), Some(record)).await;
         }
         if self.limit_reached(schedule, now).await?.is_some() {
             return self.count_held_back(schedule, 1).await;
@@ -271,7 +271,7 @@ impl Shard {
         if !self.schedule_current(&schedule.id, generation) {
             return Ok(());
         }
-        control.set_watch_output(schedule.id.clone(), Some(record)).await?;
+        store.set_watch_output(schedule.id.clone(), Some(record)).await?;
         let fired = Fired {
             cause: RunCause::Change,
             task: None,
@@ -291,14 +291,13 @@ impl Shard {
     /// Runs the watch's command on the conversation's Host as the agent's
     /// shell would, or answers why it cannot.
     async fn run_watch_command(&self, schedule: &StoredSchedule, script: String, stop: &CancellationToken) -> Checked {
-        let control = &self.services().control;
+        let store = self.store();
         if let Err(unrunnable) = self.runnable_after_return(schedule).await {
             return Checked::Unrunnable(unrunnable);
         }
         let failed = |error: &dyn std::fmt::Display| Checked::Failed(error.to_string());
         let context = match demi_backend_runners::command_context::command_context(
-            control,
-            self.user(),
+            store,
             &schedule.conversation,
             CommandCaller::User {},
         )
