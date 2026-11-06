@@ -86,6 +86,7 @@ impl PermissionShard for Shard {
                 }
                 self.restore_tree(conversation).await?;
             }
+            self.settle_failure_hold(conversation).await;
             self.agent().admit_from_user(&root, asking, message).await
         })
     }

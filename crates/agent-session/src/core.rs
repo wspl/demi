@@ -105,6 +105,12 @@ pub(crate) struct SessionCore {
     /// looked at. Not saved: a restore holds a child again, and a root's failed
     /// turn holds by itself ([`failed_turn_holds`](Self::failed_turn_holds)).
     pub(super) held: bool,
+    /// The record of the failed turn whose failure has passed: a request could
+    /// succeed again, so the turn holds nothing more
+    /// ([`failed_turn_holds`](Self::failed_turn_holds)). Not saved: the
+    /// backend, which reads when a failure passes, says it again after a
+    /// restore.
+    passed_failure: Option<BlockId>,
     /// The session sends one request per turn and runs no tool, as a
     /// session copy does.
     pub(super) one_request: bool,
@@ -684,6 +690,7 @@ impl SessionCore {
             editing: None,
             activity: Activity::Idle,
             held: false,
+            passed_failure: None,
             one_request: parts.one_request,
             request_turn: parts.request_turn,
             disposing: false,
@@ -1181,17 +1188,41 @@ impl SessionCore {
     }
 
     /// Whether the last turn's failure holds the node's waiting input until the
-    /// user acts, with Resume or a message.
+    /// user acts, with Resume or a message, or until its failure passes.
     ///
     /// A root's turn that ended with an `error` block does, while a child's
     /// parent decides for it. The user's action writes after the record, which
     /// ends the hold. Otherwise each wakeup would start a turn that fails the
     /// same way, a whole history sent for nothing.
     ///
+    /// Once the failure has passed, as a usage limit does when an account has
+    /// room again, a wakeup would not fail the same way: input that arrives
+    /// then opens a turn as it does after an answered one. What the hold wrote
+    /// into the failed turn starts nothing by itself, since resuming the failed
+    /// work is the user's to decide.
+    ///
     /// A Stop holds nothing, since the user stopped the work, not the agent's
     /// ability to answer.
     fn failed_turn_holds(&self) -> bool {
-        self.runtime.user_recovers_turns() && self.transcript.turn_failure().is_some()
+        self.runtime.user_recovers_turns()
+            && self
+                .transcript
+                .turn_failure()
+                .is_some_and(|failure| self.passed_failure.as_ref() != Some(&failure.id))
+    }
+
+    /// Ends the hold of the failed turn whose record is `failure`, whose
+    /// failure has passed. A failure that is no longer the last turn's
+    /// changes nothing.
+    pub(super) fn failure_passed(&mut self, failure: &BlockId) {
+        if self
+            .transcript
+            .turn_failure()
+            .is_some_and(|last| &last.id == failure)
+        {
+            self.passed_failure = Some(failure.clone());
+            self.wake();
+        }
     }
 
     /// Writes the agent messages and command reports that wait into the failed
@@ -2134,7 +2165,11 @@ impl SessionCore {
             input = %message.id,
             kind = "agent_message",
             from_node = message.sender.as_ref().map(|sender| sender.id.to_string()),
-            path = if matches!(self.activity, Activity::Running(_)) { "pending_for_boundary" } else { "starts_turn" },
+            path = match (&self.activity, self.failed_turn_holds()) {
+                (Activity::Running(_), _) => "pending_for_boundary",
+                (_, true) => "failed_turn",
+                (_, false) => "starts_turn",
+            },
             held = self.held,
             "an agent message was admitted"
         );

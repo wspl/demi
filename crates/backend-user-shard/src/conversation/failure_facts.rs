@@ -13,6 +13,9 @@
 //!   is used up. Without rotation the dock offers the account Smart would
 //!   take now.
 //! - A request through an offline device names the device.
+//!
+//! The end of a failed turn's hold (`retry_resume.rs`) reads here too whether
+//! a usage limit under rotation has passed: one of the accounts has room now.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -27,6 +30,7 @@ use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 
 use demi_backend_providers::vault::entries::Vault;
 use demi_provider_registry::registry::ProviderRegistry;
+use demi_provider_registry::rotation::Candidate;
 use demi_provider_registry::entry::ProviderEntry;
 
 use crate::shard::device_requests::through_device;
@@ -136,13 +140,8 @@ async fn account_facts(
     error: &ErrorBlock,
     facts: &mut ProviderFailureFacts,
 ) {
-    let candidates = match provider_registry.candidates(entry, false).await {
-        Ok(candidates) if candidates.len() >= 2 => candidates,
-        Ok(_) => return,
-        Err(error) => {
-            tracing::warn!(event = "failure_facts.read_failed", provider = %entry.id, what = "usage_limit_accounts", error = &error as &dyn std::error::Error, "a usage limit's accounts were not read");
-            return;
-        }
+    let Some(candidates) = several_accounts(provider_registry, entry).await else {
+        return;
     };
     let rotation = provider_registry.rotation();
     let model = &error.model.model;
@@ -165,6 +164,43 @@ async fn account_facts(
             if let Some(earliest) = rotation.all_used_up(&entry.id, &candidates, model, now) {
                 facts.retry_at = earliest.or(facts.retry_at);
             }
+        }
+    }
+}
+
+/// Whether the usage limit `error` records has passed for an entry that
+/// rotates among its accounts: one of them has room for the error's model now,
+/// which the next request would take. False for any other failure, an entry
+/// that does not rotate, and accounts that cannot be read.
+pub(crate) async fn rotation_has_room(vault: &Vault, provider_registry: &ProviderRegistry, error: &ErrorBlock) -> bool {
+    if error.code.as_deref() != Some(ErrorCode::UsageLimit.as_str()) {
+        return false;
+    }
+    let Some(reader) = reader(vault, provider_registry, &error.model.provider_id).await else {
+        return false;
+    };
+    if matches!(reader.entry.rotation(), Rotation::Manual) {
+        return false;
+    }
+    let Some(candidates) = several_accounts(provider_registry, &reader.entry).await else {
+        return false;
+    };
+    let now = provider_registry.now();
+    provider_registry
+        .rotation()
+        .all_used_up(&reader.entry.id, &candidates, &error.model.model, now)
+        .is_none()
+}
+
+/// The accounts of `entry` when it has several; none for one account, and
+/// when they cannot be read.
+async fn several_accounts(provider_registry: &ProviderRegistry, entry: &ProviderEntry) -> Option<Vec<Candidate>> {
+    match provider_registry.candidates(entry, false).await {
+        Ok(candidates) if candidates.len() >= 2 => Some(candidates),
+        Ok(_) => None,
+        Err(error) => {
+            tracing::warn!(event = "failure_facts.read_failed", provider = %entry.id, what = "usage_limit_accounts", error = &error as &dyn std::error::Error, "a usage limit's accounts were not read");
+            None
         }
     }
 }

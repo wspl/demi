@@ -1492,6 +1492,13 @@ impl AgentSession {
         self.shared.update(SessionCore::hold);
     }
 
+    /// Says that the failure of the failed turn whose record is `failure` has
+    /// passed: a request could succeed again, so input that arrives from now on
+    /// opens a turn. The turn's Resume stays the user's.
+    pub fn failure_passed(&self, failure: &BlockId) {
+        self.shared.update(|core| core.failure_passed(failure));
+    }
+
     /// Lets waiting input open a continuation again after
     /// [`hold`](Self::hold), and opens one when nothing runs.
     pub fn release(&self) {
