@@ -19,8 +19,12 @@
     "progress": "{position} / {count}"
   },
   "useCredential": "usar la credencial “{name}”",
+  "device": {
+    "title": "¿Permitir a este chat usar “{name}”?",
+    "description": "Sus agentes pueden ejecutar comandos en tu nombre en “{name}” hasta que lo desconectes.",
+    "use": "usar “{name}”"
+  },
   "host": {
-    "reach": "acceder a {host}",
     "pair": "vincular una computadora y acceder a ella"
   },
   "categories": {

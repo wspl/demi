@@ -19,8 +19,12 @@
     "progress": "{position} / {count}"
   },
   "useCredential": "認証情報「{name}」の使用",
+  "device": {
+    "title": "このチャットに「{name}」の使用を許可しますか？",
+    "description": "このチャットのエージェントは、取り外すまで「{name}」であなたとしてコマンドを実行できます。",
+    "use": "「{name}」の使用"
+  },
   "host": {
-    "reach": "{host} へのアクセス",
     "pair": "コンピューターのペアリングとアクセス"
   },
   "categories": {

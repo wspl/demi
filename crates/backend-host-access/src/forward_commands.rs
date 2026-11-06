@@ -1,12 +1,12 @@
 //! `demi host forward`: lists, adds and removes the user's port forwards.
 //!
-//! `list` needs no permission. `add` and `remove` need the grant of the
-//! user's devices (`DEVICES`), since a forward outlives the conversation and
-//! lets any program on its listening Host reach the address it connects to.
+//! `list` needs nothing. `add` and `remove` act only on a forward whose Hosts
+//! the conversation reaches, since a forward outlives the conversation and
+//! lets any program on its listening Host reach the address it connects to:
+//! the user allowed each of those Hosts when it was attached.
 
 use std::rc::{Rc, Weak};
 
-use demi_backend_database::permissions::DEVICES;
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_runner_protocol::forward::ForwardRunState;
 use demi_web_api_protocol::devices::DeviceState;
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use demi_shared_types::output::{Cell, Fields, MISSING, Table};
 
 use crate::HostShard;
-use crate::host_commands::{NoArgs, conversation_of, host_names, print_json, resolve_host, verb};
+use crate::host_commands::{NoArgs, conversation_of, host_names, print_json, reachable, resolve_host, verb};
 
 const SUMMARY: &str = "The user's port forwards between their Hosts, as ssh -L makes one: list, add and remove them.";
 
@@ -34,7 +34,7 @@ const REMOVE_SUMMARY: &str = "Remove a port forward, by its id or where it liste
 #[serde(deny_unknown_fields)]
 struct AddArgs {
     /// <host>:<port>: the Host that listens, by name or id from demi host
-    /// devices (Cloud for the user's Cloud), and the port it listens on, on
+    /// list (Cloud for the user's Cloud), and the port it listens on, on
     /// 127.0.0.1
     #[schemars(length(min = 3))]
     listen: String,
@@ -67,14 +67,12 @@ pub fn forward_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
             LeafBuilder::rpc("add", ADD_SUMMARY)
                 .input::<AddArgs>()
                 .json_output::<ListedForward>()
-                .permission(DEVICES)
                 .bind(TypedRpc::new(verb(shard.clone(), add))),
         )
         .leaf(
             LeafBuilder::rpc("remove", REMOVE_SUMMARY)
                 .input::<RemoveArgs>()
                 .positionals(["forward"])
-                .permission(DEVICES)
                 .bind(TypedRpc::new(verb(shard, remove))),
         )
 }
@@ -185,6 +183,26 @@ async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Re
     Ok(0)
 }
 
+/// Refuses a forward with a Host among `ends` the conversation does not
+/// reach, naming the first such and how to attach it.
+async fn ends_reached<'a>(
+    shard: &dyn HostShard,
+    conversation: &demi_web_api_protocol::ids::ConversationId,
+    ends: impl IntoIterator<Item = &'a DeviceId>,
+) -> Result<(), RpcError> {
+    let hosts = reachable(shard, conversation).await?;
+    let names = host_names(shard).await?;
+    for end in ends {
+        if !hosts.iter().any(|host| host.device == *end) {
+            let name = names.name(end);
+            return Err(RpcError::Failed(format!(
+                "{name}: this conversation does not reach it; `demi host attach \"{name}\"` attaches it, which asks the user first"
+            )));
+        }
+    }
+    Ok(())
+}
+
 async fn add(shard: Rc<dyn HostShard>, call: Call<AddArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
     let args = call.args;
@@ -203,6 +221,7 @@ async fn add(shard: Rc<dyn HostShard>, call: Call<AddArgs>, port: RpcPort) -> Re
     let address = ForwardAddress::try_from(address.to_owned()).map_err(|error| RpcError::Failed(error.to_string()))?;
     let listen = resolve_host(&*shard, &conversation, listen_host).await?;
     let connect = resolve_host(&*shard, &conversation, connect_host).await?;
+    ends_reached(&*shard, &conversation, [&listen.device, &connect.device]).await?;
     let patch = PortForwardPatch {
         listen_device: Some(listen.device),
         listen_port: Some(listen_port),
@@ -266,6 +285,13 @@ async fn remove(shard: Rc<dyn HostShard>, call: Call<RemoveArgs>, port: RpcPort)
             )));
         }
     };
+    let conversation = conversation_of(&call.invocation)?;
+    ends_reached(
+        &*shard,
+        &conversation,
+        std::iter::once(&forward.listen_device).chain(forward.connect_device.as_ref()),
+    )
+    .await?;
     let removed = listed(&*shard, std::slice::from_ref(&forward))
         .await?
         .pop()

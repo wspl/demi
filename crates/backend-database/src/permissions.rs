@@ -12,13 +12,17 @@
 //! its message is in the asking agent's checkpoint.
 //!
 //! A permission request asks for one category, which covers a whole
-//! capability: every object and every step of it. A call that brings in a
-//! device the conversation does not reach without it asks for [`DEVICES`].
+//! capability: every object and every step of it. A device request asks for
+//! one device a call brings in, which the conversation does not reach: a
+//! command on a device acts as the user on that machine, so each is its own
+//! decision.
 //!
 //! # Decisions
 //!
 //! The decisions record the grants, one per conversation and category, each
-//! kept for the conversation's life.
+//! kept for the conversation's life. A device's allow records nothing: the
+//! calls it passes attach the device, and the attachment is the leave, which a
+//! detach takes back.
 //!
 //! Each change reads and writes in one transaction, so a check and a decision
 //! never interleave.
@@ -36,7 +40,7 @@ use serde::{Deserialize, Serialize};
 use super::StorageError;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
-use super::conversation_index::reaches_without_grant;
+use super::conversation_index::reaches_device;
 use super::credentials::{
     self, CredentialSeal, NewCredential, StoredCredential, values_of,
 };
@@ -44,11 +48,7 @@ use super::drafts::archived;
 
 const REQUESTS: &str = "permission_requests";
 
-const REQUEST_COLUMNS: &str = "id, conversation_id, kind, categories, credential_name, ask, command, node_id, agent_number, agent_description, created_at, decision, decided_at";
-
-/// The category of the user's devices: bringing any of them into a
-/// conversation, pairing a computer and port forwards.
-pub const DEVICES: &str = "host.use";
+const REQUEST_COLUMNS: &str = "id, conversation_id, kind, categories, device_id, credential_name, ask, command, node_id, agent_number, agent_description, created_at, decision, decided_at";
 
 /// A request's categories as its column holds them: the one it asks for.
 #[derive(Debug, Serialize, Deserialize, Validate)]
@@ -56,21 +56,11 @@ pub const DEVICES: &str = "host.use";
 struct Categories(#[garde(inner(length(min = 1)))] Vec<String>);
 
 /// What a call needs and its conversation may lack: one category's grant,
-/// or one device to reach, which [`DEVICES`] covers; no command needs both.
+/// or one device to reach; no command needs both.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Needed {
     Category(String),
     Device(DeviceId),
-}
-
-impl Needed {
-    /// The category a request for it asks.
-    pub fn category(&self) -> &str {
-        match self {
-            Self::Category(category) => category,
-            Self::Device(_) => DEVICES,
-        }
-    }
 }
 
 /// The agent that ran a refused command: its node, and, for a subagent, the
@@ -102,6 +92,8 @@ pub struct CredentialAsk {
 pub enum StoredAsk {
     /// The category the call lacked.
     Permission(String),
+    /// The device the call brings in.
+    Device(DeviceId),
     /// A credential of this name to save.
     Credential { name: String, ask: CredentialAsk },
 }
@@ -133,7 +125,7 @@ pub enum Checked {
     /// The conversation has every grant: the call is dispatched.
     Granted,
     /// The grant is missing: the request was recorded, in place of the
-    /// undecided ones of the same category from the same agent, `replaced`.
+    /// undecided ones of the same need from the same agent, `replaced`.
     Raised { replaced: Vec<PermissionRequestId> },
 }
 
@@ -216,8 +208,8 @@ impl ControlService {
     /// names.
     ///
     /// When it lacks it, the check records the request `id` for `command` of
-    /// the need's category, which replaces the undecided requests of that
-    /// category from the same agent.
+    /// the need, which replaces the undecided requests of that need from the
+    /// same agent.
     pub async fn check_permission(
         &self,
         conversation: ConversationId,
@@ -228,42 +220,43 @@ impl ControlService {
     ) -> Result<Checked, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            let reached = match &needed {
-                Needed::Device(device) => reaches_without_grant(&transaction, &conversation, device)?,
-                Needed::Category(_) => false,
+            let (granted, columns) = match needed {
+                Needed::Device(device) => (
+                    reaches_device(&transaction, &conversation, &device)?,
+                    Columns {
+                        kind: "device",
+                        device: Some(device.to_string()),
+                        ..Columns::default()
+                    },
+                ),
+                Needed::Category(category) => (
+                    granted_at(&transaction, &conversation, &category)?.is_some(),
+                    Columns {
+                        kind: "permission",
+                        categories: Some(to_json(&[category])),
+                        ..Columns::default()
+                    },
+                ),
             };
-            if reached || granted_at(&transaction, &conversation, needed.category())?.is_some() {
+            if granted {
                 return Ok(Checked::Granted);
             }
-            let stored = to_json(&[needed.category()]);
             let replaced = transaction
                 .prepare_cached(
                     "DELETE FROM permission_requests
-                     WHERE conversation_id = ?1 AND kind = 'permission' AND categories = ?2 AND node_id = ?3
-                       AND decision IS NULL
+                     WHERE conversation_id = ?1 AND kind = ?2 AND categories IS ?3 AND device_id IS ?4
+                       AND node_id = ?5 AND decision IS NULL
                      RETURNING id",
                 )?
                 .query_map(
-                    params![conversation.as_str(), stored, agent.node.as_str()],
+                    params![conversation.as_str(), columns.kind, columns.categories, columns.device, agent.node.as_str()],
                     |row| row.get::<_, String>(0),
                 )?
                 .map(|id| {
                     decode(REQUESTS, "id", PermissionRequestId::try_from(id?))
                 })
                 .collect::<Result<Vec<_>, StorageError>>()?;
-            insert_request(
-                &transaction,
-                &id,
-                &conversation,
-                &Columns {
-                    kind: "permission",
-                    categories: Some(stored),
-                    ..Columns::default()
-                },
-                &command,
-                &agent,
-                now,
-            )?;
+            insert_request(&transaction, &id, &conversation, &columns, &command, &agent, now)?;
             transaction.commit()?;
             Ok(Checked::Raised { replaced })
         })
@@ -314,6 +307,9 @@ impl ControlService {
     /// - An allow of a permission request records the grant of its category. It
     ///   decides the request with every undecided permission request of the
     ///   conversation for that category.
+    /// - An allow of a device request records nothing: it decides the request
+    ///   with every undecided request of the conversation for that device,
+    ///   whose calls attach it.
     /// - A deny decides the request alone, and forgets a credential request, whose
     ///   agent waits for the answer rather than a message.
     ///
@@ -352,7 +348,22 @@ impl ControlService {
                         transaction.commit()?;
                         return Ok(Ok(requests));
                     }
-                    (StoredAsk::Permission(_), PermissionDecision::Deny) => vec![request.as_str().to_owned()],
+                    (StoredAsk::Device(device), PermissionDecision::Allow) => {
+                        let undecided: Vec<String> = transaction
+                            .prepare_cached(
+                                "SELECT id FROM permission_requests
+                                 WHERE conversation_id = ?1 AND kind = 'device' AND device_id = ?2
+                                   AND decision IS NULL",
+                            )?
+                            .query_map(params![conversation.as_str(), device.as_str()], |row| row.get(0))?
+                            .collect::<Result<_, _>>()?;
+                        let requests = decide(&transaction, undecided, PermissionOutcome::Allowed, now)?;
+                        transaction.commit()?;
+                        return Ok(Ok(requests));
+                    }
+                    (StoredAsk::Permission(_) | StoredAsk::Device(_), PermissionDecision::Deny) => {
+                        vec![request.as_str().to_owned()]
+                    }
                 },
             };
             let requests = decide(&transaction, decided, PermissionOutcome::Denied, now)?;
@@ -586,6 +597,7 @@ impl ControlService {
 struct Columns {
     kind: &'static str,
     categories: Option<String>,
+    device: Option<String>,
     credential_name: Option<String>,
     ask: Option<String>,
 }
@@ -608,14 +620,15 @@ fn insert_request(
     };
     connection.execute(
         "INSERT INTO permission_requests
-         (id, conversation_id, kind, categories, credential_name, ask, command,
+         (id, conversation_id, kind, categories, device_id, credential_name, ask, command,
           node_id, agent_number, agent_description, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             id.as_str(),
             conversation.as_str(),
             columns.kind,
             columns.categories,
+            columns.device,
             columns.credential_name,
             columns.ask,
             command,
@@ -845,6 +858,11 @@ fn ask_row(row: &Row<'_>) -> Result<StoredAsk, StorageError> {
                 1 => Ok(StoredAsk::Permission(categories.remove(0))),
                 _ => Err(shape("of other than one category")),
             }
+        }
+        "device" => {
+            let device: Option<String> = row.get("device_id")?;
+            let device = device.ok_or_else(|| shape("without its device"))?;
+            Ok(StoredAsk::Device(decode(REQUESTS, "device_id", DeviceId::try_from(device))?))
         }
         "credential" => {
             let stored: Option<String> = row.get("ask")?;

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { fillText, truncate } from '@demicodes/utils'
 import { markdownPlainText } from '@demicodes/web-ui/markdown/plain-text'
-import { requestTitleIn } from '@demicodes/web-ui/permissions/title-words'
+import { deviceTitleIn, requestTitleIn } from '@demicodes/web-ui/permissions/title-words'
 import { pushMessageSchema, type PushMessage } from '../api/generated/web-api'
 
 /**
@@ -41,6 +41,7 @@ export const notificationWordsSchema = z.object({
   saveCredential: z.string(),
   allow: z.string(),
   actions: z.record(z.string(), z.string()),
+  useDevice: z.string(),
 })
 export type NotificationWords = z.infer<typeof notificationWordsSchema>
 
@@ -86,6 +87,8 @@ function askOf(ask: Extract<PushMessage, { kind: 'permission' }>['ask'], words: 
   switch (ask.kind) {
     case 'permission':
       return requestTitleIn(words, ask)
+    case 'device':
+      return deviceTitleIn(words, ask.name)
     case 'credential':
       return fillText(words.saveCredential, { name: ask.name })
   }
@@ -101,6 +104,7 @@ const NO_WORDS: NotificationWords = {
   saveCredential: '',
   allow: '',
   actions: {},
+  useDevice: '{name}',
 }
 
 /**

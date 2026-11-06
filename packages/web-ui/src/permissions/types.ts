@@ -1,7 +1,7 @@
 import { findText, pageLanguage } from '../i18n/text'
 import en from './locales/en.json'
 import { find, t } from './locales/text'
-import { categoryKey, requestTitleIn, type RequestTitleWords } from './title-words'
+import { categoryKey, deviceTitleIn, requestTitleIn, type RequestTitleWords } from './title-words'
 
 /**
  * Conversation requests as the page shows them: a request an agent's command raised
@@ -24,12 +24,14 @@ export interface PermissionCategoryView {
 export interface PermissionRequestView {
   kind: 'permission'
   id: string
-  /** The category the conversation lacked. */
+  /** The category the conversation lacked; none for a device's request. */
   categories: PermissionCategoryView[]
   /** The command line as the agent ran it. */
   command: string
   /** The subagent that ran it; null for the root. */
   subagent: { number: number; description: string } | null
+  /** The device the command brings in, which an allow attaches; null for a request of a category. */
+  device: { id: string; name: string } | null
 }
 
 /** How a credential's field is meant to be used: a secret is typed hidden, a visible one is shown as it is. */
@@ -105,9 +107,9 @@ export function wordedActions(ids: readonly string[], more: readonly string[] = 
     : null
 }
 
-/** What a decision recorded before a permission covered all devices let the conversation do: `reach build-box`. */
-export function reachAction(name: string): string {
-  return t('host.reach', { host: name })
+/** What a device's decision lets the conversation do: `use “build-box”`. */
+export function useDeviceAction(name: string): string {
+  return t('device.use', { name })
 }
 
 /** What a decision recorded before a permission covered all devices let the conversation do by a pairing. */
@@ -136,12 +138,14 @@ export function requestTitleWords(categories?: readonly Pick<PermissionCategoryV
   return {
     allow: t('request.allowTitle', { action: '{action}' }),
     actions,
+    useDevice: t('device.title', { name: '{name}' }),
   }
 }
 
-/** The card's title: its category's action, asked. */
-export function requestTitle(request: Pick<PermissionRequestView, 'categories'>): string {
-  return requestTitleIn(requestTitleWords(request.categories), request)
+/** The card's title: the use of its device, or its category's action, asked. */
+export function requestTitle(request: Pick<PermissionRequestView, 'categories' | 'device'>): string {
+  const words = requestTitleWords(request.categories)
+  return request.device ? deviceTitleIn(words, request.device.name) : requestTitleIn(words, request)
 }
 
 /** What a decision recorded before a permission covered all credentials let the conversation do with the credential `name`. */
@@ -153,7 +157,8 @@ export function useCredentialAction(name: string): string {
  * The requests left once the user decided `id`:
  *
  * - An allow of a permission request grants its category and decides every
- *   permission request of the same category.
+ *   permission request of the same category; of a device's request, every
+ *   request of that device.
  * - A deny decides that one alone.
  * - A credential request is decided alone either way.
  */
@@ -169,6 +174,9 @@ export function afterDecision(
   if (decision === 'deny' || decided.kind !== 'permission') {
     return requests.filter((request) => request.id !== id)
   }
-  const same = (request: PermissionRequestView) => request.categories[0]?.id === decided.categories[0]?.id
+  const same = (request: PermissionRequestView) =>
+    decided.device
+      ? request.device?.id === decided.device.id
+      : request.device === null && request.categories[0]?.id === decided.categories[0]?.id
   return requests.filter((request) => request.id !== id && (request.kind !== 'permission' || !same(request)))
 }

@@ -2,7 +2,7 @@ import type { AgentMessage, Block } from '@demicodes/protocol'
 import { inject, provide, type InjectionKey } from 'vue'
 import { homePath } from '../files/paths'
 import { codeText } from '../infra/errors'
-import { pairAction, reachAction, useCredentialAction, wordedActions } from '../permissions/types'
+import { pairAction, useCredentialAction, useDeviceAction, wordedActions } from '../permissions/types'
 import { around, t } from './locales/text'
 import { conversationTitle } from './conversation-title'
 import { agentName } from './subagents'
@@ -117,8 +117,8 @@ function mainAgentMessage(): ReceiptRow {
 
 /**
  * What a permission decision let the conversation do, in the page's words: its
- * category's action, or for a decision recorded before a permission covered a
- * whole capability, the host it reached or the saved credential it used.
+ * category's action, the device it allowed, or for a decision recorded before
+ * a permission covered a whole capability, the saved credential it used.
  *
  * For a category the page has no words for, and for a decision recorded before
  * ids were, which names neither, the result is the English the message
@@ -128,7 +128,7 @@ function permissionAction(event: Extract<AgentMessage['event'], { type: 'permiss
   if (event.credential) {
     return useCredentialAction(event.credential)
   }
-  const host = event.pairing ? [pairAction()] : event.host ? [reachAction(event.host)] : []
+  const host = event.pairing ? [pairAction()] : event.host ? [useDeviceAction(event.host)] : []
   const categories = event.categories ?? []
   return (categories.length || host.length ? wordedActions(categories, host) : null) ?? event.action
 }

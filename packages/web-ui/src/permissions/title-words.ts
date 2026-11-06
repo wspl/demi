@@ -17,6 +17,8 @@ import { fillText } from '@demicodes/utils'
 export interface RequestTitleWords {
   allow: string
   actions: Record<string, string>
+  /** A device's request's title, the device left as `{name}`. */
+  useDevice: string
 }
 
 /** The catalogue key of the category `id`. */
@@ -35,5 +37,10 @@ export function requestTitleIn(
   // A request asks for its one category.
   const category = request.categories[0]!
   return fillText(words.allow, { action: words.actions[categoryKey(category.id)] ?? category.action ?? category.id })
+}
+
+/** A device's request's title in `words`, for the device `name`. */
+export function deviceTitleIn(words: RequestTitleWords, name: string): string {
+  return fillText(words.useDevice, { name })
 }
 

@@ -66,6 +66,25 @@ pub enum PermissionRequest {
         #[garde(skip)]
         created_at: Timestamp,
     },
+    /// A device the conversation does not reach, which the command brings
+    /// in: allowing it lets the conversation's agents run commands as the
+    /// user there until it is detached.
+    Device {
+        #[garde(skip)]
+        id: PermissionRequestId,
+        #[garde(skip)]
+        device: RequestedDevice,
+        /// The command line as the agent ran it, quoted for a POSIX shell.
+        #[garde(skip)]
+        command: String,
+        /// The subagent that ran it; null for the root.
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<RequestingAgent>")]
+        #[garde(dive)]
+        agent: Option<RequestingAgent>,
+        #[garde(skip)]
+        created_at: Timestamp,
+    },
     /// A credential to save: new, or new values of the saved one of that
     /// name, which has the same fields.
     Credential {
@@ -99,24 +118,35 @@ pub enum PermissionRequest {
     },
 }
 
+/// The device a request brings in: its id, and the name the user knows it
+/// by, `Cloud` for the user's Cloud; its id alone once it was removed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestedDevice {
+    pub id: String,
+    pub name: String,
+}
+
 impl PermissionRequest {
     pub fn id(&self) -> &PermissionRequestId {
         match self {
-            Self::Permission { id, .. } | Self::Credential { id, .. } => id,
+            Self::Permission { id, .. } | Self::Device { id, .. } | Self::Credential { id, .. } => id,
         }
     }
 
     /// The command line as the agent ran it.
     pub fn command(&self) -> &str {
         match self {
-            Self::Permission { command, .. } | Self::Credential { command, .. } => command,
+            Self::Permission { command, .. } | Self::Device { command, .. } | Self::Credential { command, .. } => command,
         }
     }
 
     /// The subagent that ran it; none for the root.
     pub fn agent(&self) -> Option<&RequestingAgent> {
         match self {
-            Self::Permission { agent, .. } | Self::Credential { agent, .. } => agent.as_ref(),
+            Self::Permission { agent, .. } | Self::Device { agent, .. } | Self::Credential { agent, .. } => {
+                agent.as_ref()
+            }
         }
     }
 }
@@ -137,7 +167,8 @@ pub struct ConversationPermissions {
 #[serde(rename_all = "snake_case")]
 pub enum PermissionDecision {
     /// Grants the request's categories for the conversation, deciding each
-    /// request whose categories are then all granted.
+    /// request whose categories are then all granted; for a device, passes
+    /// each request of that device, whose calls attach it.
     Allow,
     /// Decides this request alone and remembers nothing.
     Deny,

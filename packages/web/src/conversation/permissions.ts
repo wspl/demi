@@ -45,6 +45,16 @@ function view(request: PermissionRequest): RequestView {
         categories: request.categories.map(category),
         command: request.command,
         subagent: request.agent,
+        device: null,
+      }
+    case 'device':
+      return {
+        kind: 'permission',
+        id: request.id,
+        categories: [],
+        command: request.command,
+        subagent: request.agent,
+        device: { id: request.device.id, name: request.device.name },
       }
     case 'credential':
       return {

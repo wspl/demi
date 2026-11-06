@@ -1,5 +1,5 @@
 ---
-status: proposed, superseded in part by 0250
+status: proposed, superseded in part by 0250, 0298
 ---
 
 # A permission covers a whole capability

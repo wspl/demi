@@ -1334,15 +1334,14 @@ pub fn insert_attached_host(
     Ok(inserted)
 }
 
-/// Whether the conversation reaches `device` without the grant of the user's
-/// devices: its primary Host, the device of its project, the user's Cloud
-/// for a conversation there, or a device attached to it, which the user or
-/// an allowed agent chose.
+/// Whether the conversation reaches `device`: its primary Host, the device of
+/// its project, the user's Cloud for a conversation there, or a device
+/// attached to it, which the user attached or allowed an agent to.
 ///
-/// Any other device of the user's, the Cloud included, needs the grant
-/// (`permissions::DEVICES`), which covers them all. Listing the user's
-/// devices asks nothing: seeing a device is not reaching it.
-pub fn reaches_without_grant(
+/// Any other device of the user's, the Cloud included, asks the user for that
+/// device before a call brings it in. Listing the user's devices asks
+/// nothing: seeing a device is not reaching it.
+pub fn reaches_device(
     connection: &Connection,
     conversation: &ConversationId,
     device: &DeviceId,

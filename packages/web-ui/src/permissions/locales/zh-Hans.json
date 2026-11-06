@@ -19,8 +19,12 @@
     "progress": "{position} / {count}"
   },
   "useCredential": "使用凭据“{name}”",
+  "device": {
+    "title": "允许此对话使用“{name}”？",
+    "description": "此对话的智能体可以以你的身份在“{name}”上运行命令，直到你将它卸下。",
+    "use": "使用“{name}”"
+  },
   "host": {
-    "reach": "访问 {host}",
     "pair": "配对一台电脑并访问它"
   },
   "categories": {
