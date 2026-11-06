@@ -62,6 +62,15 @@ The elements are a second entry of the web app's build, not a copy:
 The elements are Vue's own custom elements (`defineCustomElement`), with
 Vue and the views inside, so a page in any framework, or none, uses them.
 
+They render in the page's own tree, not in a shadow root
+(`shadowRoot: false`): their menus and dialogs go to the page's body
+(`Teleport`, 46 times in `web-ui`) and keep their styles, as in the web
+app. A `Teleport` to the body from such an element crashed in Vue 3.5.22
+and was fixed by vuejs/core#13900, merged in September 2025; the web app
+is on 3.5.38. Their styles and the page's meet: `web-ui`'s base styles
+reach the page's own elements, and the page's rules can reach the views'.
+A program keeps its rules to its own classes.
+
 ## Built on
 
 | What the design uses | Where it is today | New |
@@ -75,15 +84,8 @@ Vue and the views inside, so a page in any framework, or none, uses them.
 
 ## Spike
 
-Not run yet, and run before this record is accepted:
-
-- **The elements in another app.** A page of a Hono server shows
-  `<demi-conversation>` and `<demi-work-panel>` over a core the server
-  forwards to: a reply streams, the composer sends, a permission card is
-  answered, a menu and a dialog open with their styles, and the browser's
-  live view plays. `web-ui` places menus and dialogs with `Teleport` 46
-  times, and Vue's custom elements and `Teleport` have open issues with a
-  shadow root.
+None: the views run as they do in the web app, in the page's own tree,
+against the same routes through the path the program forwards.
 
 ## Prior art
 
@@ -108,6 +110,9 @@ framework, as the web app is Vue and a program's page may be anything.
 - **The web app in a frame.** Its shell, sign-in and routes inside the
   program's page, with no way for the program to place the work panel
   apart or to handle navigation.
+- **A shadow root for each element.** The styles stay apart, but a menu
+  or a dialog that goes to the body leaves the shadow root and its styles
+  with it: each of the 46 would have to go into the shadow root instead.
 
 ## Open questions
 

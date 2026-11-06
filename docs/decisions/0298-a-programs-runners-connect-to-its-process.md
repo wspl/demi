@@ -19,9 +19,9 @@ command.
 
 A runner connects to a program's process as it connects to a server: the
 same routes, the same device token, the same pairing. The process serves
-the runner routes the server serves, on a Unix socket of its own, and the
-program serves them to runners elsewhere through its own HTTP server, as
-it serves the core's routes to its pages.
+the runner routes the server serves, on a Unix socket of its own, or a
+named pipe on Windows, and the program serves them to runners elsewhere
+through its own HTTP server, as it serves the core's routes to its pages.
 
 ```text
 runner on the program's machine   runner in the program's container
@@ -47,8 +47,16 @@ core's routes, as one router both mount:
 - the schedules' URLs, `/hooks/{id}`, which carry no session either.
 
 The server mounts them where it does today: on its listener and on its
-runner socket. The process mounts them on its Unix socket and on its
-stdio, so the program forwards a request it takes for them to the process.
+runner socket. The process mounts them on its socket and on its stdio, so
+the program forwards a request it takes for them to the process.
+
+The process's socket is a Unix socket on macOS and Linux and a named pipe
+on Windows, as Docker's daemon listens on `/var/run/docker.sock` and on
+`//./pipe/docker_engine`. A runner reaches a backend through a socket
+today only on Linux, in a Cloud (`Backend::through`); it reaches one
+through a named pipe on Windows too, with reqwest's named pipe connector
+for its requests and Tokio's named pipe client under its WebSocket.
+
 The process serves the runner releases and the command packages of its own
 release, as the server does from `DEMI_RELEASE`.
 
@@ -101,7 +109,8 @@ leaves each out while it has no public URL.
 
 - `Hello` gains `device`, the device's id, which the runner keeps from its
   claim or its boot record; `ManagedBoot` gains `device` and the socket's
-  path, for a runner outside a machine the machine manager starts.
+  path or the pipe's name, for a runner outside a machine the machine
+  manager starts.
 - The pipe routes read `demi-runner-device` beside the token.
 - `device_owners` loses `token_hash`; the core's `devices` gains it.
 
@@ -110,7 +119,7 @@ leaves each out while it has no public URL.
 | What the design uses | Where it is today | New |
 | --- | --- | --- |
 | The runner's routes and downloads | `backend-http`: `runners_and_downloads`, the pipe routes, `hooks` | moved into `core-api` |
-| A runner on a Unix socket | the server's runner socket, which the machine manager mounts into a Cloud | the process's socket |
+| A runner on a Unix socket | the server's runner socket, which the machine manager mounts into a Cloud | the process's socket, and a named pipe on Windows |
 | A Host born with its token | a Cloud's `ManagedBoot` | the program's Hosts |
 | Pairing by a code | the server's waiting runners and claims | moved into `core-api` |
 | Finding a core by an id, the core checking the secret | a schedule's URL (`schedule_owners`) | devices follow it |
@@ -120,13 +129,10 @@ leaves each out while it has no public URL.
 
 ## Spike
 
-Not run yet, and run before this record is accepted:
-
-- **A runner through the program.** A runner on another computer pairs and
-  runs a command through a program's HTTP server that forwards to the
-  process (`demi.accept`), with a file of 100 MB moved through a pipe.
-- **A runner in a container.** A runner boots in a container with the
-  process's socket directory mounted, from a record the process made.
+None: a runner already reaches a backend through a socket mounted into
+its machine, boots with its token, and pairs by a code, and forwarding a
+runner's requests is forwarding HTTP and a WebSocket, which 0297's spike
+ran.
 
 ## Prior art
 
@@ -134,8 +140,9 @@ Not run yet, and run before this record is accepted:
   the repository's settings issue, keeps its own credentials, and polls
   the service; an organization or an enterprise is only another URL to
   register with.
-- **Docker**: the CLI reaches the daemon on its Unix socket, and a
-  container that should reach it has the socket mounted.
+- **Docker**: the CLI reaches the daemon on its Unix socket, or its named
+  pipe on Windows, and a container that should reach it has the socket
+  mounted.
 
 ## Alternatives
 

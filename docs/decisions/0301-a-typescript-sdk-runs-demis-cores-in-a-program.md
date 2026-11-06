@@ -125,8 +125,9 @@ public packages both import:
 
 ### Packaging
 
-`@demicodes/sdk` depends on one package for each platform, as esbuild
-does (`optionalDependencies`), each holding `demi-core`, `demi-runner` and
+`@demicodes/sdk` depends on one package for each target the runner is
+built for, macOS, Linux and Windows, each on x86-64 and ARM64, as esbuild
+does (`optionalDependencies`). Each holds `demi-core`, `demi-runner` and
 the release's command packages, of the SDK's own build. The SDK runs on
 Node.js, Bun and Deno, which the wire's spike ran.
 

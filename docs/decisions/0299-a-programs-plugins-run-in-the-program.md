@@ -94,15 +94,9 @@ readable, which is where the encoder takes them out.
 
 ## Spike
 
-Not run yet, and run before this record is accepted:
-
-- **A plugin outside the process.** A plugin in TypeScript declares a
-  command, answers it over its lane, puts a 10 MB blob through its port and
-  reads it back. The contract has never crossed a wire since its loopback
-  was deleted.
-- **The encoder's cost.** How much code takes bytes out of a message on
-  each side: Rust through `B64Bytes`, TypeScript through the schemas the
-  SDK's types are generated with.
+None: every message of the contract is serializable and has a JSON Schema,
+which its crate's rules require of each type, so what crosses the lane is
+what the types say; the lane carries binary messages already.
 
 The record also brings the entry comment of `plugin-interface` up to date:
 it names a loopback that no longer exists.

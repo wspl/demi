@@ -56,6 +56,7 @@ generated with (`bun run contracts`).
 - The SDK starts `demi-core` with its release's directory, as the server
   is started (`DEMI_RELEASE`); a program sets nothing. The process runs one
   shard thread, as the server does, and the plugins its release builds in.
+  It runs on every target the runner is built for.
 - The process logs to its standard error. The connection's end closes
   every open core, as the server's stop closes its users' cores, and the
   process exits.
@@ -222,13 +223,13 @@ The server enables extended CONNECT (`enable_connect_protocol`); axum's
 Node's `http2` has no WebSocket of its own over a stream, so the SDK
 frames WebSocket messages on the CONNECT stream itself.
 
-Not run yet, and run before this record is accepted:
-
-- **One core closes while another serves.** Open two cores in one pool,
-  start a turn in each, close one: the other's turn streams on, a call to
-  the closing core is refused, the directory unlocks, and a reopen resumes
-  the interrupted turn. Closing a single core has never run.
-- **Windows**, where Tokio reads the standard input on a blocking thread.
+The spike ran on macOS. The process runs on every target the runner is
+built for: macOS, Linux and Windows, each on x86-64 and ARM64. Tokio reads
+the standard input and writes the standard output on a blocking thread on
+every platform, so the spike measured the same reads and writes Linux and
+Windows run. On Windows, Tokio also cuts a long write short at a UTF-8
+boundary; HTTP/2's writer writes the rest, as it does after any short
+write.
 
 ## Prior art
 
