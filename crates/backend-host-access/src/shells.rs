@@ -20,10 +20,10 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_agent_tools::{EnvironmentScope, ShellEnvironmentFactory};
 use demi_backend_blobs::blobs::UserBlobs;
-use demi_backend_database::command_outputs::{CommandOutput, OutputRow};
+use demi_core_store::{command_outputs::{CommandOutput, OutputRow}};
 use demi_backend_database::control::ControlService;
-use demi_backend_database::conversations::ConversationDb;
-use demi_backend_database::running::{self, RunningCommand};
+use demi_core_store::conversations::ConversationDb;
+use demi_core_store::running::{self, RunningCommand};
 use demi_runner_client::{
     CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, JobWaiting, KeptStart, RemoteHost,
     RemoteShellEnvironment, Withdrawal, edited_file, encode_output,

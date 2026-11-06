@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::push::{PutPush, StoredPushSubscription};
 use demi_web_api_protocol::ids::UserId;

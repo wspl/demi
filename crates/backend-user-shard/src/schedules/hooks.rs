@@ -31,7 +31,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::schedules::{NewCall, PendingCall, RunCause};
 use demi_host_interface::{FileContents, Host, WhenExists, WriteOptions};
 use demi_shared_types::{ScheduleId, ScheduleRunId, Timestamp};

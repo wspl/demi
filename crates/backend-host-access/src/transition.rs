@@ -77,7 +77,8 @@ use demi_backend_database::conversation_index::{
     ChangeOutcome, ConversationRecord, RecordChange, SwitchEnds, SwitchWrite, TargetSwitch,
 };
 use demi_backend_database::projects::ProjectRecord;
-use demi_backend_database::{Selection, StorageError, Unselectable};
+use demi_backend_database::{Selection, Unselectable};
+use demi_core_store::StorageError;
 use demi_shared_gates::Reservation;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::error::ErrorCode;

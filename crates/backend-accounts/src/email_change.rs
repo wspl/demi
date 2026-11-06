@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::accounts::{
     ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash,
 };

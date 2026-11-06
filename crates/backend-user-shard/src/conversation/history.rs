@@ -27,8 +27,8 @@ use std::ops::{Range, RangeInclusive};
 use std::rc::{Rc, Weak};
 
 use demi_agent_tools::duration;
-use demi_backend_database::search::{HistoryBound, HistoryQuery, SearchKind, occurrences, searchable_text};
-use demi_backend_database::tree::{self, Transcript};
+use demi_core_store::{search::{HistoryBound, HistoryQuery, SearchKind, occurrences, searchable_text}};
+use demi_core_store::{tree::{self, Transcript}};
 use demi_backend_host_access::host_commands::conversation_of;
 use demi_backend_host_access::{HostShard, root_of};
 use demi_host_interface::{

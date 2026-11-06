@@ -1,7 +1,11 @@
 //! The conversation database's history: each schema a server may hold before the
 //! current one, oldest first, and the step from it to the next.
 
-use super::Shipped;
+use super::ReadBlob;
+
+type Shipped = super::Shipped<dyn ReadBlob>;
+/// The step of each schema of the history, as its own module says it.
+type Migration = super::Migration<dyn ReadBlob>;
 
 mod from_0_1_65_dev_contents_once;
 mod from_0_1_5708;

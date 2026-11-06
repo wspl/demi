@@ -550,7 +550,7 @@ fn with_bytes(made: Made, bytes: B64Bytes) -> Made {
 pub async fn start_media_followers(
     control: &demi_backend_database::control::ControlService,
     shards: &super::Shards,
-) -> Result<(), demi_backend_database::StorageError> {
+) -> Result<(), demi_core_store::StorageError> {
     for user in control.media_job_owners().await? {
         // A shard that cannot be reached follows them at its next call.
         if let Err(error) = shards.of(&user).call(|_, _| async {}).await {

@@ -22,7 +22,7 @@ use demi_backend_user_shard::conversation::{named_blocks, reply_block_facts};
 use demi_backend_user_shard::conversation::shares::{ShareBlobError, ShareRefusal};
 use demi_backend_user_shard::services::Services;
 use demi_shared_types::{BlobRef, Block, BlockId};
-use demi_backend_database::tree::{Entry, PageRead};
+use demi_core_store::{tree::{Entry, PageRead}};
 use demi_conversation_lane_protocol::{ReplyBlockFacts, index_u32, light};
 use demi_web_api_protocol::conversations::{ConversationShares, WholeBlock};
 use demi_web_api_protocol::error::ErrorCode;
@@ -31,7 +31,7 @@ use demi_web_api_protocol::shares::{
     ShareAnswer, ShareTarget, ShareTranscriptQuery, SharedConversation, SharedEntry, SharedTranscriptPage,
 };
 use demi_web_api_protocol::attachments::ConversationAttachment;
-use demi_backend_database::conversation_attachments::AttachmentNumber;
+use demi_core_store::conversation_attachments::AttachmentNumber;
 
 use super::AppState;
 use super::blobs::blob_answer;
@@ -193,7 +193,7 @@ pub(super) async fn block_document(
 
 /// Why a share's reply block was not answered.
 enum BlockError {
-    Storage(demi_backend_database::StorageError),
+    Storage(demi_core_store::StorageError),
     Call(PageCallError),
 }
 

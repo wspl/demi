@@ -11,7 +11,7 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension as _, params};
 
 use super::{Limits, Message, Row};
 use crate::StorageError;
-use crate::schema::version_of;
+use demi_core_store::schema::version_of;
 use crate::sqlite;
 
 const SCHEMA: &str = "

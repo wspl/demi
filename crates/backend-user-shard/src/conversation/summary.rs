@@ -14,10 +14,10 @@
 //! The persisted facts come from a read-only connection, so listing hundreds of
 //! conversations takes no writer from a running one.
 
-use demi_backend_database::StorageError;
-use demi_backend_database::columns::decode;
+use demi_core_store::StorageError;
+use demi_core_store::columns::decode;
 use demi_backend_database::conversation_index::ConversationRecord;
-use demi_backend_database::tree::{self, EndedTurn, SummaryFacts, Terminal};
+use demi_core_store::{tree::{self, EndedTurn, SummaryFacts, Terminal}};
 use demi_shared_types::{ModelSelection, SessionPhase};
 use demi_web_api_protocol::conversations::{
     ConversationMetadata, ConversationShares, ConversationStatus, ConversationSummary, LastTurn, ModelSettings,

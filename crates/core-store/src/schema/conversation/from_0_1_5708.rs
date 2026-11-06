@@ -2,6 +2,6 @@
 //! block format 17, which keeps when each part of a turn started and ended.
 //! No row changes: a record names its format, and format 16 is still read.
 
-use super::super::Migration;
+use super::Migration;
 
 pub(super) const MIGRATION: Migration = Migration::Sql("");

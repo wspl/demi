@@ -10,7 +10,7 @@
 //! next request builds its runtime anew, while a running one finishes with its
 //! own.
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_provider_common::credentials::AccountsError;
 use demi_web_api_protocol::ids::CredentialId;
 use demi_web_api_protocol::providers::Accounts;

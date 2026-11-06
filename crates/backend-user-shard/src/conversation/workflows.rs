@@ -309,7 +309,7 @@ pub enum DeviceWorkflowsRefusal {
     /// The directory is not there.
     NoDirectory,
     Host(HostError),
-    Storage(demi_backend_database::StorageError),
+    Storage(demi_core_store::StorageError),
 }
 
 /// The workflows of `directory`, the conversation `id`'s, read now through

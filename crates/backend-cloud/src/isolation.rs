@@ -4,7 +4,7 @@
 //! The manager keeps the choice in memory only, so the backend names it on
 //! each connection as well as after each change.
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_machine_manager_protocol::{Download, DeviceId, Isolation as MachineIsolation, Offer, SetIsolationParams};
 use demi_web_api_protocol::settings::{CloudIsolation, Isolation, IsolationDownload, IsolationRuntime};
 

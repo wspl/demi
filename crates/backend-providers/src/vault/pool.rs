@@ -6,7 +6,7 @@
 //! vault's refresh turns. A pool is bound to its entry, so a provider given it
 //! cannot reach another entry's accounts.
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::providers::{CredentialRow, CredentialWrite};
 use demi_provider_common::credentials::{
     AccountDocument, AccountMeta, CredentialPool, PoolError, RefreshPermit, Revision,

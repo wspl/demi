@@ -27,7 +27,7 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_host_interface::HostErrorKind;
 use demi_provider_common::{DeviceAnswer, DeviceRefusal, DeviceRequest, DeviceRoute};

@@ -68,7 +68,7 @@ use std::rc::Rc;
 
 use demi_backend_blobs::ObjectError;
 use demi_backend_cloud::machine::{CloudAdmission, CloudError};
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTarget};
 use demi_backend_database::devices::DeviceRecord;
 use demi_agent_tools::duration;

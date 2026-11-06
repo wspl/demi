@@ -30,7 +30,9 @@ use demi_runner_protocol::release::{
 };
 use demi_web_api_protocol::state::UpdateState;
 
-use super::{DatabaseKind, SchemaFit, StorageError, schema_fit};
+use demi_core_store::schema::SchemaFit;
+
+use super::{DatabaseKind, StorageError, database_fit};
 
 /// How long an update runs before it estimates the time left: the first
 /// seconds' rate says little of the rest.
@@ -446,7 +448,7 @@ pub(crate) fn due_bytes(path: &Path, kind: DatabaseKind) -> Result<u64, StorageE
     if size == 0 {
         return Ok(0);
     }
-    let fit = match schema_fit(path, kind) {
+    let fit = match database_fit(path, kind) {
         Ok(fit) => fit,
         Err(error) if kind == DatabaseKind::Conversation => {
             tracing::warn!(

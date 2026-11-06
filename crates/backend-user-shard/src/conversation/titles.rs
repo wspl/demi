@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use demi_agent_server::title::{title_from_message, title_from_response, title_request};
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::{Part, UserMarks};

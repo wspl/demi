@@ -16,7 +16,7 @@
 //!
 //! The owner's blob namespace is collected after it (`lifecycle::collection`).
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_host_access::access::Leaving;
 use demi_backend_host_access::root_of;

@@ -3,7 +3,7 @@
 //! a child's placement was its own: a child keeps the Host and the directory
 //! it was last given.
 
-use super::super::Migration;
+use super::Migration;
 
 pub(super) const MIGRATION: Migration = Migration::Sql(CONVERSATION_FROM_DIRECTORIES_FOLLOWING_MOVES);
 

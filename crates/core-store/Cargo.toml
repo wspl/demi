@@ -1,0 +1,42 @@
+[package]
+name = "demi-core-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# No doc examples.
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+demi-agent-store = { path = "../agent-store" }
+demi-shared-artifacts = { path = "../shared-artifacts" }
+demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }
+demi-shared-types = { path = "../shared-types", features = ["tracing"] }
+demi-shared-gates = { path = "../shared-gates" }
+demi-runner-client = { path = "../runner-client" }
+demi-host-interface = { path = "../host-interface" }
+demi-plugin-host = { path = "../plugin-host" }
+demi-web-api-protocol = { path = "../web-api-protocol" }
+base64.workspace = true
+bytes.workspace = true
+comrak = { version = "0.56", default-features = false }
+futures-util.workspace = true
+garde.workspace = true
+hashlink = "0.12"
+hex = "0.4"
+jiff.workspace = true
+rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-rusqlite = "0.8"
+tracing.workspace = true
+# The contents and the records' bodies are stored compressed; the records of a
+# conversation share a dictionary trained on its own (`records.rs`).
+zstd = { version = "0.13", default-features = false, features = ["zdict_builder"] }

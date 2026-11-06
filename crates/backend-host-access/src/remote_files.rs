@@ -10,7 +10,7 @@
 //! A reference is no snapshot of the file's bytes: a device revoked or
 //! disconnected before the read makes the command fail.
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::conversation_index::{AttachedHostRecord, ChangeOutcome, RecordChange};
 use demi_backend_database::devices::DeviceRecord;
 use demi_shared_types::UserContentBlock;

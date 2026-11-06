@@ -37,11 +37,12 @@
 
 use std::sync::Arc;
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::providers::{
-    CredentialRow, CredentialWrite, EntrySwitches, NewProvider, ProviderRow, ResealSealed,
+    CredentialRow, CredentialWrite, EntrySwitches, NewProvider, ProviderRow,
 };
+use demi_backend_database::schema::ResealSealed;
 use demi_backend_page_sync::{Part, SyncRegistry};
 use demi_provider_common::credentials::{
     AccountMeta, CredentialPool, MemoryCredentialPool, NewAccount, RefreshGates,

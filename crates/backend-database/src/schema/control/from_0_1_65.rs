@@ -39,11 +39,11 @@
 
 use rusqlite::{OptionalExtension, Transaction};
 
-use crate::providers::ResealSealed;
+use crate::schema::ResealSealed;
 use super::super::{Migration, corrupt, corrupt_text};
 use super::shared::{named_timing};
 
-pub(super) const MIGRATION: Migration = Migration::Reseal(control_from_0_1_65);
+pub(super) const MIGRATION: Migration = Migration::Code(control_from_0_1_65);
 
 fn control_from_0_1_65(transaction: &Transaction<'_>, seals: &dyn ResealSealed) -> rusqlite::Result<()> {
     transaction.execute_batch(CONTROL_SHORTCUTS_FROM_0_1_65)?;

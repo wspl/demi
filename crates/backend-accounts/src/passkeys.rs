@@ -29,7 +29,7 @@
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::passkeys::{
     ChallengeLimits, ChallengeState, PasskeyRecord, credential_id,

@@ -23,7 +23,7 @@ use super::accounts::{
     Account, ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash, PasswordHash, TokenHash,
 };
 use super::columns::{decode, instant, json, to_json};
-use super::providers::ResealSealed;
+use super::schema::ResealSealed;
 use super::usage::UsageWritten;
 use super::{StorageError, schema, sqlite};
 
@@ -65,7 +65,7 @@ impl ControlService {
         control
             .call(move |connection, _| {
                 sqlite::configure(connection)?;
-                schema::CONTROL.apply_sealed(connection, &path, seals.as_ref())
+                schema::CONTROL.apply(connection, &path, seals.as_ref())
             })
             .await?;
         Ok(control)

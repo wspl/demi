@@ -6,11 +6,11 @@
 use rusqlite::Transaction;
 use serde_json::Value;
 
-use super::super::{Migration, ReadBlob, corrupt_text};
+use super::super::{Migration, ResealSealed, corrupt_text};
 
 pub(super) const MIGRATION: Migration = Migration::Code(control_from_0_1_5785);
 
-fn control_from_0_1_5785(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+fn control_from_0_1_5785(transaction: &Transaction<'_>, _: &dyn ResealSealed) -> rusqlite::Result<()> {
     let drafts: Vec<(String, String)> = transaction
         .prepare("SELECT conversation_id, document FROM conversation_drafts")?
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?

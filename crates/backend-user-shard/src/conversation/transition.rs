@@ -26,7 +26,8 @@
 //! transition's steps (`demi_backend_host_access::transition`).
 
 use demi_backend_database::projects::ProjectDeletion;
-use demi_backend_database::{Selection, StorageError};
+use demi_backend_database::Selection;
+use demi_core_store::StorageError;
 use demi_backend_database::conversation_index::{
     ConversationChange, ConversationRecord, RecordChange, SettingsChange,
 };

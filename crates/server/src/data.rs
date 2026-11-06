@@ -15,7 +15,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use demi_backend_database::{DatabaseKind, SchemaFit, schema_fit};
+use demi_backend_database::{DatabaseKind, database_fit};
+use demi_core_store::schema::SchemaFit;
 use semver::Version;
 
 /// The databases of a data directory, relative to it, with their kinds.
@@ -52,7 +53,7 @@ pub fn migrating(data: &Path) -> io::Result<Vec<PathBuf>> {
     let mut other = Vec::new();
     for (database, kind) in databases(data)? {
         let path = data.join(&database);
-        match schema_fit(&path, kind).map_err(io::Error::other)? {
+        match database_fit(&path, kind).map_err(io::Error::other)? {
             SchemaFit::Current => {}
             SchemaFit::Migrates => migrating.push(database),
             SchemaFit::Other => other.push(path.display().to_string()),

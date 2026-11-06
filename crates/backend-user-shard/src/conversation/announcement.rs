@@ -16,7 +16,7 @@
 //! the revision it describes, and a switch and a reset are each announced to a
 //! node once.
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::conversation_index::{
     AttachedHost, ExecutionTarget, TargetSwitch,
 };

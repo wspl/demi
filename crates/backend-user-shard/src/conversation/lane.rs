@@ -71,11 +71,11 @@ use std::rc::{Rc, Weak};
 use axum::extract::ws::close_code;
 use demi_agent_server::{ContentError, ContentResolver, FileReference, Outgoing, ResolvedFiles};
 use demi_agent_store::media::HeldMedia;
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::Part;
 use demi_backend_permissions::Stops;
-use demi_backend_database::conversation_attachments::uploaded_after;
+use demi_core_store::conversation_attachments::uploaded_after;
 use demi_conversation_lane_protocol::{
     SteerOutcome, Follow, Followed,
     ClientContent, ClientFrame, ClientFrameKind, EditOutcome, FrameError, Refusal,

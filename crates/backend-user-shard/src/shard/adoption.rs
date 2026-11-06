@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use axum::extract::ws::Message;
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval, FirstHome};
 use demi_backend_page_sync::Part;
 use demi_plugin_host::Lost;

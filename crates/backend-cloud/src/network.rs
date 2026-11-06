@@ -2,7 +2,7 @@
 //! database stores as the master wrote it, turned into the rules the machine
 //! manager applies (`crates/machine-manager-protocol/src/network.rs`).
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 pub use demi_machine_manager_protocol::network::AllowedError;
 use demi_machine_manager_protocol::{
     Allowed, NetworkRules, SetNetworkRulesParams,

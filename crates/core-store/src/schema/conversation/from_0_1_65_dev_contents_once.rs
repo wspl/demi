@@ -1,7 +1,7 @@
 //! From the form each content was kept once in, before a command's row kept
 //! what its result told of its media.
 
-use super::super::Migration;
+use super::Migration;
 
 pub(super) const MIGRATION: Migration = Migration::Sql(CONVERSATION_FROM_CONTENTS_ONCE);
 

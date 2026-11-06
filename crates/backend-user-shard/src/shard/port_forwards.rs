@@ -63,7 +63,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::devices::DeviceRecord;
 use demi_backend_database::port_forwards::{PortForwardChange, PortForwardRecord, PortForwardRefusal};
 use demi_backend_page_sync::Part;

@@ -9,7 +9,7 @@ use demi_command_protocol::{
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
 use demi_web_api_protocol::settings::BrowserLocale;
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 
 /// The locale commands receive until the user's browser reports one.

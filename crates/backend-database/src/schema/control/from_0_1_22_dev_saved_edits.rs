@@ -29,12 +29,12 @@
 
 use rusqlite::Transaction;
 
-use super::super::{Migration, ReadBlob, corrupt, corrupt_text};
+use super::super::{Migration, ResealSealed, corrupt, corrupt_text};
 use super::shared::{fork_format_2};
 
 pub(super) const MIGRATION: Migration = Migration::Code(control_from_saved_edits);
 
-fn control_from_saved_edits(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+fn control_from_saved_edits(transaction: &Transaction<'_>, _: &dyn ResealSealed) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "
 CREATE TABLE conversation_hosts_next (

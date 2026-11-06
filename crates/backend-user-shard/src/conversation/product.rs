@@ -33,7 +33,7 @@ use demi_web_api_protocol::ids::DeviceId;
 use demi_host_interface::{HostError, HostErrorKind};
 use demi_plugin_interface::{EXECUTION_SOURCE, PluginId};
 use demi_shared_types::TurnId;
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_provider_registry::entry::ProviderEntry;
 use demi_web_api_protocol::subagents::SubagentProfile;
 use futures_util::future::LocalBoxFuture;
@@ -460,7 +460,7 @@ impl demi_agent_server::AgentsSource for ShardAgents {
             }
             match services
                 .conversations
-                .read(&conversation, demi_backend_database::side_questions::cards)
+                .read(&conversation, demi_core_store::side_questions::cards)
                 .await
             {
                 Ok(cards) => {

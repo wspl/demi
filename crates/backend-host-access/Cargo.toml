@@ -18,6 +18,7 @@ demi-backend-cloud = { path = "../backend-cloud" }
 demi-backend-blobs = { path = "../backend-blobs" }
 demi-backend-runners = { path = "../backend-runners" }
 demi-backend-database = { path = "../backend-database" }
+demi-core-store = { path = "../core-store" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-declarations = { path = "../command-declarations" }
 demi-shared-types = { path = "../shared-types" }

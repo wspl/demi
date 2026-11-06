@@ -13,6 +13,7 @@ bench = false
 
 [dependencies]
 demi-backend-database = { path = "../backend-database" }
+demi-core-store = { path = "../core-store" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-shared-types = { path = "../shared-types" }
 demi-web-api-protocol = { path = "../web-api-protocol" }

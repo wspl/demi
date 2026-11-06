@@ -47,7 +47,7 @@
 
 use std::time::Duration;
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_web_api_protocol::ids::ConversationId;
 
 use crate::machine::CloudError;

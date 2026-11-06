@@ -5,7 +5,7 @@
 //! A reply names an attachment by a line that is its tag alone,
 //! `<attachment id="a3" />`, the rule the page's renderer follows, and by the
 //! copy it keeps of a picture of the Host it shows
-//! (`demi_backend_database::shares::block_attachments`). The socket's
+//! (`demi_core_store::shares::block_attachments`). The socket's
 //! transcript frames and the history route both carry the attachments their
 //! blocks and their text name, whoever in the conversation stored them, so the
 //! page draws each card or picture at its size with the reply, and asks for
@@ -26,10 +26,10 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use demi_backend_database::StorageError;
-use demi_backend_database::conversation_attachments::{AttachmentNumber, read_all};
-use demi_backend_database::conversations::ConversationStores;
-use demi_backend_database::shares::{block_attachments, named_attachments, named_reply_blocks};
+use demi_core_store::StorageError;
+use demi_core_store::{conversation_attachments::{AttachmentNumber, read_all}};
+use demi_core_store::conversations::ConversationStores;
+use demi_core_store::shares::{block_attachments, named_attachments, named_reply_blocks};
 use demi_conversation_lane_protocol::{ConversationAttachment, ReplyBlockFacts, TranscriptPatch};
 use demi_plugin_host::UserPlugins;
 use demi_shared_types::{Block, NodeId, TextBlock};

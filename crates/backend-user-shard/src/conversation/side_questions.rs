@@ -13,9 +13,9 @@
 use demi_agent_server::{AskError, resolve_content};
 use demi_agent_store::media::HeldMedia;
 use demi_agent_store::SideOf;
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
-use demi_backend_database::side_questions;
+use demi_core_store::side_questions;
 use demi_backend_host_access::root_of;
 use demi_conversation_lane_protocol::ClientContent;
 use demi_shared_types::{NodeId, UserContentBlock, markdown_quote};

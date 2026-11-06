@@ -4,7 +4,7 @@
 //! server that upgraded and one installed afresh hold the same tables.
 
 use demi_backend_database::DatabaseKind;
-use demi_backend_database::providers::ResealSealed;
+use demi_backend_database::schema::ResealSealed;
 use demi_backend_database::testing::{current, history, migrate, migrate_control, version_of};
 use demi_web_api_protocol::ids::ProviderId;
 use rusqlite::Connection;

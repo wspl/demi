@@ -40,7 +40,7 @@
 use std::rc::{Rc, Weak};
 
 use bytes::Bytes;
-use demi_backend_database::sequences;
+use demi_core_store::sequences;
 use demi_backend_host_access::host_commands::{reachable, resolve_host};
 use demi_backend_host_access::root_of;
 use demi_plugin_host::Lost;

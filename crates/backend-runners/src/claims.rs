@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::devices::DeviceRecord;

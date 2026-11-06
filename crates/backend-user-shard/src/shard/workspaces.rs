@@ -2,7 +2,7 @@
 //! the workspace's conversations first, and moves into a workspace, whose
 //! changes the user's pages and the conversations' sockets hear of.
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::workspaces::{MoveRefusal, WorkspaceDeletion};
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::ids::{ConversationId, ProjectId, WorkspaceId};

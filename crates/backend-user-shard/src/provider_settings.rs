@@ -25,7 +25,7 @@
 //! - Nothing is checked against the vendor while the user types.
 //! - A model added with a taken id takes the first free `-2`, `-3` suffix.
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::providers::EntrySwitches;
 use demi_provider_registry::families::{ProviderFamily, family_name};
 use demi_provider_registry::entry::{ApiKeyConfig, EntryCredential, ProviderEntry};

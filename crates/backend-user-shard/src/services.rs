@@ -14,10 +14,10 @@ use demi_backend_accounts::push::{PublicPushTransport, PushKey, PushTransport, P
 use demi_backend_accounts::sessions::WebSessions;
 use demi_backend_blobs::blobs::BlobStores;
 use demi_backend_cloud::CloudServices;
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
-use demi_backend_database::conversations::{self, ConversationStores};
-use demi_backend_database::search::SearchIndexes;
+use demi_core_store::{conversations::{self, ConversationStores}};
+use demi_core_store::search::SearchIndexes;
 use demi_backend_database::server_log::ServerLog;
 use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::ConversationId;

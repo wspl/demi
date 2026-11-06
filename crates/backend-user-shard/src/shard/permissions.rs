@@ -7,7 +7,7 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::credentials::CredentialSeal;
 use demi_backend_database::permissions::{AskingAgent, Undelivered};

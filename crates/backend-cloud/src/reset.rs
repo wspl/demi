@@ -35,7 +35,7 @@
 
 use std::rc::Rc;
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::devices::DeviceRecord;
 use demi_backend_database::managed::ManagedOperation;

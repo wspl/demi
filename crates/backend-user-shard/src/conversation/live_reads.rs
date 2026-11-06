@@ -7,8 +7,8 @@
 //! keep: the entries of the newest instructions block and the summary size of
 //! each compaction marker.
 
-use demi_backend_database::StorageError;
-use demi_backend_database::tree::{self, Transcript};
+use demi_core_store::StorageError;
+use demi_core_store::{tree::{self, Transcript}};
 use demi_conversation_lane_protocol::{CacheChart, ShellStatus, index_u32};
 use demi_shared_types::NodeId;
 use demi_web_api_protocol::conversations::TranscriptPage;

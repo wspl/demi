@@ -78,7 +78,7 @@ use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::credentials::{CredentialSeal, StoredCredential};
 use demi_backend_database::permissions::{

@@ -21,69 +21,6 @@ use super::accounts::TokenHash;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
 
-/// What the control migrations that re-encode sealed values work with: the
-/// vault, which alone holds the key they are sealed under and knows their
-/// format.
-pub trait ResealSealed: Send + Sync {
-    /// Entry `id` of `family`'s configuration `sealed`, opened, decoded and
-    /// checked in the format the schema before names, and sealed again in
-    /// the format of the schema after it; an error, which never quotes the
-    /// configuration, says why it cannot be read.
-    fn provider_config(&self, id: &ProviderId, family: &str, sealed: &[u8]) -> Result<Vec<u8>, String>;
-
-    /// The URL secret `sealed` for the automation `id`, opened and sealed
-    /// again for the schedule of the same id; an error, which never quotes
-    /// the secret, says why it cannot be opened.
-    fn schedule_secret(&self, id: &str, sealed: &[u8]) -> Result<Vec<u8>, String>;
-
-    /// Entry `id`'s configuration `sealed`, opened: when its endpoint's host
-    /// is a device's id that `owned` accepts, that device and the
-    /// configuration sealed again with the endpoint on the device itself
-    /// (`schema/control/from_0_1_5860.rs`); none for any other endpoint. An
-    /// error, which never quotes the configuration, says why it cannot be
-    /// read.
-    fn provider_endpoint_on_device(
-        &self,
-        id: &ProviderId,
-        sealed: &[u8],
-        owned: &dyn Fn(&str) -> bool,
-    ) -> Result<Option<(String, Vec<u8>)>, String>;
-
-    /// Entry `id`'s configuration `sealed`, opened: one of format 2 sealed
-    /// again in format 3, without its image and video shapes and a
-    /// compatible entry's image and video models
-    /// (`schema/control/from_0_1_5979_reply_block_shares.rs`); none for one of format 3. An
-    /// error, which never quotes the configuration, says why it cannot be
-    /// read.
-    fn provider_config_format_3(&self, id: &ProviderId, sealed: &[u8]) -> Result<Option<Vec<u8>>, String>;
-}
-
-/// A database that holds no sealed configuration a migration re-encodes,
-/// such as a conversation's.
-pub struct NoSealed;
-
-impl ResealSealed for NoSealed {
-    fn provider_config(&self, id: &ProviderId, _: &str, _: &[u8]) -> Result<Vec<u8>, String> {
-        Err(format!("no key opens the configuration of entry {id} here"))
-    }
-
-    fn schedule_secret(&self, id: &str, _: &[u8]) -> Result<Vec<u8>, String> {
-        Err(format!("no key opens the secret of schedule {id} here"))
-    }
-
-    fn provider_endpoint_on_device(
-        &self,
-        id: &ProviderId,
-        _: &[u8],
-        _: &dyn Fn(&str) -> bool,
-    ) -> Result<Option<(String, Vec<u8>)>, String> {
-        Err(format!("no key opens the configuration of entry {id} here"))
-    }
-
-    fn provider_config_format_3(&self, id: &ProviderId, _: &[u8]) -> Result<Option<Vec<u8>>, String> {
-        Err(format!("no key opens the configuration of entry {id} here"))
-    }
-}
 
 /// A `providers` row: an entry with its configuration still sealed.
 #[derive(Debug, Clone, PartialEq, Eq)]

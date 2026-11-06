@@ -21,7 +21,7 @@ use std::rc::Rc;
 
 use demi_agent_server::small_request::SmallRequest;
 use demi_agent_server::suggested_replies::{answer_of, suggestion_request, suggestions_from_response};
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::suggested_replies::AnsweredReplies;
 use demi_backend_host_access::root_of;

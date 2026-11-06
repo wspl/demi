@@ -27,7 +27,6 @@ use demi_web_api_protocol::ids::ConversationId;
 use hashlink::LruCache;
 use rusqlite::{Connection, OpenFlags};
 
-use super::update::{self, Update};
 use super::{StorageError, schema, sqlite};
 
 /// The most writer connections open at once that no one holds.
@@ -52,12 +51,12 @@ impl ConversationBlobs for schema::NoBlobs {
 }
 
 /// One conversation's blobs, as its database's migration reads them.
-struct BlobsOf<'a> {
-    blobs: &'a dyn ConversationBlobs,
+struct BlobsOf {
+    blobs: Arc<dyn ConversationBlobs>,
     conversation: ConversationId,
 }
 
-impl schema::ReadBlob for BlobsOf<'_> {
+impl schema::ReadBlob for BlobsOf {
     fn read(&self, blob: &BlobRef) -> Result<Option<Bytes>, String> {
         self.blobs.read(&self.conversation, blob)
     }
@@ -273,9 +272,17 @@ impl ConversationStores {
                 let Ok(id) = ConversationId::try_from(id.to_owned()) else {
                     continue;
                 };
-                let size = update::due_bytes(&path, schema::DatabaseKind::Conversation)?;
-                if size > 0 {
-                    found.push((id, size));
+                // One that cannot be read is left as it is: its open fails
+                // on its own, and the others still serve.
+                match schema::due_bytes(&path, &schema::CONVERSATION) {
+                    Ok(0) => {}
+                    Ok(size) => found.push((id, size)),
+                    Err(error) => tracing::warn!(
+                        event = "update.unreadable",
+                        database = path.file_name().map(|name| name.to_string_lossy().into_owned()),
+                        error = &error as &dyn std::error::Error,
+                        "a conversation's database cannot be read, so the update leaves it as it is"
+                    ),
                 }
             }
             found.sort_by(|(_, left), (_, right)| right.cmp(left));
@@ -285,10 +292,10 @@ impl ConversationStores {
     }
 
     /// Gives every conversation's database of an earlier form the current
-    /// one before the backend serves, one at a time, the largest first, and
-    /// tells `update` how far it is. One that fails stays as it was, and its
-    /// next open tries again.
-    pub async fn prepare(&self, update: Arc<Update>) {
+    /// one before the core serves, one at a time, the largest first, and
+    /// tells `finished` the bytes of each it took. One that fails stays as it
+    /// was, and its next open tries again.
+    pub async fn prepare(&self, finished: impl Fn(u64)) {
         let due = match self.due().await {
             Ok(due) => due,
             Err(error) => {
@@ -303,7 +310,7 @@ impl ConversationStores {
                 // The migration logged why.
                 Err(_) => {}
             }
-            update.finished(size);
+            finished(size);
         }
     }
 
@@ -319,7 +326,7 @@ impl ConversationStores {
         let (blobs, conversation) = (self.0.blobs.clone(), conversation.clone());
         holding(turn, move || {
             let blobs = BlobsOf {
-                blobs: &*blobs,
+                blobs,
                 conversation,
             };
             if !path.try_exists()? {
@@ -445,7 +452,7 @@ impl ConversationDb {
         let (blobs, conversation) = (self.stores.blobs.clone(), self.conversation.clone());
         holding(turn, move || {
             let blobs = BlobsOf {
-                blobs: &*blobs,
+                blobs,
                 conversation,
             };
             migrate_and_read(&path, &blobs, work)
@@ -477,7 +484,7 @@ async fn open_writer(
     writer
         .call(move |connection| {
             let blobs = BlobsOf {
-                blobs: &*blobs,
+                blobs,
                 conversation,
             };
             migrate(connection, &path, &blobs)
@@ -507,7 +514,7 @@ async fn holding<T: Send + 'static>(
 fn migrate(
     connection: &mut Connection,
     path: &Path,
-    blobs: &BlobsOf<'_>,
+    blobs: &BlobsOf,
 ) -> Result<(), StorageError> {
     schema::CONVERSATION.prepare_new(connection)?;
     sqlite::configure(connection)?;
@@ -559,7 +566,7 @@ where
 /// opens only once the database is migrated.
 fn migrate_and_read<T, W>(
     path: &Path,
-    blobs: &BlobsOf<'_>,
+    blobs: &BlobsOf,
     work: W,
 ) -> Result<Option<T>, StorageError>
 where

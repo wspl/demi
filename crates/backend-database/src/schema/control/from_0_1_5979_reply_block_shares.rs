@@ -7,11 +7,11 @@
 
 use rusqlite::Transaction;
 
-use crate::providers::ResealSealed;
+use crate::schema::ResealSealed;
 use demi_web_api_protocol::ids::ProviderId;
 use super::super::{Migration, corrupt, corrupt_text};
 
-pub(super) const MIGRATION: Migration = Migration::Reseal(control_from_0_1_5979_reply_block_shares);
+pub(super) const MIGRATION: Migration = Migration::Code(control_from_0_1_5979_reply_block_shares);
 
 fn control_from_0_1_5979_reply_block_shares(transaction: &Transaction<'_>, seals: &dyn ResealSealed) -> rusqlite::Result<()> {
     let mut read = transaction.prepare("SELECT id, config FROM providers WHERE credential_kind = 'api_key' AND config IS NOT NULL")?;

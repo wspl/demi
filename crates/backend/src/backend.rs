@@ -60,7 +60,7 @@ use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::isolation as cloud_isolation;
 use demi_backend_cloud::network::{self as cloud_network, stored_network_rules};
 use demi_backend_cloud::reset::recover_clouds;
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::update::Update;
 use demi_backend_http::{AppState, Edge, Listening, Site, WebBuildError, manage_socket, runner_socket, web_build};
 use demi_backend_user_shard::conversation::cost::follow_usage;
@@ -286,7 +286,7 @@ async fn take_over_clouds(
 async fn forget_stopped_clouds(
     running: &[demi_backend_database::devices::DeviceRecord],
     services: &demi_backend_user_shard::services::Services,
-) -> Result<(), demi_backend_database::StorageError> {
+) -> Result<(), demi_core_store::StorageError> {
     for device in services.returning.devices() {
         if running.iter().any(|running| running.id == device) {
             continue;
@@ -439,7 +439,7 @@ impl Backend {
         if due.is_some() {
             update.control_finished();
             let started = std::time::Instant::now();
-            storage.conversations.prepare(update.clone()).await;
+            storage.conversations.prepare(|bytes| update.finished(bytes)).await;
             tracing::info!(
                 event = "update.ended",
                 ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
@@ -484,7 +484,7 @@ impl Backend {
             .as_deref()
             .map(web_build)
             .transpose()?;
-        demi_backend_database::shares::register_block_tags(
+        demi_core_store::shares::register_block_tags(
             config
                 .plugins
                 .iter()

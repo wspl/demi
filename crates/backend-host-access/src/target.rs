@@ -5,7 +5,8 @@
 //! The control store's one rule owns the resolution.
 
 use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTarget};
-use demi_backend_database::{Selection, StorageError};
+use demi_backend_database::Selection;
+use demi_core_store::StorageError;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 
 use crate::HostShard;

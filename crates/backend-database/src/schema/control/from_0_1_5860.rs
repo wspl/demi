@@ -15,11 +15,11 @@ use std::collections::HashSet;
 
 use rusqlite::Transaction;
 
-use crate::providers::ResealSealed;
+use crate::schema::ResealSealed;
 use demi_web_api_protocol::ids::ProviderId;
 use super::super::{Migration, corrupt, corrupt_text};
 
-pub(super) const MIGRATION: Migration = Migration::Reseal(control_from_0_1_5860);
+pub(super) const MIGRATION: Migration = Migration::Code(control_from_0_1_5860);
 
 fn control_from_0_1_5860(transaction: &Transaction<'_>, seals: &dyn ResealSealed) -> rusqlite::Result<()> {
     transaction.execute_batch(

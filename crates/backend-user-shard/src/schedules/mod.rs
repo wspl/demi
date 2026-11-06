@@ -26,7 +26,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use base64::Engine;
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::schedules::{StoredRun, StoredSchedule};
 use demi_backend_page_sync::Part;
 use demi_backend_providers::vault::seal::Row;

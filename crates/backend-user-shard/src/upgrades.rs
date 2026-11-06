@@ -31,7 +31,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::time::{Duration, Instant};
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::update::Update;
 use demi_backend_page_sync::{Part, SyncRegistry};

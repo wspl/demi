@@ -40,7 +40,7 @@ use demi_web_api_protocol::sessions::{HandoffCode, HandoffId, ProductPath, Sessi
 use jiff::SignedDuration;
 use url::Url;
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::accounts::{ResolvedSession, SessionPolicy, TokenHash};
 use demi_backend_database::control::ControlService;
 use demi_backend_database::web_sessions::{HandoffIssue, NewSession};

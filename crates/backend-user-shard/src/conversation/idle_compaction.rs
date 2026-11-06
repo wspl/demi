@@ -36,7 +36,7 @@ use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use demi_agent_session::IdleCompactionDue;
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::idle_compactions::IdleCompaction;
 use demi_backend_host_access::root_of;

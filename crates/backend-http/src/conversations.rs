@@ -16,8 +16,8 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use demi_backend_database::conversation_index::{ConversationRecord, Creation};
-use demi_backend_database::conversation_attachments::{self, AttachmentNumber};
-use demi_backend_database::tree;
+use demi_core_store::{conversation_attachments::{self, AttachmentNumber}};
+use demi_core_store::tree;
 use demi_backend_page_sync::Part;
 use demi_runner_client::OpenedRead;
 use demi_host_interface::ByteRange;
@@ -124,7 +124,7 @@ pub(super) async fn create(
         .of(&user.id)
         .call(move |shard, _| async move {
             let conversation = shard.conversation_summary(record.clone()).await?;
-            Ok::<_, demi_backend_database::StorageError>((conversation, shard.conversation_metadata(record).await?))
+            Ok::<_, demi_core_store::StorageError>((conversation, shard.conversation_metadata(record).await?))
         })
         .await??;
     Ok((status, Json(CreatedConversation { conversation, metadata, first_message })))
@@ -285,7 +285,7 @@ pub(super) async fn batch(
                 };
                 results.push(result);
             }
-            Ok::<_, demi_backend_database::StorageError>(results)
+            Ok::<_, demi_core_store::StorageError>(results)
         })
         .await??;
     Ok((StatusCode::MULTI_STATUS, Json(BatchAnswer { results })))

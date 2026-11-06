@@ -4,7 +4,7 @@
 //! never wakes the Cloud and asks no one: the machine manager pushes the
 //! sizes and the image, and the page shows what it last said.
 
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::managed::ManagedOperation;
 use demi_machine_manager_protocol::{DeviceId, Isolation as MachineIsolation, MoveStatus};
 use demi_web_api_protocol::cloud::{

@@ -10,11 +10,11 @@
 
 use rusqlite::Transaction;
 
-use super::super::{Migration, ReadBlob};
+use super::super::{Migration, ResealSealed};
 
 pub(super) const MIGRATION: Migration = Migration::Code(control_from_0_1_5979_media_jobs);
 
-fn control_from_0_1_5979_media_jobs(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+fn control_from_0_1_5979_media_jobs(transaction: &Transaction<'_>, _: &dyn ResealSealed) -> rusqlite::Result<()> {
     let version: i64 = transaction.pragma_query_value(None, "schema_version", |row| row.get(0))?;
     transaction.pragma_update(None, "writable_schema", true)?;
     transaction.execute(

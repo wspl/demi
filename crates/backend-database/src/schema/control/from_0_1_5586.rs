@@ -4,10 +4,10 @@
 
 use rusqlite::Transaction;
 
-use super::super::{Migration, ReadBlob};
+use super::super::{Migration, ResealSealed};
 
 pub(super) const MIGRATION: Migration = Migration::Code(control_from_0_1_5586);
 
-fn control_from_0_1_5586(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+fn control_from_0_1_5586(transaction: &Transaction<'_>, _: &dyn ResealSealed) -> rusqlite::Result<()> {
     super::ledger::judge_misses(transaction)
 }

@@ -294,7 +294,7 @@ async fn devices_named(
     conversation: &ConversationId,
     wanted: &str,
 ) -> Result<Vec<NamedDevice>, RpcError> {
-    let failed = |error: demi_backend_database::StorageError| RpcError::Failed(error.to_string());
+    let failed = |error: demi_core_store::StorageError| RpcError::Failed(error.to_string());
     let control = shard.control();
     let mut found: Vec<NamedDevice> = Vec::new();
     let mut push = |named: NamedDevice| {
@@ -387,7 +387,7 @@ impl HostNames {
 /// The user's Hosts, paired devices and the Cloud, for naming them.
 pub(crate) async fn host_names(shard: &dyn HostShard) -> Result<HostNames, RpcError> {
     let control = shard.control();
-    let failed = |error: demi_backend_database::StorageError| RpcError::Failed(error.to_string());
+    let failed = |error: demi_core_store::StorageError| RpcError::Failed(error.to_string());
     let mut devices = control.paired_devices(shard.user().clone()).await.map_err(failed)?;
     devices.extend(control.managed_device(shard.user().clone()).await.map_err(failed)?);
     Ok(HostNames(devices))
@@ -513,7 +513,7 @@ async fn devices(
     let conversation = conversation_of(&call.invocation)?;
     let hosts = reachable(&*shard, &conversation).await?;
     let control = shard.control();
-    let failed = |error: demi_backend_database::StorageError| RpcError::Failed(error.to_string());
+    let failed = |error: demi_core_store::StorageError| RpcError::Failed(error.to_string());
     let cloud = control
         .managed_device(shard.user().clone())
         .await

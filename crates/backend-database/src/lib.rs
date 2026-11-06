@@ -102,14 +102,9 @@
 pub mod accounts;
 pub mod attachments;
 pub mod schedules;
-pub mod columns;
-pub mod command_outputs;
-mod contents;
-pub mod conversation_attachments;
 pub mod control;
 pub mod credentials;
 pub mod conversation_index;
-pub mod conversations;
 pub mod deletions;
 pub mod devices;
 pub mod drafts;
@@ -123,7 +118,6 @@ pub mod media_jobs;
 pub mod panels;
 pub mod plugin_reports;
 pub mod passkeys;
-mod path;
 pub mod permissions;
 pub mod plugin_secrets;
 mod plugin_store;
@@ -131,75 +125,25 @@ pub mod plugin_values;
 pub mod port_forwards;
 pub mod providers;
 pub mod push;
-mod records;
 pub mod references;
 pub mod running;
 pub mod saved;
-mod schema;
-pub use schema::{DatabaseKind, SchemaFit, schema_fit};
+pub mod schema;
+pub use schema::{DatabaseKind, database_fit};
+
+use demi_core_store::{StorageError, columns, sqlite};
 #[cfg(feature = "testing")]
 pub mod testing;
 mod selection;
 pub use selection::{CLOUD_HOME, Selection, Unselectable, Worktree};
-pub mod search;
 pub mod server_log;
 pub mod shares;
-pub mod sequences;
-pub mod side_questions;
 pub mod sidebar;
-mod sqlite;
 pub mod subagents;
 pub mod suggested_replies;
-pub mod tree;
 pub mod update;
 pub mod usage;
 pub mod web_sessions;
 pub mod projects;
 pub mod workspaces;
 
-/// Why a storage operation failed.
-#[derive(Debug, thiserror::Error)]
-pub enum StorageError {
-    #[error("SQLite failed: {0}")]
-    Sqlite(#[from] rusqlite::Error),
-    /// The database was made by a newer release or another build of Demi,
-    /// whose schema this build does not read and never changes.
-    #[error(
-        "{} was made by a newer release or another build of Demi: return to the release that made it, or restore the databases of this release with `demi-server rollback`",
-        path.display()
-    )]
-    OtherSchema { path: std::path::PathBuf },
-    /// A migration failed; its transaction left the database as it was.
-    #[error(
-        "{} could not be migrated from schema version {from}: {source}",
-        path.display()
-    )]
-    Migration {
-        path: std::path::PathBuf,
-        from: i32,
-        #[source]
-        source: rusqlite::Error,
-    },
-    /// Replication and concurrent readers need WAL, which the file system
-    /// refused.
-    #[error("the database stays in journal mode {0}, not WAL")]
-    JournalMode(String),
-    /// A stored value outside its type; nothing repairs it.
-    #[error("{table}.{column} holds an invalid value: {reason}")]
-    Corrupt {
-        table: &'static str,
-        column: &'static str,
-        reason: String,
-    },
-    /// A computed time, such as an expiry, falls outside the range of times.
-    #[error("a time is out of range: {0}")]
-    Time(jiff::Error),
-    #[error("the database is closed")]
-    Closed,
-    #[error("the file system failed: {0}")]
-    Io(#[from] std::io::Error),
-    /// Work handed to a blocking thread ended without an answer, because it
-    /// panicked or the runtime is shutting down.
-    #[error("blocking storage work did not finish: {0}")]
-    Interrupted(#[from] tokio::task::JoinError),
-}

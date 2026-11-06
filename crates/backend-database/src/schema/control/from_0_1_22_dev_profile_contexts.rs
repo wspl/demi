@@ -8,11 +8,11 @@
 
 use rusqlite::Transaction;
 
-use crate::providers::ResealSealed;
+use crate::schema::ResealSealed;
 use demi_web_api_protocol::ids::ProviderId;
 use super::super::{Migration, corrupt, corrupt_text};
 
-pub(super) const MIGRATION: Migration = Migration::Reseal(control_sealed_config_format_2);
+pub(super) const MIGRATION: Migration = Migration::Code(control_sealed_config_format_2);
 
 fn control_sealed_config_format_2(
     transaction: &Transaction<'_>,

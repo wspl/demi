@@ -9,7 +9,8 @@
 use rusqlite::Transaction;
 use serde_json::Value;
 
-use super::super::{Migration, ReadBlob, corrupt_text};
+use super::Migration;
+use super::super::{ReadBlob, corrupt_text};
 
 pub(super) const MIGRATION: Migration = Migration::Code(conversation_from_0_1_5785);
 

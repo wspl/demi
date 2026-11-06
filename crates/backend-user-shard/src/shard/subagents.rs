@@ -13,7 +13,7 @@
 //! time.
 
 use demi_backend_accounts::subagents::{self, ContextRefusal, ProfileTextError};
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::subagents::ProfileRefusal as Stored;
 use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_page_sync::Part;

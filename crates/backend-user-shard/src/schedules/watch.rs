@@ -250,7 +250,7 @@ impl Shard {
         digest: Vec<u8>,
         generation: u64,
         now: Timestamp,
-    ) -> Result<(), demi_backend_database::StorageError> {
+    ) -> Result<(), demi_core_store::StorageError> {
         let control = &self.services().control;
         let record = WatchOutput {
             stdout: output.stdout.clone(),

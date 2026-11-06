@@ -35,7 +35,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket};
-use demi_backend_database::StorageError;
+use demi_core_store::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::devices::{DeviceRecord, FirstHome};
 use demi_backend_page_sync::{Part, UserMarks};

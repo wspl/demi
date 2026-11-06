@@ -16,18 +16,6 @@ use serde_json::Value;
 
 use crate::control::ControlService;
 
-/// The control store's own failure, which the plugin host passed on, or
-/// corrupt data the host found: a sealed secret that does not open, the one
-/// failure it raises itself.
-impl From<StoreError> for crate::StorageError {
-    fn from(error: StoreError) -> Self {
-        error.downcast::<Self>().unwrap_or_else(|error| Self::Corrupt {
-            table: "plugin_secrets",
-            column: "sealed",
-            reason: error.to_string(),
-        })
-    }
-}
 
 impl PluginStore for ControlService {
     fn switches(&self, user: UserId) -> Stored<'_, BTreeMap<String, bool>> {
