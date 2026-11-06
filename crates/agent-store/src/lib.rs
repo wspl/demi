@@ -747,6 +747,8 @@ pub struct EarlierRows {
     pub user_turns: Vec<TurnId>,
     /// The id of each `tool_call` block, in order.
     pub calls: Vec<BlockId>,
+    /// The id of each `steer` block, in order.
+    pub steers: Vec<BlockId>,
     /// The last of [`Kind::Input`].
     pub last_input: Option<Block>,
     /// The last of [`Kind::UserInput`].

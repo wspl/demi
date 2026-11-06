@@ -21,6 +21,7 @@ pub type UserInput = Option<(ScheduleMark, Timestamp)>;
 pub struct Earlier {
     user_turns: HashSet<TurnId>,
     calls: HashSet<BlockId>,
+    steers: HashSet<BlockId>,
     last_turn: Option<TurnId>,
     /// The record of the last turn there ([`turn_record`]): the failure that
     /// left it unfinished, or none for any other record.
@@ -38,6 +39,9 @@ impl Earlier {
                 }
                 Block::ToolCall(call) => {
                     self.calls.insert(call.id.clone());
+                }
+                Block::Steer(steer) => {
+                    self.steers.insert(steer.id.clone());
                 }
                 _ => {}
             }
@@ -65,6 +69,7 @@ impl Earlier {
         Self {
             user_turns: rows.user_turns.into_iter().collect(),
             calls: rows.calls.into_iter().collect(),
+            steers: rows.steers.into_iter().collect(),
             last_turn: rows.last_input.as_ref().and_then(turn_of).cloned(),
             record: rows.last_record.as_ref().map(failure),
             user_input: rows.last_user_input.as_ref().and_then(user_input),
@@ -77,6 +82,10 @@ impl Earlier {
 
     pub fn holds_call(&self, id: &BlockId) -> bool {
         self.calls.contains(id)
+    }
+
+    pub fn holds_steer(&self, id: &BlockId) -> bool {
+        self.steers.contains(id)
     }
 
     /// The turn of the last block of a turn's input.

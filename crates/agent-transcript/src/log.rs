@@ -601,6 +601,12 @@ impl TranscriptLog {
         self.earlier.holds_call(id) || self.position(id).is_some()
     }
 
+    /// Whether the path holds a steer written under `id`, or any other
+    /// block of that id.
+    pub fn holds_steer(&self, id: &BlockId) -> bool {
+        self.earlier.holds_steer(id) || self.position(id).is_some()
+    }
+
     /// Whether the last block already says why its turn is unfinished.
     pub fn ends_with_interruption(&self) -> bool {
         self.blocks.last().is_some_and(is_interruption)

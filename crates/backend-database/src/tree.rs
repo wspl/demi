@@ -1350,7 +1350,7 @@ fn turn_position(connection: &Connection, node: &NodeId, turn: &TurnId) -> Resul
 /// What a session keeps of the blocks of `node`'s `path` before `end`
 /// ([`SessionStore::earlier`]).
 fn earlier_rows(connection: &Connection, node: &NodeId, path: &Path, end: i64) -> Result<EarlierRows, StorageError> {
-    let ids = earlier_ids(connection, node, end)?;
+    let (user_turns, calls, steers) = earlier_ids(connection, node, end)?;
     let last = |kind: Kind| -> Result<Option<Block>, StorageError> {
         match last_of(connection, node, path, kind, end)? {
             Some(at) => Ok(path_blocks(connection, node, path, count(at)..count(at) + 1)?.pop()),
@@ -1358,35 +1358,36 @@ fn earlier_rows(connection: &Connection, node: &NodeId, path: &Path, end: i64) -
         }
     };
     Ok(EarlierRows {
-        user_turns: ids.0,
-        calls: ids.1,
+        user_turns,
+        calls,
+        steers,
         last_input: last(Kind::Input)?,
         last_user_input: last(Kind::UserInput)?,
         last_record: last(Kind::Record)?,
     })
 }
 
-/// The turns of the `user` blocks and the ids of the tool calls on
-/// `node`'s current path before `end`, read from the index of block types
-/// without decoding a block.
-fn earlier_ids(connection: &Connection, node: &NodeId, end: i64) -> Result<(Vec<TurnId>, Vec<BlockId>), StorageError> {
+/// The turns of the `user` blocks and the ids of the tool calls and the
+/// steers on `node`'s current path before `end`, read from the index of
+/// block types without decoding a block.
+fn earlier_ids(connection: &Connection, node: &NodeId, end: i64) -> Result<(Vec<TurnId>, Vec<BlockId>, Vec<BlockId>), StorageError> {
     let mut statement = connection.prepare_cached(&format!(
         "SELECT blocks.type, CASE blocks.type WHEN 'user' THEN blocks.turn_id ELSE blocks.id END
          FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
-           ON blocks.node_id = {RUN_NODE} AND blocks.type IN ('user', 'tool_call')
+           ON blocks.node_id = {RUN_NODE} AND blocks.type IN ('user', 'tool_call', 'steer')
              AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
          WHERE run.node_id = ?1 AND {POSITION} < ?2
          ORDER BY run.start, blocks.idx"
     ))?;
     let mut rows = statement.query(params![node.as_str(), end])?;
-    let mut ids = (Vec::new(), Vec::new());
+    let mut ids = (Vec::new(), Vec::new(), Vec::new());
     while let Some(row) = rows.next()? {
         let kind: String = row.get(0)?;
         let id: String = row.get(1)?;
-        if kind == "user" {
-            ids.0.push(decode("blocks", "block", TurnId::try_from(id))?);
-        } else {
-            ids.1.push(decode("blocks", "block", BlockId::try_from(id))?);
+        match kind.as_str() {
+            "user" => ids.0.push(decode("blocks", "block", TurnId::try_from(id))?),
+            "steer" => ids.2.push(decode("blocks", "block", BlockId::try_from(id))?),
+            _ => ids.1.push(decode("blocks", "block", BlockId::try_from(id))?),
         }
     }
     Ok(ids)

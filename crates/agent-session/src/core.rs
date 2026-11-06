@@ -1961,7 +1961,7 @@ impl SessionCore {
     ) -> Result<(), SteerError> {
         let own_turn = TurnId::try_from(id.as_str().to_owned()).expect("a block id is not empty");
         if self.inputs.pending_steers().iter().any(|steer| steer.id == id)
-            || self.transcript.find(&id).is_some()
+            || self.transcript.holds_steer(&id)
             || self.knows_turn(&own_turn)
         {
             return Ok(());

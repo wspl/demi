@@ -129,6 +129,7 @@ impl StoredNode {
             match &*self.row(*row).block {
                 Block::User(user) => rows.user_turns.push(user.turn_id.clone()),
                 Block::ToolCall(call) => rows.calls.push(call.id.clone()),
+                Block::Steer(steer) => rows.steers.push(steer.id.clone()),
                 _ => {}
             }
         }
