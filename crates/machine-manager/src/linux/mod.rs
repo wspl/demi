@@ -1,11 +1,9 @@
 //! The Linux interfaces the manager uses instead of administration tools:
-//! mounts, loop devices, filesystem freezes and trims, namespace threads and
-//! the processes `/proc` shows.
+//! mounts, loop devices, filesystem freezes and trims, and namespace threads.
 
 pub mod freeze;
 pub mod loopdev;
 pub mod mount;
-pub mod process;
 pub mod thread_ns;
 pub mod trim;
 

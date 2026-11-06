@@ -370,7 +370,7 @@ impl Supervisor<'_> {
             }
             Request::EndScreen => match self.screen {
                 Some(pid) => {
-                    let _ = rustix::process::kill_process_group(pid, Signal::TERM);
+                    let _ = demi_shared_processes::signal_group(pid, Signal::TERM);
                     self.ending_screen.push(answer);
                 }
                 None => {
@@ -431,9 +431,9 @@ impl Supervisor<'_> {
             Phase::Starting(pid) | Phase::Running(pid) => {
                 let process_only = supervised.service.as_ref().is_some_and(|service| service.kill_process_only);
                 let _ = if process_only {
-                    rustix::process::kill_process(pid, Signal::TERM)
+                    demi_shared_processes::signal_process(pid, Signal::TERM)
                 } else {
-                    rustix::process::kill_process_group(pid, Signal::TERM)
+                    demi_shared_processes::signal_group(pid, Signal::TERM)
                 };
                 supervised.phase = Phase::Stopping(pid);
                 for starting in supervised.starting.drain(..) {
@@ -695,7 +695,7 @@ impl Supervisor<'_> {
         if !process_only {
             // What the service started ends with it, as its cgroup's
             // processes do under systemd.
-            let _ = rustix::process::kill_process_group(pid, Signal::KILL);
+            let _ = demi_shared_processes::signal_group(pid, Signal::KILL);
         }
         for waiter in supervised.starting.drain(..) {
             let _ = waiter.send(if oneshot && !failed {
@@ -816,7 +816,7 @@ impl Supervisor<'_> {
                 // What else runs ends with the container.
                 let others = self.units.values().filter_map(Supervised::pid).chain(self.first).chain(self.screen);
                 for pid in others.collect::<Vec<_>>() {
-                    let _ = rustix::process::kill_process_group(pid, Signal::TERM);
+                    let _ = demi_shared_processes::signal_group(pid, Signal::TERM);
                 }
             }
             return;
@@ -1124,7 +1124,21 @@ fn spawn(mut command: Command, credentials: &Credentials, confinement: &Confinem
     let groups: Option<Vec<rustix::process::Gid>> =
         credentials.groups.as_ref().map(|ids| ids.iter().copied().map(rustix::process::Gid::from_raw).collect());
     let umask = rustix::fs::Mode::from_raw_mode(confinement.umask);
-    let (private_mounts, bounding, ambient) = (confinement.private_mounts, confinement.bounding, confinement.ambient);
+    let private_mounts = confinement.private_mounts;
+    // A container may withhold capabilities from root, and no process can
+    // hand on what it lacks; what needs one fails where it uses it.
+    let held = rustix::thread::capabilities(None)?.permitted;
+    let ambient = confinement.ambient & held;
+    let withheld: Vec<&str> = (confinement.ambient - held).iter_names().map(|(name, _)| name).collect();
+    if !withheld.is_empty() {
+        println!(
+            "demi-server supervise: {} runs without {}, which this container does not grant",
+            command.get_program().display(),
+            withheld.join(", "),
+        );
+    }
+    let bounding = confinement.bounding;
+    let narrow_bounding = held.contains(CapabilitySet::SETPCAP);
     // SAFETY: the closure runs in the child before its exec, and only makes
     // system calls on what it captured.
     unsafe {
@@ -1137,7 +1151,12 @@ fn spawn(mut command: Command, credentials: &Credentials, confinement: &Confinem
                 use rustix::mount::MountPropagationFlags;
                 rustix::mount::mount_change("/", MountPropagationFlags::PRIVATE | MountPropagationFlags::REC)?;
             }
-            if let Some(bounding) = bounding {
+            // Without the capability to narrow the bounding set, what it would
+            // stop still cannot happen: no exec gains a capability.
+            if bounding.is_some() && !narrow_bounding {
+                rustix::thread::set_no_new_privs(true)?;
+            }
+            if let Some(bounding) = bounding.filter(|_| narrow_bounding) {
                 for capability in CapabilitySet::all().iter() {
                     if bounding.contains(capability) {
                         continue;

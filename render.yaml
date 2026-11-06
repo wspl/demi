@@ -1,0 +1,25 @@
+# Demi on Render (docs/delivery/render.md): one web service with a disk at
+# /opt/demi, which also holds attachments, since Render has no object storage.
+# Render's deploy address reads this file from the repository's root.
+services:
+  - type: web
+    name: demi
+    runtime: image
+    image:
+      url: ghcr.io/demi-sh/demi:latest
+    plan: starter
+    healthCheckPath: /api/update
+    # Demi updates itself in Settings › Updates.
+    autoDeployTrigger: "off"
+    disk:
+      name: demi
+      mountPath: /opt/demi
+      sizeGB: 5
+    envVars:
+      - key: PORT
+        value: "3271"
+      - key: DEMI_BACKEND_PUBLIC_URL
+        fromService:
+          type: web
+          name: demi
+          envVarKey: RENDER_EXTERNAL_URL

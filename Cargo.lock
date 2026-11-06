@@ -2629,6 +2629,7 @@ dependencies = [
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-cli",
+ "demi-shared-processes",
  "demi-shared-types",
  "demi-supervisor-protocol",
  "fs-err",
@@ -3472,6 +3473,7 @@ dependencies = [
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-cli",
+ "demi-shared-processes",
  "demi-shared-types",
  "demi-supervisor-protocol",
  "demi-web-api-protocol",
@@ -3563,6 +3565,15 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "demi-shared-processes"
+version = "0.1.65"
+dependencies = [
+ "fs-err",
+ "libc",
+ "rustix",
 ]
 
 [[package]]

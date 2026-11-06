@@ -73,11 +73,12 @@ use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use demi_shared_processes as process;
+
 use super::DeviceOp;
 use crate::{
     blocking::{self, OffLoop},
     config::Config,
-    linux::process,
     manager::{Core, OpError},
     sandbox::{files, oci::BOOT_RECORD},
     storage::{
@@ -662,7 +663,7 @@ impl Process {
 /// Sends `signal` to `pid`; one that is gone needs none.
 fn signal(pid: i32, signal: rustix::process::Signal) {
     if let Some(pid) = rustix::process::Pid::from_raw(pid) {
-        let _ = rustix::process::kill_process(pid, signal);
+        let _ = process::signal_process(pid, signal);
     }
 }
 

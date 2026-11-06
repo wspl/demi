@@ -78,7 +78,7 @@ gVisor and Simple Isolation ([Set up managed Cloud hosts](../cloud/setup.md)),
 because every deployment has Cloud. There is no uninstall.
 
 Without a Linux machine of their own, an operator runs the same server from
-Demi's container image on Railway, on Fly, or with Docker Compose
+Demi's container image on Railway, on Render, on Fly, or with Docker Compose
 ([In a container](#in-a-container)).
 
 ## The bootstrap
@@ -275,6 +275,7 @@ Simple Isolation, and Settings › Cloud says why gVisor is unavailable.
 | Setup | What the operator does | Attachments and media | Cost a month, about |
 | --- | --- | --- | --- |
 | [Railway](railway.md) | Deploys Demi's template | A Railway Bucket | $5 for the Hobby plan, which includes $5 of usage; a server with a running Cloud uses $2 to $6 |
+| [Render](render.md) | Clicks **Deploy on Render** | The disk | $8.25 for a Starter instance with 512 MB and a 5 GB disk |
 | [Fly](fly.md) | Pastes one block of commands | A Tigris bucket | $8 for a `shared-cpu-1x` machine with 1 GB and a 10 GB volume |
 | [Docker Compose](docker-compose.md) | Runs `docker compose up -d` | The volume | What the machine costs; Oracle Cloud's Always Free Arm machines cost nothing |
 
