@@ -3,7 +3,6 @@ import { onBeforeUnmount, ref, watch } from 'vue'
 import type { UserContentBlock } from '@demicodes/protocol'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
-import type { SuggestedReply } from '@demicodes/web-ui/agent/suggested-replies'
 import { PROJECT_ROOT } from '../fixtures/project'
 import { SUGGESTION_ROUNDS, suggestedRepliesConversation } from '../fixtures/suggested-replies'
 import { useTurnFlow, type SentMessage } from '../turn-flow'
@@ -27,7 +26,7 @@ const messageFiles = useMessageFiles()
 /** How long the small model takes to write them, as the product's arrive after the answer. */
 const WRITING_MS = 1200
 
-const kept = ref<{ blockId: string; replies: readonly SuggestedReply[] } | null>(null)
+const kept = ref<{ blockId: string; replies: readonly string[] } | null>(null)
 let round = 0
 let writing: ReturnType<typeof setTimeout> | undefined
 

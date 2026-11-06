@@ -610,7 +610,7 @@ CREATE TABLE conversation_drafts (
 -- Each answer of a suggested replies request
 -- (crates/agent-server/src/suggested_replies.rs), which stays: the conversation
 -- offers its newest. The text block of the answer it follows, and replies, a
--- JSON array of SuggestedReply, empty when none was likely.
+-- JSON array of strings, empty when none was likely.
 CREATE TABLE conversation_suggested_replies (
   id              INTEGER PRIMARY KEY,
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,

@@ -3,16 +3,22 @@
 //! what the user did with it, which stays to measure the replies by. A
 //! conversation offers its newest, so a restart of the backend offers it still.
 
-use demi_shared_types::{BlockId, SuggestedReply};
+use demi_shared_types::BlockId;
 use demi_web_api_protocol::conversations::{SuggestedReplies, SuggestedReplyUse, SuggestedReplyUsed};
 use demi_web_api_protocol::ids::ConversationId;
 use rusqlite::{OptionalExtension as _, params};
+use serde::Deserialize;
 
 use super::StorageError;
 use super::columns::{decode, json, to_json};
 use super::control::ControlService;
 
 const TABLE: &str = "conversation_suggested_replies";
+
+/// The replies a row holds: each words to send, so none is empty.
+#[derive(Deserialize, garde::Validate)]
+#[garde(transparent)]
+struct KeptReplies(#[garde(inner(length(chars, min = 1)))] Vec<String>);
 
 /// One answer of a suggested replies request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,7 +33,7 @@ pub struct AnsweredReplies {
     /// Its whole answer, none when it had no text.
     pub response: Option<String>,
     /// What the page offers of it.
-    pub replies: Vec<SuggestedReply>,
+    pub replies: Vec<String>,
 }
 
 impl ControlService {
@@ -44,7 +50,7 @@ impl ControlService {
             };
             Ok(Some(SuggestedReplies {
                 block_id: decode(TABLE, "block_id", BlockId::try_from(block_id))?,
-                replies: json::<Vec<SuggestedReply>>(TABLE, "replies", &replies)?,
+                replies: json::<KeptReplies>(TABLE, "replies", &replies)?.0,
             }))
         })
         .await

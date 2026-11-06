@@ -3342,7 +3342,7 @@ export const useConversations = defineStore('conversations', () => {
    */
   function reportSuggestion(conversation: Conversation, text: string, as: SuggestedReplyUse): void {
     const kept = conversation.suggestedReplies
-    const reply = kept?.replies.findIndex((each) => each.text === text) ?? -1
+    const reply = kept?.replies.indexOf(text) ?? -1
     if (!kept || reply < 0) {
       return
     }

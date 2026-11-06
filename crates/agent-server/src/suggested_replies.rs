@@ -12,7 +12,7 @@ use std::collections::HashSet;
 use std::num::NonZeroU32;
 
 use demi_provider_common::RequestPurpose;
-use demi_shared_types::{Block, BlockId, SuggestedReply, SuggestedReplyKind, TextBlock, UserContentBlock, is_blank};
+use demi_shared_types::{Block, BlockId, TextBlock, UserContentBlock, is_blank};
 
 use crate::small_request::SmallRequest;
 
@@ -51,27 +51,35 @@ pub const OUTPUT_CAP: NonZeroU32 = NonZeroU32::new(4_096).expect("the cap is not
 /// The whole system prompt of a request.
 ///
 /// Its rules come from OpenCode's opencode-ghost plugin, which asks a small
-/// model for the next prompt, and from runs on a real conversation's turns:
-/// without the user's recent messages the model wrote long suggestions in the
-/// agent's voice, invented details the answer did not hold, and turned the
-/// user's "you" into "I". With `NONE` only one rule among the others, it
-/// suggested something, mostly a new topic, after three in four replies that
-/// put nothing to the user; deciding that first, and allowing a topic only
-/// beside an answer, left one in seven. Advice still read as options to
-/// choose among, until the rules said that a recommendation which asks
-/// nothing is no question.
+/// model for the next prompt, and from replays of real turn ends. It decides
+/// first whether anything is put to the user, since a small model passes over
+/// that rule among others. It never asks for a number of candidates, since a
+/// model asked for several invents the rest. Each candidate names its stance so
+/// that [`suggestions_from_response`] can hold what the model may not: one
+/// approval and one refusal.
 pub const INSTRUCTION: &str = "You suggest what the USER of a coding agent will most likely send next, after the assistant's latest reply. The user picks one with a single tap and it is sent as is.
 
-First decide whether the latest reply asks the user anything: a question, a request for approval or a choice, or an offer to do something. Advice or a recommendation that asks nothing is not one. If it asks nothing, because it only reports, explains, advises or confirms, or asks the user to do something themselves or for facts only the user has, output exactly NONE and nothing else, even when a next step seems obvious.
+First decide whether the latest reply is waiting for a decision from the user: it puts a question, a request for approval, a choice or an offer to the user, and the assistant will not go on until it is answered.
 
-Otherwise write one to three candidates, one per line, the most likely first. Rules:
-- Each candidate is a complete, specific message: an approval, a choice among the options the reply offered, a direct answer to its question, or the obvious next instruction. Never a vague one such as \"continue\", \"tell me more\" or \"what next?\".
-- Use only what the reply and the transcript say: never add a version, name, number, file or step they do not mention.
+Output exactly NONE, and nothing else, when the reply:
+- only reports, explains, advises or confirms;
+- says what the assistant will do next by itself, or that it waits for work under way;
+- only mentions something it could do if the user wants it, with no question (\"if you want this, tell me\");
+- asks the user to do something themselves, or asks for facts only the user has: what they saw, did, have or want to describe.
+
+Otherwise write only what the user is truly likely to send, the most likely first, one per line, each starting with its stance and a colon. One candidate is normal. Never write another just to offer more.
+- `yes:` approves what the reply proposes, in the words the user uses for that.
+- `no:` declines it or holds it off. Write it only when the reply itself gives a real reason to, such as a cost, a risk or a condition to wait for; never as the plain opposite of `yes:`.
+- `pick:` takes one of the named options the reply offers, one line for each. With named options use `pick:` and no `yes:`, the option the reply recommends first.
+
+Rules:
+- Each candidate must make the assistant do something different from the others. Two ways of saying the same thing, or one that adds a detail to another, count once: keep the shorter.
+- When the reply puts several separate decisions to the user, each candidate settles all of them. Never write one that answers one decision and leaves the others open. If no short message can settle them all, output NONE.
+- A candidate is a decision, never a statement of fact about the user: not what they did, saw, have or know.
+- Use only what the reply says: never add a version, name, number, file, step or new work it does not mention.
 - The user speaks to the assistant: \"you\" is the assistant, \"I\" is the user.
-- Candidates differ in what they ask for; two ways of saying the same thing count once.
-- Sound exactly like the user: copy the language, words, punctuation and length of the user's recent messages. Most are a few words; keep a candidate that short unless it must say more.
-- If the reply asks for approval or recommends one of the options it asks about, the first candidate takes it, in the words the user uses for that.
-- Start each line with its kind and a colon: `answer:` for a reply to what the assistant's reply asked or offered (an approval, a choice among its options, an answer to its question), `topic:` for something new the user may raise next, only beside an answer. Then plain text. No numbering, quotes, markdown or explanation.";
+- Sound exactly like the user: copy the language, words, punctuation and length of the user's recent messages. Most are a few words; keep a candidate that short.
+- No numbering, quotes, markdown or explanation.";
 
 /// The answer the latest turn of `blocks`, the root's transcript, ended
 /// with: its last text that is not blank, when the turn ended with a
@@ -209,39 +217,50 @@ fn tail(text: &str, chars: usize) -> &str {
 }
 
 /// The suggestions in a response: each line that is one, in order, at most
-/// [`MOST`]. A line's kind is its `answer:` or `topic:` mark, an answer
-/// when it has none; numbering, a list marker and quotes around it go. An
-/// empty line, `NONE`, a line longer than [`LONGEST`] and a repeat are not
+/// [`MOST`]. A line starts with its stance, of which `yes:` and `no:` count once;
+/// numbering, a list marker and quotes around it go. A line without a stance, and
+/// so `NONE`, an empty one, one longer than [`LONGEST`] and a repeat are not
 /// suggestions.
-pub fn suggestions_from_response(response: &str) -> Vec<SuggestedReply> {
+pub fn suggestions_from_response(response: &str) -> Vec<String> {
     let mut seen = HashSet::new();
+    let mut stances = HashSet::new();
     response
         .lines()
         .filter_map(suggestion)
-        .filter(|reply| seen.insert(reply.text.to_lowercase()))
+        .filter(|(_, text)| seen.insert(text.to_lowercase()))
+        .filter(|(stance, _)| *stance == Stance::Pick || stances.insert(*stance))
+        .map(|(_, text)| text)
         .take(MOST)
         .collect()
 }
 
-fn suggestion(line: &str) -> Option<SuggestedReply> {
+/// What a candidate does with what the answer put to the user.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Stance {
+    /// Approves what it proposes.
+    Yes,
+    /// Declines it or holds it off.
+    No,
+    /// Takes one of the options it names.
+    Pick,
+}
+
+fn suggestion(line: &str) -> Option<(Stance, String)> {
     let line = line.trim();
     let line = line
         .strip_prefix("- ")
         .or_else(|| line.strip_prefix("* "))
         .unwrap_or(line);
     let line = strip_number(line).trim();
-    let (kind, rest) = kind_of(line);
+    let (stance, rest) = stance_of(line)?;
     let text = rest
         .trim()
         .trim_matches(|c: char| matches!(c, '"' | '\'' | '`' | '“' | '”' | '「' | '」'))
         .trim();
-    if text.is_empty() || text.eq_ignore_ascii_case("none") || text.chars().count() > LONGEST {
+    if text.is_empty() || text.chars().count() > LONGEST {
         return None;
     }
-    Some(SuggestedReply {
-        text: text.to_owned(),
-        kind,
-    })
+    Some((stance, text.to_owned()))
 }
 
 /// `line` without a leading `1.` or `1)`.
@@ -255,15 +274,14 @@ fn strip_number(line: &str) -> &str {
         .unwrap_or(line)
 }
 
-/// The kind a line's mark names, and the line after it.
-fn kind_of(line: &str) -> (SuggestedReplyKind, &str) {
-    for (mark, kind) in [("answer", SuggestedReplyKind::Answer), ("topic", SuggestedReplyKind::Topic)] {
-        if line.len() > mark.len() && line.is_char_boundary(mark.len()) && line[..mark.len()].eq_ignore_ascii_case(mark) {
-            let rest = &line[mark.len()..];
-            if let Some(after) = rest.strip_prefix(':').or_else(|| rest.strip_prefix('：')) {
-                return (kind, after);
-            }
-        }
-    }
-    (SuggestedReplyKind::Answer, line)
+/// The stance a line starts with, and the line after it.
+fn stance_of(line: &str) -> Option<(Stance, &str)> {
+    [("yes", Stance::Yes), ("no", Stance::No), ("pick", Stance::Pick)]
+        .into_iter()
+        .find_map(|(mark, stance)| {
+            let head = line.get(..mark.len()).filter(|head| head.eq_ignore_ascii_case(mark))?;
+            let rest = &line[head.len()..];
+            let after = rest.strip_prefix(':').or_else(|| rest.strip_prefix('：'))?;
+            Some((stance, after))
+        })
 }

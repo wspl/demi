@@ -4,7 +4,7 @@ use demi_conversation_lane_protocol::{
     AgentCost, AgentEntry, BlockVersions, CacheChart, ConversationAttachment, Failures, Refusal, ReplyBlockFacts,
     RequestOutput, SendMessage, ShellStatus, TurnSpeed, Version,
 };
-use demi_shared_types::{Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, SuggestedReply, Timestamp, WorkflowChoice};
+use demi_shared_types::{Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp, WorkflowChoice};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
@@ -332,7 +332,7 @@ pub struct SuggestedReplies {
     /// The text block of the answer they follow.
     pub block_id: BlockId,
     /// At most three, the most likely first; empty when none was likely.
-    pub replies: Vec<SuggestedReply>,
+    pub replies: Vec<String>,
 }
 
 /// `POST /conversations/:id/suggested-replies/used`: the user took one of the

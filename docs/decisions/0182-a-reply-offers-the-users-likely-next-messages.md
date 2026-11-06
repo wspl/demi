@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: proposed, superseded in part by 0286
 ---
 
 # A reply offers the user's likely next messages

@@ -69,7 +69,7 @@ import SchedulesChip from '../schedules/SchedulesChip.vue'
 import type { ConversationSchedule } from '../schedules/types'
 import { provideScheduleOpener } from './message-origins'
 import { provideComposerFocus } from './composer-focus'
-import { provideSuggestedReplies, type SuggestedReplies, type SuggestedReply } from './suggested-replies'
+import { provideSuggestedReplies, type SuggestedReplies } from './suggested-replies'
 import { usePhone } from '../ui/phone'
 import { tabCountIcon } from '../ui/tab-count-icon'
 import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
@@ -111,7 +111,7 @@ const props = withDefaults(defineProps<{
    * follow: null while none are kept, absent where the conversation offers
    * none, as with Suggested replies off.
    */
-  suggestedReplies?: { blockId: string; replies: readonly SuggestedReply[] } | null
+  suggestedReplies?: { blockId: string; replies: readonly string[] } | null
   /** Whether the dock and the subagents' panel show the model's output (Settings › Agent › Output speed). */
   outputSpeed?: boolean
   selectEdit?: EditSelectionHandler

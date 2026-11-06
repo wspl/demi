@@ -9,17 +9,7 @@ export interface SuggestedReplies {
   /** The text block the suggestions follow. */
   blockId: string
   /** Null while they are being written; empty when none came. */
-  replies: readonly SuggestedReply[] | null
-}
-
-/**
- * One suggestion: an answer to what the reply asked or offered (an approval,
- * a choice, an answer to its question), or a new topic the user may raise
- * next, as the small model judged it.
- */
-export interface SuggestedReply {
-  text: string
-  kind: 'answer' | 'topic'
+  replies: readonly string[] | null
 }
 
 /** What the transcript shows of the suggestions and what a pill does. */
