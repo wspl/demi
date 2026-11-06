@@ -29,7 +29,7 @@
 //! - Machine access, under the Cloud's admission.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -71,38 +71,30 @@ const SHUTTING_DOWN: &str = "backend shutting down";
 /// disconnected is returning (`crates/runner-client/src/device_jobs.rs`).
 pub const RETURN_GRACE: Duration = Duration::from_secs(30);
 
-/// The devices whose connections the backend's last shutdown ended, whose
-/// runners connect again by themselves soon after the start, and until when
-/// they are returning. A device leaves the set once its runner is back.
-#[derive(Debug)]
+/// The devices whose connections their core's last close ended, whose
+/// runners connect again by themselves soon after the core starts again,
+/// and until when each is returning. A device leaves the set once its runner
+/// is back.
+#[derive(Debug, Default)]
 pub struct Returning {
     /// A `std` mutex, never held across a wait: a Cloud the machine
     /// manager does not run is forgotten once the start learns it.
-    devices: std::sync::Mutex<HashSet<DeviceId>>,
-    /// When the wait after the start ends.
-    until: Instant,
-}
-
-impl Default for Returning {
-    fn default() -> Self {
-        Self {
-            devices: std::sync::Mutex::default(),
-            until: Instant::now(),
-        }
-    }
+    devices: std::sync::Mutex<HashMap<DeviceId, Instant>>,
 }
 
 impl Returning {
-    /// Takes what the last shutdown recorded, for the start now.
-    pub async fn take(stores: &[CoreStore]) -> Result<Self, StorageError> {
-        let mut devices = HashSet::new();
+    /// Takes what the last close of the cores of `stores` recorded, as they
+    /// start now: their devices are returning for the grace after it.
+    pub async fn take(&self, stores: &[CoreStore]) -> Result<(), StorageError> {
+        let until = Instant::now() + RETURN_GRACE;
         for store in stores {
-            devices.extend(store.take_devices_ended_by_shutdown().await?);
+            let ended = store.take_devices_ended_by_shutdown().await?;
+            self.devices
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .extend(ended.into_iter().map(|device| (device, until)));
         }
-        Ok(Self {
-            devices: std::sync::Mutex::new(devices),
-            until: Instant::now() + RETURN_GRACE,
-        })
+        Ok(())
     }
 
     /// The devices whose runners the start waits for.
@@ -110,7 +102,7 @@ impl Returning {
         self.devices
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .iter()
+            .keys()
             .cloned()
             .collect()
     }
@@ -130,8 +122,8 @@ impl Returning {
         self.devices
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .contains(device)
-            .then_some(self.until)
+            .get(device)
+            .copied()
     }
 }
 

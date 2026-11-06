@@ -46,7 +46,6 @@ object_store.workspace = true
 rand = "0.9"
 reqwest = { workspace = true, features = ["rustls", "stream"] }
 serde_json.workspace = true
-sha2 = "0.10"
 thiserror.workspace = true
 semver.workspace = true
 tokio.workspace = true

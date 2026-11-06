@@ -10,7 +10,7 @@
 use std::time::Duration;
 
 use demi_backend_database::server_log::ServerLog;
-use demi_backend_user_shard::pool::Shards;
+use demi_core::pool::Shards;
 use demi_core::lane::{open_connections, open_lanes};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 

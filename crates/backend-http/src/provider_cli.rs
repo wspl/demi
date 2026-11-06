@@ -25,7 +25,7 @@ use super::providers::scoped;
 use super::query::QueryParams;
 use demi_core::conversation::claude_cli::start_install;
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::pool::Shards;
+use demi_core::pool::Shards;
 
 /// The entry the path names, when its provider runs a process; an entry
 /// whose provider runs none has no tool to read or install.

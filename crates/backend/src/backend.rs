@@ -65,15 +65,12 @@ use demi_web_api_protocol::ids::UserId;
 use demi_backend_database::update::Update;
 use demi_backend_http::{AppState, Edge, Listening, Site, WebBuildError, manage_socket, runner_socket, web_build};
 use demi_backend_cloud::user_core::CloudOfCore;
-use demi_backend_user_shard::start_passes::{
-    arm_idle_compactions, deliver_decisions, finish_deletions, index_at_start, resume_after_restart,
-    start_media_followers, start_schedulers,
-};
-use demi_core::conversation::recover_forks;
+use demi_backend_user_shard::server_starter::ServerOpener;
+use demi_core::start_passes::{start_step, take_up};
 use demi_backend_user_shard::services::{
     CloseError, ProviderSetup, ServiceKeys, ServiceSettings, Services, ServicesError, Storage,
 };
-use demi_backend_user_shard::pool::ShardPool;
+use demi_core::pool::ShardPool;
 use demi_backend_user_shard::cloud::{route_deaths, route_statuses};
 use tokio_util::task::AbortOnDropHandle;
 
@@ -164,18 +161,6 @@ impl fmt::Display for ShutdownErrors {
 
 impl std::error::Error for ShutdownErrors {}
 
-/// Runs the start step `step`, whose failure does not stop the start: its end
-/// is logged with the time it took, and a failure with its error.
-async fn start_step<T, E: fmt::Display>(step: &'static str, work: impl std::future::Future<Output = Result<T, E>>) {
-    let started = std::time::Instant::now();
-    let done = work.await;
-    let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    match done {
-        Ok(_) => tracing::info!(event = "startup.step_ended", step, ms, outcome = "ok", "a start step ended"),
-        Err(error) => tracing::error!(event = "startup.step_failed", step, ms, %error, "a start step failed; the start goes on"),
-    }
-}
-
 /// How long the recovery waits before it asks an unreachable machine manager
 /// again.
 const RECOVERY_RETRY: std::time::Duration = std::time::Duration::from_secs(5);
@@ -234,7 +219,7 @@ async fn announce_runtimes(mut runtimes: tokio::sync::mpsc::Receiver<()>, servic
 
 async fn recover_in_background(
     services: Arc<demi_backend_user_shard::services::Services>,
-    shards: demi_backend_user_shard::pool::Shards,
+    shards: demi_core::pool::Shards,
 ) {
     let running = loop {
         match recover_clouds(&services.control, &services.stores, &services.cloud).await {
@@ -262,7 +247,7 @@ async fn recover_in_background(
 /// (`crates/machine-manager-protocol/src/lib.rs`).
 async fn take_over_clouds(
     running: Vec<(UserId, demi_core_store::devices::DeviceRecord)>,
-    shards: &demi_backend_user_shard::pool::Shards,
+    shards: &demi_core::pool::Shards,
 ) -> Result<(), String> {
     for (owner, device) in running {
         shards
@@ -308,7 +293,7 @@ async fn forget_stopped_clouds(
 async fn take_up_stopped_clouds(
     taken: &[demi_web_api_protocol::ids::DeviceId],
     services: &demi_backend_user_shard::services::Services,
-    shards: &demi_backend_user_shard::pool::Shards,
+    shards: &demi_core::pool::Shards,
 ) -> Result<(), String> {
     let cores = services
         .stores
@@ -524,7 +509,8 @@ impl Backend {
         };
         let services = Services::start(storage.clone(), keys, providers, settings);
         let services = Arc::new(services.await?);
-        let shards = match ShardPool::start(config.shards, services.clone()).await {
+        let opener = Arc::new(ServerOpener(services.clone()));
+        let shards = match ShardPool::start(config.shards, services.core.clone(), opener).await {
             Ok(shards) => shards,
             Err(error) => {
                 services.close_providers().await;
@@ -546,69 +532,18 @@ impl Backend {
             services.clone(),
         )));
         let runtimes = AbortOnDropHandle::new(tokio::spawn(announce_runtimes(notices.runtimes, services.clone())));
-        // Fork destinations whose root committed before their publication are
-        // published before the backend serves.
-        let cores = match services.stores.all(&services.control).await {
-            Ok(cores) => cores,
-            Err(error) => {
-                shards.close().await;
-                services.close_providers().await;
-                return Err(StartError::Storage(error));
-            }
+        // Each user's core takes up what an earlier backend left before the
+        // backend serves.
+        let cores = services.stores.all(&services.control).await;
+        let taken = match cores {
+            Ok(cores) => take_up(&cores, &shards.shards()).await,
+            Err(error) => Err(error),
         };
-        if let Err(error) = recover_forks(&cores).await {
+        if let Err(error) = taken {
             shards.close().await;
             services.close_providers().await;
             return Err(StartError::Storage(error));
         }
-        // Each deletion an earlier backend left pending is finished before
-        // the backend serves. A failure does not stop the start: the next
-        // start finishes it, and no request finds its conversation meanwhile.
-        start_step("pending_deletions", finish_deletions(&cores, &shards.shards())).await;
-        // A credential request's command ended with the run before, so no one waits
-        // for its answer; and a credential whose time came while the backend was down
-        // is removed.
-        //
-        // A failure does not stop the start: the user's core removes what is past due
-        // when it starts, and the next start withdraws the requests.
-        for (_, store) in &cores {
-            start_step("credential_requests", store.withdraw_credential_requests()).await;
-            start_step("expired_credentials", store.expire_all_user_credentials()).await;
-        }
-        // Each permission decision whose message a restart cut off reaches
-        // the agent that asked. A failure does not stop the start: the next
-        // start delivers it.
-        start_step("permission_decisions", deliver_decisions(&cores, &shards.shards())).await;
-        // Each root's turn the last shutdown interrupted goes on, in the
-        // background, as the user's Resume would, unless the user turned that
-        // off. A failure does not stop the start: the marks stay for the next
-        // start, and meanwhile the turns wait for the user's Resume.
-        start_step("interrupted_turns", resume_after_restart(&cores, &shards.shards())).await;
-        // Each user's idle conversations compact at the times their last
-        // requests set, which a restart keeps. A failure does not stop the
-        // start: the next answered request sets its conversation's time again.
-        start_step("idle_compactions", arm_idle_compactions(&cores, &shards.shards())).await;
-        // Each user's schedules fire what a backend that was down missed
-        // and wait for their next times. A failure does not stop the start: a
-        // user's next call starts them.
-        start_step(
-            "schedule_users",
-            start_schedulers(&cores, &shards.shards()),
-        )
-        .await;
-        // Each media job a vendor took before the restart is followed to
-        // its end, whether or not its call comes back. A failure does not
-        // stop the start: a user's next call follows them.
-        start_step(
-            "media_jobs",
-            start_media_followers(&cores, &shards.shards()),
-        )
-        .await;
-        // Each user's search index catches up with the conversations, in the
-        // background (`crates/core-store/src/search.rs`). A failure
-        // does not stop the start: a conversation not indexed here is
-        // indexed by its next change.
-        start_step("search_index", index_at_start(&cores, &shards.shards())).await;
         let state = AppState {
             services: services.clone(),
             shards: shards.shards(),

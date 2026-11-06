@@ -20,7 +20,7 @@ use demi_backend_runners::codes::ClaimCode;
 use demi_core_hosts::devices::{RunnerSocket, send};
 
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::pool::Shards;
+use demi_core::pool::Shards;
 use demi_core::KeptJobs;
 
 /// Serves a runner's socket until it is handed to a core or closes.

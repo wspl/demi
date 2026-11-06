@@ -41,13 +41,11 @@
 pub mod cloud;
 pub mod lent_media;
 mod page_notifications;
-pub mod pool;
 pub mod prefetch;
 pub mod provider_sharing;
 pub mod server_starter;
 pub mod services;
 pub mod shares;
-pub mod start_passes;
 pub mod sync;
 pub mod tuning;
 pub mod upgrades;

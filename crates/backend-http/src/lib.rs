@@ -126,7 +126,7 @@ pub use self::assets::{WebBuildError, web_build};
 pub use self::install::Site;
 use self::listener::{EdgeListener, Peer};
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::pool::Shards;
+use demi_core::pool::Shards;
 
 /// The listener and the server over it.
 pub struct Edge {

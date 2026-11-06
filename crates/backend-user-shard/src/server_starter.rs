@@ -3,7 +3,11 @@
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
+use demi_backend_cloud::CloudSide;
 use demi_backend_cloud::user_core::UserCloud;
+use demi_core::extensions::Extensions;
+use demi_core::pool::Opener;
+use demi_core_store::store::CoreStore;
 use demi_core_host_access::cloud::CloudHost;
 use demi_core_store::StorageError;
 use demi_core_store::devices::DeviceRecord;
@@ -18,13 +22,33 @@ use demi_web_api_protocol::push::PushMessage;
 use demi_web_api_protocol::conversations::ConversationShares;
 use demi_web_api_protocol::shares::ConversationShare;
 use tokio_util::task::TaskTracker;
-use futures_util::future::LocalBoxFuture;
+use futures_util::future::{BoxFuture, LocalBoxFuture};
 
 use crate::page_notifications::PageNotifications;
 use crate::services::Services;
 use demi_core::Core;
 use crate::lent_media::LentJobs;
 use demi_core::starter::{Notified, Reach, Starter};
+
+/// What the server gives its pool: each user's store, opened at the user's
+/// first call, and the server's starter and side for each user's core.
+pub struct ServerOpener(pub Arc<Services>);
+
+impl Opener for ServerOpener {
+    fn store<'a>(&'a self, user: &'a UserId) -> BoxFuture<'a, Result<Option<CoreStore>, StorageError>> {
+        Box::pin(async move { self.0.stores.of(user).await.map(Some) })
+    }
+
+    fn starter(&self, user: &UserId, core: Weak<Core>) -> Rc<dyn Starter> {
+        Rc::new(ServerStarter::new(user.clone(), self.0.clone(), core))
+    }
+
+    fn extensions(&self, _: &UserId) -> Extensions {
+        Extensions::default()
+            .with(ServerSide::new(self.0.clone()))
+            .with(CloudSide::new(self.0.control.clone(), self.0.cloud.clone()))
+    }
+}
 
 /// What the server gives one user's core.
 pub struct ServerStarter {

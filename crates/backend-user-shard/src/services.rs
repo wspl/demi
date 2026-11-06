@@ -375,7 +375,8 @@ impl Services {
         let hasher = PasswordHasher::new().await?;
         let clock = providers.clock.clone();
         let cores: Vec<CoreStore> = stores.all(&control).await?.into_iter().map(|(_, store)| store).collect();
-        let returning = Arc::new(Returning::take(&cores).await?);
+        let returning = Arc::new(Returning::default());
+        returning.take(&cores).await?;
         let edge = tokio::runtime::Handle::current();
         // The shared services' own client; each shard thread builds its own.
         let http = reqwest::Client::builder()

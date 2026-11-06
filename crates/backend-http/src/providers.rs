@@ -32,7 +32,7 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use demi_core::provider_settings::ProviderRefusal;
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::pool::Shards;
+use demi_core::pool::Shards;
 
 /// The entry the path names, when the caller infers with it and manages
 /// it; one they only infer with is refused, and any other answers like a

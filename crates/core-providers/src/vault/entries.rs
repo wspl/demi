@@ -189,22 +189,40 @@ impl Vault {
         shared_subscriptions: bool,
         sync: SyncRegistry,
     ) -> Result<Self, StorageError> {
-        let mut holders = std::collections::HashMap::new();
-        for user in stores.users().await? {
-            for row in stores.store_of(&user).await?.providers().await? {
-                holders.insert(row.id, user.clone());
-            }
-        }
-        Ok(Self(Arc::new(Shared {
+        let users = stores.users().await?;
+        let vault = Self(Arc::new(Shared {
             stores,
-            holders: std::sync::Mutex::new(holders),
+            holders: std::sync::Mutex::default(),
             mode: std::sync::RwLock::new(mode),
             shared_subscriptions,
             master: tokio::sync::OnceCell::new(),
             gates: RefreshGates::new(),
             sync,
             account_changes: tokio::sync::broadcast::Sender::new(ACCOUNT_CHANGES_KEPT),
-        })))
+        }));
+        for user in users {
+            vault.hold_core(&user).await?;
+        }
+        Ok(vault)
+    }
+
+    /// Keeps the entries of `user`'s core, which the stores give from now
+    /// on: a core a program's process opens after the vault started.
+    pub async fn hold_core(&self, user: &UserId) -> Result<(), StorageError> {
+        for row in self.0.stores.store_of(user).await?.providers().await? {
+            self.hold(row.id, user.clone());
+        }
+        Ok(())
+    }
+
+    /// Forgets the entries of `user`'s core, which the stores no longer
+    /// give: a core a program's process closed.
+    pub fn release_core(&self, user: &UserId) {
+        self.0
+            .holders
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .retain(|_, holder| holder != user);
     }
 
     /// The core store that holds the entry `id`. An id no entry ever had is
