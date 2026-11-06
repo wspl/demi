@@ -147,12 +147,12 @@ before:
 
 ## Spike
 
-None yet. The build measures:
-
-- The upgrade's move of a server's records into per-user directories, on a
-  copy of a server's data, for its time and its peak memory.
+- The upgrade's move of a server's records into per-user directories ran
+  on a copy of a server's data, about 200 MB of `control.sqlite` and 140
+  conversations: 5.5 seconds in a debug build, every table's count the same
+  before and after, and `control.sqlite` left at 180 KB once vacuumed.
 - One core under 300 conversations at once, the load 0294 ran on a user
-  shard, which the core now is.
+  shard, which the core now is: still to run.
 
 ## Prior art
 
@@ -189,5 +189,6 @@ it, so a fix to the agent reaches every user of either at once.
 
 ## Open questions
 
-- The core crates' names: `core-*` after Codex's `codex-core`, such as
-  `core-store` and `core-hosts`, beside the agent crates that keep theirs.
+- None. The core is the crate `core` (`demi-core`), its parts are `core-*`
+  crates after Codex's `codex-core`, such as `core-store` and `core-hosts`,
+  and the server's side of its users' cores stays `backend-user-shard`.
