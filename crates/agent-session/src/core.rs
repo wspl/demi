@@ -796,8 +796,9 @@ impl SessionCore {
     }
 
     /// The running turn's message, which an edit may replace while the turn
-    /// runs: the last `user` block, its turn running and not stopped, with
-    /// nothing else waiting to run.
+    /// runs: the last message the user sent, the `user` block that started
+    /// the turn or a `steer` that joined it, its turn running and not
+    /// stopped, with nothing else waiting to run.
     fn running_message(&self) -> Option<&BlockId> {
         let Activity::Running(run) = &self.activity else {
             return None;
@@ -810,19 +811,22 @@ impl SessionCore {
         if run.cancel.is_cancelled() || waiting {
             return None;
         }
-        match self.transcript.blocks().iter().rfind(|block| matches!(block, Block::User(_))) {
+        match self.transcript.blocks().iter().rfind(|block| block.is_editable()) {
             Some(Block::User(user)) if user.turn_id == run.turn => Some(&user.id),
+            Some(Block::Steer(steer)) if steer.turn_id == run.turn => Some(&steer.id),
             _ => None,
         }
     }
 
-    /// Whether `target` is the path's last `user` block, which an edit that
-    /// stopped its turn replaces only when no later message came meanwhile.
+    /// Whether `target` is the path's last message the user sent, which an
+    /// edit that stopped its turn replaces only when no later message came
+    /// meanwhile.
     pub(super) fn is_last_message(&self, target: &BlockId) -> bool {
-        matches!(
-            self.transcript.blocks().iter().rfind(|block| matches!(block, Block::User(_))),
-            Some(Block::User(user)) if &user.id == target
-        )
+        self.transcript
+            .blocks()
+            .iter()
+            .rfind(|block| block.is_editable())
+            .is_some_and(|block| block.id() == target)
     }
 
     /// Stops the running turn for an edit of its message `target`, as the

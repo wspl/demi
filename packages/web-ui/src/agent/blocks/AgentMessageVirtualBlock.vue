@@ -213,7 +213,9 @@ function shownComments(comments: readonly MessageComment[] | undefined): ShownCo
       v-bind="attrs"
       :content="block.content"
       :comments="shownComments(block.comments)"
-      :editable="false"
+      :editable="editable"
+      :versions="versions"
+      @edit="emit('editUser', block.id)"
     />
     <UserBlock
       v-else-if="block.type === 'pending_steer'"

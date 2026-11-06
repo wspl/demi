@@ -160,8 +160,8 @@ pub fn turn_of(block: &Block) -> Option<&TurnId> {
 pub enum CutError {
     #[error("The conversation holds no such block")]
     NotFound,
-    #[error("The edit target must be a user message")]
-    NotUserMessage,
+    #[error("The edit target must be a message the user sent")]
+    NotUserInput,
     #[error("The Fork target must be a completed assistant message")]
     NotCompletedText,
     #[error("The Fork boundary contains unfinished tool calls")]
@@ -178,13 +178,14 @@ pub enum ForkEnd<'a> {
     Side(&'a BlockId),
 }
 
-/// The blocks before the `user` block `target`, which an edit keeps.
-pub fn before_user<'a>(blocks: &'a [Block], target: &BlockId) -> Result<&'a [Block], CutError> {
+/// The blocks before the message `target` the user sent, a `user` or a
+/// `steer` block, which an edit keeps.
+pub fn before_input<'a>(blocks: &'a [Block], target: &BlockId) -> Result<&'a [Block], CutError> {
     let index = blocks
         .iter()
         .position(|block| block.id() == target)
         .filter(|index| blocks[*index].is_editable())
-        .ok_or(CutError::NotUserMessage)?;
+        .ok_or(CutError::NotUserInput)?;
     Ok(&blocks[..index])
 }
 

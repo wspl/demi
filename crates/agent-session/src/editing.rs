@@ -14,9 +14,13 @@
 //! ID, the selected model and a freshly prepared preamble. The retained blocks
 //! keep their IDs, timestamps, content and media.
 //!
-//! Only a `user` block is a target: an explicit submission has its own block
-//! type, so the session and the page read editability from the type and no
-//! second rule decides it.
+//! A target is a message the user sent: a `user` block, which started its
+//! turn, or a `steer`, which joined the turn running. An edit of either
+//! keeps the blocks before it and writes the new version as a `user` block
+//! that starts a turn, so an edited steer reads to the model as a message
+//! sent after the answer so far. The session and the page read editability
+//! from the block's type (`Block::is_editable`) and no second rule decides
+//! it.
 //!
 //! A request is checked before its uploads are resolved, so that a repeated one
 //! writes no file. The checks run in this order:
@@ -36,7 +40,7 @@ use demi_agent_store::{
     AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, EditReceipt, Kind, NodeRecord, SessionStore, StoreError,
     StoredPrefix,
 };
-use demi_agent_transcript::{CutError, Earlier, ForkEnd, TranscriptLog, before_user, fork_prefix, side_end};
+use demi_agent_transcript::{CutError, Earlier, ForkEnd, TranscriptLog, before_input, fork_prefix, side_end};
 use demi_command_protocol::canonical_digest;
 use demi_conversation_lane_protocol::{
     AgentCode, EditRequest, MediaRef, RegenerateRequest, Refusal, Version,
@@ -44,7 +48,7 @@ use demi_conversation_lane_protocol::{
 use demi_provider_common::ProviderRuntime;
 use demi_shared_types::{
     BlobRef, Block, BlockId, Comment, CommentPart, CommentStage, DocumentSource, MediaSource, MessageComment, NodeId,
-    OperationId, UserBlock, UserContentBlock,
+    OperationId, UserContentBlock,
 };
 use tokio::sync::watch;
 
@@ -299,6 +303,12 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
     turn::run_replacement(s, cancel).await
 }
 
+/// What the edited message, a `user` or a `steer` block, holds.
+struct Sent<'a> {
+    content: &'a [UserContentBlock],
+    comments: &'a [MessageComment],
+}
+
 /// An edit's replacement history, prepared beside the accepted one.
 struct Candidate {
     blocks: Vec<Block>,
@@ -317,26 +327,28 @@ impl Candidate {
     ) -> Result<Self, EditError> {
         // The window holds the message and every block after it.
         let blocks = core.transcript.blocks();
-        let prefix = before_user(blocks, &submission.target)?.to_vec();
-        let Some(Block::User(target)) = blocks.get(prefix.len()) else {
-            unreachable!("the prefix ends before the user block");
+        let prefix = before_input(blocks, &submission.target)?.to_vec();
+        let target = match blocks.get(prefix.len()) {
+            Some(Block::User(user)) => Sent { content: &user.content, comments: &user.comments },
+            Some(Block::Steer(steer)) => Sent { content: &steer.content, comments: &steer.comments },
+            _ => unreachable!("the prefix ends before the message"),
         };
         let model = core.landing_selection().clone();
         let turn = core.turn();
         let blocks = match &submission.content {
             Some(content) => {
-                let content = Self::content(target, content)?;
+                let content = Self::content(&target, content)?;
                 let mut candidate = TranscriptLog::new(prefix, s.ids.clone(), core.clock());
                 // A new version is the user's own, whoever sent the first.
                 let comments = match &submission.comments {
                     Some(comments) => comments
                         .iter()
                         .map(|comment| {
-                            let content = Self::content(target, &comment.content)?;
+                            let content = Self::content(&target, &comment.content)?;
                             Ok(comment.clone().with_content::<demi_shared_types::Message>(content))
                         })
                         .collect::<Result<Vec<MessageComment>, EditError>>()?,
-                    None => target.comments.clone(),
+                    None => target.comments.to_vec(),
                 };
                 candidate.push_user(turn.clone(), &model, content, comments, preamble, None);
                 candidate.blocks().to_vec()
@@ -381,7 +393,7 @@ impl Candidate {
     /// The new version's content, or a comment's: each reference to a file
     /// the edited message `target` holds, in its content or a comment's, in
     /// that block's place.
-    fn content(target: &UserBlock, content: &[EditContent]) -> Result<Vec<UserContentBlock>, EditError> {
+    fn content(target: &Sent<'_>, content: &[EditContent]) -> Result<Vec<UserContentBlock>, EditError> {
         let held: Vec<UserContentBlock> = target
             .content
             .iter()

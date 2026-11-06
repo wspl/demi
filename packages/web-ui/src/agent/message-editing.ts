@@ -119,10 +119,10 @@ export function editContent(state: MessageEditState): MessageEditContent[] {
 
 /**
  * The edit of a message with its content and comments as it was sent. Only a
- * `user` block is a message the user can edit.
+ * message the user sent, a `user` or a `steer` block, can be edited.
  */
 export function unchangedEditRequest(block: Block, version: Version): MessageEditRequest {
-  if (block.type !== 'user') {
+  if (block.type !== 'user' && block.type !== 'steer') {
     throw new Error('This message cannot be edited')
   }
   return {
@@ -184,15 +184,20 @@ export function editHasContent(state: MessageEditState): boolean {
   return editComments(state).length > 0 || editContent(state).some((part) => part.type !== 'text' || part.text.trim())
 }
 
-/** The web app exposes editing only for the latest explicit user submission. */
-export function lastEditableUserMessageId(blocks: readonly MessageListBlock[]): string | null {
-  return blocks.findLast((block) => block.type === 'user')?.id ?? null
+/**
+ * The last message the user sent: a `user` block, which started its turn, or
+ * a `steer`, which joined the turn running. Whether a message started a turn
+ * or joined one can hang on a few milliseconds the user never sees, so the
+ * page offers either.
+ */
+function lastSentAt(blocks: readonly MessageListBlock[]): number {
+  return blocks.findLastIndex((block) => block.type === 'user' || block.type === 'steer')
 }
 
 /**
- * The message the page offers to edit: the last `user` block, while nothing
- * waits to be sent, and the conversation is idle or runs that message's
- * turn, which the edit stops; null when none is offered.
+ * The message the page offers to edit: the last message the user sent, while
+ * nothing waits to be sent, and the conversation is idle or runs that
+ * message's turn, which the edit stops; null when none is offered.
  */
 export function offeredEditId(conversation: {
   blocks: readonly MessageListBlock[]
@@ -204,19 +209,20 @@ export function offeredEditId(conversation: {
     return null
   }
   if (conversation.phase === 'idle') {
-    return lastEditableUserMessageId(conversation.blocks)
+    return conversation.blocks[lastSentAt(conversation.blocks)]?.id ?? null
   }
   return conversation.phase === 'running' ? runningMessageId(conversation.blocks) : null
 }
 
 /**
- * The last `user` block when the running turn is its own: no message of
- * another turn, a user's, an agent's or a command's report, comes after it.
+ * The last message the user sent when the running turn is its own: no
+ * message of another turn, a user's, an agent's or a command's report, comes
+ * after it.
  */
 function runningMessageId(blocks: readonly MessageListBlock[]): string | null {
-  const at = blocks.findLastIndex((block) => block.type === 'user')
+  const at = lastSentAt(blocks)
   const message = blocks[at]
-  if (message?.type !== 'user') {
+  if (message?.type !== 'user' && message?.type !== 'steer') {
     return null
   }
   const later = blocks.slice(at + 1).some((block) =>
