@@ -48,7 +48,9 @@
 //!
 //! A Cloud on Simple Isolation has no checkpoints, since its files are its
 //! storage (a checkpoint syncs them), no storage, CPU or memory limits, and
-//! no network of its own: it shares the host's network and ports.
+//! no network of its own: it shares the host's network and ports. An
+//! integration's shared folder is a directory bound into each of its Clouds
+//! (`crate::storage::shared`), writable through proot as it is meant to be.
 
 use std::{
     cell::RefCell,
@@ -62,7 +64,7 @@ use std::{
 };
 
 use demi_machine_manager_protocol::{
-    BaseVersion, DeviceId, LeftSimple, SandboxMachine,
+    BaseVersion, DeviceId, Isolation, LeftSimple, SandboxMachine, SharedFolder,
     image::{INIT_PATH, PROGRAMS_PATH, RUNNER_PATH},
 };
 use demi_runner_protocol::{
@@ -84,7 +86,7 @@ use crate::{
     storage::{
         base,
         durable::{remove_tree, sync, write_json},
-        tree,
+        shared, tree,
     },
     tools::Tool,
 };
@@ -190,7 +192,7 @@ pub enum Contents {
 }
 
 /// What a filesystem's root holds that is no file of the device's.
-const LOST_AND_FOUND: &str = "lost+found";
+pub(crate) const LOST_AND_FOUND: &str = "lost+found";
 
 /// A device's directories and files.
 #[derive(Debug, Clone)]
@@ -326,6 +328,11 @@ impl Simple {
 
     pub fn tree(&self, device: &DeviceId) -> Tree {
         self.trees.tree(device)
+    }
+
+    /// Whether each device runs as a user of its own.
+    pub fn runs_as_users(&self) -> bool {
+        self.users
     }
 
     /// Makes the directory, and learns the users devices hold. Under root,
@@ -683,6 +690,8 @@ pub struct Device {
     /// The base a device's first system is copied from.
     base: BaseVersion,
     process: Option<Process>,
+    /// The shared folder the running proot binds, which its stop gives back.
+    shared: Option<String>,
 }
 
 impl Device {
@@ -692,13 +701,15 @@ impl Device {
             core,
             base,
             process: None,
+            shared: None,
         }
     }
 
-    /// `device`, whose proot a manager before this one left running and this
-    /// one took over.
-    pub fn adopted(device: DeviceId, core: Rc<Core>, base: BaseVersion, process: Process) -> Self {
+    /// `device`, whose proot a manager before this one left running with the
+    /// shared folder `shared` and this one took over.
+    pub fn adopted(device: DeviceId, core: Rc<Core>, base: BaseVersion, process: Process, shared: Option<String>) -> Self {
         let mut adopted = Self::new(device, core, base);
+        adopted.shared = shared;
         adopted.process = Some(process);
         adopted
     }
@@ -713,7 +724,7 @@ impl Device {
 
     pub async fn operate(&mut self, op: DeviceOp) -> Result<(), OpError> {
         match op {
-            DeviceOp::Wake { boot, machine, .. } => self.wake(boot, machine).await,
+            DeviceOp::Wake { boot, machine, shared, .. } => self.wake(boot, machine, shared.as_ref()).await,
             DeviceOp::Hibernate { .. } => self.stop().await,
             // Its files are its storage: a checkpoint makes them durable.
             DeviceOp::Checkpoint { .. } => self.sync().await,
@@ -760,6 +771,7 @@ impl Device {
             device: self.device.clone(),
             pid: process.pid,
             started: process.started,
+            shared: self.shared.take(),
         })
     }
 
@@ -785,7 +797,7 @@ impl Device {
 
     /// Starts proot on the device's tree, made first from the configured base
     /// when there is none.
-    async fn wake(&mut self, boot: ManagedBoot, machine: SandboxMachine) -> Result<(), OpError> {
+    async fn wake(&mut self, boot: ManagedBoot, machine: SandboxMachine, shared: Option<&SharedFolder>) -> Result<(), OpError> {
         if self.process.is_some() {
             return Ok(());
         }
@@ -837,7 +849,26 @@ impl Device {
             }
         })
         .await?;
-        let process = self.start(&tree, user, &runner_release, machine).await?;
+        let bind = match shared {
+            Some(folder) => {
+                let source = self
+                    .core
+                    .shared
+                    .acquire(&self.core, Isolation::Simple, &folder.id, folder.capacity_bytes)
+                    .await?;
+                self.shared = Some(folder.id.clone());
+                Some((source, folder.path.clone()))
+            }
+            None => None,
+        };
+        let bound = bind.as_ref().map(|(source, path)| (source.as_path(), path.as_str()));
+        let process = match self.start(&tree, user, &runner_release, machine, bound).await {
+            Ok(process) => process,
+            Err(error) => {
+                self.give_back_shared().await;
+                return Err(error);
+            }
+        };
         let record = ProcessRecord {
             pid: process.pid,
             started: process.started,
@@ -858,6 +889,7 @@ impl Device {
         user: Option<u32>,
         runner_release: &str,
         machine: SandboxMachine,
+        shared: Option<(&Path, &str)>,
     ) -> Result<Process, OpError> {
         let path = tree.log();
         // Each boot's log replaces the last, so the file never outgrows one.
@@ -872,7 +904,11 @@ impl Device {
             .arg(format!("{}:/home", tree.home().display()))
             .args(["-b", "/dev", "-b", "/proc", "-b", "/sys"])
             .arg("-b")
-            .arg(format!("{}:/dev/shm", tree.shm().display()))
+            .arg(format!("{}:/dev/shm", tree.shm().display()));
+        if let Some((source, path)) = shared {
+            command.arg("-b").arg(format!("{}:{path}", source.display()));
+        }
+        command
             // tini is not the first process here, as it is on gVisor, so it
             // registers as a subreaper (`-s`) to reap what the Cloud's
             // programs leave.
@@ -890,12 +926,40 @@ impl Device {
             .stderr(log.into_file())
             // proot outlives the manager that leaves it to the next one.
             .kill_on_drop(false);
-        if let Some(user) = user {
-            command.uid(user).gid(user);
-        }
-        // SAFETY: setsid is async-signal-safe and touches no memory.
+        let shares = shared.is_some();
+        // SAFETY: each call is a plain system call, which is async-signal-safe,
+        // and the child has this thread alone. The identity is set here, not
+        // with the command's `uid` and `gid`, which drop supplementary groups.
+        //
+        // A Cloud that names a shared folder runs with the folder's group as
+        // its own, and its user's group, which enters its tree, beside it: what
+        // it makes then belongs to the folder's group however it is made. A
+        // setgid folder would not do, since proot under `-0` sets a new
+        // directory's mode once it made it, which clears the bit.
         unsafe {
-            command.pre_exec(|| rustix::process::setsid().map(drop).map_err(io::Error::from));
+            command.pre_exec(move || {
+                rustix::process::setsid().map_err(io::Error::from)?;
+                if let Some(user) = user {
+                    use rustix::{
+                        fs::Mode,
+                        process::{Gid, Uid, umask},
+                        thread::{set_thread_gid, set_thread_groups, set_thread_uid},
+                    };
+                    let own = [Gid::from_raw(user)];
+                    let (gid, groups) = match shares {
+                        true => (Gid::from_raw(shared::GROUP), &own[..]),
+                        false => (Gid::from_raw(user), &[][..]),
+                    };
+                    set_thread_groups(groups).map_err(io::Error::from)?;
+                    set_thread_gid(gid).map_err(io::Error::from)?;
+                    set_thread_uid(Uid::from_raw(user)).map_err(io::Error::from)?;
+                    if shares {
+                        // What it makes in the folder stays the group's to write.
+                        umask(Mode::from_raw_mode(0o002));
+                    }
+                }
+                Ok(())
+            });
         }
         let mut child = command.spawn()?;
         let pid = child.id().ok_or_else(|| io::Error::other("proot exited as it started"))? as i32;
@@ -943,6 +1007,7 @@ impl Device {
             return Ok(());
         }
         self.simple().fence(&self.device, user).await?;
+        self.give_back_shared().await;
         let path = self.tree().process();
         blocking::run(move |_| match fs_err::remove_file(&path) {
             Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
@@ -950,6 +1015,16 @@ impl Device {
         })
         .await?;
         self.sync().await
+    }
+
+    /// Gives back the shared folder the proot that stopped bound; a failure
+    /// is logged, and costs nothing, since a directory holds no mount.
+    async fn give_back_shared(&mut self) {
+        if let Some(id) = self.shared.take()
+            && let Err(error) = self.core.shared.release(&self.core, &id).await
+        {
+            tracing::warn!(event = "shared_folder.release_failed", host_id = %self.device, %error, "a shared folder could not be given back");
+        }
     }
 
     /// Replaces the device's system with a copy of `base`, keeping its home,

@@ -61,7 +61,7 @@ const BOOT_FILES: [&str; 5] = [PROGRAMS_PATH, "/run", "/tmp", "/etc/resolv.conf"
 
 /// The room a new filesystem gets beyond the bytes its files take, for its
 /// own structures: the next wake enlarges it to the user's capacity.
-fn filesystem_bytes(used: u64) -> NonZeroU64 {
+pub(crate) fn filesystem_bytes(used: u64) -> NonZeroU64 {
     const MIB: u64 = 1 << 20;
     let bytes = used.saturating_add(used / 4).saturating_add(64 * MIB);
     NonZeroU64::new(bytes.div_ceil(MIB) * MIB).expect("a filesystem has room for its structures")

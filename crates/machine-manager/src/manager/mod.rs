@@ -52,7 +52,7 @@ mod linux {
         },
         server::MachineService,
         storage::{
-            shared::SharedImages,
+            shared::SharedFolders,
             store::{ImageStore, Retention},
             working::WorkingPair,
         },
@@ -70,9 +70,9 @@ mod linux {
         /// The gVisor runtime, or why this manager cannot run it.
         pub gvisor: Result<Gvisor, String>,
         pub simple: Simple,
-        /// The shared folders mounted, which the sandboxes that name
-        /// them take and give back.
-        pub shared: SharedImages,
+        /// The shared folders in use, which the Clouds that name them take
+        /// and give back.
+        pub shared: SharedFolders,
     }
 
     impl Core {
@@ -84,7 +84,7 @@ mod linux {
                 simple: Simple::new(&config),
                 tools,
                 config,
-                shared: SharedImages::default(),
+                shared: SharedFolders::default(),
             }
         }
 
@@ -254,13 +254,14 @@ mod linux {
 
         /// Gives `device` a worker that runs `process`, the proot a manager
         /// before this one left running (`crate::handover`).
-        pub fn adopt_simple(&self, device: DeviceId, process: simple::Process) {
+        pub fn adopt_simple(&self, device: DeviceId, process: simple::Process, shared: Option<String>) {
             let reports = self.reports(&device);
             let runtime = DeviceRuntime::Simple(simple::Device::adopted(
                 device.clone(),
                 self.core.clone(),
                 self.base.clone(),
                 process,
+                shared,
             ));
             self.start(&device, runtime, reports);
         }

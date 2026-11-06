@@ -140,6 +140,30 @@ pub async fn make_shared(tools: &Tools, image: &Path, bytes: NonZeroU64, owner: 
     Ok(())
 }
 
+/// A filesystem of an integration's shared folder holding what `root` holds,
+/// whose root belongs to `owner`: `-d` copies what is in `root`, not its
+/// owner.
+pub async fn make_shared_of(tools: &Tools, root: &Path, image: &Path, bytes: NonZeroU64, owner: u32) -> Result<(), Ext4Error> {
+    let size = kibibytes(bytes);
+    let root_owner = format!("root_owner={owner}:{owner}");
+    let args = [
+        OsStr::new("-q"),
+        OsStr::new("-t"),
+        OsStr::new("ext4"),
+        OsStr::new("-F"),
+        OsStr::new("-L"),
+        OsStr::new("shared"),
+        OsStr::new("-E"),
+        OsStr::new(&root_owner),
+        OsStr::new("-d"),
+        root.as_os_str(),
+        image.as_os_str(),
+        OsStr::new(&size),
+    ];
+    tools.run(Tool::Mke2fs, args, Some(MKE2FS_DEADLINE)).await?;
+    Ok(())
+}
+
 /// Checks an unmounted image, then syncs it and returns its capacity. A
 /// check runs as long as it needs.
 pub async fn recover(tools: &Tools, image: &Path) -> Result<NonZeroU64, Ext4Error> {

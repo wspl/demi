@@ -40,8 +40,8 @@ pub fn mount_path(path: &str) -> Result<String, String> {
     if rest.split('/').any(|part| part.is_empty() || part == "." || part == "..") {
         return Err("a shared folder's path has no empty, . or .. parts".to_owned());
     }
-    if rest.chars().any(|character| character.is_control()) {
-        return Err("a shared folder's path has no control characters".to_owned());
+    if rest.chars().any(|character| character.is_control() || character == ':') {
+        return Err("a shared folder's path has no control characters and no colons".to_owned());
     }
     Ok(format!("{root}/{rest}"))
 }

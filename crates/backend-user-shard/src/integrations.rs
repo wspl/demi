@@ -51,14 +51,15 @@ use crate::shard::Shard;
 
 impl Shard {
     /// The sizes an integration's Cloud gets from the server.
-    pub fn server_sizes(&self) -> ServerSizes {
+    pub async fn server_sizes(&self) -> Result<ServerSizes, StorageError> {
         let services = self.services();
+        let limits = demi_backend_cloud::isolation::storage_limits(&services.control, &services.cloud).await?;
         let resources = services.cloud.machines.resources();
         let host = resources.map(|resources| resources.host);
         // A manager that limits no Cloud gives each the whole host.
         let cloud = resources.map(|resources| resources.cloud.unwrap_or(resources.host));
         let mebibytes = |memory_mib: u64| u32::try_from(memory_mib).unwrap_or(u32::MAX);
-        ServerSizes {
+        Ok(ServerSizes {
             cpus: cloud.map(|cloud| cloud.cpus),
             memory_mib: cloud.map(|cloud| mebibytes(cloud.memory_mib)),
             system_gb: CloudStorage::DEFAULT.system_gb,
@@ -67,7 +68,8 @@ impl Shard {
             idle_minutes: u32::try_from(services.lifecycle.idle_window.as_secs() / 60).unwrap_or(u32::MAX),
             server_cpus: host.map(|host| host.cpus),
             server_memory_mib: host.map(|host| mebibytes(host.memory_mib)),
-        }
+            limits,
+        })
     }
 
     /// The user's integrations, oldest first.

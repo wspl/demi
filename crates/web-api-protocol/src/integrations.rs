@@ -54,6 +54,9 @@ pub struct ServerSizes {
     pub idle_minutes: u32,
     pub server_cpus: Option<u32>,
     pub server_memory_mib: Option<u32>,
+    /// Whether the chosen isolation enforces a Cloud's CPUs, memory and
+    /// disks; a Cloud on Simple Isolation has no limits.
+    pub limits: bool,
 }
 
 /// The user's integrations, oldest first.

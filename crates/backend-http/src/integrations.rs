@@ -41,8 +41,8 @@ pub(super) async fn server_sizes(
     let sizes = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.server_sizes() })
-        .await?;
+        .call(move |shard, _| async move { shard.server_sizes().await })
+        .await??;
     Ok(Json(sizes))
 }
 

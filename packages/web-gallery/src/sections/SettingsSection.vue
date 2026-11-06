@@ -31,6 +31,7 @@ import { PLUGIN_PAGES } from '../generated/pages'
 import { providePageHost, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { useGalleryView } from '../gallery-views'
 import GalleryCredentials from '../components/GalleryCredentials.vue'
+import GalleryIntegrations from '../components/GalleryIntegrations.vue'
 import GalleryUsers from '../components/GalleryUsers.vue'
 import { createUsersState } from '../fixtures/users'
 import GallerySubagents from '../components/GallerySubagents.vue'
@@ -462,6 +463,15 @@ const noCredentials = createCredentialState([])
           <div class="@container rounded-xl border border-line bg-surface-dialog p-6">
             <GalleryCloud :key="cloudMoment" :moment="cloudMoment" />
           </div>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Integrations on Simple Isolation"
+        note="Settings › Integrations on a server whose Clouds run on Simple Isolation, which has no CPU, memory or disk limits: open an integration, and its Cloud sizes stay visible and disabled, with the reason, while its idle window still works."
+      >
+        <div class="@container w-full max-w-2xl rounded-xl border border-line bg-surface-dialog p-6">
+          <GalleryIntegrations :limits="false" />
         </div>
       </GallerySection>
 

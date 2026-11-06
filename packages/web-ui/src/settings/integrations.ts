@@ -59,6 +59,8 @@ export interface ServerSizes {
   idleMinutes: number
   serverCpus: number | null
   serverMemoryMib: number | null
+  /** Whether the chosen isolation enforces a Cloud's CPUs, memory and disks. */
+  limits: boolean
 }
 
 /** The sizes a Cloud may have without a limit, in the order the page lists them. */

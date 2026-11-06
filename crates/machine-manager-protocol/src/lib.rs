@@ -98,6 +98,11 @@ pub struct LeftSimple {
     pub device: DeviceId,
     pub pid: i32,
     pub started: u64,
+    /// The id of the integration's shared folder it binds; none for none,
+    /// and in a record of a manager before shared folders on Simple
+    /// Isolation.
+    #[serde(default)]
+    pub shared: Option<String>,
 }
 
 /// A sandbox a manager left running: its device, the boot its working pair

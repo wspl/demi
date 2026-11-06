@@ -146,6 +146,10 @@ next start. A disk only grows: a smaller size leaves a larger disk as it is. A
 Cloud that asks for more CPUs or memory than the server has doesn't start: the
 turn or the command that woke it fails with the reason.
 
+These sizes hold on gVisor. A server whose master chose Simple Isolation in
+Settings › Cloud enforces none of them: its Clouds use what the server has, and
+the settings stay, disabled, for when the server moves to gVisor.
+
 A conversation runs on one Cloud at a time. To run a person's request on their
 Cloud, name it on their message:
 
@@ -198,6 +202,12 @@ size.
 A program that watches the folder for changes, such as with `inotify`, sees
 only the changes made on its own Cloud, not another Cloud's. An agent that
 waits for another Cloud's file has to look for it.
+
+On Simple Isolation the folder has no size limit. When the master switches
+the server's isolation, the folder moves with the first Cloud that starts on
+the new one. That copies every file, so the start takes as long as the copy,
+and a Cloud can't start while a Cloud still on the old isolation uses the
+folder: the turn or command that woke it fails with the reason until then.
 
 ### Commands and files outside a conversation
 

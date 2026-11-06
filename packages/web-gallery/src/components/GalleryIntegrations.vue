@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsIntegrations from '@demicodes/web-ui/settings/SettingsIntegrations.vue'
 import type { IntegrationChange, ServerSizes, SettingsIntegration } from '@demicodes/web-ui/settings/integrations'
@@ -99,8 +99,13 @@ async function add(): Promise<void> {
 /** The directories every Cloud's system has, which a shared folder never covers. */
 const SYSTEM = ['bin', 'boot', 'dev', 'etc', 'home', 'lib', 'media', 'mnt', 'opt', 'proc', 'root', 'run', 'sbin', 'srv', 'sys', 'tmp', 'usr', 'var']
 
+const props = withDefaults(defineProps<{
+  /** Whether the server's Clouds run on an isolation that enforces their sizes. */
+  limits?: boolean
+}>(), { limits: true })
+
 /** A server of 8 CPUs and 16 GiB, whose Cloud manager gives each Cloud 2 CPUs and 2 GiB. */
-const serverSizes: ServerSizes = {
+const serverSizes = computed<ServerSizes>(() => ({
   cpus: 2,
   memoryMib: 2048,
   systemGb: 16,
@@ -109,7 +114,8 @@ const serverSizes: ServerSizes = {
   idleMinutes: 60,
   serverCpus: 8,
   serverMemoryMib: 16384,
-}
+  limits: props.limits,
+}))
 
 async function change(id: string, change: IntegrationChange): Promise<void> {
   await slow()

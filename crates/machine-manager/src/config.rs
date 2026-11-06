@@ -452,6 +452,12 @@ impl Config {
         self.data.join("shared")
     }
 
+    /// The integrations' shared folders on Simple Isolation:
+    /// `<data>/shared-files`.
+    pub fn shared_files(&self) -> PathBuf {
+        self.data.join("shared-files")
+    }
+
     /// The runtime directory: `/run/demi-machine-manager`.
     pub fn runtime(&self) -> &Path {
         Path::new(RUNTIME_DIRECTORY)

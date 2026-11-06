@@ -449,7 +449,7 @@ mod service {
             match simple::Process::take_over(&core.simple, left).await {
                 Ok(Some(process)) => {
                     tracing::info!(event = "cloud_runtime.taken_over", host_id = %left.device, "a Cloud the manager before this one left running was taken over");
-                    adopted_simple.push((left.device.clone(), process));
+                    adopted_simple.push((left.device.clone(), process, left.shared.clone()));
                 }
                 Ok(None) => tracing::info!(event = "cloud_runtime.ended_meanwhile", host_id = %left.device, "a Cloud the manager before this one left had ended"),
                 Err(error) => tracing::warn!(event = "cloud_runtime.take_over_failed", host_id = %left.device, %error, "a Cloud the manager before this one left could not be taken over; it is stopped"),
@@ -461,12 +461,15 @@ mod service {
         // What systemd's stop used to end, which no record owns, such as an
         // `e2fsck` of a manager killed while it repaired an image: gone
         // before any recovery writes that image again.
-        let proots = adopted_simple.iter().map(|(_, process)| process.pid()).collect();
+        let proots = adopted_simple.iter().map(|(_, process, _)| process.pid()).collect();
         handover::sweep(owners, proots).await?;
         if runs_gvisor && !saved {
             namespace.recover(&lock).await?;
         }
-        let running_simple: Vec<_> = adopted_simple.iter().map(|(device, _)| device.clone()).collect();
+        let running_simple: Vec<_> = adopted_simple.iter().map(|(device, _, _)| device.clone()).collect();
+        for id in adopted_simple.iter().filter_map(|(_, _, shared)| shared.as_deref()) {
+            core.shared.adopt(id, Isolation::Simple).await;
+        }
         core.simple.prepare(&core.config.data).await?;
         core.simple.recover(&running_simple).await?;
         let running: Vec<_> = adopted.iter().map(|(device, _, _)| device.clone()).collect();
@@ -484,7 +487,7 @@ mod service {
             // each counted for its sandbox.
             let kept: Vec<String> = adopted.iter().filter_map(|(_, _, shared)| shared.clone()).collect();
             for id in &kept {
-                core.shared.adopt(id).await;
+                core.shared.adopt(id, Isolation::Gvisor).await;
             }
             shared::unmount_left(&core, &kept).await?;
         }
@@ -554,8 +557,8 @@ mod service {
         for (device, sandbox, shared) in adopted {
             manager.adopt(device, sandbox, shared);
         }
-        for (device, process) in adopted_simple {
-            manager.adopt_simple(device, process);
+        for (device, process, shared) in adopted_simple {
+            manager.adopt_simple(device, process, shared);
         }
         if root {
             handover::remove_left().await?;

@@ -6,7 +6,8 @@ use std::{net::Ipv4Addr, path::Path, rc::Rc};
 
 use demi_machine_manager_protocol::image::PROGRAMS_PATH;
 use demi_machine_manager_protocol::{
-    BaseVersion, Capacity, DeviceId, LeftSandbox, MachineImageState, SandboxLimits, SandboxMachine, SharedFolder, Volume,
+    BaseVersion, Capacity, DeviceId, Isolation, LeftSandbox, MachineImageState, SandboxLimits, SandboxMachine, SharedFolder,
+    Volume,
 };
 use demi_runner_protocol::boot::ManagedBoot;
 
@@ -315,7 +316,11 @@ impl Device {
         let lease = self.core.gvisor().slots.take()?;
         let mount = match shared {
             Some(folder) => {
-                let source = self.core.shared.acquire(&self.core, &folder.id, folder.capacity_bytes).await?;
+                let source = self
+                    .core
+                    .shared
+                    .acquire(&self.core, Isolation::Gvisor, &folder.id, folder.capacity_bytes)
+                    .await?;
                 self.shared = Some(folder.id.clone());
                 Some((source, folder.path.clone()))
             }

@@ -130,6 +130,8 @@ async function saveScript(): Promise<void> {
 
 /** Each size's refusal, under its row, until it is committed again. */
 const sizeProblems = ref<Partial<Record<keyof CloudSizing | 'idle', SentenceText>>>({})
+/** A Cloud on the chosen isolation has no limits: the sizes stay, for another. */
+const unenforced = computed(() => props.serverSizes?.limits === false)
 
 function sizeProblem(value: string): SentenceText | null {
   return Number.isNaN(parseSize(value)) ? t('integrations.page.sizeProblem') : null
@@ -322,7 +324,7 @@ async function replace(): Promise<void> {
           @commit="save('sharedPath', { sharedPath: $event.trim() })"
         />
       </SettingsRow>
-      <SettingsRow :label="t('integrations.page.sharedGb')" :description="t('integrations.page.sharedGbDescription')">
+      <SettingsRow :label="t('integrations.page.sharedGb')" :description="unenforced ? t('integrations.page.sharedGbUnenforced') : t('integrations.page.sharedGbDescription')">
         <template v-if="sizeProblems.sharedGb" #detail>
           <InlineError :message="sizeProblems.sharedGb" />
         </template>
@@ -331,6 +333,7 @@ async function replace(): Promise<void> {
             :model-value="sizeText(integration.cloudSizing.sharedGb)"
             :aria-label="t('integrations.page.sharedGb')"
             :placeholder="serverText('sharedGb')"
+            :disabled="unenforced"
             :validate="sizeProblem"
             inputmode="numeric"
             literal
@@ -346,7 +349,7 @@ async function replace(): Promise<void> {
 
     <SettingsGroup
       :title="t('integrations.page.clouds')"
-      :description="t('integrations.page.cloudsDescription')"
+      :description="unenforced ? t('integrations.page.cloudsUnenforced') : t('integrations.page.cloudsDescription')"
     >
       <SettingsRow :label="t('integrations.page.idle')" :description="t('integrations.page.idleDescription')">
         <template v-if="sizeProblems.idle" #detail>
@@ -384,6 +387,7 @@ async function replace(): Promise<void> {
               :overlay-store="overlayStore"
               variant="default"
               width="fill"
+              :disabled="unenforced"
               :trigger-label="t(`integrations.page.${size}`)"
             >
               <template #trigger>{{ choiceLabel(shownChoice(size)) }}</template>
@@ -404,7 +408,7 @@ async function replace(): Promise<void> {
           <CommitTextInput
             :model-value="limitText(size)"
             :aria-label="t(`integrations.page.${size}`)"
-            :disabled="shownChoice(size) !== 'custom'"
+            :disabled="unenforced || shownChoice(size) !== 'custom'"
             :validate="sizeProblem"
             inputmode="numeric"
             literal
@@ -429,6 +433,7 @@ async function replace(): Promise<void> {
             :model-value="sizeText(integration.cloudSizing[size])"
             :aria-label="t(`integrations.page.${size}`)"
             :placeholder="serverText(size)"
+            :disabled="unenforced"
             :validate="sizeProblem"
             inputmode="numeric"
             literal
