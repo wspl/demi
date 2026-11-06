@@ -2567,7 +2567,6 @@ dependencies = [
 name = "demi-core-providers"
 version = "0.1.65"
 dependencies = [
- "aes-gcm 0.10.3",
  "async-stream",
  "demi-core-store",
  "demi-core-sync",
@@ -2577,7 +2576,6 @@ dependencies = [
  "demi-web-api-protocol",
  "futures-util",
  "garde",
- "rand 0.9.5",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -2591,6 +2589,7 @@ dependencies = [
 name = "demi-core-store"
 version = "0.1.65"
 dependencies = [
+ "aes-gcm 0.10.3",
  "base64 0.22.1",
  "bytes",
  "comrak",
@@ -2611,6 +2610,7 @@ dependencies = [
  "hashlink",
  "hex",
  "jiff",
+ "rand 0.9.5",
  "rusqlite",
  "serde",
  "serde_json",

@@ -76,11 +76,10 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use demi_core_store::StorageError;
 use demi_core_store::store::CoreStore;
-use demi_core_store::credentials::{CredentialSeal, StoredCredential};
+use demi_core_store::credentials::StoredCredential;
 use demi_core_store::permissions::{
     AnswerProblem, Answered, Asked, AskingAgent, Checked, CredentialAsk, CredentialRead,
     Needed, PermissionRefusal, SavedByAgent, StoredAsk, StoredRequest, Undecided,
@@ -144,9 +143,6 @@ pub trait PermissionCore {
 
     /// The calls that wait for the answers to their requests.
     fn waits(&self) -> &Waits;
-
-    /// What seals and opens the values of the user's credentials.
-    fn credential_seal(&self) -> Arc<dyn CredentialSeal>;
 
     /// The user's credentials changed: every page receives them, and the
     /// expiry looks at their times again.
@@ -544,7 +540,7 @@ pub async fn save_credential(
     let Asking { conversation, .. } = asking(core, invocation)?;
     let saved = core
         .store()
-        .save_credential(name.clone(), ask, values, core.credential_seal())
+        .save_credential(name.clone(), ask, values)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     match saved {
@@ -602,7 +598,7 @@ pub async fn read_credential(
     asking(core, invocation)?;
     let read = core
         .store()
-        .read_credential(name.clone(), field.clone(), core.credential_seal())
+        .read_credential(name.clone(), field.clone())
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     match read {
@@ -710,12 +706,7 @@ pub async fn decide(
         (PermissionDecision::Allow, Some(RequestedValues { values })) => {
             let Answered { credential, keep, others } = core
                 .store()
-                .answer_credential(
-                    conversation.clone(),
-                    request.clone(),
-                    values,
-                    core.credential_seal(),
-                )
+                .answer_credential(conversation.clone(), request.clone(), values)
                 .await??;
             changed(core, conversation);
             for other in &others {

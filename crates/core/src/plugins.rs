@@ -23,7 +23,7 @@ use demi_core_host_access::stream::{ResidentBinding, ResidentCall, UserCallError
 use demi_core_sync::Part;
 use demi_core_host_access::host_commands::reachable;
 use demi_plugin_host::{Lost, MediaCall, ProductPort, ReadOn, VideoJob};
-use demi_core_providers::vault::seal::Row;
+use demi_core_store::seal::{Row, VaultKey};
 use demi_runner_client::ResidentCallError;
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{HostErrorKind, JobCaller, PortError};
@@ -52,6 +52,8 @@ const CALL_ANSWER_MAX_BYTES: usize = 1024 * 1024;
 pub(crate) struct CorePort {
     pub(crate) core: Weak<Core>,
     pub(crate) services: Arc<CoreServices>,
+    /// The core's key, which the plugins' secrets are sealed under.
+    pub(crate) key: VaultKey,
     /// The shard thread's client of the plugins' outbound requests.
     pub(crate) web: reqwest::Client,
 }
@@ -273,12 +275,12 @@ impl ProductPort for CorePort {
 
     fn seal(&self, user: &UserId, plugin: &str, name: &str, plaintext: &[u8]) -> Vec<u8> {
         let row = Row::PluginSecret { plugin, user, name };
-        self.services.vault.key().seal(row, plaintext)
+        self.key.seal(row, plaintext)
     }
 
     fn open(&self, user: &UserId, plugin: &str, name: &str, sealed: &[u8]) -> Option<Vec<u8>> {
         let row = Row::PluginSecret { plugin, user, name };
-        self.services.vault.key().open(row, sealed).ok()
+        self.key.open(row, sealed).ok()
     }
 
     fn web_client(&self) -> reqwest::Client {

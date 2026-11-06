@@ -40,7 +40,7 @@ use demi_core_providers::vault::logins::{LoginFlows, LoginTiming};
 use demi_core_providers::vault::operations::ProviderOperations;
 use demi_provider_registry::quotas::AccountQuotas;
 use demi_provider_registry::store::RegistryStore;
-use demi_core_providers::vault::seal::VaultKey;
+use demi_core_store::seal::VaultKey;
 use demi_backend_runners::claims::PendingClaims;
 use demi_core_hosts::devices::Returning;
 use demi_backend_runners::native::{NativeCatalog, ServedPackages};
@@ -138,8 +138,6 @@ pub struct ProviderSetup {
 /// The keys the services seal and hash under, which the executable derives
 /// from its instance secret.
 pub struct ServiceKeys {
-    /// The key provider credentials are sealed under.
-    pub vault: VaultKey,
     /// The key email-change codes are hashed under.
     pub email_codes: CodeKey,
     /// The VAPID key push messages are signed with.
@@ -305,8 +303,9 @@ impl Storage {
         demi_backend_database::update::due(&data_dir.join(CONTROL_DATABASE), data_dir)
     }
 
-    /// The databases in `data_dir`, beside the object store `objects`; an
-    /// earlier control database's sealed values are migrated under `vault`.
+    /// The databases in `data_dir`, beside the object store `objects`, whose
+    /// cores seal under `vault`, which an earlier control database's sealed
+    /// values are migrated under too.
     pub async fn open(
         data_dir: &Path,
         clock: Arc<dyn Clock>,
@@ -317,7 +316,7 @@ impl Storage {
             &data_dir.join(CONTROL_DATABASE),
             clock.clone(),
             Arc::new(ServerReseal {
-                vault: VaultReseal::new(vault),
+                vault: VaultReseal::new(vault.clone()),
                 data_directory: data_dir.to_owned(),
             }),
         )
@@ -325,6 +324,7 @@ impl Storage {
         let blobs = BlobStores::new(objects, clock.clone());
         let stores = CoreStores::new(
             data_dir.to_owned(),
+            vault,
             clock.clone(),
             Arc::new(UsersBlobs {
                 blobs: blobs.clone(),
@@ -402,7 +402,6 @@ impl Services {
                 control: control.clone(),
                 stores: stores.clone(),
             }),
-            keys.vault,
             mode,
             settings.shared_subscriptions,
             sync.clone(),

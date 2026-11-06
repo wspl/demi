@@ -14,8 +14,8 @@ use demi_provider_common::credentials::{
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use futures_util::future::BoxFuture;
 
-use super::entries::Vault;
-use super::seal;
+use super::entries::{Vault, seal_secret};
+use demi_core_store::seal;
 
 /// The accounts of one entry.
 pub struct VaultCredentialPool {
@@ -117,8 +117,9 @@ impl CredentialPool for VaultCredentialPool {
         Box::pin(async move {
             let id = CredentialId::try_from(meta.id)
                 .map_err(|error| PoolError::Store(error.to_string()))?;
+            let key = self.vault.store_of(&self.provider).await.map_err(store)?.key().clone();
             let account = CredentialWrite {
-                secret: secret.map(|secret| self.vault.seal_secret(&self.provider, &id, &secret)),
+                secret: secret.map(|secret| seal_secret(&key, &self.provider, &id, &secret)),
                 id,
                 identity_key: meta.identity_key,
                 label: meta.label,
@@ -206,9 +207,9 @@ impl AccountDocument for VaultDocument {
             let Some(account) = &self.account else {
                 return Ok(None);
             };
-            let Some(row) = self
-                .vault
-                .account(self.provider.clone(), account.clone())
+            let owner = self.vault.store_of(&self.provider).await.map_err(store)?;
+            let Some(row) = owner
+                .credential(self.provider.clone(), account.clone())
                 .await
                 .map_err(store)?
             else {
@@ -220,8 +221,7 @@ impl AccountDocument for VaultDocument {
             // A secret that does not open is corrupt: requests with the
             // account fail with an authentication error, and nothing
             // replaces it.
-            let document = self
-                .vault
+            let document = owner
                 .key()
                 .open(seal::Row::Secret(&self.provider, account), secret)
                 .map_err(|_| {
@@ -246,12 +246,9 @@ impl AccountDocument for VaultDocument {
             let Some(account) = &self.account else {
                 return Ok(false);
             };
-            let sealed = text.map(|text| self.vault.seal_secret(&self.provider, account, &text));
-            let replaced = self
-                .vault
-                .store_of(&self.provider)
-                .await
-                .map_err(store)?
+            let owner = self.vault.store_of(&self.provider).await.map_err(store)?;
+            let sealed = text.map(|text| seal_secret(owner.key(), &self.provider, account, &text));
+            let replaced = owner
                 .replace_credential_secret(self.provider.clone(), account.clone(), sealed, version)
                 .await
                 .map_err(store)?;

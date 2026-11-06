@@ -332,7 +332,7 @@ async fn show(core: Rc<Core>, call: Call<NameArgs>, port: RpcPort) -> Result<u8,
         )));
     };
     // A visible value is shown; a secret one never.
-    let mut values = store.user_credential_values(credential.id.clone(), core.vault_seal())
+    let mut values = store.user_credential_values(credential.id.clone())
         .await
         .map_err(failed)?
         .map(|(_, values)| values)

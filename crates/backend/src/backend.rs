@@ -487,7 +487,6 @@ impl Backend {
         };
         let (machines, notices) = MachinesClient::new(config.machines_socket, config.log.clone());
         let keys = ServiceKeys {
-            vault: secret.vault_key(),
             email_codes: secret.email_code_key(),
             push: secret.push_key(),
         };

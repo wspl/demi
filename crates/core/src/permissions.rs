@@ -5,10 +5,8 @@
 //! - The delivery at start of the decisions a restart cut off.
 
 use std::rc::Rc;
-use std::sync::Arc;
 
 use demi_core_store::store::CoreStore;
-use demi_core_store::credentials::CredentialSeal;
 use demi_core_store::permissions::AskingAgent;
 use demi_core_host_access::root_of;
 use demi_core_sync::UserMarks;
@@ -99,10 +97,6 @@ impl PermissionCore for Core {
 
     fn waits(&self) -> &Waits {
         &self.waits
-    }
-
-    fn credential_seal(&self) -> Arc<dyn CredentialSeal> {
-        self.vault_seal()
     }
 
     fn credentials_changed(&self) {

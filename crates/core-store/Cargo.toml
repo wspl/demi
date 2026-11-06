@@ -12,6 +12,8 @@ doctest = false
 bench = false
 
 [dependencies]
+aes-gcm = "0.10"
+rand = "0.9"
 demi-agent-store = { path = "../agent-store" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-conversation-lane-protocol = { path = "../conversation-lane-protocol" }

@@ -25,6 +25,7 @@ use tokio::sync::broadcast;
 
 use super::conversations::{ConversationBlobs, ConversationStores, MAX_WRITERS};
 use super::search::SearchIndex;
+use super::seal::VaultKey;
 use super::workspaces;
 use super::usage::UsageWritten;
 use super::{StorageError, schema, sqlite};
@@ -44,6 +45,9 @@ pub struct CoreStore {
     db: tokio_rusqlite::Connection,
     clock: Arc<dyn Clock>,
     principal: UserId,
+    /// What its credentials, its entries' keys and its plugins' and
+    /// schedules' secrets are sealed under.
+    key: VaultKey,
     directory: PathBuf,
     conversations: ConversationStores,
     search: SearchIndex,
@@ -67,6 +71,7 @@ impl CoreStore {
     pub async fn open(
         directory: &Path,
         principal: UserId,
+        key: VaultKey,
         clock: Arc<dyn Clock>,
         blobs: Arc<ConversationBlobs>,
     ) -> Result<Self, StorageError> {
@@ -79,6 +84,7 @@ impl CoreStore {
             db,
             clock,
             principal,
+            key,
             directory: directory.to_owned(),
             conversations,
             search: SearchIndex::new(directory.join(SEARCH_INDEX)),
@@ -115,6 +121,11 @@ impl CoreStore {
     /// The principal the core serves.
     pub fn principal(&self) -> &UserId {
         &self.principal
+    }
+
+    /// The key the core's secrets are sealed under.
+    pub fn key(&self) -> &VaultKey {
+        &self.key
     }
 
     /// The data directory the store keeps its databases in.

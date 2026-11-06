@@ -8,38 +8,21 @@
 //!   starts.
 
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::Duration;
 
 use demi_core_store::StorageError;
 use demi_core_store::credentials::{
-    CredentialChange, CredentialRefusal, CredentialSeal, NewCredential as NewRecord, Saved,
+    CredentialChange, CredentialRefusal, NewCredential as NewRecord, Saved,
     keep_until,
 };
 use demi_core_sync::Part;
-use demi_core_providers::vault::seal::{Row, VaultKey};
 use demi_web_api_protocol::credentials::{
     CredentialDto, CredentialField, CredentialPatch, NewCredential,
 };
-use demi_web_api_protocol::ids::{UserCredentialId, UserId};
+use demi_web_api_protocol::ids::UserCredentialId;
 use tokio::sync::Notify;
 
 use super::Core;
-
-/// Seals and opens credentials' values under the instance's key, bound to
-/// the user and the credential's name
-/// (`crates/backend/src/config/secret.rs`).
-pub(crate) struct VaultSeal(pub(crate) VaultKey);
-
-impl CredentialSeal for VaultSeal {
-    fn seal(&self, user: &UserId, name: &str, plaintext: &[u8]) -> Vec<u8> {
-        self.0.seal(Row::Credential { user, name }, plaintext)
-    }
-
-    fn open(&self, user: &UserId, name: &str, sealed: &[u8]) -> Option<Vec<u8>> {
-        self.0.open(Row::Credential { user, name }, sealed).ok()
-    }
-}
 
 /// The expiry's wake-up: a change of the credentials leaves a permit, so a
 /// change made while the timer reads is not missed.
@@ -56,11 +39,6 @@ pub enum CredentialError {
 }
 
 impl Core {
-    /// What seals and opens the values of the user's credentials.
-    pub(crate) fn vault_seal(&self) -> Arc<dyn CredentialSeal> {
-        Arc::new(VaultSeal(self.services().vault.key().clone()))
-    }
-
     /// The user's credentials changed: every page receives them, and the
     /// expiry looks at their times again.
     pub(crate) fn mark_credentials(&self) {
@@ -70,7 +48,7 @@ impl Core {
 
     /// The user's credentials as a page lists them, in name order.
     pub async fn credential_list(&self) -> Result<Vec<CredentialDto>, StorageError> {
-        self.store().user_credential_list(self.vault_seal())
+        self.store().user_credential_list()
             .await
     }
 
@@ -78,7 +56,7 @@ impl Core {
     /// credential's field `field`, which its owner copies from a card.
     pub async fn reveal_credential(&self, id: UserCredentialId, field: String) -> Result<String, CredentialError> {
         let (_, mut values) = self
-            .store().user_credential_values(id, self.vault_seal())
+            .store().user_credential_values(id)
             .await?
             .ok_or(CredentialRefusal::NotFound)?;
         Ok(values.remove(&field).ok_or(CredentialRefusal::NotFound)?)
@@ -107,7 +85,7 @@ impl Core {
             values,
             keep_until: keep_until(store.now(), new.keep)?,
         };
-        let saved = store.create_user_credential(record, self.vault_seal())
+        let saved = store.create_user_credential(record)
             .await??;
         Ok(self.saved(saved))
     }
@@ -126,7 +104,7 @@ impl Core {
             values: patch.values,
             keep_until: patch.keep.map(|keep| keep_until(store.now(), keep)).transpose()?,
         };
-        let saved = store.change_user_credential(id, change, self.vault_seal())
+        let saved = store.change_user_credential(id, change)
             .await??;
         Ok(self.saved(saved))
     }

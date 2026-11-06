@@ -7,12 +7,11 @@
 //!   rename seals them again in the same transaction;
 //! - the conversations allowed to use each.
 //!
-//! The control database stores the values only sealed. Whoever calls seals and
-//! opens them through [`CredentialSeal`], on the database's thread, so that a
-//! change that reads and writes values does so in one transaction.
+//! The core's database holds the values only sealed, under the core's key.
+//! The store seals and opens them on the database's thread, so that a change
+//! that reads and writes values does so in one transaction.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::credentials::{CredentialDto, CredentialField, FieldKind, Keep, ListedField};
@@ -23,20 +22,13 @@ use serde::{Deserialize, Serialize};
 
 use super::StorageError;
 use super::columns::{decode, instant, json, to_json};
+use super::seal::{self, VaultKey};
 use super::store::CoreStore;
 
 pub(crate) const TABLE: &str = "user_credentials";
 
 pub(crate) const COLUMNS: &str =
     "id, name, note, fields, keep_until, last_used_at, created_at, updated_at";
-
-/// What seals and opens a credential's values: the product's one owner of
-/// sealing, for the credential `name` of the principal `user`.
-pub trait CredentialSeal: Send + Sync {
-    fn seal(&self, user: &UserId, name: &str, plaintext: &[u8]) -> Vec<u8>;
-    /// What `sealed` holds; none when it does not open.
-    fn open(&self, user: &UserId, name: &str, sealed: &[u8]) -> Option<Vec<u8>>;
-}
 
 /// A credential's fields as their column holds them: credential fields
 /// format 1.
@@ -165,12 +157,12 @@ pub struct Saved {
 
 impl CoreStore {
     /// The user's credentials as Settings lists them, in name order: each
-    /// visible field with its value, opened through `seal`.
+    /// visible field with its value, opened.
     pub async fn user_credential_list(
         &self,
-        seal: Arc<dyn CredentialSeal>,
     ) -> Result<Vec<CredentialDto>, StorageError> {
         let principal = self.principal().clone();
+        let key = self.key().clone();
         self.call(move |connection, _| {
             let stored = connection
                 .prepare_cached(&format!(
@@ -181,7 +173,7 @@ impl CoreStore {
                 .collect::<Result<Vec<_>, StorageError>>()?;
             stored
                 .iter()
-                .map(|credential| Ok(credential.dto(&values_of(connection, &principal, credential, &*seal)?)))
+                .map(|credential| Ok(credential.dto(&values_of(connection, &principal, credential, &key)?)))
                 .collect()
         })
         .await
@@ -213,14 +205,14 @@ impl CoreStore {
     pub async fn user_credential_values(
         &self,
         id: UserCredentialId,
-        seal: Arc<dyn CredentialSeal>,
     ) -> Result<Option<(StoredCredential, BTreeMap<String, String>)>, StorageError> {
         let principal = self.principal().clone();
+        let key = self.key().clone();
         self.call(move |connection, _| {
             let Some(stored) = by_id(connection, &id)? else {
                 return Ok(None);
             };
-            let values = values_of(connection, &principal, &stored, &*seal)?;
+            let values = values_of(connection, &principal, &stored, &key)?;
             Ok(Some((stored, values)))
         })
         .await
@@ -231,15 +223,15 @@ impl CoreStore {
     pub async fn create_user_credential(
         &self,
         new: NewCredential,
-        seal: Arc<dyn CredentialSeal>,
     ) -> Result<Result<Saved, CredentialRefusal>, StorageError> {
         let principal = self.principal().clone();
+        let key = self.key().clone();
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             if let Some(other) = named(&transaction, &new.name)? {
                 return Ok(Err(CredentialRefusal::NameTaken(other.name)));
             }
-            let id = insert(&transaction, &principal, &new, now, &*seal)?;
+            let id = insert(&transaction, &principal, &new, now, &key)?;
             let stored = by_id(&transaction, &id)?.expect("the credential was just written");
             let conversations = waiting_for(&transaction, &[&new.name])?;
             transaction.commit()?;
@@ -258,9 +250,9 @@ impl CoreStore {
         &self,
         id: UserCredentialId,
         change: CredentialChange,
-        seal: Arc<dyn CredentialSeal>,
     ) -> Result<Result<Saved, CredentialRefusal>, StorageError> {
         let principal = self.principal().clone();
+        let key = self.key().clone();
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let Some(stored) = by_id(&transaction, &id)? else {
@@ -272,7 +264,7 @@ impl CoreStore {
             {
                 return Ok(Err(CredentialRefusal::NameTaken(other.name)));
             }
-            let mut values = values_of(&transaction, &principal, &stored, &*seal)?;
+            let mut values = values_of(&transaction, &principal, &stored, &key)?;
             let fields = change.fields.unwrap_or_else(|| stored.fields.clone());
             // A field keeps its value while it keeps its name and its kind: a
             // secret made visible starts missing, so no list ever shows it.
@@ -295,7 +287,7 @@ impl CoreStore {
             let name = change.name.unwrap_or_else(|| stored.name.clone());
             let note = change.note.unwrap_or_else(|| stored.note.clone());
             let keep_until = change.keep_until.unwrap_or(stored.keep_until);
-            let sealed = seal.seal(&principal, &name, to_json(&values).as_bytes());
+            let sealed = key.seal(seal::Row::Credential { user: &principal, name: &name }, to_json(&values).as_bytes());
             transaction.execute(
                 "UPDATE user_credentials
                  SET name = ?2, note = ?3, fields = ?4, sealed = ?5, keep_until = ?6, updated_at = ?7
@@ -446,11 +438,11 @@ pub(crate) fn insert(
     principal: &UserId,
     new: &NewCredential,
     now: Timestamp,
-    seal: &dyn CredentialSeal,
+    key: &VaultKey,
 ) -> Result<UserCredentialId, StorageError> {
     let id = UserCredentialId::try_from(uuid::Uuid::new_v4().to_string())
         .expect("a UUID is not empty");
-    let sealed = seal.seal(principal, &new.name, to_json(&new.values).as_bytes());
+    let sealed = key.seal(seal::Row::Credential { user: principal, name: &new.name }, to_json(&new.values).as_bytes());
     connection.execute(
         "INSERT INTO user_credentials
          (id, name, note, fields, sealed, keep_until, created_at, updated_at)
@@ -478,9 +470,9 @@ pub(crate) fn renew(
     values: &BTreeMap<String, String>,
     keep_until: Option<Timestamp>,
     now: Timestamp,
-    seal: &dyn CredentialSeal,
+    key: &VaultKey,
 ) -> Result<(), StorageError> {
-    let sealed = seal.seal(principal, &stored.name, to_json(values).as_bytes());
+    let sealed = key.seal(seal::Row::Credential { user: principal, name: &stored.name }, to_json(values).as_bytes());
     connection.execute(
         "UPDATE user_credentials SET sealed = ?2, keep_until = ?3, updated_at = ?4 WHERE id = ?1",
         params![
@@ -499,15 +491,16 @@ pub(crate) fn values_of(
     connection: &Connection,
     principal: &UserId,
     stored: &StoredCredential,
-    seal: &dyn CredentialSeal,
+    key: &VaultKey,
 ) -> Result<BTreeMap<String, String>, StorageError> {
     let sealed: Vec<u8> = connection.query_row(
         "SELECT sealed FROM user_credentials WHERE id = ?1",
         [stored.id.as_str()],
         |row| row.get(0),
     )?;
-    let opened = seal
-        .open(principal, &stored.name, &sealed)
+    let opened = key
+        .open(seal::Row::Credential { user: principal, name: &stored.name }, &sealed)
+        .ok()
         .and_then(|plaintext| String::from_utf8(plaintext).ok())
         .ok_or_else(|| StorageError::Corrupt {
             table: TABLE,

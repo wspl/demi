@@ -6,5 +6,4 @@ pub mod entries;
 pub mod logins;
 pub mod operations;
 pub mod pool;
-pub mod seal;
 mod store;

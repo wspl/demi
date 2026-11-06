@@ -347,6 +347,7 @@ impl Core {
             Rc::new(plugins::CorePort {
                 core: core.clone(),
                 services: services.clone(),
+                key: store.key().clone(),
                 web,
             }),
             Rc::new(store.clone()),

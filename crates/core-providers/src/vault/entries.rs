@@ -60,7 +60,7 @@ use serde::{Deserialize, Serialize};
 use demi_provider_registry::entry::{ApiKeyConfig, EntryCredential, ProviderEntry};
 
 use super::pool::VaultCredentialPool;
-use super::seal::{self, VaultKey};
+use demi_core_store::seal::{self, VaultKey};
 
 /// The credential vault. Cloning it is cheap.
 #[derive(Clone)]
@@ -89,7 +89,6 @@ struct Shared {
     /// as entries are made. An entry deleted stays: its store answers that it
     /// has none.
     holders: std::sync::Mutex<std::collections::HashMap<ProviderId, UserId>>,
-    key: VaultKey,
     /// The instance's mode, which `set_mode` keeps through the stores.
     mode: std::sync::RwLock<InstanceMode>,
     /// Whether a shared instance's users infer with the master's
@@ -186,7 +185,6 @@ impl Vault {
     /// The vault of the cores `stores` gives, of an instance in `mode`.
     pub async fn new(
         stores: Arc<dyn VaultStores>,
-        key: VaultKey,
         mode: InstanceMode,
         shared_subscriptions: bool,
         sync: SyncRegistry,
@@ -200,7 +198,6 @@ impl Vault {
         Ok(Self(Arc::new(Shared {
             stores,
             holders: std::sync::Mutex::new(holders),
-            key,
             mode: std::sync::RwLock::new(mode),
             shared_subscriptions,
             master: tokio::sync::OnceCell::new(),
@@ -314,10 +311,6 @@ impl Vault {
     /// The cores whose entries the vault keeps.
     pub fn stores(&self) -> &dyn VaultStores {
         self.0.stores.as_ref()
-    }
-
-    pub fn key(&self) -> &VaultKey {
-        &self.0.key
     }
 
     pub fn gates(&self) -> &RefreshGates {
@@ -478,17 +471,19 @@ impl Vault {
     /// Every entry `owner` holds, in their order, whether or not anyone
     /// infers with it now.
     pub async fn entries(&self, owner: UserId) -> Result<Vec<ProviderEntry>, StorageError> {
-        let rows = self.0.stores.store_of(&owner).await?.providers().await?;
-        rows.into_iter().map(|row| self.decode(row, owner.clone())).collect()
+        let store = self.0.stores.store_of(&owner).await?;
+        let rows = store.providers().await?;
+        rows.into_iter().map(|row| decode(store.key(), row, owner.clone())).collect()
     }
 
     /// The entry `id`.
     pub async fn entry(&self, id: ProviderId) -> Result<Option<ProviderEntry>, StorageError> {
-        let row = self.store_of(&id).await?.provider(id.clone()).await?;
+        let store = self.store_of(&id).await?;
+        let row = store.provider(id.clone()).await?;
         let (Some(row), Some(owner)) = (row, self.holder_of(&id)) else {
             return Ok(None);
         };
-        self.decode(row, owner).map(Some)
+        decode(store.key(), row, owner).map(Some)
     }
 
     /// Stores a new API-key entry.
@@ -501,7 +496,8 @@ impl Vault {
         cache_ttl: Option<CacheTtl>,
     ) -> Result<ProviderEntry, StorageError> {
         let id = new_id();
-        let sealed = self.seal_config(&id, &config);
+        let store = self.0.stores.store_of(&owner).await?;
+        let sealed = seal_config(store.key(), &id, &config);
         let provider = NewProvider {
             id,
             family,
@@ -512,12 +508,12 @@ impl Vault {
             cache_ttl,
             through_device: None,
         };
-        let row = self.0.stores.store_of(&owner).await?.insert_provider(provider, Vec::new()).await?;
+        let row = store.insert_provider(provider, Vec::new()).await?;
         // An API-key entry is under no uniqueness rule.
         let row = row.expect("an API-key entry is always stored");
         self.hold(row.id.clone(), owner.clone());
         self.mark_changed(&owner, row.kind).await;
-        self.decode(row, owner)
+        decode(store.key(), row, owner)
     }
 
     /// Stores a new subscription entry that connects through `through_device`
@@ -537,6 +533,7 @@ impl Vault {
         staged: &MemoryCredentialPool,
     ) -> Result<Option<ProviderEntry>, StorageError> {
         let id = new_id();
+        let store = self.0.stores.store_of(&owner).await?;
         let mut accounts = Vec::new();
         for (meta, secret) in staged.entries() {
             let account =
@@ -546,7 +543,7 @@ impl Vault {
                     reason: format!("a login staged an account whose id is invalid: {error}"),
                 })?;
             accounts.push(CredentialWrite {
-                secret: secret.map(|secret| self.seal_secret(&id, &account, &secret)),
+                secret: secret.map(|secret| seal_secret(store.key(), &id, &account, &secret)),
                 id: account,
                 identity_key: meta.identity_key,
                 label: meta.label,
@@ -574,12 +571,12 @@ impl Vault {
             cache_ttl: None,
             through_device,
         };
-        let row = self.0.stores.store_of(&owner).await?.insert_provider(provider, accounts).await?;
+        let row = store.insert_provider(provider, accounts).await?;
         if let Some(row) = &row {
             self.hold(row.id.clone(), owner.clone());
             self.mark_changed(&owner, row.kind).await;
         }
-        row.map(|row| self.decode(row, owner)).transpose()
+        row.map(|row| decode(store.key(), row, owner)).transpose()
     }
 
     /// Makes the owner's entry of the family hold `seeded`'s account, as a
@@ -638,8 +635,9 @@ impl Vault {
                 return Ok(());
             }
         }
+        let key = self.store_of(&entry.id).await?.key().clone();
         let account = CredentialWrite {
-            secret: secret.map(|secret| self.seal_secret(&entry.id, &id, &secret)),
+            secret: secret.map(|secret| seal_secret(&key, &entry.id, &id, &secret)),
             id: id.clone(),
             identity_key: meta.identity_key,
             label: meta.label,
@@ -669,8 +667,8 @@ impl Vault {
         cache_ttl: Option<Option<CacheTtl>>,
         through_device: Option<Option<DeviceId>>,
     ) -> Result<Option<ProviderEntry>, StorageError> {
-        let sealed = config.map(|config| self.seal_config(&id, &config));
         let store = self.store_of(&id).await?;
+        let sealed = config.map(|config| seal_config(store.key(), &id, &config));
         let owner = self.holder_of(&id);
         let row = store
             .update_provider(id, label, family, sealed, rotation, switches, cache_ttl, through_device)
@@ -679,7 +677,7 @@ impl Vault {
             return Ok(None);
         };
         self.mark_changed(&owner, row.kind).await;
-        self.decode(row, owner).map(Some)
+        decode(store.key(), row, owner).map(Some)
     }
 
     /// Puts the entries `user` owns and infers with in the order `ids` names
@@ -732,75 +730,68 @@ impl Vault {
     ) -> Result<Option<CredentialRow>, StorageError> {
         self.store_of(&id).await?.credential(id, account).await
     }
+}
 
-    pub fn seal_secret(
-        &self,
-        provider: &ProviderId,
-        account: &CredentialId,
-        secret: &str,
-    ) -> Vec<u8> {
-        self.0
-            .key
-            .seal(seal::Row::Secret(provider, account), secret.as_bytes())
-    }
+/// Account `account`'s secret of entry `provider`, sealed under its core's
+/// `key`.
+pub fn seal_secret(key: &VaultKey, provider: &ProviderId, account: &CredentialId, secret: &str) -> Vec<u8> {
+    key.seal(seal::Row::Secret(provider, account), secret.as_bytes())
+}
 
-    fn seal_config(&self, id: &ProviderId, config: &ApiKeyConfig) -> Vec<u8> {
-        seal_config(&self.0.key, id, config)
-    }
-
-    fn decode(&self, row: ProviderRow, owner: UserId) -> Result<ProviderEntry, StorageError> {
-        let credential = match (row.kind, row.config) {
-            (CredentialKind::ApiKey, Some(sealed)) => {
-                EntryCredential::ApiKey(self.open_config(&row.id, &sealed)?)
-            }
-            (CredentialKind::Subscription, None) => {
-                EntryCredential::Subscription {
-                    active: row.active,
-                    rotation: row.rotation,
-                }
-            }
-            // The schema ties the configuration to the kind.
-            _ => {
-                return Err(corrupt_config(
-                    "the configuration does not match the entry's kind",
-                ));
-            }
-        };
-        Ok(ProviderEntry {
-            id: row.id,
-            owner,
-            family: row.family,
-            label: row.label,
-            credential,
-            created_at: row.created_at,
-            image_generation: row.image_generation,
-            video_generation: row.video_generation,
-            audio_generation: row.audio_generation,
-            web_search: row.web_search,
-            x_search: row.x_search,
-            search_images: row.search_images,
-            search_videos: row.search_videos,
-            cache_ttl: row.cache_ttl,
-            through_device: row.through_device,
-        })
-    }
-
-    /// The configuration sealed for entry `id`: it must open and hold a
-    /// configuration of this release's format that keeps its rules
-    /// ([`checked`]). A failure names the field and the kind of fault, never
-    /// a value, which may be the key.
-    fn open_config(&self, id: &ProviderId, sealed: &[u8]) -> Result<ApiKeyConfig, StorageError> {
-        let text = open_text(&self.0.key, id, sealed).map_err(corrupt_config)?;
-        let sealed: SealedConfig =
-            decode_secret(&text).map_err(|error| corrupt_config(error.to_string()))?;
-        if sealed.format != CONFIG_FORMAT {
-            return Err(corrupt_config(format!(
-                "the configuration's format {} is not {CONFIG_FORMAT}",
-                sealed.format
-            )));
+/// The entry `row` of `owner`, its configuration opened under their core's
+/// `key`.
+fn decode(key: &VaultKey, row: ProviderRow, owner: UserId) -> Result<ProviderEntry, StorageError> {
+    let credential = match (row.kind, row.config) {
+        (CredentialKind::ApiKey, Some(sealed)) => {
+            EntryCredential::ApiKey(open_config(key, &row.id, &sealed)?)
         }
-        checked(sealed.config).map_err(corrupt_config)
+        (CredentialKind::Subscription, None) => {
+            EntryCredential::Subscription {
+                active: row.active,
+                rotation: row.rotation,
+            }
+        }
+        // The schema ties the configuration to the kind.
+        _ => {
+            return Err(corrupt_config(
+                "the configuration does not match the entry's kind",
+            ));
+        }
+    };
+    Ok(ProviderEntry {
+        id: row.id,
+        owner,
+        family: row.family,
+        label: row.label,
+        credential,
+        created_at: row.created_at,
+        image_generation: row.image_generation,
+        video_generation: row.video_generation,
+        audio_generation: row.audio_generation,
+        web_search: row.web_search,
+        x_search: row.x_search,
+        search_images: row.search_images,
+        search_videos: row.search_videos,
+        cache_ttl: row.cache_ttl,
+        through_device: row.through_device,
+    })
+}
+
+/// The configuration sealed for entry `id` under `key`: it must open and
+/// hold a configuration of this release's format that keeps its rules
+/// ([`checked`]). A failure names the field and the kind of fault, never a
+/// value, which may be the key.
+fn open_config(key: &VaultKey, id: &ProviderId, sealed: &[u8]) -> Result<ApiKeyConfig, StorageError> {
+    let text = open_text(key, id, sealed).map_err(corrupt_config)?;
+    let sealed: SealedConfig =
+        decode_secret(&text).map_err(|error| corrupt_config(error.to_string()))?;
+    if sealed.format != CONFIG_FORMAT {
+        return Err(corrupt_config(format!(
+            "the configuration's format {} is not {CONFIG_FORMAT}",
+            sealed.format
+        )));
     }
+    checked(sealed.config).map_err(corrupt_config)
 }
 
 /// What the server's migrations that seal a value again ask of the vault's

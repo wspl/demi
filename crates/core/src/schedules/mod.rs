@@ -29,7 +29,7 @@ use base64::Engine;
 use demi_core_store::StorageError;
 use demi_core_store::schedules::{StoredRun, StoredSchedule};
 use demi_core_sync::Part;
-use demi_core_providers::vault::seal::Row;
+use demi_core_store::seal::Row;
 use demi_shared_types::{ScheduleId, Timestamp};
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::schedules::{
@@ -477,7 +477,7 @@ impl Core {
     }
 
     fn seal_schedule(&self, id: &ScheduleId, plaintext: &[u8]) -> Vec<u8> {
-        self.services().vault.key().seal(Row::ScheduleSecret(id.as_str()), plaintext)
+        self.store().key().seal(Row::ScheduleSecret(id.as_str()), plaintext)
     }
 
     /// The schedule's URL secret, opened; none for a schedule that has none.
@@ -492,8 +492,7 @@ impl Core {
             reason,
         };
         let bytes = self
-            .services()
-            .vault
+            .store()
             .key()
             .open(Row::ScheduleSecret(id.as_str()), &sealed)
             .map_err(|_| corrupt("a sealed secret does not open".into()))?;

@@ -38,9 +38,10 @@ use super::columns::{decode, instant, json, to_json};
 use super::store::CoreStore;
 use super::conversation_index::reaches_without_grant;
 use super::credentials::{
-    self, CredentialSeal, NewCredential, StoredCredential, values_of,
+    self, NewCredential, StoredCredential, values_of,
 };
 use super::drafts::archived;
+use super::seal::VaultKey;
 
 const REQUESTS: &str = "permission_requests";
 
@@ -392,9 +393,9 @@ impl CoreStore {
         conversation: ConversationId,
         request: PermissionRequestId,
         values: BTreeMap<String, String>,
-        seal: std::sync::Arc<dyn CredentialSeal>,
     ) -> Result<Result<Answered, PermissionRefusal>, StorageError> {
         let principal = self.principal().clone();
+        let key = self.key().clone();
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let stored = match undecided(&transaction, &conversation, &request)? {
@@ -409,7 +410,7 @@ impl CoreStore {
             if let Err(problem) = fitting(&ask.fields, &values) {
                 return Ok(Err(PermissionRefusal::InvalidAnswer(problem)));
             }
-            let answered = match store(&transaction, &principal, name, ask, values, now, &*seal)? {
+            let answered = match store(&transaction, &principal, name, ask, values, now, &key)? {
                 Ok(answered) => answered,
                 Err(_) => {
                     return Ok(Err(PermissionRefusal::FieldsDiffer(format!(
@@ -432,15 +433,15 @@ impl CoreStore {
         name: String,
         ask: CredentialAsk,
         values: BTreeMap<String, String>,
-        seal: std::sync::Arc<dyn CredentialSeal>,
     ) -> Result<SavedByAgent, StorageError> {
         let principal = self.principal().clone();
+        let key = self.key().clone();
         self.call(move |connection, now| {
             if let Err(problem) = fitting(&ask.fields, &values) {
                 return Ok(SavedByAgent::Unfit(problem));
             }
             let transaction = connection.transaction()?;
-            Ok(match store(&transaction, &principal, &name, &ask, values, now, &*seal)? {
+            Ok(match store(&transaction, &principal, &name, &ask, values, now, &key)? {
                 Ok(answered) => {
                     transaction.commit()?;
                     SavedByAgent::Saved(answered)
@@ -486,9 +487,9 @@ impl CoreStore {
         &self,
         name: String,
         field: String,
-        seal: std::sync::Arc<dyn CredentialSeal>,
     ) -> Result<CredentialRead, StorageError> {
         let principal = self.principal().clone();
+        let key = self.key().clone();
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let Some(stored) = credentials::named(&transaction, &name)? else {
@@ -497,7 +498,7 @@ impl CoreStore {
             if !stored.fields.iter().any(|known| known.name == field) {
                 return Ok(CredentialRead::NoField(stored.fields));
             }
-            let mut values = values_of(&transaction, &principal, &stored, &*seal)?;
+            let mut values = values_of(&transaction, &principal, &stored, &key)?;
             let Some(value) = values.remove(&field) else {
                 return Ok(CredentialRead::Missing);
             };
@@ -653,13 +654,13 @@ fn store(
     ask: &CredentialAsk,
     values: BTreeMap<String, String>,
     now: Timestamp,
-    seal: &dyn CredentialSeal,
+    key: &VaultKey,
 ) -> Result<Result<Answered, Vec<CredentialField>>, StorageError> {
     let keep_until = credentials::keep_until(now, ask.keep)?;
     let id = match credentials::named(connection, name)? {
         Some(saved) if !saved.same_fields(&ask.fields) => return Ok(Err(saved.fields)),
         Some(saved) => {
-            credentials::renew(connection, principal, &saved, &values, keep_until, now, seal)?;
+            credentials::renew(connection, principal, &saved, &values, keep_until, now, key)?;
             saved.id
         }
         None => credentials::insert(
@@ -673,7 +674,7 @@ fn store(
                 keep_until,
             },
             now,
-            seal,
+            key,
         )?,
     };
     let credential = credentials::by_id(connection, &id)?.expect("the credential was just written");

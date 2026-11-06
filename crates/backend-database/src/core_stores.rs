@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use demi_core_store::StorageError;
 use demi_core_store::conversations::ConversationBlobs;
+use demi_core_store::seal::VaultKey;
 use demi_core_store::store::CoreStore;
 use demi_shared_types::Clock;
 use demi_web_api_protocol::ids::UserId;
@@ -37,16 +38,19 @@ pub struct CoreStores(Arc<Stores>);
 
 struct Stores {
     data: PathBuf,
+    /// The key every user's core seals under, the instance secret's.
+    key: VaultKey,
     clock: Arc<dyn Clock>,
     blobs: Arc<dyn UserBlobs>,
     open: Mutex<HashMap<UserId, Arc<OnceCell<CoreStore>>>>,
 }
 
 impl CoreStores {
-    /// The stores in the data directory `data`.
-    pub fn new(data: PathBuf, clock: Arc<dyn Clock>, blobs: Arc<dyn UserBlobs>) -> Self {
+    /// The stores in the data directory `data`, sealed under `key`.
+    pub fn new(data: PathBuf, key: VaultKey, clock: Arc<dyn Clock>, blobs: Arc<dyn UserBlobs>) -> Self {
         Self(Arc::new(Stores {
             data,
+            key,
             clock,
             blobs,
             open: Mutex::new(HashMap::new()),
@@ -65,7 +69,14 @@ impl CoreStores {
             .clone();
         cell.get_or_try_init(|| async {
             let directory = user_directory(&self.0.data, user);
-            CoreStore::open(&directory, user.clone(), self.0.clock.clone(), self.0.blobs.of(user)).await
+            CoreStore::open(
+                &directory,
+                user.clone(),
+                self.0.key.clone(),
+                self.0.clock.clone(),
+                self.0.blobs.of(user),
+            )
+            .await
         })
         .await
         .cloned()

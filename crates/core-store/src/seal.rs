@@ -1,5 +1,6 @@
-//! Sealed credentials (`crates/backend/src/config/secret.rs`): a typed JSON document encrypted with
-//! AES-256-GCM under a key derived from the instance secret, bound to the row it belongs to.
+//! Sealed credentials: a typed JSON document encrypted with AES-256-GCM under the core's key,
+//! bound to the row it belongs to. A server's cores share the key it derives from its instance
+//! secret (`crates/backend/src/config/secret.rs`); a core a program opens has its own.
 //!
 //! It is stored as one BLOB of a random 12-byte nonce, the ciphertext and the 16-byte tag.
 //!
