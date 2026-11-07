@@ -6,7 +6,7 @@ import { t as shared } from '../../locales/text'
 import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, useAttrs } from 'vue'
 import { chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
-import { waitingAs, type MessageListBlock } from '../pending-steers'
+import { waitingAs, waitingSend, type MessageListBlock } from '../pending-steers'
 import { drawnAsFunctionalBlock, rowFace } from '../row-key'
 import RowRoll from '../../ui/RowRoll.vue'
 import ErrorNotice from '../../ui/ErrorNotice.vue'
@@ -151,11 +151,13 @@ function recallSubmission(submission: PendingSubmissionState): void {
   }
 }
 
-function sendSubmissionNow(submission: PendingSubmissionState): void {
-  if (submission.way === 'steer') {
-    emit('interruptPendingSteer', submission.id)
-  } else {
-    emit('sendQueued', submission.id)
+/** Send on a waiting message: the steer or the queued message goes now. */
+function sendNow(block: MessageListBlock): void {
+  const send = waitingSend(block)
+  if (send?.as === 'steer') {
+    emit('interruptPendingSteer', send.id)
+  } else if (send) {
+    emit('sendQueued', send.id)
   }
 }
 
@@ -178,7 +180,7 @@ function shownComments(comments: readonly MessageComment[] | undefined): ShownCo
       @edit="emit('editSubmission', block.submission.id)"
       @delete="emit('deleteUnsent', block.submission.id)"
       @recall="recallSubmission(block.submission)"
-      @send-now="sendSubmissionNow(block.submission)"
+      @send-now="sendNow(block)"
       @retry="emit('retryUndelivered', block.submission.id)"
     />
     <UserBlock
@@ -225,7 +227,7 @@ function shownComments(comments: readonly MessageComment[] | undefined): ShownCo
       :pending="waitingAs(block)"
       :waiting-id="block.pendingSteerId"
       @recall="emit('recallSteer', block.pendingSteerId)"
-      @send-now="emit('interruptPendingSteer', block.pendingSteerId)"
+      @send-now="sendNow(block)"
       @delete="emit('deleteUnsent', block.pendingSteerId)"
     />
     <UserBlock
@@ -237,7 +239,7 @@ function shownComments(comments: readonly MessageComment[] | undefined): ShownCo
       :pending="waitingAs(block)"
       :waiting-id="block.queueId"
       @recall="emit('recallQueued', block.queueId)"
-      @send-now="emit('sendQueued', block.queueId)"
+      @send-now="sendNow(block)"
       @delete="emit('deleteUnsent', block.queueId)"
     />
     <QueueDivider

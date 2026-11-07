@@ -5,7 +5,7 @@ import { assistantFooterIds, replyEndIds } from './assistant-footer'
 import type { PendingAction } from './activity-slot'
 import { listTailBlocks, submissionRows, undeliveredPlaces } from './list-tail'
 import { sentMessage } from './message-delivery'
-import type { ActivitySlotRow, MessageListBlock, StepsNotSharedRow } from './pending-steers'
+import { waitingSend, type ActivitySlotRow, type MessageListBlock, type StepsNotSharedRow, type WaitingSend } from './pending-steers'
 import { rowFace, rowKey, succeedKeys, type DrawnRow } from './row-key'
 import type { SessionFailureNotice, SessionLoad } from './session-status'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
@@ -79,6 +79,8 @@ export interface MessageRows {
   slot: ComputedRef<ActivitySlotState | null>
   /** The texts that end the agent's reply, which Copy and Fork close. */
   footerIds: ComputedRef<Set<string>>
+  /** The Send of each message that waits, in the list's order. */
+  waiting: ComputedRef<WaitingSend[]>
 }
 
 /**
@@ -350,7 +352,9 @@ export function useMessageRows(
     }),
   ))
 
-  return { visibleBlocks, transcriptRows, rows, keyOf, slot, footerIds }
+  const waiting = keptComputed(() => tail.value.waiting.flatMap((row) => waitingSend(row) ?? []))
+
+  return { visibleBlocks, transcriptRows, rows, keyOf, slot, footerIds, waiting }
 }
 
 /**

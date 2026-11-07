@@ -288,6 +288,7 @@
   },
   "composer": {
     "placeholder": "Pergunte alguma coisa…",
+    "sendNextWaiting": "Pressione {key} para enviar a próxima mensagem agora",
     "message": "Mensagem",
     "noModels": "Nenhum modelo disponível",
     "configureModels": "Configurar modelos",

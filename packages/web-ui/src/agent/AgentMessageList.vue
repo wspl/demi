@@ -301,6 +301,7 @@ const {
   keyOf,
   footerIds,
   slot,
+  waiting,
 } = useMessageRows(() => props, useLiveCalls(), () => historyReading(props.node ?? null))
 const editableUserId = computed(() => props.readOnly || !props.latest ? null : offeredEditId(props))
 /**
@@ -787,6 +788,7 @@ defineExpose({
   isAtBottom,
   scrollToBottom,
   revealComment,
+  waiting,
 })
 </script>
 

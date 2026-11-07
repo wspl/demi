@@ -20,6 +20,7 @@ import {
   type MessageEditRequest,
   type MessageEditState,
 } from './message-editing'
+import { nextWaitingSend, provideSendNextWaiting, type WaitingSend } from './pending-steers'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import type { ReplyCommenting } from './comments/comments'
 import type { ReplyAsking } from './comments/asks'
@@ -731,7 +732,18 @@ const list = ref<{
   isAtBottom: boolean
   scrollToBottom: () => void
   revealComment: (comment: CommentPlace) => boolean
+  waiting: readonly WaitingSend[]
 }>()
+// Return in an empty composer sends the next waiting message, as its Send does.
+provideSendNextWaiting(() => {
+  const next = nextWaitingSend(list.value?.waiting ?? [])
+  if (next === undefined) {
+    return undefined
+  }
+  return next.as === 'steer'
+    ? () => emit('interruptPendingSteer', next.id)
+    : () => emit('sendQueued', next.id)
+})
 // The comments pill shows each comment's box in turn. A box on a block the
 // list does not hold waits for the host to read the window around it.
 provideCommentRevealer((comment) => {
