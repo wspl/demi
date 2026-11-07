@@ -120,6 +120,11 @@ export interface ScrollAnchor {
  */
 interface ViewAnchor extends ScrollAnchor {
   start: number
+  /** Its row's key, which a row keeps across the forms its block takes. */
+  key: string
+  type: string
+  /** The agent whose transcript the list showed, which a panel's list changes in place. */
+  node: string | null
 }
 
 export interface PersistedScrollState {
@@ -1360,12 +1365,16 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         const anchorEl = el.querySelector(`[data-index="${item.index}"]`) as HTMLElement | null
         if (!anchorEl)
           return
+        const block = blocks.value[item.index]!
         lastAnchor = {
-          blockId: blocks.value[item.index]!.id,
+          blockId: block.id,
           anchorIndex: item.index,
           offsetPx: anchorEl.getBoundingClientRect().top - containerTop,
           scrollTop: st,
           start: item.start,
+          key: keyOf(block),
+          type: block.type,
+          node: options.log?.node() ?? null,
         }
         const bottom = containerTop + el.clientHeight
         let read = anchorEl
@@ -1572,16 +1581,49 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   // as much, so the reader's row stays where it is, as a chat app keeps its
   // place when earlier messages load. A reader who follows the end follows
   // it instead.
+  //
+  // The row in view gone from the rows, as when the window shown is
+  // replaced, leaves the view nothing to keep its place by: the reader loses
+  // their place, which the list tells at info, with what the rows were and
+  // are, since the scroll's own lines are debug and a server keeps none. A
+  // row whose block took another form under the same key is still there,
+  // and a panel's list that shows another agent shows no place of the one
+  // before. Either way the row in view is taken anew, so the list tells a
+  // loss once and keeps the next place.
   watch(
     () => blocks.value.map((block) => block.id),
-    () => {
+    (ids, was) => {
       const el = scrollContainer.value
       const anchor = lastAnchor
       if (!el || !anchor || !isRestored.value || shouldAutoScroll.value) {
         return
       }
       const index = blocks.value.findIndex((block) => block.id === anchor.blockId)
-      if (index < 0 || index === anchor.anchorIndex) {
+      if (index < 0) {
+        const node = options.log?.node() ?? null
+        if (node === anchor.node && !blocks.value.some((block) => keyOf(block) === anchor.key)) {
+          const now = new Set(ids)
+          const kept = was.filter((id) => now.has(id))
+          logList('info', 'list.place_lost', {
+            row: anchor.anchorIndex,
+            block: anchor.blockId,
+            type: anchor.type,
+            rows_before: was.length,
+            rows_kept: kept.length,
+            first_kept_before: kept.length > 0 ? was.indexOf(kept[0]!) : null,
+            first_kept_now: kept.length > 0 ? ids.indexOf(kept[0]!) : null,
+            first_block_before: was[0] ?? null,
+            first_block_now: ids[0] ?? null,
+            last_block_before: was.at(-1) ?? null,
+            last_block_now: ids.at(-1) ?? null,
+            scroll_top_px: Math.round(el.scrollTop),
+          })
+        }
+        lastAnchor = null
+        updateAnchor()
+        return
+      }
+      if (index === anchor.anchorIndex) {
         return
       }
       const moved = virtualizer.value.measurementsCache[index]?.start
