@@ -204,7 +204,6 @@
     "forkedFrom": "{agent} から分岐",
     "inherited": "このチャットから継承",
     "fast": "高速",
-    "chip": "{count} 個のエージェント",
     "stopAgent": "エージェントを停止",
     "copyId": "エージェント ID をコピー",
     "closeTab": "タブを閉じる",
@@ -218,10 +217,9 @@
     "thinkingOff": "思考オフ"
   },
   "terminals": {
+    "none": "実行中のものはありません",
     "endCommand": "コマンドを終了",
     "closeTab": "タブを閉じる",
-    "chip": "{count} 件を実行中",
-    "serviceChip": "{count} 件のサービス",
     "loading": "ターミナルを読み込んでいます…",
     "unavailable": "ターミナルを読み込めませんでした。"
   },
@@ -233,10 +231,8 @@
     "empty": "メッセージはありません",
     "start": "チャットを開始",
     "conversations": "チャット",
-    "openPanel": "パネルを開く",
     "tabs": "タブ",
     "tabsOpen": "タブ、{count} 個開いています",
-    "closePanel": "パネルを閉じる",
     "options": "{title}、チャットのオプション",
     "deviceState": "{name} は{state}",
     "renameTitle": "チャットの名前を変更",
@@ -425,16 +421,7 @@
     "label": "ブラウザーのアドレス"
   },
   "panel": {
-    "allTabs": "すべてのタブを表示",
     "more": "その他",
-    "windowHeight": "ウィンドウの高さ",
-    "closeOthers": "その他を閉じる",
-    "closeRight": "右側を閉じる",
-    "closeLeft": "左側を閉じる",
-    "closeAll": "すべて閉じる",
-    "cannotShow": "このタブは表示できません。",
-    "nothingOpen": "開いているものはありません",
-    "noFiles": "ファイルも変更もありません",
     "reading": "{name}を読み取っています",
     "deviceOffline": "{name} はオフラインです。",
     "deviceOfflineDetail": "再接続すると、ファイル、変更、ブラウザが再び表示されます。"

@@ -2,7 +2,7 @@
   "failures": {
     "uploadAttachment": "Não foi possível enviar o anexo",
     "answerRequest": "Não foi possível responder à solicitação",
-    "changeWorkPanel": "Não foi possível alterar o painel de trabalho",
+    "changeTabs": "Não foi possível alterar as abas",
     "saveDraft": "Não foi possível salvar o rascunho",
     "sendComment": "Não foi possível enviar o comentário",
     "saveMessage": "Não foi possível salvar a mensagem",

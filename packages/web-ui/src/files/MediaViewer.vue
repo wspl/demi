@@ -14,11 +14,11 @@ import type { StepReach } from './swipe-step'
 import type { PixelSize } from './thumbnail'
 
 /**
- * The media viewer's window, for a page without a work panel, such as a share,
- * or whose panel has no Media tab, as with the file-browser plugin off: a small
- * window over the page that the user moves, resizes and closes, while the page
- * stays usable. Otherwise the page shows its media in the panel's Media tab
- * (`MediaView`).
+ * The media viewer's window, for a page without a conversation's windows, such
+ * as a share, or without the Attachments window, as with the file-browser
+ * plugin off: a small window over the page that the user moves, resizes and
+ * closes, while the page stays usable. Otherwise the page shows its media in
+ * the Attachments window (`MediaView`).
  *
  * - An image opens fitted to it, and zooms and moves as in an image viewer
  *   (`ImagePreview`).
@@ -50,7 +50,7 @@ const size = ref<PixelSize | null>(null)
 /** An image's zoom, which its preview reports; none for a video. */
 const zoom = ref<number | null>(null)
 const floating = ref<InstanceType<typeof FloatingWindow>>()
-// A medium the page shows in its work panel's Media tab is not the window's.
+// A medium the page shows in its Attachments window is not the window's.
 const open = computed(() => props.viewer.shown.value !== null && !props.viewer.inPanel.value)
 
 watch(() => props.viewer.shown.value, (shown, previous) => {

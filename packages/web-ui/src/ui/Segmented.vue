@@ -21,7 +21,7 @@ import type { SentenceText, TitleText } from './ui-text'
  *   under its label stretches it (`data-field`, except with `iconOnly` whose
  *   segments stay square): the segments then share the row's width, each label
  *   whole.
- * - In a container narrower than that, as a narrow work panel's toolbar, the
+ * - In a container narrower than that, as a narrow window's toolbar, the
  *   segments narrow together, as macOS's do, each label cut short with an
  *   ellipsis and whole in its tooltip, down to its first few characters (3em).
  * - In a container narrower still, as on a phone with many segments, they scroll

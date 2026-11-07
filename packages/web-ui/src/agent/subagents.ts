@@ -241,22 +241,8 @@ export function childBrief(node: string | null, content: readonly MessageEditCon
 }
 
 /**
- * The dock's agents chip: the live
- * children's count, and no chip while none runs, as the Running chip shows
- * only while a command runs. Finished children never count; they stay one
- * click away from their receipts and links.
- */
-export function agentsChipLabel(agents: readonly SubagentRecord[]): string | null {
-  const running = agents.filter((agent) => isSubagentRunning(agent.phase)).length
-  if (running === 0) {
-    return null
-  }
-  return t('subagents.chip', { count: running }, running)
-}
-
-/**
- * The panel's tabs: the running
- * children, and after them the finished one picked from Completed.
+ * The Agents window's tabs: the running children, and after them the
+ * finished one picked from Completed.
  */
 export function subagentPanelTabs(
   agents: readonly SubagentRecord[],

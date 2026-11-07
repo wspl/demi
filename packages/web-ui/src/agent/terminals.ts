@@ -6,7 +6,6 @@ import type { CommandEnd } from './command-end'
 import { storedShellView } from './block-helpers'
 import { latestBlocks } from './history'
 import { computed, toRaw, type ComputedRef } from 'vue'
-import { t } from './locales/text'
 import type { HeldTranscript } from '@demicodes/conversation-client'
 
 /**
@@ -435,33 +434,18 @@ export function runningTerminals(
 }
 
 /**
- * Which chip counts a command: Running counts the commands that went to the
- * background and are not services, Service counts the services.
+ * Which window shows a command: Running shows the commands that went to the
+ * background and are not services, Services shows the services.
  */
-export type ChipKind = 'command' | 'service'
+export type CommandKind = 'command' | 'service'
 
-export function chipKindOf(terminal: Pick<TerminalRecord, 'service'>): ChipKind {
+export function commandKindOf(terminal: Pick<TerminalRecord, 'service'>): CommandKind {
   return terminal.service ? 'service' : 'command'
 }
 
-/** The running commands the chip of `kind` counts, oldest first. */
-export function runningOfKind(terminals: readonly TerminalRecord[], kind: ChipKind): TerminalRecord[] {
-  return runningTerminals(terminals).filter((terminal) => chipKindOf(terminal) === kind)
-}
-
-/** The oldest running command of `kind`, which its chip opens the window on. */
-export function firstRunningOfKind(terminals: readonly TerminalRecord[], kind: ChipKind): string | null {
-  return runningOfKind(terminals, kind)[0]?.id ?? null
-}
-
-/** The kind of the command the window shows, `activeId`; none while it shows none. */
-export function shownKind(terminals: readonly TerminalRecord[], activeId: string | null): ChipKind | null {
-  const shown = activeId === null ? undefined : terminals.find((terminal) => terminal.id === activeId)
-  return shown ? chipKindOf(shown) : null
-}
-
-export function chipLabel(kind: ChipKind, count: number): string {
-  return kind === 'service' ? t('terminals.serviceChip', { count }, count) : t('terminals.chip', { count })
+/** The running commands of `kind`, oldest first, which its window's button counts. */
+export function runningOfKind(terminals: readonly TerminalRecord[], kind: CommandKind): TerminalRecord[] {
+  return runningTerminals(terminals).filter((terminal) => commandKindOf(terminal) === kind)
 }
 
 /**
@@ -477,24 +461,4 @@ export function terminalStatus(phase: TerminalPhase): ConversationStatus {
     return 'aborted'
   }
   return 'done'
-}
-
-/**
- * Running inspect lists every running job; an exited inspect is that job only.
- */
-export function terminalPanelTabs(
-  terminals: readonly TerminalRecord[],
-  activeId: string | null,
-): TerminalRecord[] {
-  if (!activeId) {
-    return []
-  }
-  const active = terminals.find((terminal) => terminal.id === activeId)
-  if (!active) {
-    return []
-  }
-  if (isTerminalRunning(active.phase)) {
-    return runningTerminals(terminals)
-  }
-  return [active]
 }

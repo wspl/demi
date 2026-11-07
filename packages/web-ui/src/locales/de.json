@@ -200,7 +200,7 @@
     "handoff_expired": "Dieser Code ist abgelaufen. Zeige auf deinem anderen Gerät einen neuen an.",
     "current_session": "Verwende „Abmelden“, um diese Sitzung zu beenden.",
     "session_not_found": "Die Sitzung wurde nicht gefunden.",
-    "panel_full": "Das Arbeitspanel kann keine weiteren Tabs aufnehmen.",
+    "panel_full": "Dieser Chat kann keine weiteren Tabs aufnehmen.",
     "unknown_panel_kind": "Kein aktiviertes Plug-in kann diesen Tab öffnen.",
     "conversation_busy": "Der Chat ändert sich gerade. Versuche es gleich noch einmal.",
     "device_not_attached": "Dieses Gerät ist nicht an den Chat angehängt.",

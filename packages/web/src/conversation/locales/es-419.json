@@ -2,7 +2,7 @@
   "failures": {
     "uploadAttachment": "No se pudo cargar el archivo adjunto",
     "answerRequest": "No se pudo responder la solicitud",
-    "changeWorkPanel": "No se pudo cambiar el panel de trabajo",
+    "changeTabs": "No se pudieron cambiar las pestañas",
     "saveDraft": "No se pudo guardar el borrador",
     "sendComment": "No se pudo enviar el comentario",
     "saveMessage": "No se pudo guardar el mensaje",

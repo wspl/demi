@@ -27,6 +27,6 @@ body,
  * agent stops using the device, which says Reconnecting to the simulator…
  * under the screen; no demo is about it.
  */
-[data-work-panel] .absolute.bottom-0[role='status'] {
+[data-work-window] .absolute.bottom-0[role='status'] {
   visibility: hidden;
 }

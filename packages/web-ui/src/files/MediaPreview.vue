@@ -22,7 +22,7 @@ const props = defineProps<{
   kind: 'video' | 'audio'
   name: string
   autoplay?: boolean
-  /** It is out of sight, as in a tab of the work panel another tab covers. */
+  /** It is out of sight, as in a tab of a window another tab covers. */
   hidden?: boolean
   /** Edge to edge, with no margin around the player, as a window that is sized to it shows it. */
   flush?: boolean

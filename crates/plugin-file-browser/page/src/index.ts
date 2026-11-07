@@ -4,14 +4,17 @@
 // an attachment's copy for the `attachment` intent, and the `media` kind, the
 // one Media tab of the conversation's pictures and videos.
 import { defineComponent, h, type PropType } from 'vue'
-import { File } from '@lucide/vue'
-import { FileIcon, ICON_PX, baseName, definePage, type PanelKind } from '@demicodes/plugin-sdk'
+import { File, FolderOpen } from '@lucide/vue'
+import { FileIcon, ICON_PX, baseName, definePage, type PanelKind, type PanelWindow } from '@demicodes/plugin-sdk'
 import { PLUGIN } from './generated/plugin'
 import { t } from './locales/text'
 import FileTab from './FileTab.vue'
 import { fileDataSchema, filePlace, firstFileData, openFile, type FileData } from './data'
 import { attachmentKind } from './attachment'
 import { mediaKind } from './media'
+
+/** Files' window: the File view, with its tree. */
+const filesWindow: PanelWindow = { id: 'files', name: () => t('kind.title'), icon: FolderOpen }
 
 /** The file's own icon once the view shows one, a plain file before. */
 const FileMark = defineComponent({
@@ -25,6 +28,7 @@ const FileMark = defineComponent({
 export const fileKind: PanelKind<FileData> = {
   kind: 'file',
   schema: fileDataSchema,
+  window: filesWindow,
   title: (data) => data.path ? t('kind.titleNamed', { name: baseName(data.path) }) : t('kind.title'),
   subject: (data) => data.path ? baseName(data.path) : t('kind.title'),
   mark: FileMark,

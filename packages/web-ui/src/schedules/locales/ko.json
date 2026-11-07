@@ -1,5 +1,5 @@
 {
-  "chip": "일정 {count}개 | 일정 {count}개",
+  "name": "일정",
   "delete": "삭제",
   "notYet": "아직 깨운 적 없음",
   "trigger": {

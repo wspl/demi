@@ -23,7 +23,8 @@ import { startPointerDrag } from './pointer-drag'
  *
  * The hit area is 8px wide and straddles the boundary through negative margins,
  * so it takes no room in the layout; the line inside it shows on hover, focus and
- * while dragging.
+ * while dragging, unless the host draws a mark of its own there (`marked`), such
+ * as a grip.
  */
 const props = withDefaults(
   defineProps<{
@@ -40,6 +41,8 @@ const props = withDefaults(
     /** The separator's accessible name: what it resizes. */
     label: string
     disabled?: boolean
+    /** The host draws the handle's mark, such as a grip, so it draws no line. */
+    marked?: boolean
   }>(),
   {
     orientation: 'vertical',
@@ -165,6 +168,7 @@ onBeforeUnmount(() => {
   >
     <!-- The line: hidden until the pointer rests on the handle, lit while it drags or has focus. -->
     <span
+      v-if="!marked"
       aria-hidden="true"
       data-resize-line
       class="absolute rounded-full transition-colors duration-150 group-hover/handle:delay-150"

@@ -20,8 +20,7 @@ import { useSession } from '../auth/session'
 import { known, useProduct } from './product'
 import { usePreferences } from './preferences'
 import { modelInfo, providerView, setupOf, wireApi } from './catalog'
-import { DOCK_WINDOW_SHARE } from '@demicodes/web-ui/agent/dock-window'
-import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
+import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
 import type { PairingDevice } from '@demicodes/web-ui/devices/pairing'
 import { vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
@@ -40,7 +39,7 @@ const FILE_BROWSER_PLATFORMS: Record<DeviceDto['platform'], Device['platform']> 
   linux: 'linux',
 }
 
-/** A snapshot device as the file browser and the work panel take it. */
+/** A snapshot device as the file browser and the conversation's windows take it. */
 function productDevice(device: DeviceDto, devices: readonly DeviceDto[]): Device {
   const platform = FILE_BROWSER_PLATFORMS[device.platform]
   return {
@@ -253,18 +252,6 @@ export const useResources = defineStore('resources', () => {
       local.value.sidebarCollapsed = collapsed
     },
   })
-  const asideShare = computed({
-    get: () => local.value.asideShare ?? ASIDE_SHARE.default,
-    set: (share: number) => {
-      local.value.asideShare = share
-    },
-  })
-  const dockWindowShare = computed({
-    get: () => local.value.dockWindowShare ?? DOCK_WINDOW_SHARE.default,
-    set: (share: number) => {
-      local.value.dockWindowShare = share
-    },
-  })
   const passkeyOfferAnswered = computed({
     get: () => local.value.passkeyOfferAnswered ?? false,
     set: (answered: boolean) => {
@@ -416,8 +403,6 @@ export const useResources = defineStore('resources', () => {
     sidebarOpen,
     sidebarWidth,
     sidebarCollapsed,
-    asideShare,
-    dockWindowShare,
     passkeyOfferAnswered,
     deviceById,
     conversationDevice,

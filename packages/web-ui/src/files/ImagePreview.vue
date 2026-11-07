@@ -50,8 +50,8 @@ import type { PixelSize } from './thumbnail'
  *   it about the fingers, which the page itself never does (`phone-page.ts`).
  *   A long press is no tap: it leaves the picture as it is, under the
  *   system's menu for it where the system has one.
- * - With `dismissible`, as the phone's full screen and the work panel's
- *   overlay show it, a tap beside the picture, outside the box it is drawn in,
+ * - With `dismissible`, as the phone's full screen and a phone's window show
+ *   it, a tap beside the picture, outside the box it is drawn in,
  *   asks to close it instead. A finger pulling the picture down at its fitted
  *   size moves it down and fades it; lifted past 72 px it asks to close it, and
  *   short of that, or cut short by the system, it springs back.

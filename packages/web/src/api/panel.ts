@@ -19,6 +19,8 @@ function changeBody(change: PanelChange) {
       return { op: 'delete', id: change.id }
     case 'move':
       return { op: 'move', id: change.id, index: change.index }
+    case 'windows':
+      return { op: 'windows', windows: change.windows }
   }
 }
 

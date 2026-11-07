@@ -198,7 +198,7 @@ async function open(form: 'desktop' | 'phone', options: typeof DESKTOP): Promise
  */
 async function settle(desk: Page, phone: Page): Promise<void> {
   const cued = (page: Page) => page.evaluate(() => !!window.demiReadme?.cue)
-  const body = () => desk.evaluate(() => document.querySelector('[data-work-panel] canvas')?.getAttribute('data-body') ?? null)
+  const body = () => desk.evaluate(() => document.querySelector('[data-work-window] canvas')?.getAttribute('data-body') ?? null)
   for (let i = 0; ; i++) {
     if (errors.length)
       throw new Error(`The scene failed to set up:\n${errors.join('\n')}`)
@@ -226,8 +226,8 @@ async function settle(desk: Page, phone: Page): Promise<void> {
  * slider closes the hinge, as the picture's first frame shows it.
  */
 async function hinge(desk: Page): Promise<(since: (mark: string) => number | null) => Promise<void>> {
-  const slider = (await desk.locator('[data-work-panel] [role=slider]').first().boundingBox())!
-  const view = (await desk.locator('[data-work-panel] canvas').first().boundingBox())!
+  const slider = (await desk.locator('[data-work-window] [role=slider]').first().boundingBox())!
+  const view = (await desk.locator('[data-work-window] canvas').first().boundingBox())!
   const face = (await desk.getByRole('button', { name: 'Face the device' }).boundingBox())!
   const y = slider.y + slider.height / 2
   const flat = slider.x + slider.width - 6

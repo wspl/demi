@@ -25,7 +25,7 @@ export interface PanelState {
    * (`selectTab`).
    */
   history: readonly string[]
-  tabs: PanelTab[]
+  tabs: readonly PanelTab[]
 }
 
 /**

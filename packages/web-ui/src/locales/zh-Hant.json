@@ -200,7 +200,7 @@
     "handoff_expired": "此代碼已過期。請在你的另一台裝置上顯示新代碼。",
     "current_session": "請使用「登出」結束此工作階段。",
     "session_not_found": "找不到工作階段。",
-    "panel_full": "工作面板無法容納更多分頁。",
+    "panel_full": "此對話無法容納更多分頁。",
     "unknown_panel_kind": "沒有已啟用的外掛程式可以開啟此分頁。",
     "conversation_busy": "對話正在變更。請稍後再試一次。",
     "device_not_attached": "此裝置未附加至對話。",

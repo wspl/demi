@@ -11,9 +11,9 @@ import { useTurnFlow } from '../turn-flow'
 import GalleryComposer from './GalleryComposer.vue'
 
 /**
- * A conversation schedules wake: the chip above its composer, listing them,
- * and the message a schedule sent in its transcript, marked with the schedule,
- * whose name opens the chip's menu.
+ * A conversation schedules wake: the Schedules button on its taskbar, listing
+ * them, and the message a schedule sent in its transcript, marked with the
+ * schedule, whose name opens the Schedules menu.
  */
 const props = defineProps<{
   id: string

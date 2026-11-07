@@ -13,9 +13,10 @@ import GalleryWokenConversation from './GalleryWokenConversation.vue'
 
 /**
  * The app frame with a conversation schedules wake, live: its sidebar row is
- * marked with the alarm clock while it has schedules, its chip lists them, a
- * row's switch turns one off and on, and Delete in the chip's menu removes one
- * from the specimen; the last one takes the row's mark and the chip away.
+ * marked with the alarm clock while it has schedules, its taskbar's Schedules
+ * button lists them, a row's switch turns one off and on, and Delete in its
+ * menu removes one from the specimen; the last one takes the row's mark and
+ * the button away.
  */
 const props = withDefaults(defineProps<{
   /** The conversation the frame opens. */

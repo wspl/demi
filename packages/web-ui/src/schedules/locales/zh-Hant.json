@@ -1,5 +1,5 @@
 {
-  "chip": "{count} 個排程 | {count} 個排程",
+  "name": "排程",
   "delete": "刪除",
   "notYet": "尚未喚醒",
   "trigger": {

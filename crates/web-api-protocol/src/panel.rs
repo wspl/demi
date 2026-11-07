@@ -1,6 +1,7 @@
-//! A conversation's work panel: its tabs, which the backend keeps and changes a request
-//! of changes at a time, each request counted by the panel's revision. The backend checks
-//! their shape and bounds and never interprets a tab's `kind` or `data`.
+//! A conversation's work panel: its tabs, and the layout of the windows they open in,
+//! which the backend keeps and changes a request of changes at a time, each request
+//! counted by the panel's revision. The backend checks their shape and bounds and never
+//! interprets a tab's `kind` or `data`, or the layout.
 
 use demi_shared_types::MAX_SAFE_INTEGER;
 use garde::Validate;
@@ -19,6 +20,13 @@ pub const PANEL_TABS_MAX: usize = 64;
 /// Bounded for the same reason as [`PANEL_TABS_MAX`].
 pub const PANEL_BYTES_MAX: usize = 64 * 1024;
 
+/// The most bytes of one panel's window layout, as the backend stores it.
+///
+/// Bounded for the same reason as [`PANEL_TABS_MAX`]; a layout of every
+/// window the page has, each with its place, its box and where it stood when
+/// it closed, is under 2 KiB.
+pub const PANEL_WINDOWS_BYTES_MAX: usize = 16 * 1024;
+
 /// A conversation's panel as the database keeps it: the tabs in order, and
 /// how many changes made them. The conversation's entry in the list carries
 /// it, so the page draws the panel's frame and tabs as soon as the
@@ -30,6 +38,11 @@ pub struct WorkPanel {
     pub revision: u64,
     #[garde(dive)]
     pub tabs: Vec<PanelTab>,
+    /// Where the conversation's windows stand, as the page last kept it;
+    /// absent while it kept none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub windows: Option<Map<String, Value>>,
 }
 
 impl WorkPanel {
@@ -38,6 +51,7 @@ impl WorkPanel {
         Self {
             revision: 0,
             tabs: Vec::new(),
+            windows: None,
         }
     }
 }
@@ -133,6 +147,11 @@ pub enum PanelChange {
         #[garde(range(max = PANEL_TABS_MAX))]
         index: usize,
     },
+    /// Replaces where the windows stand.
+    Windows {
+        #[garde(skip)]
+        windows: Map<String, Value>,
+    },
 }
 
 /// What the backend keeps of a panel: its tabs in order, and every id it
@@ -144,6 +163,10 @@ pub struct PanelDocument {
     pub tabs: Vec<PanelTab>,
     #[garde(skip)]
     pub retired: Vec<String>,
+    /// Where the windows stand; absent in a document that never had a layout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(skip)]
+    pub windows: Option<Map<String, Value>>,
 }
 
 /// What a change did to which tab.
@@ -154,6 +177,8 @@ pub enum PanelEffect {
     /// The tab as it was when it was removed.
     Removed(PanelTab),
     Moved,
+    /// The windows' layout was replaced.
+    Arranged,
 }
 
 /// What applying a change came to.
@@ -165,7 +190,7 @@ pub enum Applied {
     Nothing,
     /// A create past the most tabs or the most data.
     Full,
-    /// An update past the most data.
+    /// An update or a layout past the most data.
     TooLarge,
 }
 
@@ -174,14 +199,15 @@ pub enum Applied {
 pub enum Refused {
     /// A create past the most tabs or the most data.
     Full,
-    /// An update past the most data.
+    /// An update or a layout past the most data.
     TooLarge,
 }
 
-/// Why a change was not applied, before its size is known.
+/// Why a change was not applied, before the tabs' size is known.
 enum Unapplied {
     Nothing,
     Full,
+    TooLarge,
 }
 
 impl PanelDocument {
@@ -211,6 +237,7 @@ impl PanelDocument {
             Ok(effect) => effect,
             Err(Unapplied::Nothing) => return Applied::Nothing,
             Err(Unapplied::Full) => return Applied::Full,
+            Err(Unapplied::TooLarge) => return Applied::TooLarge,
         };
         // The tabs serialize as JSON strings, arrays and objects with string
         // keys, which serde_json never refuses.
@@ -280,6 +307,20 @@ impl PanelDocument {
                 let tab = self.tabs.remove(from);
                 self.tabs.insert(to, tab);
                 Ok(PanelEffect::Moved)
+            }
+            PanelChange::Windows { windows } => {
+                if self.windows.as_ref() == Some(&windows) {
+                    return Err(Unapplied::Nothing);
+                }
+                // A JSON object serializes whole, as the tabs do.
+                let bytes = serde_json::to_string(&windows)
+                    .expect("a JSON object serializes")
+                    .len();
+                if bytes > PANEL_WINDOWS_BYTES_MAX {
+                    return Err(Unapplied::TooLarge);
+                }
+                self.windows = Some(windows);
+                Ok(PanelEffect::Arranged)
             }
         }
     }

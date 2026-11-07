@@ -204,7 +204,6 @@
     "forkedFrom": "Forked from {agent}",
     "inherited": "Inherited from this conversation",
     "fast": "Fast",
-    "chip": "{count} Agent | {count} Agents",
     "stopAgent": "Stop Agent",
     "copyId": "Copy Agent ID",
     "closeTab": "Close Tab",
@@ -218,10 +217,9 @@
     "thinkingOff": "Thinking off"
   },
   "terminals": {
+    "none": "Nothing is running",
     "endCommand": "End Command",
     "closeTab": "Close Tab",
-    "chip": "{count} Running",
-    "serviceChip": "{count} Service | {count} Services",
     "loading": "Loading terminal…",
     "unavailable": "Couldn’t load the terminal."
   },
@@ -233,10 +231,8 @@
     "empty": "No messages",
     "start": "Start a Conversation",
     "conversations": "Conversations",
-    "openPanel": "Open panel",
     "tabs": "Tabs",
     "tabsOpen": "Tabs, {count} open",
-    "closePanel": "Close panel",
     "options": "{title}, conversation options",
     "deviceState": "{name} is {state}",
     "renameTitle": "Rename Conversation",
@@ -425,16 +421,7 @@
     "label": "Browser address"
   },
   "panel": {
-    "allTabs": "Show All Tabs",
     "more": "More",
-    "windowHeight": "Window height",
-    "closeOthers": "Close Others",
-    "closeRight": "Close to the Right",
-    "closeLeft": "Close to the Left",
-    "closeAll": "Close All",
-    "cannotShow": "This tab cannot be shown.",
-    "nothingOpen": "Nothing open",
-    "noFiles": "No files or changes",
     "reading": "Reading {name}",
     "deviceOffline": "{name} is offline.",
     "deviceOfflineDetail": "Files, changes and the browser appear again when it reconnects."

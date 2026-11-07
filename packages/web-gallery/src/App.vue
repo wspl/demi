@@ -39,8 +39,8 @@ const messageFiles = galleryConversationFiles(project.source, ({ path, line, roo
     : `Open ${baseName(path)}${line === null ? '' : ` at Line ${line}`}${where}`)
 }, ({ commit, root }) => productWould(`Show Commit ${commit} in Change${root === undefined ? '' : ` for ${baseName(root)}`}`))
 provideMessageFiles(() => ({ ...messageFiles, cwd: project.root }))
-/** A link's Open in Work Panel: the product opens a tab of the conversation's browser. */
-function openInWorkPanel(url: string): void {
+/** A link's Open in Browser Window: the product opens a tab in the conversation's Browser window. */
+function openInBrowserWindow(url: string): void {
   productWould(`Open ${url} in a New Tab of the Conversation’s Browser`)
 }
 const mediaViewer = provideMediaViewer()
@@ -141,7 +141,7 @@ const mainClass = computed(() => {
     </ScrollArea>
   </SidebarLayout>
   <!-- The page's one context menu, which the root handler opens for whatever declares one. -->
-  <ContextMenu :open-in-work-panel="openInWorkPanel" />
+  <ContextMenu :open-in-browser-window="openInBrowserWindow" />
   <!-- The text selection's comment field, by a selection in a message. -->
   <SelectionFieldHost />
   <ToastHost />

@@ -3,7 +3,7 @@ import { DEVICE_LOGO_PATH, type SystemLogo } from './mark'
 
 /**
  * A system's logo at `size`, in the text's color: the logo of a device's mark (`DeviceIcon`), or
- * of a simulator's system, which its tab in the work panel shows.
+ * of a simulator's system, which its tab in the Simulators window shows.
  */
 defineProps<{
   logo: SystemLogo

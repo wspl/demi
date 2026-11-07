@@ -200,7 +200,7 @@
     "handoff_expired": "Este código expirou. Mostre um novo no seu outro dispositivo.",
     "current_session": "Use Sair para encerrar esta sessão.",
     "session_not_found": "A sessão não foi encontrada.",
-    "panel_full": "O painel de trabalho não comporta mais abas.",
+    "panel_full": "Esta conversa não comporta mais abas.",
     "unknown_panel_kind": "Nenhum plugin ativado pode abrir esta aba.",
     "conversation_busy": "A conversa está mudando. Tente novamente em instantes.",
     "device_not_attached": "Este dispositivo não está anexado à conversa.",

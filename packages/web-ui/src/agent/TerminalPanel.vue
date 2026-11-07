@@ -1,82 +1,25 @@
 <script setup lang="ts">
 import { t } from './locales/text'
 import { computed } from 'vue'
-import { CircleStop, X } from '@lucide/vue'
-import { vContextMenu, type ContextMenuGroup } from '../ui/context-menu'
-import SessionOverlay from './SessionOverlay.vue'
-import TabItem from './TabItem.vue'
+import { SquareTerminal } from '@lucide/vue'
+import RegionStatus from '../ui/RegionStatus.vue'
 import TerminalView from './TerminalView.vue'
-import { terminalPanelTabs, terminalStatus, type TerminalRecord } from './terminals'
+import type { TerminalRecord } from './terminals'
 
+/**
+ * What the Running or the Services window shows: the command its tab names,
+ * or that none runs.
+ */
 const props = defineProps<{
+  /** The window's commands, its tabs. */
   terminals: readonly TerminalRecord[]
+  activeId: string | null
 }>()
 
-const emit = defineEmits<{
-  /**
-   * End Command in a running tab's menu: stop that command; a stopping one's
-   * tab shows a spinner until it ends.
-   */
-  abort: [id: string]
-}>()
-const activeId = defineModel<string | null>('activeId', { required: true })
-const tabs = computed(() => terminalPanelTabs(props.terminals, activeId.value))
-const active = computed(
-  () =>
-    tabs.value.find((terminal) => terminal.id === activeId.value) ??
-    tabs.value[0] ??
-    null,
-)
-function activate(id: string): void {
-  activeId.value = id
-}
-
-function closePanel(): void {
-  activeId.value = null
-}
-
-function terminalOf(id: string): TerminalRecord | undefined {
-  return tabs.value.find((terminal) => terminal.id === id)
-}
-
-// An ended command's tab puts it away; a running one's stays until the command
-// is ended.
-/** A tab's menu: end its command, close its tab once the command has ended. */
-function tabMenu(id: string): () => ContextMenuGroup[] {
-  return () => [
-    [{ icon: CircleStop, label: t('terminals.endCommand'), disabled: terminalOf(id)?.phase !== 'running' || terminalOf(id)?.stopping === true, run: () => emit('abort', id) }],
-    [{ icon: X, label: t('terminals.closeTab'), disabled: terminalOf(id)?.phase === 'running', run: () => closeTab(id) }],
-  ]
-}
-
-function closeTab(id: string): void {
-  activeId.value = tabs.value.filter((tab) => tab.id !== id).at(-1)?.id ?? null
-}
+const active = computed(() => props.terminals.find((terminal) => terminal.id === props.activeId) ?? props.terminals[0] ?? null)
 </script>
 
 <template>
-  <SessionOverlay
-    :open="tabs.length > 0"
-    @close="closePanel"
-  >
-    <template #tabs>
-      <TabItem
-        v-for="terminal in tabs"
-        :key="terminal.id"
-        :title="terminal.title"
-        :is-active="terminal.id === active?.id"
-        :status="terminalStatus(terminal.phase)"
-        mark="terminal"
-        :busy="terminal.stopping === true"
-        :closable="false"
-        @select="activate(terminal.id)"
-        v-context-menu="tabMenu(terminal.id)"
-      />
-    </template>
-    <TerminalView
-      v-if="active"
-      :key="active.id"
-      :terminal="active"
-    />
-  </SessionOverlay>
+  <TerminalView v-if="active" :key="active.id" :terminal="active" />
+  <RegionStatus v-else class="h-full" status="note" :icon="SquareTerminal" :label="t('terminals.none')" />
 </template>

@@ -6,7 +6,6 @@ import IconButton from '../ui/IconButton.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import Tooltip from '../ui/Tooltip.vue'
-import SheetCloseButton from './SheetCloseButton.vue'
 import { usePhone } from '../ui/phone'
 import type { FileBar } from './file-bar'
 import { t } from './locales/text'
@@ -23,8 +22,6 @@ const props = defineProps<{
   tooLargeToRender?: boolean
   /** The width at the bar's end that a tree shown over the view covers: the controls stay beside it. */
   overlap: number
-  /** Whether this is the view's top bar, so it ends with the overlay's Close on a phone (`SheetCloseButton`). */
-  sheetClose?: boolean
 }>()
 const emit = defineEmits<{ download: [] }>()
 
@@ -64,7 +61,6 @@ const endInset = computed(() => (phone.value ? (44 - 36) / 2 : (36 - 24) / 2))
       <Tooltip v-if="bar.download" :content="t('actions.download')">
         <IconButton :icon="Download" variant="ghost" size="sm" :aria-label="t('actions.download')" @click="emit('download')" />
       </Tooltip>
-      <SheetCloseButton v-if="sheetClose" />
     </div>
   </div>
 </template>

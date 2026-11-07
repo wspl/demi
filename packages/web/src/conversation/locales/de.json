@@ -2,7 +2,7 @@
   "failures": {
     "uploadAttachment": "Anhang konnte nicht hochgeladen werden",
     "answerRequest": "Anfrage konnte nicht beantwortet werden",
-    "changeWorkPanel": "Arbeitspanel konnte nicht geändert werden",
+    "changeTabs": "Tabs konnten nicht geändert werden",
     "saveDraft": "Entwurf konnte nicht gespeichert werden",
     "sendComment": "Kommentar konnte nicht gesendet werden",
     "saveMessage": "Nachricht konnte nicht gespeichert werden",

@@ -13,14 +13,35 @@ export interface TabCommand {
 }
 
 /**
- * What the work panel needs to show the tabs of one kind. The panel knows
- * nothing else about a kind: the protocol, stream or routes its tabs use stay
- * behind `content`.
+ * A window the conversation's tabs open in, such as Files or the browser: its
+ * id, unique across plugins, its name and its icon, which its title bar and
+ * its taskbar button show.
+ */
+export interface PanelWindow {
+  id: string
+  name(): string
+  icon: Component
+  /**
+   * Whether the taskbar's Open lists it; absent, it does. A window that only
+   * shows what another place opens in it, such as Attachments, which an
+   * attachment in the transcript opens, says false.
+   */
+  openable?: boolean
+}
+
+/**
+ * What the conversation's windows need to show the tabs of one kind. They
+ * know nothing else about a kind: the protocol, stream or routes its tabs use
+ * stay behind `content`.
  */
 export interface PanelTabKind<Data = unknown> {
   kind: string
   /** A tab's `data`, checked where the saved state enters the page. */
   schema: z.ZodType<Data>
+  /** The window its tabs open in. */
+  window: PanelWindow
+  /** The data of a new tab the window's + opens; absent, it opens tabs only by intents. */
+  start?(): Data
   // A method, so kinds of different data fit one list of kinds.
   title(data: Data): string
   /** What the pane says it reads while it waits, such as a file's name; absent, the title. */

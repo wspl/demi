@@ -2,7 +2,7 @@
   "failures": {
     "uploadAttachment": "Impossible d’envoyer la pièce jointe",
     "answerRequest": "Impossible de répondre à la demande",
-    "changeWorkPanel": "Impossible de modifier le panneau de travail",
+    "changeTabs": "Impossible de modifier les onglets",
     "saveDraft": "Impossible d’enregistrer le brouillon",
     "sendComment": "Impossible d’envoyer le commentaire",
     "saveMessage": "Impossible d’enregistrer le message",

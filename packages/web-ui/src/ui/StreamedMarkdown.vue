@@ -237,7 +237,7 @@ function cardAttachment(place: HTMLElement): { id: string; attachment: MessageAt
 }
 
 /**
- * A card's click opens the file in the work panel: the file it was uploaded
+ * A card's click opens the file in the conversation's windows: the file it was uploaded
  * from, as it is now, while that file can be read, and its copy otherwise.
  */
 async function openCard(place: HTMLElement): Promise<void> {

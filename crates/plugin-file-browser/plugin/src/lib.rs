@@ -3,7 +3,7 @@
 //!
 //! Its page, `@demicodes/plugin-file-browser`, shows:
 //!
-//! - the work panel's File view over the product's file routes
+//! - the Files window's File view over the product's file routes
 //!   (`crates/xtask/src/contracts/registry.rs`);
 //! - an attachment's stored copy in a tab of the `attachment` kind, which the
 //!   page opens for an attachment block's card;
@@ -34,7 +34,7 @@ impl FileBrowser {
         let mut manifest = Manifest::new(
             PluginId::try_from("file-browser").expect("a valid plugin id"),
             "File Browser",
-            "Opens the conversation's files in the work panel to read them, with a tree of the working directory.",
+            "Opens the conversation's files in the Files window to read them, with a tree of the working directory.",
         );
         manifest.page = Some(Page::new("@demicodes/plugin-file-browser")
             .panel_kind(ATTACHMENT_KIND)

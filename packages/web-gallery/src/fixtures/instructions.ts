@@ -12,6 +12,6 @@ export const demoInstructions: InstructionEntry[] = [
 export const DEMO_PERSONAL_INSTRUCTIONS = 'Keep answers brief.\nRun the tests before you finish.'
 
 /** What the product does with an entry of the context card. */
-export function demoOpenInstruction(entry: InstructionEntry, would: (title: 'Open Instructions Settings' | 'Show the File in the Work Panel') => void): void {
-  would(entry.kind === 'personal' ? 'Open Instructions Settings' : 'Show the File in the Work Panel')
+export function demoOpenInstruction(entry: InstructionEntry, would: (title: 'Open Instructions Settings' | 'Show the File in Files') => void): void {
+  would(entry.kind === 'personal' ? 'Open Instructions Settings' : 'Show the File in Files')
 }

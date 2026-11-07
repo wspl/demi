@@ -200,7 +200,7 @@
     "handoff_expired": "Este código venció. Muestra uno nuevo en tu otro dispositivo.",
     "current_session": "Usa Cerrar sesión para terminar esta sesión.",
     "session_not_found": "No se encontró la sesión.",
-    "panel_full": "El panel de trabajo no admite más pestañas.",
+    "panel_full": "Este chat no admite más pestañas.",
     "unknown_panel_kind": "Ningún plugin activado puede abrir esta pestaña.",
     "conversation_busy": "El chat está cambiando. Vuelve a intentarlo en un momento.",
     "device_not_attached": "Este dispositivo no está conectado al chat.",

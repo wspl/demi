@@ -75,7 +75,7 @@
   "contextMenu": {
     "open": "Abrir",
     "openLink": "Abrir enlace",
-    "openInWorkPanel": "Abrir en el panel de trabajo",
+    "openInBrowserWindow": "Abrir en la ventana del navegador",
     "copyLink": "Copiar enlace",
     "copyImage": "Copiar imagen",
     "saveImage": "Guardar imagen",

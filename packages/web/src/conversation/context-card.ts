@@ -9,7 +9,7 @@ import { useProviderSettings } from '../settings/providers'
  * What a context card needs of the product beside its usage, the composer's
  * for the root and the Agents window's for a child alike: the usage limits
  * of the account a provider entry runs on, their refresh, and where an
- * instruction opens. `openFile` shows a device file in the work panel; absent
+ * instruction opens. `openFile` shows a device file in Files; absent
  * while no plugin shows files.
  */
 export function useContextCard(openFile: () => ((target: MessageFileTarget) => void) | undefined) {
@@ -57,7 +57,7 @@ export function useContextCard(openFile: () => ((target: MessageFileTarget) => v
     }
   }
 
-  /** The personal instructions open their settings; a file shows in the work panel. */
+  /** The personal instructions open their settings; a file shows in Files. */
   function openInstruction(entry: InstructionEntry): void {
     if (entry.kind === 'personal') {
       void settings.open('instructions')

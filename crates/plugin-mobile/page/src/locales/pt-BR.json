@@ -1,4 +1,5 @@
 {
+  "window": { "name": "Simuladores" },
   "toolbar": {
     "model": "({model})",
     "rotateLeft": "Girar para a esquerda",

@@ -109,8 +109,8 @@ A shared mechanism goes where its use decides:
     fact depends on and reports a change, the backend reads the fact again,
     stores it with when it was read and announces a new value, and a request
     takes what is held, without waiting on or waking a device
-    (`crates/backend-device-access/src/kept.rs`). The work panel, which shows a
-    device's own files and changes, reads the device when shown.
+    (`crates/backend-device-access/src/kept.rs`). Files and Changes, which show
+    a device's own files and changes, read the device when shown.
 -   The Cloud and a paired device are the same thing: a device behind a runner.
     Code never distinguishes them except where the design says they differ
     (pairing, revocation, lifecycle). Anything that reaches a conversation's

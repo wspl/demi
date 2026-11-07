@@ -1,7 +1,6 @@
 /**
- * How a drag on a bottom sheet (`Sheet.vue`), the sidebar's drawer or the
- * full-screen work panel (`finger-drag.ts`) ends, as iOS's and Android's end
- * theirs.
+ * How a drag on a bottom sheet (`Sheet.vue`) or the sidebar's drawer
+ * (`finger-drag.ts`) ends, as iOS's and Android's end theirs.
  *
  * - A flick toward closing closes it however short the pull.
  * - A flick back keeps it.

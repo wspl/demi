@@ -169,7 +169,7 @@ export interface Showing<T> {
   /** The view no longer shows it; a second release does nothing. */
   release(): void
   /**
-   * The view holds it but is not on screen, as a work panel tab the user
+   * The view holds it but is not on screen, as a window's tab the user
    * switched away from: changes are only noted. A second call does nothing.
    */
   away(): void

@@ -10,8 +10,6 @@ import { renderable, type DocumentPlace } from '../markdown/document'
 import RegionNote from '../ui/RegionNote.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import FileBar from './FileBar.vue'
-import SheetCloseButton from './SheetCloseButton.vue'
-import { useSheetDismiss } from './panel-sheet'
 import FilePreview from './FilePreview.vue'
 import HtmlView from './HtmlView.vue'
 import FileSummary from './FileSummary.vue'
@@ -77,11 +75,7 @@ const props = withDefaults(defineProps<{
   overlap?: number
   /** What the bar says on its left in place of the file's kind and facts. */
   label?: string
-  /** Whether the bar ends with the overlay's Close on a phone, as the bar of a view's top does, not one nested in another view (`SheetCloseButton`). */
-  sheetClose?: boolean
-}>(), { line: null, overlap: 0, label: undefined, sheetClose: false })
-/** What closes the phone overlay the file shows in, null elsewhere (`panel-sheet.ts`). */
-const sheet = useSheetDismiss()
+}>(), { line: null, overlap: 0, label: undefined })
 
 const emit = defineEmits<{ open: [path: string] }>()
 
@@ -263,7 +257,7 @@ const card = useShowing(
 )
 
 /**
- * Whether the view has all it first needs of its file, as a work panel pane
+ * Whether the view has all it first needs of its file, as a window's pane
  * waits for it (`agent/pane-ready.ts`): its folder's listing, the text or the
  * description the bar and the body show, and the editor.
  *
@@ -413,13 +407,8 @@ defineExpose({ readOpenedLink, revealLine })
     :bar="bar"
     :too-large-to-render="tooLargeToRender"
     :overlap="overlap"
-    :sheet-close="sheetClose"
     @download="download"
   />
-  <!-- In a phone's overlay, Close stays when the file has no bar, as one that cannot be read has none. -->
-  <div v-else-if="sheetClose && sheet" class="flex h-9 shrink-0 items-center justify-end border-b border-line pr-1.5 phone:h-row">
-    <SheetCloseButton />
-  </div>
   <RegionNote
     v-if="shown.entry.value?.answer && shown.entry.value.unwatched && !brokenLink"
     :icon="History"

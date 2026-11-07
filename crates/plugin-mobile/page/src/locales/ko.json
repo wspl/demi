@@ -1,4 +1,5 @@
 {
+  "window": { "name": "시뮬레이터" },
   "toolbar": {
     "model": "({model})",
     "rotateLeft": "왼쪽으로 회전",

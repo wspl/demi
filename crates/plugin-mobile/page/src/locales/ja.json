@@ -1,4 +1,5 @@
 {
+  "window": { "name": "シミュレータ" },
   "toolbar": {
     "model": "（{model}）",
     "rotateLeft": "左に回転",

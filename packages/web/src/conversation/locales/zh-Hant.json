@@ -2,7 +2,7 @@
   "failures": {
     "uploadAttachment": "無法上傳附件",
     "answerRequest": "無法回覆請求",
-    "changeWorkPanel": "無法變更工作面板",
+    "changeTabs": "無法變更分頁",
     "saveDraft": "無法儲存草稿",
     "sendComment": "無法傳送評論",
     "saveMessage": "無法儲存訊息",

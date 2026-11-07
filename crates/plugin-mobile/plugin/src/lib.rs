@@ -44,7 +44,7 @@ impl Mobile {
         let mut manifest = Manifest::new(
             PluginId::try_from("mobile").expect("a valid plugin id"),
             "Simulators",
-            "Gives the agent the iOS simulators of the conversation's device, which it drives with demi mobile and you watch and use in the work panel.",
+            "Gives the agent the iOS simulators of the conversation's device, which it drives with demi mobile and you watch and use in its window.",
         );
         manifest.commands = commands().manifest_commands();
         manifest.streams = vec![live_stream()];

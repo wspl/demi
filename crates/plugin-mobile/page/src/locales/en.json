@@ -1,4 +1,5 @@
 {
+  "window": { "name": "Simulators" },
   "toolbar": {
     "model": "({model})",
     "rotateLeft": "Rotate Left",

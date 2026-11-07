@@ -1,5 +1,5 @@
 {
-  "chip": "{count} geplant",
+  "name": "Zeitpläne",
   "delete": "Löschen",
   "notYet": "Noch nicht geweckt",
   "trigger": {

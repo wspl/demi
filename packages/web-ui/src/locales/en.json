@@ -200,7 +200,7 @@
     "handoff_expired": "This code has expired. Show a new one on your other device.",
     "current_session": "Use Sign Out to end this session.",
     "session_not_found": "The session wasn’t found.",
-    "panel_full": "The work panel can’t hold more tabs.",
+    "panel_full": "This conversation can’t hold more tabs.",
     "unknown_panel_kind": "No plugin that’s on can open this tab.",
     "conversation_busy": "The conversation is changing. Try again in a moment.",
     "device_not_attached": "This device isn’t attached to the conversation.",

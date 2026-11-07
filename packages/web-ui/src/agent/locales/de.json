@@ -204,7 +204,6 @@
     "forkedFrom": "Abgezweigt von {agent}",
     "inherited": "Von diesem Chat übernommen",
     "fast": "Schnell",
-    "chip": "{count} Agent | {count} Agenten",
     "stopAgent": "Agent stoppen",
     "copyId": "Agent-ID kopieren",
     "closeTab": "Tab schließen",
@@ -218,10 +217,9 @@
     "thinkingOff": "Denken aus"
   },
   "terminals": {
+    "none": "Es läuft nichts",
     "endCommand": "Befehl beenden",
     "closeTab": "Tab schließen",
-    "chip": "{count} aktiv",
-    "serviceChip": "{count} Dienst | {count} Dienste",
     "loading": "Terminal wird geladen …",
     "unavailable": "Das Terminal konnte nicht geladen werden."
   },
@@ -233,10 +231,8 @@
     "empty": "Keine Nachrichten",
     "start": "Chat beginnen",
     "conversations": "Chats",
-    "openPanel": "Panel öffnen",
     "tabs": "Tabs",
     "tabsOpen": "Tabs, {count} geöffnet",
-    "closePanel": "Panel schließen",
     "options": "{title}, Chat-Optionen",
     "deviceState": "{name} ist {state}",
     "renameTitle": "Chat umbenennen",
@@ -425,16 +421,7 @@
     "label": "Browseradresse"
   },
   "panel": {
-    "allTabs": "Alle Tabs anzeigen",
     "more": "Mehr",
-    "windowHeight": "Fensterhöhe",
-    "closeOthers": "Andere schließen",
-    "closeRight": "Rechts schließen",
-    "closeLeft": "Links schließen",
-    "closeAll": "Alle schließen",
-    "cannotShow": "Dieser Tab kann nicht angezeigt werden.",
-    "nothingOpen": "Nichts geöffnet",
-    "noFiles": "Keine Dateien oder Änderungen",
     "reading": "{name} wird gelesen",
     "deviceOffline": "{name} ist offline.",
     "deviceOfflineDetail": "Dateien, Änderungen und der Browser erscheinen wieder, sobald die Verbindung wieder besteht."

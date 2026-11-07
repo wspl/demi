@@ -21,10 +21,10 @@ import { closeContextMenu, installContextMenus, showContextMenu, shownContextMen
  */
 const props = defineProps<{
   /**
-   * Opens a web page in a new tab of the conversation's browser, the work
-   * panel shown, while a conversation is shown whose panel takes one.
+   * Opens a web page in a new tab of the conversation's browser window, the
+   * window shown, while a conversation is shown whose work takes one.
    */
-  openInWorkPanel?: (url: string) => void
+  openInBrowserWindow?: (url: string) => void
 }>()
 
 let copied: CopySource
@@ -56,8 +56,8 @@ const services: ContextMenuServices = {
   save: (url, name) => downloadUrl(url, name),
   openLink: (url) => window.open(url, '_blank', 'noopener,noreferrer'),
   // Read as each menu opens: the conversation shown changes.
-  get openInWorkPanel() {
-    return props.openInWorkPanel
+  get openInBrowserWindow() {
+    return props.openInBrowserWindow
   },
 }
 

@@ -37,7 +37,7 @@ import { browserPlugin, galleryPageHost } from './plugins'
 import { galleryWidgets } from './widgets'
 
 /**
- * The gallery project as the work panel's kinds read a conversation's files.
+ * The gallery project as the tab kinds read a conversation's files.
  * `directories` lists the directories its agents work in, the project's alone
  * by default; the repository's checkout in the other checkout's folder is on
  * the branch `slotBranch` names.
@@ -140,25 +140,34 @@ export function useGalleryWork(
   const history = ref<readonly string[]>(selection === null ? [] : [selection])
   const pinned = ref<PinnedTabs>({})
   const panel = computed<PanelState>(() => ({ history: history.value, tabs: tabs.tabs.value }))
-  /** Whether the specimen's panel is open, which a tab its kind asks to show opens. */
+  /** Whether the address names a tab, whose window shows in front; a tab its kind asks to show names it. */
   const open = ref(startsOpen)
-  /** Whether a phone draws the panel as an overlay over the conversation (`work.ts`, `ENTRY_SHEET`): a view the conversation opens, not the tabs button. */
-  const sheet = ref(false)
   /**
-   * The web browser's history of the panel, as the product's address keeps
-   * it (`packages/web-ui/src/agent/panel-address.ts`): each move is a step,
-   * and Back and Forward show the panel as it was there.
+   * The web browser's history of the address, as the product's keeps it
+   * (`packages/web-ui/src/agent/panel-address.ts`): each move is a step, and
+   * Back and Forward show the work as it was there.
    */
-  const steps = galleryHistory(() => ({ open: open.value, sheet: sheet.value, history: history.value, pinned: pinned.value }), (step) => {
+  const steps = galleryHistory(() => ({ open: open.value, history: history.value, pinned: pinned.value }), (step) => {
     open.value = step.open
-    sheet.value = step.sheet
     history.value = step.history
     pinned.value = step.pinned
   })
 
-  function select(id: string) {
+  function select(id: string, how: 'push' | 'replace' = 'push') {
     history.value = selectTab(history.value, id)
-    steps.step()
+    open.value = true
+    if (how === 'replace') {
+      steps.replace()
+    } else {
+      steps.step()
+    }
+  }
+  /** The address names no tab: no window of the work is in front. */
+  function close() {
+    if (open.value) {
+      open.value = false
+      steps.step()
+    }
   }
   /** Each tab's showings the panel applied, as the product keeps them beside the history. */
   let applied: AppliedShows = {}
@@ -169,13 +178,9 @@ export function useGalleryWork(
       return
     }
     applied = pending.applied
-    // A view the conversation or the agent opens is an overlay on a phone, as the product's applyShows makes it;
-    // an open panel keeps how it shows.
-    sheet.value = open.value ? sheet.value : true
     for (const id of pending.shown) {
       select(id)
     }
-    open.value = true
   })
   /** A new tab, after the others or at `options.index` among them, selected unless `options` says not; returns its id. */
   function add(kind: string, data: unknown, options: { select: boolean; index?: number } = { select: true }): string {
@@ -239,32 +244,7 @@ export function useGalleryWork(
     if (opened.created) {
       tabs.change({ type: 'create', tab: opened.created })
     }
-    // Opened from the conversation, a phone draws it as an overlay over it; one opened inside an open panel keeps how
-    // the panel shows.
-    sheet.value = open.value ? sheet.value : true
-    open.value = true
     select(opened.selection)
-  }
-
-  /** The tabs button opens the full panel, not an overlay (`WorkPanel`'s `sheet`). */
-  function openPanel() {
-    sheet.value = false
-    open.value = true
-    steps.step()
-  }
-  /**
-   * Closes the panel as a phone's does: back through the history to the step before it opened, as the
-   * product's work store goes back to the entry before the panel opened, or closed in place where none was.
-   */
-  function closePanel() {
-    while (open.value && steps.go('back')) {
-      // Each step back restores the panel as it was there.
-    }
-    if (open.value) {
-      open.value = false
-      sheet.value = false
-      steps.replace()
-    }
   }
 
   const host = galleryPageHost({ browser: browserPlugin(browser, plugin), mobile: mobile.plugin, widget: galleryWidgets }, {
@@ -277,10 +257,7 @@ export function useGalleryWork(
     },
     panel: {
       tabs: (_conversation, kind) => tabs.tabs.value.filter((tab) => tab.kind === kind).map((tab) => tab.data),
-      select: (_conversation, _kind, id) => {
-        open.value = true
-        select(id)
-      },
+      select: (_conversation, _kind, id) => select(id),
       canGo: (_conversation, direction) => steps.canGo(direction),
       go: (direction) => steps.go(direction),
     },
@@ -323,7 +300,6 @@ export function useGalleryWork(
     closeTabs(tabs.tabs.value.map((tab) => tab.id))
     history.value = selection === null ? [] : [selection]
     pinned.value = {}
-    sheet.value = false
     steps.reset()
   }
   /**
@@ -346,9 +322,7 @@ export function useGalleryWork(
     panel,
     pinned,
     open,
-    sheet,
-    openPanel,
-    closePanel,
+    close,
     kinds,
     selected,
     browser,

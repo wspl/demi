@@ -16,6 +16,7 @@ import { historySettled, setHistoryTraversal } from '@demicodes/web-ui/overlay/b
 import { reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
 import { reportUncaughtErrors } from '@demicodes/web-ui/infra/uncaught'
 import { loadRegionRenderers } from '@demicodes/web-ui/infra/region-load'
+import { keepTreeLayout } from './fixtures/kept-tree'
 import { simulatedRequestId } from './fixtures/request-failures'
 import { galleryState, persistGalleryState } from './gallery-state'
 import { router } from './router'
@@ -41,6 +42,7 @@ applyThemeToDocument()
 // As in the product: the browser's bars take the color of the page's top.
 followThemeColor()
 persistGalleryState()
+keepTreeLayout()
 // The transcript reads the user's text size, as in the product; Settings'
 // specimen changes it from there.
 applyTranscriptTextSize(DEFAULT_TRANSCRIPT_TEXT_SIZE)

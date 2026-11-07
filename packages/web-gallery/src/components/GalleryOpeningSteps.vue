@@ -100,7 +100,6 @@ const step = computed(() => {
         @abort-subagents="productWould('Stop the Agents')"
         @abort-subagent="productWould('Stop the Agent')"
         @abort-terminal="productWould('Stop the Command')"
-        @open-aside="productWould('Open the Panel')"
         @pin="productWould('Pin the Conversation')"
         @archive="productWould('Archive the Conversation')"
         @delete="productWould('Delete the Conversation')"

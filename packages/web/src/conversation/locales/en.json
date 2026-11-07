@@ -2,7 +2,7 @@
   "failures": {
     "uploadAttachment": "Could Not Upload the Attachment",
     "answerRequest": "Could Not Answer the Request",
-    "changeWorkPanel": "Could Not Change the Work Panel",
+    "changeTabs": "Could Not Change the Tabs",
     "saveDraft": "Could Not Save the Draft",
     "sendComment": "Could Not Send the Comment",
     "saveMessage": "Could Not Save the Message",

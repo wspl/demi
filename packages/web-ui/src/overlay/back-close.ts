@@ -27,7 +27,8 @@ import { onBeforeUnmount, watch, type WatchSource } from 'vue'
  *
  * Every layer the user closes stands here on a phone, the overlay store's menus,
  * popovers and dialogs (`useOverlay`) as well as the sheets and the drawer; the
- * work panel is a place of the page's address instead. So Back closes the one opened last, which is the one on top, and
+ * conversation's window in front is a place of the page's address instead. So
+ * Back closes the one opened last, which is the one on top, and
  * leaves the page only once none is open. A layer that closed another way while
  * one above it was still open keeps its entry until Back comes down to it, which
  * then takes it off too, so one Back is never spent on a layer already gone.

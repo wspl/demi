@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { computed, onBeforeUnmount, provide, ref, useSlots, watch } from 'vue'
-import { useElementSize, useEventListener } from '@vueuse/core'
+import { computed, onBeforeUnmount, provide, ref } from 'vue'
+import { useEventListener } from '@vueuse/core'
 import { useEscapeClose } from '../composables/useEscapeClose'
 import { PanelLeft } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
@@ -11,29 +11,16 @@ import { SCREEN_EDGE_PX, usePhone } from '../ui/phone'
 import { createFingerDrag } from '../ui/finger-drag'
 import { useBackClose } from '../overlay/back-close'
 import { appOverlayStore } from '../overlay/appOverlay'
-import { ASIDE_SHARE, SIDEBAR_WIDTH, asideBounds, asideShareFor, asideWidthFor } from './sidebar-width'
+import { SIDEBAR_WIDTH } from './sidebar-width'
 import { sidebarDrawerKey } from './sidebar-drawer'
-import { KEEPS_WINDOWS } from '../ui/window-stack'
 
 /**
- * The app frame: the sidebar, the main pane, and the work panel (aside) on the
- * right, with a divider sizing each side pane.
+ * The app frame: the sidebar and the main pane, with a divider sizing the
+ * sidebar. The sidebar keeps a px width, which the host keeps (v-model) and
+ * hears `resizeEnd` for when it has settled, the moment to persist it.
  *
- * Sizes:
- *
- * - The sidebar keeps a px width. The aside keeps a share of the width it splits
- *   with the main pane, so a window resize scales the two together and leaves the
- *   sidebar alone.
- * - The host keeps both sizes (v-model) and hears `resizeEnd` / `asideResizeEnd`
- *   when one has settled, which is the moment to persist it.
- * - The aside is only there while `asideOpen` is true and the host gave the slot.
- *
- * Each of the three panes is a region (`data-region`, `ui/region.ts`): a menu
- * opened from a trigger in it grows toward its inside.
- *
- * The work panel and its divider keep the session's windows open (`KEEPS_WINDOWS`,
- * `ui/window-stack.ts`): only a press in the sidebar or the main pane closes one,
- * so a subagent's changes can be read in the panel beside its Agents window.
+ * Each pane is a region (`data-region`, `ui/region.ts`): a menu opened from a
+ * trigger in it grows toward its inside.
  *
  * On a computer the sidebar collapses (`collapsed`, v-model, which the host keeps in
  * the browser): it slides out to the left over 200 ms while the main pane widens with
@@ -48,16 +35,7 @@ import { KEEPS_WINDOWS } from '../ui/window-stack'
  *   over a scrim. A tap on the scrim closes it, as do a swipe left on it, Escape
  *   and Back. A swipe right from the screen's left edge (`SCREEN_EDGE_PX`) opens
  *   it, following the finger in as the closing swipe follows it out.
- * - The work panel opens full screen over the conversation, sliding in from the
- *   right; one the conversation opened (`asideSheet`), such as a picture tapped,
- *   fades in over it instead, and fades out the same way. A swipe right from
- *   that edge takes either back to the conversation, as does the full panel's
- *   back button.
- *   The browser's Back closes it through the host, whose page address holds
- *   whether it is open (`asideOpen`), as a pushed page's does. While it is open
- *   the edge is its swipe, not the drawer's.
  * - Every swipe follows the finger and settles by one rule (`finger-drag.ts`).
- * - Opening one closes the other.
  * - The frame shows one top bar there: a page with its own puts the sidebar's
  *   button in it (`useSidebarDrawer`), and the frame's own, the button and
  *   `label`, shows only while none does.
@@ -70,61 +48,21 @@ const props = withDefaults(defineProps<{
   label?: string
   /** The keys of the `sidebar` action, shown in the collapse button's tip. */
   toggleShortcut?: string
-  /**
-   * On a phone, whether the work panel is an overlay the conversation opened
-   * (a picture, a file link): it fades in over the conversation, with no
-   * shadow, rather than sliding in from the right as the full panel does.
-   */
-  asideSheet?: boolean
 }>(), { label: 'demi' })
 const emit = defineEmits<{
   resizeEnd: [width: number]
-  asideResizeEnd: [share: number]
 }>()
 const open = defineModel<boolean>('open', { default: false })
 const collapsed = defineModel<boolean>('collapsed', { default: false })
 const width = defineModel<number>('width', { default: SIDEBAR_WIDTH.default })
-const asideOpen = defineModel<boolean>('asideOpen', { default: false })
-const asideShare = defineModel<number>('asideShare', { default: ASIDE_SHARE.default })
 // A stored width outside today's bounds is shown at the bound, not rewritten.
 const shownWidth = computed(() => clampSize(width.value, SIDEBAR_WIDTH))
 
-// The main pane and the aside split what the sidebar leaves; a hidden sidebar measures 0.
 const frame = ref<HTMLElement | null>(null)
-const sidebar = ref<HTMLElement | null>(null)
-const { width: frameWidth } = useElementSize(frame, { width: window.innerWidth, height: 0 })
-const { width: sidebarWidth } = useElementSize(sidebar)
-const sharedWidth = computed(() => frameWidth.value - sidebarWidth.value)
-const shownAsideWidth = computed(() => asideWidthFor(asideShare.value, sharedWidth.value))
-const asideDragBounds = computed(() => asideBounds(sharedWidth.value))
 
 const phone = usePhone()
-const slots = useSlots()
 /** Whether the sidebar is out of the way on a computer, which a phone never is: its drawer is `open`. */
 const hidden = computed(() => collapsed.value && !phone.value)
-
-/**
- * Whether the panel shown, or leaving, is the overlay the conversation opened (`asideSheet`): read while
- * it is open and kept while it leaves, so it leaves the way it came, though its owner then says it is closed.
- */
-const sheetShown = ref(props.asideSheet)
-watch([() => props.asideSheet, asideOpen], ([sheet, open]) => {
-  if (open) {
-    sheetShown.value = sheet
-  }
-})
-
-// On a phone the two overlays never stack: the newly opened one wins.
-watch(open, (value) => {
-  if (value && phone.value) {
-    asideOpen.value = false
-  }
-})
-watch(asideOpen, (value) => {
-  if (value && phone.value) {
-    open.value = false
-  }
-})
 
 /** The pages that show their own top bar on a phone, which hides the frame's. */
 const barOwners = ref(0)
@@ -145,7 +83,7 @@ provide(sidebarDrawerKey, {
   shortcut: () => props.toggleShortcut,
 })
 
-// The drawer is a layer Back closes; the full-screen panel is a place of the host's address.
+// The drawer is a layer Back closes.
 useBackClose(() => open.value, () => {
   open.value = false
 }, () => phone.value)
@@ -227,94 +165,31 @@ const drawerIn = createFingerDrag({
   },
 })
 
-/**
- * How far a swipe has pulled the full-screen panel right of its place, in
- * px; null at rest. A swipe that takes it back leaves it here, so it goes on
- * sliding away from where it stands, until it has left.
- */
-const panelPull = ref<number | null>(null)
-/** Whether a finger holds the panel now, which then follows it without easing. */
-const panelPulling = ref(false)
-
-/** A swipe right from the screen's edge over the full-screen panel, which goes back to the conversation beneath. */
-const panelBack = createFingerDrag({
-  way: 1,
-  size: () => window.innerWidth,
-  hold: () => {
-    panelPulling.value = true
-  },
-  follow: (moved) => {
-    panelPull.value = moved
-  },
-  settle: (goes) => {
-    panelPulling.value = false
-    if (goes) {
-      asideOpen.value = false
-    } else {
-      panelPull.value = null
-    }
-  },
-})
-
-const drags = [drawerOut, drawerIn, panelBack]
+const drags = [drawerOut, drawerIn]
 onBeforeUnmount(() => {
   for (const drag of drags)
     drag.dispose()
 })
 
 /**
- * Which drag a finger put down at `x` belongs to. On a phone the screen's left edge
- * is one drag's at a time:
- *
- * - Over the full-screen panel, it takes the panel back.
- * - Over the conversation, with the drawer closed, it draws the drawer in.
+ * A finger down anywhere on the frame: on a phone, one at the screen's left
+ * edge over the conversation, with the drawer closed, draws the drawer in. A
+ * second finger takes any drag under way from the first.
  */
-function edgeOwner(x: number): 'panel' | 'drawer' | null {
-  if (!phone.value || open.value || x > SCREEN_EDGE_PX)
-    return null
-  return asideOpen.value && slots.aside ? 'panel' : 'drawer'
-}
-
-/** A finger down anywhere on the frame. A second finger takes any drag under way from the first. */
 function frameTouchStart(event: TouchEvent): void {
   if (event.touches.length !== 1) {
     for (const drag of drags)
       drag.cancel()
     return
   }
-  const owner = event.touches[0] ? edgeOwner(event.touches[0].clientX) : null
-  if (owner === 'panel')
-    panelBack.start(event)
-  else if (owner === 'drawer')
+  const x = event.touches[0]?.clientX
+  if (phone.value && !open.value && x !== undefined && x <= SCREEN_EDGE_PX)
     drawerIn.start(event)
 }
 
 /**
- * The touch pointer the panel's edge swipe owns, from its press to its lift.
- *
- * A browser sends a finger's pointer events before its touch events, and what the
- * panel shows may act on them, as a live browser tab presses, moves and types into
- * its page. They stop here, on their way down, so the panel sees none of a touch
- * that is the swipe's, whether it drags or not.
- */
-let edgePointer: number | null = null
-function claimEdgePointer(event: PointerEvent): void {
-  if (event.pointerType !== 'touch')
-    return
-  if (event.type === 'pointerdown') {
-    edgePointer = edgeOwner(event.clientX) === 'panel' ? event.pointerId : null
-  }
-  if (event.pointerId !== edgePointer)
-    return
-  event.stopPropagation()
-  if (event.type === 'pointerup' || event.type === 'pointercancel')
-    edgePointer = null
-}
-
-/**
- * The scrim or the panel starts to leave: it drops its following of the
- * finger, which a leaving node is no longer patched to drop, so it eases
- * from where it stands.
+ * The scrim starts to leave: it drops its following of the finger, which a
+ * leaving node is no longer patched to drop, so it eases from where it stands.
  */
 function dropPulled(element: Element): void {
   element.removeAttribute('data-pulled')
@@ -325,14 +200,7 @@ function drawerSettled(): void {
   drawerPull.value = null
 }
 
-/** The panel has left: the next one opens in place. */
-function panelSettled(): void {
-  panelPull.value = null
-}
-
 useEventListener(frame, 'touchstart', frameTouchStart, { passive: true })
-for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] as const)
-  useEventListener(frame, type, claimEdgePointer, { capture: true })
 </script>
 
 <template>
@@ -350,7 +218,6 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
     <Transition name="frame-drawer" :css="phone" @after-leave="drawerSettled" @leave-cancelled="drawerSettled">
       <div
         v-show="open || drawingIn || !phone"
-        ref="sidebar"
         data-region
         data-sidebar
         class="h-full shrink-0"
@@ -398,39 +265,6 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
       </div>
       <slot />
     </main>
-    <!-- The handle works in px; the model keeps the share those px are of the shared width. -->
-    <ResizeHandle
-      v-if="asideOpen && $slots.aside && !phone"
-      v-bind="{ [KEEPS_WINDOWS]: '' }"
-      :model-value="shownAsideWidth"
-      side="end"
-      :min="asideDragBounds.min"
-      :max="asideDragBounds.max"
-      :default-value="asideWidthFor(ASIDE_SHARE.default, sharedWidth)"
-      :label="t('layout.workPanelWidth')"
-      @update:model-value="asideShare = asideShareFor($event, sharedWidth)"
-      @commit="emit('asideResizeEnd', asideShareFor($event, sharedWidth))"
-    />
-    <!--
-      On a phone the panel takes the whole screen, sliding in from the right,
-      above a window of the dock it opened from, such as a subagent's, which
-      stands at the drawer's height over the conversation.
-    -->
-    <Transition :name="phone && sheetShown ? 'frame-sheet' : 'frame-aside'" :css="phone" @before-leave="dropPulled" @after-leave="panelSettled">
-      <div
-        v-if="asideOpen && $slots.aside"
-        data-region
-        v-bind="{ [KEEPS_WINDOWS]: '' }"
-        :class="phone ? `${sheetShown ? 'frame-sheet' : 'frame-aside'} fixed inset-0 z-[45]` : 'h-full max-w-full shrink-0'"
-        :style="phone
-          ? { '--aside-pull': panelPull === null ? undefined : `${panelPull}px` }
-          : { width: `${shownAsideWidth}px` }"
-        :data-pulled="phone && panelPulling ? '' : undefined"
-        :data-swiped="phone && panelPull !== null ? '' : undefined"
-      >
-        <slot name="aside" />
-      </div>
-    </Transition>
     <slot name="dialogs" />
   </div>
 </template>
@@ -470,61 +304,6 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
   translate: -100% 0 !important;
 }
 
-/* The panel follows a finger swiping it back, the conversation showing beneath it, and eases back or away from
-   where the finger left it. Its shadow lies off the screen's edge until it is pulled. */
-.frame-aside {
-  translate: var(--aside-pull, 0px) 0;
-  transition: translate 300ms cubic-bezier(0.32, 0.72, 0, 1);
-  box-shadow: -4px 0 16px rgb(0 0 0 / 0.12);
-}
-
-.frame-aside[data-pulled] {
-  transition: none;
-}
-
-.frame-aside-enter-active,
-.frame-aside-leave-active {
-  transition: translate 300ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-.frame-aside-enter-from,
-.frame-aside-leave-to {
-  translate: 100% 0;
-}
-
-/* The overlay the conversation opens fades in over it, with no shadow; a swipe from the edge still
-   pulls it aside, the conversation showing beneath. */
-.frame-sheet {
-  translate: var(--aside-pull, 0px) 0;
-  transition: translate 300ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-.frame-sheet[data-pulled] {
-  transition: none;
-}
-
-.frame-sheet-enter-active,
-.frame-sheet-leave-active {
-  transition: opacity 200ms ease-out, scale 200ms ease-out;
-}
-
-.frame-sheet-enter-from,
-.frame-sheet-leave-to {
-  opacity: 0;
-  scale: 0.98;
-}
-
-/* Swiped away from the screen's edge, the overlay goes on sliding from where the finger left it. */
-.frame-sheet-leave-active[data-swiped] {
-  transition: translate 300ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-.frame-sheet-leave-to[data-swiped] {
-  translate: 100% 0;
-  opacity: 1;
-  scale: 1;
-}
-
 /* The scrim lightens as the drawer is pulled, and eases back with it when it springs back. */
 .frame-scrim {
   opacity: var(--scrim-shade, 1);
@@ -543,13 +322,6 @@ for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] 
 @media (prefers-reduced-motion: reduce) {
   .frame-sidebar,
   .frame-drawer,
-  .frame-aside,
-  .frame-aside-enter-active,
-  .frame-aside-leave-active,
-  .frame-sheet,
-  .frame-sheet-enter-active,
-  .frame-sheet-leave-active,
-  .frame-sheet-leave-active[data-swiped],
   .frame-scrim {
     transition: none;
   }

@@ -1,5 +1,5 @@
 {
-  "chip": "{count} programados",
+  "name": "Programaciones",
   "delete": "Eliminar",
   "notYet": "Aún no se activó",
   "trigger": {

@@ -3,7 +3,7 @@ import { WifiOff } from '@lucide/vue'
 import { t } from './locales/text'
 
 /**
- * What the work panel shows in place of its tabs' contents while the
+ * What a window of the conversation's work shows in place of its tabs' contents while the
  * conversation's primary device is a paired device whose runner is not connected:
  * which device it is, and that its files, changes and browser come back when it
  * does. It never spins, since nothing it waits for is under way; a tab's own

@@ -9,7 +9,7 @@ use demi_command_package_mobile_protocol::mobile::*;
 use demi_device_interface::{GroupBuilder, LeafBuilder};
 
 /// The group's summary.
-const SUMMARY: &str = "Operate the simulators of the device running this shell, as a person would, while the user watches and operates them in the work panel. Every coordinate is a pixel of the simulator's screenshot. Element references come from inspect.";
+const SUMMARY: &str = "Operate the simulators of the device running this shell, as a person would, while the user watches and operates them in their window. Every coordinate is a pixel of the simulator's screenshot. Element references come from inspect.";
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "iOS simulators and Android emulators: open, screenshot, UI tree, tap, swipe, type, rotate, record, install and launch apps, logs, erase.";
 
@@ -34,7 +34,7 @@ macro_rules! operations {
 
 operations! {
     "list" => ListInput, ListResult, "List this device's simulators: the simctl id or AVD name open takes, platform, system, state, the handle while open here, model and name; why a platform has none is a warning on stderr.";
-    "open" => OpenInput, OpenResult, format!("Open a simulator by its name or simctl id, booting it without a window when it is shut down; prints its handle, such as m1, its screenshot size and its simctl id, and shows it in the user's work panel."); 
+    "open" => OpenInput, OpenResult, format!("Open a simulator by its name or simctl id, booting it without a window when it is shut down; prints its handle, such as m1, its screenshot size and its simctl id, and shows it in the user's Simulators window."); 
     "close" => CloseInput, CloseResult, "Close a device; shuts it down when demi mobile booted it, else leaves it booted.";
     "screenshot" => ScreenshotInput, ScreenshotResult, format!("Capture the settled screen: its PNG's bytes on stdout, its long side at most {SCREENSHOT_LONG_SIDE} pixels, so demi mobile screenshot m1 | demi file view shows it to you and > shot.png saves it; or save a new PNG with --output. Waits up to 1.5 s for the screen to stop changing.");
     "inspect" => InspectInput, InspectResult, "Read the settled screen's UI tree, alerts and the keyboard included: each element's ref, role, label, value, identifier, frame in screenshot pixels and state.";

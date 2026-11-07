@@ -1,4 +1,5 @@
 {
+  "window": { "name": "瀏覽器" },
   "reasons": {
     "invalid_input": "瀏覽器只能開啟網頁、檔案和空白頁。",
     "tab_not_found": "此頁面已不在裝置上開啟。",

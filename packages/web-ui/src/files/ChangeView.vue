@@ -53,7 +53,6 @@ import { t } from './locales/text'
 import { formatCount } from '../ui/numbers'
 import { COMMITS_HEIGHT, TREE_WIDTH } from './file-view'
 import { baseName } from '@demicodes/utils'
-import SheetCloseButton from './SheetCloseButton.vue'
 import { relativePath, resolveDevicePath } from './paths'
 import { hasSourceView, previewKind, svgImageUrl } from './preview'
 import type { FileContents } from './types'
@@ -550,7 +549,7 @@ watch(() => log.listed.value, (listed) => {
     commitsSeen.value = true
 }, { immediate: true })
 /**
- * Whether the view has what a work panel pane waits for (`agent/pane-ready.ts`):
+ * Whether the view has what a window's pane waits for (`agent/pane-ready.ts`):
  * the list of the files it shows, the selected file's two sides, the branch
  * the toolbar names and the newest commits. A read the view holds an answer to
  * is in, though it is read again.
@@ -655,8 +654,6 @@ function pick(path: string): void {
       <!-- The menus at the right give way first, their names cut short; only then does it, scrolling in its own
            box, as on a phone. -->
       <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1 min-w-0 shrink-[0.01] phone:ml-0" />
-      <!-- A phone overlay's Close ends the first row, at the screen's top right. -->
-      <SheetCloseButton class="ml-auto" />
       <!-- On a phone the file's controls take a second row, the branch at its start, rather than crowd the first. -->
       <div class="hidden h-0 basis-full phone:block" aria-hidden="true" />
       <!-- The file's controls keep to the right, whether or not a file is shown. -->

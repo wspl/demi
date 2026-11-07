@@ -155,12 +155,12 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
       return shell.files
     },
     intents: shell.intents ?? {
-      open: (_conversation, request) => productWould(`Open the ${request.intent} in the Work Panel`),
+      open: (_conversation, request) => productWould(`Open the ${request.intent} in Its Window`),
       canOpen: () => true,
     },
     panel: shell.panel ?? {
       tabs: () => [],
-      select: (_conversation, kind) => productWould(`Select the ${kind} Tab in the Work Panel`),
+      select: (_conversation, kind) => productWould(`Show the ${kind} Tab in Its Window`),
       // A specimen without a panel has no history of one.
       canGo: () => false,
       go: () => {},

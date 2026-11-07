@@ -20,7 +20,7 @@ function beat(): Promise<void> {
 
 export class GalleryPanel implements PanelBackend {
   private revision = 0
-  private tabs: PanelTab[] = []
+  private tabs: readonly PanelTab[] = []
   /** Every id the panel had, which is never used again. */
   private readonly retired = new Set<string>()
   /**

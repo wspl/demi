@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import { browserPage } from '@demicodes/plugin-browser'
 import { BROWSER_TAB_KIND } from '@demicodes/plugin-browser/live/store'
 import { changesPage } from '@demicodes/plugin-changes'
@@ -9,13 +8,15 @@ import { fileBrowserPage } from '@demicodes/plugin-file-browser'
 import { galleryBrowser } from '../fixtures/live-browser'
 import { galleryFiles, useGalleryWork } from '../fixtures/work-panel'
 import { createGalleryProject } from '../fixtures/project'
+import GalleryWorkWindows from './GalleryWorkWindows.vue'
 
 /**
- * The work panel's tab strip in a frame of the given width, with every motion
- * the strip has to get right on buttons under it: select (first, middle, last,
- * a cut-off one), open (one, five), close (first, active, middle, last, all
- * but the active), and a scripted run through them. The panel is the
- * product's; this holds its tabs the way the product does and drives them.
+ * The browser window's tab strip in a frame of the given width, with every
+ * motion the strip has to get right on buttons under it: select (first,
+ * middle, last, a cut-off one), open (one, five), close (first, active,
+ * middle, last, all but the active), and a scripted run through them. The
+ * windows are the product's; this holds their tabs the way the product does
+ * and drives them.
  */
 const props = withDefaults(
   defineProps<{
@@ -36,14 +37,14 @@ const TITLES = [
 ]
 
 const project = createGalleryProject()
-// Changes and Files pinned before the pages, as the product's panel has them; the
-// pages are the conversation browser's, which has none open before Reset opens them.
+// Changes and Files have windows of their own, as the product's do; the pages are
+// the conversation browser's, which has none open before Reset opens them.
 const work = useGalleryWork(null, {
   files: galleryFiles(project),
   browser: galleryBrowser([]),
   pages: [changesPage, fileBrowserPage, browserPage()],
 })
-const { panel, pinned, kinds } = work
+const { panel } = work
 let opened = 0
 
 function openPage(): void {
@@ -175,23 +176,10 @@ const count = computed(() => ids().length)
   <div class="flex flex-col gap-3">
     <div
       ref="frame"
-      class="gallery-frame gallery-frame-base h-11 max-w-full overflow-hidden"
+      class="gallery-frame gallery-frame-base h-[16rem] max-w-full overflow-hidden"
       :style="{ width: props.width }"
     >
-      <WorkPanel
-        :panel="panel"
-        :pinned="pinned"
-        :kinds="kinds"
-        @select="work.select($event)"
-        @move-tab="work.move"
-        @update-tab="work.update"
-        @update-pinned="work.updatePinned"
-        @close-tabs="closeTabs"
-        @close="reset"
-      >
-        <!-- Only the header takes part; the body stays empty. -->
-        <template #default><span /></template>
-      </WorkPanel>
+      <GalleryWorkWindows :work="work" />
     </div>
     <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px] text-fg-muted">
       <span class="flex flex-wrap items-center gap-1">

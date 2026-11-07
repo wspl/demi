@@ -2,28 +2,32 @@ import { onBeforeUnmount, ref, type Ref } from 'vue'
 import { DRAG_START_PX, dragShift, dragTarget, moved } from './drag-order'
 
 /**
- * Drag to reorder the rows of a vertical list, as a macOS list's rows are.
+ * Drag to reorder the rows of a list, as a macOS list's rows are, down a
+ * vertical list (`axis` y) or along a row of buttons, as a taskbar's (x).
  *
  * - A row pressed on its handle follows the pointer once it moves a few pixels.
  * - The other rows step aside to show where it will land, and letting go puts it
- *   there.
+ *   there. The click that letting go makes is not the row's.
  * - Escape, or the window losing focus, puts it back.
- * - The handle also moves its row one place with the Up and Down arrow keys.
+ * - The handle also moves its row one place with the Up and Down arrow keys, or
+ *   Left and Right along a row.
  *
  * The rows are the elements of `container` marked `data-reorder-id`, in order.
  * `commit` receives the ids in their new order, and the host's list shows it with
  * its next render.
  */
 export function useListReorder(
-  container: Readonly<Ref<HTMLElement | undefined>>,
+  container: Readonly<Ref<HTMLElement | undefined | null>>,
   ids: () => readonly string[],
   commit: (ids: string[]) => void,
+  axis: 'x' | 'y' = 'y',
 ) {
+  const across = axis === 'x'
   /** The row being dragged, once it moved far enough to drag. */
   const dragging = ref<string | null>(null)
   let held: {
     pointerId: number
-    y: number
+    at: number
     from: number
     to: number
     rows: HTMLElement[]
@@ -54,7 +58,7 @@ export function useListReorder(
     if (!held || event.pointerId !== held.pointerId) {
       return
     }
-    const offset = event.clientY - held.y
+    const offset = (across ? event.clientX : event.clientY) - held.at
     if (dragging.value === null) {
       if (Math.abs(offset) < DRAG_START_PX) {
         return
@@ -67,9 +71,9 @@ export function useListReorder(
       if (index === held!.from) {
         row.style.position = 'relative'
         row.style.zIndex = '1'
-        row.style.transform = `translateY(${offset}px)`
+        row.style.transform = `${across ? 'translateX' : 'translateY'}(${offset}px)`
       } else {
-        row.style.transform = `translateY(${dragShift(index, held!.from, held!.to) * held!.step}px)`
+        row.style.transform = `${across ? 'translateX' : 'translateY'}(${dragShift(index, held!.from, held!.to) * held!.step}px)`
       }
     })
   }
@@ -81,9 +85,23 @@ export function useListReorder(
     const { from, to } = held
     const dragged = dragging.value !== null
     settle()
+    if (dragged) {
+      swallowClick()
+    }
     if (dragged && from !== to) {
       commit(moved(ids(), from, to))
     }
+  }
+
+  /** Takes the click that letting go of a dragged row makes, before the row sees it. */
+  function swallowClick() {
+    const swallow = (event: MouseEvent) => {
+      event.stopPropagation()
+      event.preventDefault()
+    }
+    window.addEventListener('click', swallow, { capture: true, once: true })
+    // A release off the row makes no click; the next one is the user's.
+    setTimeout(() => window.removeEventListener('click', swallow, { capture: true }))
   }
 
   function escape(event: KeyboardEvent) {
@@ -109,14 +127,16 @@ export function useListReorder(
     const rects = listed.map((row) => row.getBoundingClientRect())
     held = {
       pointerId: event.pointerId,
-      y: event.clientY,
+      at: across ? event.clientX : event.clientY,
       from,
       to: from,
       rows: listed,
-      centers: rects.map((rect) => rect.top + rect.height / 2),
-      // The others step aside by the dragged row's own height and the gap
-      // between rows, whatever their own heights.
-      step: rects[from]!.height + (rects.length > 1 ? Math.max(0, rects[1]!.top - rects[0]!.bottom) : 0),
+      centers: rects.map((rect) => (across ? rect.left + rect.width / 2 : rect.top + rect.height / 2)),
+      // The others step aside by the dragged row's own length and the gap
+      // between rows, whatever their own lengths.
+      step: across
+        ? rects[from]!.width + Math.max(0, rects[1]!.left - rects[0]!.right)
+        : rects[from]!.height + Math.max(0, rects[1]!.top - rects[0]!.bottom),
     }
     event.preventDefault()
     window.addEventListener('pointermove', move, { passive: false })
@@ -126,9 +146,10 @@ export function useListReorder(
     window.addEventListener('blur', settle)
   }
 
-  /** A key on the handle of row `id`: Up and Down move it one place. */
+  /** A key on the handle of row `id`: Up and Down, or Left and Right along a row, move it one place. */
   function keydown(event: KeyboardEvent, id: string) {
-    const step = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0
+    const [back, on] = across ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown']
+    const step = event.key === back ? -1 : event.key === on ? 1 : 0
     if (step === 0) {
       return
     }

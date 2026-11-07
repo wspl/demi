@@ -5,6 +5,7 @@ import { defineComponent, h, type PropType } from 'vue'
 import { z } from 'zod'
 import { FileIcon, ICON_PX, type IntentPayloads, type PanelKind } from '@demicodes/plugin-sdk'
 import AttachmentTab from './AttachmentTab.vue'
+import { attachmentsWindow } from './media'
 
 /** The attachment a tab shows: its number, its file's name and size, and where its copy loads from. */
 export const attachmentDataSchema = z.object({
@@ -34,6 +35,7 @@ const AttachmentMark = defineComponent({
 export const attachmentKind: PanelKind<AttachmentData> = {
   kind: 'attachment',
   schema: attachmentDataSchema,
+  window: attachmentsWindow,
   title: (data) => data.name,
   key: (data) => data.id,
   mark: AttachmentMark,

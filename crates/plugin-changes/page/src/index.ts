@@ -3,8 +3,8 @@
 // file pills, the `commit` intent of commit links and the `branch` intent of a
 // subagent's branch.
 import { defineComponent, h } from 'vue'
-import { FileDiff } from '@lucide/vue'
-import { ICON_PX, definePage, type PanelKind } from '@demicodes/plugin-sdk'
+import { FileDiff, GitCompare } from '@lucide/vue'
+import { ICON_PX, definePage, type PanelKind, type PanelWindow } from '@demicodes/plugin-sdk'
 import { PLUGIN } from './generated/plugin'
 import { t } from './locales/text'
 import ChangeBadge from './ChangeBadge.vue'
@@ -15,10 +15,14 @@ const ChangeMark = defineComponent({
   setup: () => () => h(FileDiff, { size: ICON_PX.markIn28 }),
 })
 
+/** Changes' window: the Change view alone. */
+const changesWindow: PanelWindow = { id: 'changes', name: () => t('kind.title'), icon: GitCompare }
+
 /** The `change` kind: the Change view over the conversation's files service. */
 export const changeKind: PanelKind<ChangeData> = {
   kind: 'change',
   schema: changeDataSchema,
+  window: changesWindow,
   title: () => t('kind.title'),
   mark: ChangeMark,
   content: ChangeTab,

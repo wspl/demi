@@ -132,7 +132,7 @@ export interface ConversationFiles {
   shareReplyBlock?(tag: string, id: string, title: string): void
   /**
    * Opens attachment `id`, a file that is no image, video or audio, in the
-   * work panel through the `attachment` intent, previewed from its copy; absent
+   * conversation's windows through the `attachment` intent, previewed from its copy; absent
    * while no plugin the user has on opens it, as on a share, and its card then
    * only offers Download.
    */

@@ -13,15 +13,16 @@ import {
   type Ref,
 } from 'vue'
 
-// How a pane of the work panel changes whole.
+// How a window's pane changes whole.
 // A pane is the content of one tab: it reads several things before its view is
 // complete, such as a file's text, its folder's listing and the listings of the
 // folders above it.
 //
-//   WorkPanel ── PaneScope ──┬── a view's part ── usePaneReady(settled)
-//   (provides `Pane`)        ├── another part ─── usePaneReady(settled)
-//                            └── the area that waits: TreeFrame, a browser's
-//                                area, the media's stage (usePaneWaiting)
+//   WorkWindowBody ── PaneScope ──┬── a view's part ── usePaneReady(settled)
+//                     (provides   ├── another part ─── usePaneReady(settled)
+//                      `Pane`)    └── the area that waits: TreeFrame, a
+//                                     browser's area, the media's stage
+//                                     (usePaneWaiting)
 //
 // Each part of a view says whether what it needs of the device is in. While any
 // part says it is not, the area under the view's address stays empty, at its
@@ -56,7 +57,7 @@ export interface Pane {
   forget(part: symbol): void
 }
 
-const PANE: InjectionKey<Pane> = Symbol('work panel pane')
+const PANE: InjectionKey<Pane> = Symbol('window pane')
 
 /**
  * Makes the pane of the calling component, for the parts and areas below it.

@@ -1,10 +1,10 @@
-// How the demos bring in what the app shows at once: the work panel, a side
-// question's card, a panel's or a search's content once loaded. Demi itself
+// How the demos bring in what the app shows at once: a window, a side
+// question's card, a window's or a search's content once loaded. Demi itself
 // puts them in place in one frame, as a tool should; a demo is watched, not
 // used, and a part that pops in reads as a glitch there. Each animation is
 // the page's own, so a recording keeps it and its play runs it.
 
-/** The curve a panel or a card settles in on, as a sheet does in macOS. */
+/** The curve a window or a card settles in on, as a sheet does in macOS. */
 const SETTLE = 'cubic-bezier(0.32, 0.72, 0, 1)'
 
 interface Entrance {
@@ -31,13 +31,11 @@ const ENTRANCES: readonly Entrance[] = [
     },
   },
   {
-    // The work panel slides in from the window's right edge, and the
-    // conversation gives it room as it comes; its divider, which keeps
-    // windows too, comes with it.
-    selector: '[data-region][data-keeps-windows]',
+    // A window grows into place as it fades in, as a macOS window opens.
+    selector: '[data-work-window]',
     within: true,
-    run: (panel) => {
-      panel.animate([{ marginRight: `${-panel.offsetWidth}px` }, { marginRight: '0px' }], { duration: 500, easing: SETTLE })
+    run: (window) => {
+      window.animate([{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], { duration: 350, easing: SETTLE })
     },
   },
   {
@@ -52,8 +50,8 @@ const ENTRANCES: readonly Entrance[] = [
     },
   },
   {
-    // A panel's content, once read: the diff after "Reading Changes".
-    selector: '[data-work-panel] *',
+    // A window's content, once read: the diff after "Reading Changes".
+    selector: '[data-work-window] *',
     when: (element) => element.offsetHeight > 160 && element.offsetWidth > 160,
     run: (content) => fade(content, 250),
   },

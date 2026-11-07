@@ -18,7 +18,7 @@ import {
 import { schemaRefusal } from '@demicodes/protocol'
 import type { Pinia } from 'pinia'
 import { z } from 'zod'
-import type { PanelTabKind, TabCommand } from '../agent/panel-kinds/kind'
+import type { PanelTabKind, PanelWindow, TabCommand } from '../agent/panel-kinds/kind'
 import type { DeviceArtifact, DeviceDownload } from '../devices/installed'
 import type { ChangeSetSource, ReadCallChange } from '../files/changes'
 import type { CommitHistorySource } from '../files/history'
@@ -38,6 +38,8 @@ import type { OpenUserStream } from './streams'
 import type { PanelPlace } from './place'
 import type { Operation } from '../ui/operations'
 import type { HeadlineText, SentenceText } from '../ui/ui-text'
+
+export type { PanelWindow }
 
 /**
  * A plugin's page: the object it declares with `definePage`, and the page
@@ -63,7 +65,7 @@ import type { HeadlineText, SentenceText } from '../ui/ui-text'
  *   an operation of the page, which goes on when the component that showed the
  *   control goes. A control that only sends input to what the user watches, such
  *   as a simulator's Home, waits for nothing: the picture shows the effect.
- * - Work panel kinds are data on the page, so the panel knows every kind of
+ * - Tab kinds are data on the page, so the panel knows every kind of
  *   every page the user has on before it opens, and an intent can open a kind
  *   while the panel is closed.
  * - Intents are the only way a page opens a tab. A control that opens one asks
@@ -425,7 +427,7 @@ export interface KindTab {
 }
 
 /**
- * A work panel kind, declared once on its page. Its functions are methods, so kinds of different
+ * A tab kind, declared once on its page. Its functions are methods, so kinds of different
  * data fit one list.
  */
 export interface PanelKind<Data> {
@@ -433,6 +435,16 @@ export interface PanelKind<Data> {
   kind: string
   /** A tab's `data`, checked where saved state enters the page. */
   schema: z.ZodType<Data>
+  /**
+   * The window its tabs open in, which the kinds of one window share, as the
+   * same object: Media's and an attachment's tabs open in Attachments.
+   */
+  window: PanelWindow
+  /**
+   * The data of a new tab, which the window's + and the taskbar's + open;
+   * without it the kind opens tabs only by intents. Never for a pinned kind.
+   */
+  start?(): Data
   title(data: Data, tab: KindTab): string
   /**
    * What the tab's pane says it reads while it waits for what it shows
@@ -542,7 +554,7 @@ export interface PluginPage {
   plugin: string
   /** A section of the settings dialog. */
   settings?: PluginSettingsSection
-  /** The kinds of tab it shows in the work panel. */
+  /** The kinds of tab it shows in the conversation's windows. */
   kinds?: readonly PanelKind<unknown>[]
   /** The blocks it draws in replies. */
   blocks?: readonly ReplyBlock[]
@@ -935,6 +947,8 @@ function bindKind(kind: PanelKind<unknown>, tab: KindTab, context: PageContext):
   return {
     kind: kind.kind,
     schema: kind.schema,
+    window: kind.window,
+    start: kind.start,
     title: (data) => kind.title(data, tab),
     subject: subject && ((data) => subject(data, tab)),
     mark: kind.mark,

@@ -204,7 +204,6 @@
     "forkedFrom": "分叉自 {agent}",
     "inherited": "继承自此对话",
     "fast": "快速",
-    "chip": "{count} 个智能体",
     "stopAgent": "停止智能体",
     "copyId": "复制智能体 ID",
     "closeTab": "关闭标签页",
@@ -218,10 +217,9 @@
     "thinkingOff": "思考已关闭"
   },
   "terminals": {
+    "none": "没有正在运行的命令",
     "endCommand": "停止命令",
     "closeTab": "关闭标签页",
-    "chip": "{count} 个正在运行",
-    "serviceChip": "{count} 个服务",
     "loading": "正在加载终端…",
     "unavailable": "无法加载终端。"
   },
@@ -233,10 +231,8 @@
     "empty": "没有消息",
     "start": "开始对话",
     "conversations": "对话",
-    "openPanel": "打开面板",
     "tabs": "标签页",
     "tabsOpen": "标签页，已打开 {count} 个",
-    "closePanel": "关闭面板",
     "options": "{title}，对话选项",
     "deviceState": "{name} {state}",
     "renameTitle": "重命名对话",
@@ -425,16 +421,7 @@
     "label": "浏览器地址"
   },
   "panel": {
-    "allTabs": "显示所有标签页",
     "more": "更多",
-    "windowHeight": "窗口高度",
-    "closeOthers": "关闭其他",
-    "closeRight": "关闭右侧标签页",
-    "closeLeft": "关闭左侧标签页",
-    "closeAll": "全部关闭",
-    "cannotShow": "无法显示此标签页。",
-    "nothingOpen": "没有打开的内容",
-    "noFiles": "没有文件或更改",
     "reading": "正在读取 {name}",
     "deviceOffline": "{name} 已离线。",
     "deviceOfflineDetail": "它重新连接后，文件、更改和浏览器会再次显示。"

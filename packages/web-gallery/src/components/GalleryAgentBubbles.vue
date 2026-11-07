@@ -1,16 +1,13 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
-import DockWindowArea from '@demicodes/web-ui/agent/DockWindowArea.vue'
-import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { provideOriginRevealer } from '@demicodes/web-ui/agent/agent-receipts'
 import { agentLinkWindow, findAgent, provideMessageAgents } from '@demicodes/web-ui/agent/agent-links'
 import type { TranscriptReveal } from '@demicodes/web-ui/agent/history'
-import { dockWindowShare } from '../dock-window-share'
 import { productWould } from '../product-would'
-import { useAgentContext } from '../agent-context'
 import { BUBBLES_ROOT, bubbleAgents, bubblesMainBlocks } from '../fixtures/subagents'
+import GalleryOwnWindows from './GalleryOwnWindows.vue'
 
 /**
  * The messages an agent receives from other agents, in its own view: the Agents
@@ -34,7 +31,6 @@ import { BUBBLES_ROOT, bubbleAgents, bubblesMainBlocks } from '../fixtures/subag
  */
 const props = defineProps<{ view: 'child' | 'child-report' | 'main' }>()
 
-const agentContext = useAgentContext()
 const agents = reactive(bubbleAgents(props.view === 'child-report'))
 const open = ref(props.view !== 'main')
 const activeId = ref<string | null>(agents[0]!.id)
@@ -96,8 +92,17 @@ function abortAll(): void {
         {{ view === 'main' ? 'Open Tidy the Release Notes' : 'Open Again' }}
       </Button>
     </div>
-    <div class="relative h-[40rem]">
-      <div class="gallery-frame h-full bg-surface">
+    <div class="gallery-frame h-[40rem] overflow-hidden">
+      <!-- The window stands over the main transcript as the product's stands over the conversation. -->
+      <GalleryOwnWindows
+        v-model:open="open"
+        v-model:active-id="activeId"
+        :agents="agents"
+        :reveal="reveal"
+        @revealed="reveal = null"
+        @abort="abortAll"
+        @abort-agent="abortAgent"
+      >
         <AgentMessageList
           class="h-full"
           :conversation-id="BUBBLES_ROOT"
@@ -109,20 +114,7 @@ function abortAll(): void {
           :persisted-scroll-state="undefined"
           read-only
         />
-      </div>
-      <!-- The window stands over the main transcript as the product's stands over the session. -->
-      <DockWindowArea v-model:share="dockWindowShare" class="absolute inset-x-0 top-0 h-full">
-        <SubagentPanel
-          v-model:open="open"
-          v-model:active-id="activeId"
-          :agents="agents"
-          :reveal="reveal"
-          @revealed="reveal = null"
-          @abort="abortAll"
-          @abort-agent="abortAgent"
-          v-bind="agentContext.panel"
-        />
-      </DockWindowArea>
+      </GalleryOwnWindows>
     </div>
   </div>
 </template>

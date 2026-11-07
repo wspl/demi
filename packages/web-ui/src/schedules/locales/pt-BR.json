@@ -1,5 +1,5 @@
 {
-  "chip": "{count} agendados",
+  "name": "Agendamentos",
   "delete": "Excluir",
   "notYet": "Ainda não foi ativado",
   "trigger": {

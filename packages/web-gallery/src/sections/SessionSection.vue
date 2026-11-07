@@ -57,7 +57,8 @@ import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import type { ActivityKind } from '@demicodes/web-ui/agent/activity-slot'
 import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
-import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
+import GalleryWorkWindows from '../components/GalleryWorkWindows.vue'
+import { gallerySessionWork } from '../fixtures/session-work'
 import { galleryFiles, useGalleryWork, type GalleryWork } from '../fixtures/work-panel'
 import { galleryHistory } from '../fixtures/browser-history'
 import {
@@ -109,11 +110,9 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SearchDialog from '@demicodes/web-ui/search/SearchDialog.vue'
 import type { MessageRow, SearchRow } from '@demicodes/web-ui/search/search'
 import { fixtureMessageSearch, fixtureSearch, searchableMessages } from '../fixtures/search'
-import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
+import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { demoAccount, demoConversations, demoProjects, savedScopeSwitched } from '../sidebar/sidebar-data'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
-import DockWindowArea from '@demicodes/web-ui/agent/DockWindowArea.vue'
-import { dockWindowShare } from '../dock-window-share'
 import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
 import ModelMenu from '@demicodes/web-ui/agent/ModelMenu.vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
@@ -133,12 +132,10 @@ import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
 import { t as agentText } from '@demicodes/web-ui/agent/locales/text'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
-import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
-import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
+import AssistantTextBlock from '@demicodes/web-ui/agent/blocks/AssistantTextBlock.vue'
+import GalleryOwnWindows from '../components/GalleryOwnWindows.vue'
 import AgentStatusBar from '@demicodes/web-ui/agent/AgentStatusBar.vue'
 import RunEndTag from '@demicodes/web-ui/agent/blocks/RunEndTag.vue'
-import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
-import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { agentCompaction, firstRunningSubagentId } from '@demicodes/web-ui/agent/subagents'
 import GalleryCachedSessions from '../components/GalleryCachedSessions.vue'
 import GalleryTranscriptEntrance from '../components/GalleryTranscriptEntrance.vue'
@@ -162,7 +159,7 @@ import GalleryModelPreference from '../components/GalleryModelPreference.vue'
 import GalleryFindBar from '../components/GalleryFindBar.vue'
 import GalleryUserMessageLengths from '../components/GalleryUserMessageLengths.vue'
 import { regenerateMessage, submitMessageEdit, type MessageEditHost, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
-import { useCallTerminals, firstRunningOfKind, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
+import { useCallTerminals, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
 import type { DeviceOption } from '@demicodes/web-ui/targets/types'
 import type { OfflineDevice } from '@demicodes/web-ui/agent/offline-device'
@@ -226,7 +223,7 @@ import {
 } from '../fixtures/catalog'
 import { composerModels, setGalleryContextLimit } from '../fixtures/context-limits'
 import { galleryBlobs } from '../fixtures/blobs'
-import { agentLinksWrapMarkdown, agentReceiptMessages, briefSubagent, elsewhereSubagent, galleryDeviceName, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
+import { agentLinksMarkdown, agentLinksWrapMarkdown, agentReceiptMessages, briefSubagent, elsewhereSubagent, galleryDeviceName, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
 import { provideDeviceNames } from '@demicodes/web-ui/agent/device-names'
 import GalleryAgentDirectory from '../components/GalleryAgentDirectory.vue'
 import GalleryAgentLoading from '../components/GalleryAgentLoading.vue'
@@ -238,8 +235,6 @@ import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
 import { nextWaitingSend, type WaitingSend } from '@demicodes/web-ui/agent/pending-steers'
 import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
-import GalleryAgentsChip from '../components/GalleryAgentsChip.vue'
-import { useGalleryTerminalChips } from '../terminal-chips'
 import GalleryCommandReports from '../components/GalleryCommandReports.vue'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import { savingOnTop, sevenSaved, twoSaved } from '../fixtures/saved'
@@ -432,8 +427,10 @@ useLiveGalleryCommand(terminals)
 const finishedOnly = agents.filter((agent) => agent.phase !== 'running')
 const exhibitOpen = ref(true)
 const exhibitAgentId = ref<string | null>(firstRunningSubagentId(agents))
-const terminalChips = useGalleryTerminalChips(() => terminals)
-const exhibitTerminalId = ref<string | null>(firstRunningOfKind(terminals, 'command'))
+/** Counts each Run Them Again, which opens the Running window on its first job again. */
+const terminalsShown = ref(0)
+/** When the reply that links the children was written. */
+const linksCreatedAt = new Date(Date.now() - 60_000).toISOString()
 /** One child per variant of the line that says what a child runs on. */
 const runLines = [workSubagent(), ...gallerySubagents(), elsewhereSubagent()]
 // The laptop a child kept working on goes by its name, as the account's devices name it.
@@ -486,14 +483,8 @@ function resetWindows(): void {
   }
   exhibitOpen.value = true
   exhibitAgentId.value = firstRunningSubagentId(agents)
-  exhibitTerminalId.value = firstRunningOfKind(terminals, 'command')
+  terminalsShown.value += 1
 }
-// The Agents panel open while a request waits: the card stands over the panel's lower part.
-const coverRequests = ref<RequestView[]>([rootRequest()])
-const coverOpen = ref(true)
-const coverAgentId = ref<string | null>(firstRunningSubagentId(agents))
-const coverBlocks = transcriptDemoBlocks()
-const coverSurface = ref<{ dockHeight: number }>()
 /** The returned call's command, a Running job, which End Command stops. */
 const returnedCommand = computed(() => terminals.find((terminal) => terminal.toolUseId === returnedShellTool.toolUseId))
 /** The other returned call's command, which End Command ends with exit code 1. */
@@ -552,13 +543,11 @@ watch(
     }
     exhibitOpen.value = true
     exhibitAgentId.value = firstRunningSubagentId(agents)
-    exhibitTerminalId.value = firstRunningOfKind(terminals, 'command')
   },
   { immediate: true },
 )
-// The Panel view: the whole app frame, with the work panel open beside the session.
+// The Panel view: the whole app frame, with the conversation's work in windows over it.
 const panelSidebarWidth = ref<number>(SIDEBAR_WIDTH.default)
-const panelAsideShare = ref<number>(ASIDE_SHARE.default)
 const panelProjects = ref(demoProjects())
 const panelConversations = ref(demoConversations())
 const panelActiveConversationId = ref<string | null>('c-login')
@@ -603,7 +592,7 @@ function openFrameResult(row: SearchRow): void {
   frameReveal.value = row.match ? { node: null, blockId: row.match.blockId } : null
 }
 /**
- * One specimen's work panel over the gallery project, as the product's work
+ * One specimen's work over the gallery project, as the product's work
  * store holds one: the plugins' kinds, with the `browser` kind over the
  * gallery's own conversation browser or the one the specimen supplies, and
  * the File view on `path` when one is given. A specimen can also say whether
@@ -782,8 +771,12 @@ const unchosenPath = ref<string | null>(null)
 const unchosenTree = ref(true)
 // The frame's conversation has opened no browser tab yet: its strip starts empty.
 const panelWork = useWorkTabs('change', { browser: galleryBrowser([]) })
-/** Whether the frame's panel is open: the user closes it, and a tab the agent shows opens it. */
-const panelAsideOpen = panelWork.open
+/** The frame's work, which its conversation's windows show. */
+const panelSessionWork = gallerySessionWork(panelWork)
+/** Opens the taskbar's prototype in a browser tab of its own, filling it. */
+function openTaskbarFrame() {
+  window.open('/taskbar-frame', '_blank')
+}
 /** The agent opens a page, showing it to the user or checking it itself, as `demi browser tab new` and `open [--show]` do. */
 function agentOpens(show: boolean) {
   productWould(show ? 'The Agent Opens a Page and Shows It' : 'The Agent Opens a Page to Check It')
@@ -1585,7 +1578,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'tabs'">
       <GallerySection
         title="Motion"
-        note="The work panel’s browser tabs, and every motion their strip owns, in a narrow frame that overflows and one at the pane width. Changes and Files, pinned ahead of the tabs, keep one shape whatever is selected: each its icon and its own short title, Changes with its counts after it, and Files never the open file’s name, which is in its tooltip; a divider parts them from the tabs, and fades out, as the dividers between tabs do, while the tab on either side of it is selected or hovered. Tabs fit their mark and title up to 160px and up to an equal share of the strip; longer titles end in an ellipsis, so no title, a selected one included, widens a tab past its share, and selecting a tab changes no tab’s width. As in Chrome, a strip that runs out of room first narrows every tab to the same share, down to 88px, their mark and a few characters, and only then scrolls, so a tab opened in the background normally shows; once it scrolls, a button at its end lists every tab by its mark and title, as VS Code’s Show Opened Editors does, and picking one selects it and brings it into view. On a phone (the Phone page) no tab shrinks: each keeps its width, the pinned tabs too, and the whole row scrolls under a finger, with no scrollbar. A tab opens by growing from nothing and closes by collapsing. The selected tab always shows whole, its close control included, and never under a fade: selecting a tab, opening one, the agent showing one, the strip resizing and the selected tab’s title widening it each scroll, with the same timing as the tab, until it shows whole with a fade’s width beside it; where the strip has no room for that, the fades give way beside it, and no tab is wider than the strip has room for, so a very narrow strip truncates the selected tab’s title. Unselected tabs may lie under the fades, and so may the selected tab once the user scrolls it under an edge: the scrolled edge fades as the other does. Closing scrolls back when the end comes into reach. Wherever the strip comes to rest, a tab mark its edge cuts stays under the fade’s solid start, so a mark at a scrolled edge shows whole or not at all, never sliced. The crowded strip has the product’s panel width and five tabs, the last selected; the overflowing one 25, and the last specimen a long file name open in File. Play all runs through the cases; the tabs, their close controls and their menus work too. The tabs act as a web browser’s: a middle click closes one, a drag moves one along the strip while the others step aside, and Escape puts it back; a focused tab moves the focus with the arrows, Home and End, and Enter or Space selects it. A tab’s tooltip comes only when the pointer moved onto it and rests there, never after a click, nor for a tab that slid under a pointer at rest, as a new one does."
+        note="The browser window’s tabs, and every motion their strip owns, in a narrow frame that overflows and one at a window’s width. Tabs fit their mark and title up to 160px and up to an equal share of the strip; longer titles end in an ellipsis, so no title, a selected one included, widens a tab past its share, and selecting a tab changes no tab’s width. As in Chrome, a strip that runs out of room first narrows every tab to the same share, down to 88px, their mark and a few characters, and only then scrolls, so a tab opened in the background normally shows; once it scrolls, a button at its end lists every tab by its mark and title, as VS Code’s Show Opened Editors does, and picking one selects it and brings it into view. On a phone (the Phone page) no tab shrinks: each keeps its width, and the whole row scrolls under a finger, with no scrollbar. A tab opens by growing from nothing and closes by collapsing. The selected tab always shows whole, its close control included, and never under a fade: selecting a tab, opening one, the agent showing one, the strip resizing and the selected tab’s title widening it each scroll, with the same timing as the tab, until it shows whole with a fade’s width beside it; where the strip has no room for that, the fades give way beside it, and no tab is wider than the strip has room for, so a very narrow strip truncates the selected tab’s title. Unselected tabs may lie under the fades, and so may the selected tab once the user scrolls it under an edge: the scrolled edge fades as the other does. Closing scrolls back when the end comes into reach. Wherever the strip comes to rest, a tab mark its edge cuts stays under the fade’s solid start, so a mark at a scrolled edge shows whole or not at all, never sliced. The crowded strip has a window’s usual width and five tabs, the last selected; the overflowing one 25, and the last specimen a long file name open in Files. Play all runs through the cases; the tabs, their close controls and their menus work too. The tabs act as a web browser’s: a middle click closes one, a drag moves one along the strip while the others step aside, and Escape puts it back; a focused tab moves the focus with the arrows, Home and End, and Enter or Space selects it. A tab’s tooltip comes only when the pointer moved onto it and rests there, never after a click, nor for a tab that slid under a pointer at rest, as a new one does."
       >
         <GallerySpecimen variant="narrow · overflows" wide>
           <GalleryTabStripDrive width="32rem" />
@@ -2231,7 +2224,6 @@ onBeforeUnmount(() => {
                           {{ agentText('dock.resume') }}
                         </SessionDockChip>
                       </Tooltip>
-                      <AgentsChip :agents="agents" @open="productWould('Open the Agents Window')" />
                     </template>
                   </template>
                   <!-- The composer's cards, such as the offline device's, stand above the chips. -->
@@ -2323,7 +2315,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="SessionDockChip"
-        note="28px capsule with status dots. The Agents chip counts the live children and Running the commands that went to the background and are not services, each dot breathing gently as every running thing does (StatusDot), and shows only while one runs; a finished child opens from its receipt's name or a link to it. Service counts the services, the commands that run until stopped, with the Activity icon, a pulse line, and no dot, since a service that runs is in its settled state; it shows only while one runs, and a service never keeps its conversation running. Agents opens its window; a second click closes it (Agents Chip in Windows). Running and Service open the terminal window on their oldest command, a press on the other chip moves it there, and a press on the chip that owns it closes it."
+        note="28px capsule with status dots, for what the turn offers above the composer, such as Resume. Agents, Running and Services are the taskbar's system buttons (Windows)."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="resume">
@@ -2332,29 +2324,11 @@ onBeforeUnmount(() => {
               {{ agentText('dock.resume') }}
             </SessionDockChip>
           </GallerySpecimen>
-          <GallerySpecimen variant="running">
-            <TerminalChip :terminals="terminals" kind="command" :active-id="terminalChips.activeId.value" @open="terminalChips.press('command')" />
-          </GallerySpecimen>
-          <GallerySpecimen variant="service">
-            <TerminalChip :terminals="terminals" kind="service" :active-id="terminalChips.activeId.value" @open="terminalChips.press('service')" />
-          </GallerySpecimen>
-          <GallerySpecimen variant="running and service, as the dock shows them">
-            <div class="flex gap-2">
-              <TerminalChip :terminals="terminals" kind="command" :active-id="terminalChips.activeId.value" @open="terminalChips.press('command')" />
-              <TerminalChip :terminals="terminals" kind="service" :active-id="terminalChips.activeId.value" @open="terminalChips.press('service')" />
-            </div>
-          </GallerySpecimen>
           <GallerySpecimen variant="ready">
             <SessionDockChip dot="success" @click="productWould('Show What Is Ready')">Ready</SessionDockChip>
           </GallerySpecimen>
           <GallerySpecimen variant="idle">
             <SessionDockChip dot="muted" @click="productWould('Show What Is Idle')">Idle</SessionDockChip>
-          </GallerySpecimen>
-          <GallerySpecimen variant="agents · running">
-            <AgentsChip :agents="agents" @open="productWould('Open the Agents Window')" />
-          </GallerySpecimen>
-          <GallerySpecimen variant="agents · none running · hidden">
-            <AgentsChip :agents="finishedOnly" @open="productWould('Open the Agents Window')" />
           </GallerySpecimen>
         </div>
       </GallerySection>
@@ -2371,7 +2345,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Attachments in a Message"
-        note="What the agent gave the user with demi attachment upload, delivered as a block of its own: <attachment id=&quot;a3&quot; /> on a line of its own. An image, and a video’s first frame with its play mark, is a tile: scaled down with its proportions kept to fit a third of the message’s width less the two 8px gaps, and 240px tall, never enlarged and never cropped, so three fill a line; the tall page and the wide timeline each show whole. Its box comes from its record’s pixel size before its bytes arrive and follows the message’s width; the demo’s record carries no size, so its frame is 16:9 until it arrives. Every image has a 1px edge in the theme’s faint line over its outermost pixels and the same small corner as the tile, so a screenshot on white or on dark does not melt into the page. One whose bytes did not come keeps its box, with the faint edge and the ImageOff mark at its middle in place of the browser’s broken picture, and loads again by itself when the page reaches the backend again, is shown again, or comes back online. A lone one stands on a line of its own 12px from the text above and below; images and videos whose blocks follow each other stand side by side 8px apart and wrap. Resting the pointer on any of them for 300 ms shows it large in a card above it, with its name and pixel size under it; a phone shows none. A click opens an image or a video in the Media tab of the frame’s work panel, beside the conversation: the bar names it, gives its place among the conversation’s pictures and videos, 3 / 12, between Previous and Next, and offers Download; the arrow keys step through them, Left and Up back, Right and Down on, a picture zooms with the wheel or a pinch, pans by dragging, and a double-click switches between fitting the panel and its own size, and a video plays under Demi’s frosted capsule of controls, whose Left and Right move the playhead. An image or a video opens as its own copy, the bytes its tile shows, whatever became of the file it was uploaded from: the chart’s file has changed since. The card of another file opens the file it was uploaded from in the Files panel while the device is online and has the file, and its copy otherwise, so the switch shows the two. Audio is its inline player. Any other file is a card, 360px wide at most, with the file tree’s icon, its name, and its kind and size: a click opens it in the work panel: the file it was uploaded from, as it is now, in the File view, as a link to it opens, while its device is the conversation’s, online, and has the file; otherwise the attachment’s copy, previewed as the File view previews a file. Only Download downloads. The switch simulates the device going offline: the guide and the build then open their copies, the release notes, whose file is gone, always do; cards on consecutive lines stack. The tag in a sentence, and a link to attachment:a3, are text, and a number the conversation does not have says so in the block’s place. In a list, a screenshot’s block on the line after an item’s words stands on its own line under them, and two stand side by side under them. A picture of the device a reply names by its path, ![chart](out/chart.png), is shown as the tile of the copy the backend made when the reply ended, as an attachment’s is, and the page reads no device to show it: while its copy is being made it is a box with its alt text, and a picture the backend could not copy, or kept no copy of, is a link to its file’s path, with why in parentheses when it is known. A click on a copy opens it in the Media tab, as it does an attachment’s, whatever became of the file."
+        note="What the agent gave the user with demi attachment upload, delivered as a block of its own: <attachment id=&quot;a3&quot; /> on a line of its own. An image, and a video’s first frame with its play mark, is a tile: scaled down with its proportions kept to fit a third of the message’s width less the two 8px gaps, and 240px tall, never enlarged and never cropped, so three fill a line; the tall page and the wide timeline each show whole. Its box comes from its record’s pixel size before its bytes arrive and follows the message’s width; the demo’s record carries no size, so its frame is 16:9 until it arrives. Every image has a 1px edge in the theme’s faint line over its outermost pixels and the same small corner as the tile, so a screenshot on white or on dark does not melt into the page. One whose bytes did not come keeps its box, with the faint edge and the ImageOff mark at its middle in place of the browser’s broken picture, and loads again by itself when the page reaches the backend again, is shown again, or comes back online. A lone one stands on a line of its own 12px from the text above and below; images and videos whose blocks follow each other stand side by side 8px apart and wrap. Resting the pointer on any of them for 300 ms shows it large in a card above it, with its name and pixel size under it; a phone shows none. A click opens an image or a video in the frame’s Attachments window: the bar names it, gives its place among the conversation’s pictures and videos, 3 / 12, between Previous and Next, and offers Download; the arrow keys step through them, Left and Up back, Right and Down on, a picture zooms with the wheel or a pinch, pans by dragging, and a double-click switches between fitting the window and its own size, and a video plays under Demi’s frosted capsule of controls, whose Left and Right move the playhead. An image or a video opens as its own copy, the bytes its tile shows, whatever became of the file it was uploaded from: the chart’s file has changed since. The card of another file opens the file it was uploaded from in Files while the device is online and has the file, and its copy otherwise, so the switch shows the two. Audio is its inline player. Any other file is a card, 360px wide at most, with the file tree’s icon, its name, and its kind and size: a click opens it in its window: the file it was uploaded from, as it is now, in the File view, as a link to it opens, while its device is the conversation’s, online, and has the file; otherwise the attachment’s copy, previewed as the File view previews a file. Only Download downloads. The switch simulates the device going offline: the guide and the build then open their copies, the release notes, whose file is gone, always do; cards on consecutive lines stack. The tag in a sentence, and a link to attachment:a3, are text, and a number the conversation does not have says so in the block’s place. In a list, a screenshot’s block on the line after an item’s words stands on its own line under them, and two stand side by side under them. A picture of the device a reply names by its path, ![chart](out/chart.png), is shown as the tile of the copy the backend made when the reply ended, as an attachment’s is, and the page reads no device to show it: while its copy is being made it is a box with its alt text, and a picture the backend could not copy, or kept no copy of, is a link to its file’s path, with why in parentheses when it is known. A click on a copy opens it in the Media tab, as it does an attachment’s, whatever became of the file."
       >
         <GallerySpecimen variant="the conversation’s device, simulated for every specimen below" wide>
           <Switch v-model="deviceOnline" label="Device online" />
@@ -3131,7 +3105,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Request’s Changes"
-        note="A request runs from the user’s message to their next one, through command reports, receipts and steers. The pills under each call name its files, and a work group’s pills each file once; a pill opens the Change view below on its file at that call’s first edit, and a pill whose edit it already shows leaves it as it is; only the panel’s own control closes it. A subagent’s changes show only in its own transcript. With the changes plugin off, the pills are no controls. A conversation outside a project shows no pills; its Change view still lists the files."
+        note="A request runs from the user’s message to their next one, through command reports, receipts and steers. The pills under each call name its files, and a work group’s pills each file once; a pill opens the Change view below on its file at that call’s first edit, and a pill whose edit it already shows leaves it as it is; only the window’s own Close closes it. A subagent’s changes show only in its own transcript. With the changes plugin off, the pills are no controls. A conversation outside a project shows no pills; its Change view still lists the files."
       >
         <GallerySpecimen variant="two files, login.ts edited three times across a command report" wide>
           <div class="gallery-frame h-[30rem] bg-surface">
@@ -3275,13 +3249,9 @@ onBeforeUnmount(() => {
           </GalleryFilePills>
         </GallerySpecimen>
       </GallerySection>
-      <!-- The panel the pills above open; a click on what it already shows leaves it as it is, as in the product. -->
-      <div v-if="editWork.open.value" class="h-[480px] overflow-hidden rounded-lg border border-line">
-        <GalleryWorkPanel :work="editWork" @close="editWork.open.value = false" />
-      </div>
-      <div v-else class="flex items-center justify-between gap-3 rounded-lg border border-line py-2 pl-3 pr-2 text-sm text-fg-muted">
-        <span>The work panel is closed. A pill above opens it again.</span>
-        <Button size="sm" @click="editWork.open.value = true">Open Panel</Button>
+      <!-- The windows the pills above open; a click on what one already shows leaves it as it is, as in the product. -->
+      <div class="h-[480px] overflow-hidden rounded-lg border border-line">
+        <GalleryWorkWindows :work="editWork" />
       </div>
       <GallerySection
         title="Changed Files"
@@ -3492,26 +3462,39 @@ onBeforeUnmount(() => {
     <template v-if="view === 'shared'">
       <GallerySharedPage />
     </template>
+    <template v-if="view === 'taskbar'">
+      <GallerySection
+        title="Windows on a Taskbar"
+        note="The conversation’s work in windows on a taskbar under it, filling the browser’s window as the product’s page does. Open it full screen to try it; the frame below is the same page, and both keep where the windows stand in this browser."
+      >
+        <div class="mb-3 flex flex-wrap gap-2">
+          <Button size="sm" @click="openTaskbarFrame">Open Full Screen</Button>
+        </div>
+        <iframe src="/taskbar-frame" title="Windows on a Taskbar" class="gallery-frame h-[46rem] w-full rounded-lg border border-line" />
+      </GallerySection>
+    </template>
     <template v-if="view === 'windows'">
       <GallerySection
         title="Agents"
-        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Copy Agent ID for any (it copies the number the `demi agent` commands take, and a toast says Copied), Close Tab for a finished one, the other of the two disabled. A child's last row reads its own phase: Find the cookie assertion ended its turn while its search runs on, so it shows no Requesting row, while Check the logout path waits for its model. Stop Agent stops the child at once; a command it still runs stays in the Running window as Stopping…, its tab's mark a spinner, until its runner says that it ended, here 3 seconds later: stop Find the cookie assertion and open the Terminals window below. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Along the window's bottom edge a thin bar, in the secondary text color under its own divider, says what the shown tab's child is doing and runs on: its state and how long it has run, counting while it runs, Forked from agent N for a fork, and on the right its profile, model, effort and Fast (What an Agent Runs On), then the composer's context indicator for the child's own context, its segments running close to the window's ends, the first and last text as far from the window's side as its corner is round. While a child's model streams its answer, a line over the bar tells the tokens it has written and their speed, as the line over the composer does for the conversation's. Its card is the composer's, filled from the child, with the usage limits of the account the child runs on; its Compact compacts that child, here a toast, and waits while the child's turn runs. Completed opens the searchable finished list, each child's profile a tag after its description, none for no profile, then how long it ran; the child picked there shows as a tab after the running ones, and picking another replaces it in place, without motion. With no child running the window opens empty, never on a child the user did not pick; closing the last finished tab leaves it empty. It stands with the media viewer a screenshot in a child’s transcript opens in the order they opened, the newest in front: a press outside every window, here anywhere on the page but a window, closes the newest alone, as Escape does, and a second press the next. Close (×), or Escape with the focus in it, closes it too, and Run Them Again opens it again. Its top edge resizes it: drag it, or focus it and press the arrow keys (Shift for bigger steps, Home and End for the smallest and the largest), and a double-click returns to the usual height, half the area. The height is kept as a share of the area, one for every window here, as the product keeps one for its Agents and Running windows; it never goes under the strip, the bar and three lines of the transcript, nor over the room above the dock. On a phone the tabs of this window and of Running narrow to their icons and status dots, the selected one adding its name (Phone page)."
+        note="Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Copy Agent ID for any (it copies the number the `demi agent` commands take, and a toast says Copied), Close Tab for a finished one, the other of the two disabled. A child's last row reads its own phase: Find the cookie assertion ended its turn while its search runs on, so it shows no Requesting row, while Check the logout path waits for its model. Stop Agent stops the child at once; a command it still runs stays in the Running window as Stopping…, its tab's mark a spinner, until its runner says that it ended, here 3 seconds later: stop Find the cookie assertion and open the Terminals window below. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Along the window's bottom edge a thin bar, in the secondary text color under its own divider, says what the shown tab's child is doing and runs on: its state and how long it has run, counting while it runs, Forked from agent N for a fork, and on the right its profile, model, effort and Fast (What an Agent Runs On), then the composer's context indicator for the child's own context, its segments running close to the window's ends, the first and last text as far from the window's side as its corner is round. While a child's model streams its answer, a line over the bar tells the tokens it has written and their speed, as the line over the composer does for the conversation's. Its card is the composer's, filled from the child, with the usage limits of the account the child runs on; its Compact compacts that child, here a toast, and waits while the child's turn runs. Completed opens the searchable finished list, each child's profile a tag after its description, none for no profile, then how long it ran; the child picked there shows as a tab after the running ones, and picking another replaces it in place, without motion. With no child running the window opens empty, never on a child the user did not pick; closing the last finished tab leaves it empty. It is a window on the taskbar, as the conversation’s other windows are: it fills the box here, Restore floats it, its edges and corners resize it, and Close (×), or Escape outside a field, closes it; Run Them Again opens it again. On a phone the tabs of this window and of Running narrow to their icons and status dots, the selected one adding its name (Phone page)."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
         </div>
-        <DockWindowArea v-model:share="dockWindowShare" class="h-[24rem]">
-          <SubagentPanel
-            :agent-cost="() => agentCost.cost.value"
-            :output="(id) => (agents.find((agent) => agent.id === id)?.waitingSince != null ? agentOutput : null)"
+        <div class="gallery-frame h-[24rem] overflow-hidden">
+          <GalleryOwnWindows
             v-model:open="exhibitOpen"
             v-model:active-id="exhibitAgentId"
             :agents="agents"
+            :terminals="terminals"
+            :agent-cost="() => agentCost.cost.value"
+            :output="(id: string) => (agents.find((agent) => agent.id === id)?.waitingSince != null ? agentOutput : null)"
+            fill
             @abort="sessionFlow.abortSubagents"
             @abort-agent="sessionFlow.abortSubagent"
-            v-bind="agentContext.panel"
+            @abort-terminal="sessionFlow.abortTerminal"
           />
-        </DockWindowArea>
+        </div>
       </GallerySection>
       <GallerySection
         title="Working Directory"
@@ -3622,17 +3605,17 @@ onBeforeUnmount(() => {
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" :disabled="briefOpen" @click="briefOpen = true">Open Again</Button>
         </div>
-        <DockWindowArea v-model:share="dockWindowShare" class="h-[32rem]">
-          <SubagentPanel
-            :agent-cost="() => agentCost.cost.value"
+        <div class="gallery-frame h-[32rem] overflow-hidden">
+          <GalleryOwnWindows
             v-model:open="briefOpen"
             v-model:active-id="briefAgentId"
             :agents="briefAgents"
+            :agent-cost="() => agentCost.cost.value"
+            fill
             @abort="stopBriefAgent"
             @abort-agent="stopBriefAgent"
-            v-bind="agentContext.panel"
           />
-        </DockWindowArea>
+        </div>
       </GallerySection>
       <GallerySection
         title="Messages from Other Agents"
@@ -3651,106 +3634,47 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
       <GallerySection
-        title="Agents Chip"
-        note="The dock's Agents chip opens this window and a second click closes it. A press on the reply above closes it, as a press in the conversation or the sidebar outside every window does, the message field and the empty row beside the chip included; a press on the chip is its own control, while one on Resume, which opens no window, closes the window and resumes; typing with the caret in the message closes nothing. Open a screenshot in the first child's transcript: the viewer opens over the window, and the first press on the reply closes only the viewer, the next the window. While children run it counts them and the window opens on the oldest running one. Once none runs there is no chip: Stop All in the window ends them, and the window, still open, keeps the tab it showed; closing that tab leaves it saying no agent is running. A finished child opens from a link to it in the reply, on its tab, as Completed picks it. Run Them Again starts the children again."
+        title="Agents on the Taskbar"
+        note="The taskbar's Agents button counts the running children and opens this window, a second click hiding it. While children run the window opens on the oldest running one. Once none runs the button counts none: Stop All in the window ends them, and the window, still open, keeps the tab it showed; closing that tab leaves it saying no agent is running. A finished child opens from a link to it in the reply, on its tab, as Completed picks it. Run Them Again starts the children again."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
         </div>
         <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
           <GallerySpecimen variant="children running" wide>
-            <GalleryAgentsChip
-              :agents="agents"
-              :terminals="terminals"
-              @abort="sessionFlow.abortSubagents"
-              @abort-agent="sessionFlow.abortSubagent"
-            />
+            <GalleryReceipts :agents="agents" @abort="sessionFlow.abortSubagents" @abort-agent="sessionFlow.abortSubagent">
+              <AssistantTextBlock :content="agentLinksMarkdown" :created-at="linksCreatedAt" />
+            </GalleryReceipts>
           </GallerySpecimen>
           <GallerySpecimen variant="none running" wide>
-            <GalleryAgentsChip
-              :agents="finishedOnly"
-              :terminals="terminals"
-              @abort="sessionFlow.abortSubagents"
-              @abort-agent="sessionFlow.abortSubagent"
-            />
+            <GalleryReceipts :agents="finishedOnly" @abort="sessionFlow.abortSubagents" @abort-agent="sessionFlow.abortSubagent">
+              <AssistantTextBlock :content="agentLinksMarkdown" :created-at="linksCreatedAt" />
+            </GalleryReceipts>
           </GallerySpecimen>
         </div>
       </GallerySection>
       <GallerySection
         title="Terminals"
-        note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script highlighted as Bash in the colors all code shows in (Count the old cookie name and list the changed files), then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). A command being stopped shows a spinner in its tab’s mark until its runner says that it ended, and End Command is off meanwhile. A press outside every window closes it while it is the newest; Close (×), or Escape with the focus on its strip, closes it too, while the terminal keeps the Escape typed into it. Its top edge resizes it, and shares its height with the Agents window above."
+        note="The Running window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script highlighted as Bash in the colors all code shows in (Count the old cookie name and list the changed files), then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). A command being stopped shows a spinner in its tab’s mark until its runner says that it ended, and End Command is off meanwhile. The taskbar's Running and Services buttons count their commands and show or hide their windows."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
         </div>
-        <DockWindowArea v-model:share="dockWindowShare" class="h-[24rem]">
-          <TerminalPanel
-            v-model:active-id="exhibitTerminalId"
+        <div class="gallery-frame h-[24rem] overflow-hidden">
+          <GalleryOwnWindows
+            :key="terminalsShown"
             :terminals="terminals"
-            @abort="sessionFlow.abortTerminal"
+            shows="running"
+            fill
+            @abort-terminal="sessionFlow.abortTerminal"
           />
-        </DockWindowArea>
-      </GallerySection>
-      <GallerySection
-        title="Panel Under a Permission Card"
-        note="A panel the dock opened keeps its size and place while a permission request waits: the card stands over the panel’s lower part, above it, with its own edge and shadow, and the panel scrolls and works above the card’s top. Nothing moves when the card comes or goes (Decide, Ask Again). The transcript behind keeps clear of the card when no panel is open (the Agents chip closes and opens the panel)."
-      >
-        <div class="mb-3 flex flex-wrap gap-2">
-          <Button variant="ghost" size="sm" :disabled="coverRequests.length > 0" @click="coverRequests = [rootRequest()]">Ask Again</Button>
-        </div>
-        <div class="gallery-frame h-[40rem] bg-surface">
-          <SessionSurface ref="coverSurface" v-model:dock-window-share="dockWindowShare">
-            <div class="flex h-full min-h-0 flex-col">
-              <AgentMessageList
-                class="min-h-0 flex-1"
-                conversation-id="gallery-cover"
-                :blocks="coverBlocks"
-                :pending-steers="[]"
-                :queue="[]"
-                phase="idle"
-                :bottom-offset="coverSurface?.dockHeight ?? 0"
-                :persisted-scroll-state="undefined"
-                read-only
-              />
-            </div>
-            <template #dock>
-              <SessionDock>
-                <template v-if="coverRequests.length" #above>
-                  <RequestCard
-                    :requests="coverRequests"
-                    @decide="(id, decision) => (coverRequests = decidePermission(coverRequests, id, decision))"
-                  />
-                </template>
-                <template #chips>
-                  <AgentsChip
-                    :agents="agents"
-                    :open="coverOpen"
-                    @open="coverOpen = !coverOpen; coverAgentId = firstRunningSubagentId(agents)"
-                  />
-                </template>
-                <GalleryComposer />
-              </SessionDock>
-            </template>
-            <template #overDock>
-              <SubagentPanel
-                :agent-cost="() => agentCost.cost.value"
-                v-model:open="coverOpen"
-                v-model:active-id="coverAgentId"
-                :agents="agents"
-                :terminals="terminals"
-                @abort="sessionFlow.abortSubagents"
-                @abort-agent="sessionFlow.abortSubagent"
-                v-bind="agentContext.panel"
-              />
-            </template>
-          </SessionSurface>
         </div>
       </GallerySection>
     </template>
 
     <template v-if="view === 'states'">
       <GalleryHistoryWindow />
-      <GallerySection title="Catching Up" note="While the page is behind the conversation’s session, a spinner stands centred over the transcript’s end, a step above the dock’s top part, where what it waits for will appear: the lane is not open, or it is and the transcript is read again. It takes no room, so nothing in the transcript moves; it shows only past half a second, and not while a dock window covers the transcript’s end. Switch Back opens the conversation again from its copy: the spinner turns until the reply written meanwhile joins. Lose the Connection drops the lane for four seconds.">
+      <GallerySection title="Catching Up" note="While the page is behind the conversation’s session, a spinner stands centred over the transcript’s end, a step above the dock’s top part, where what it waits for will appear: the lane is not open, or it is and the transcript is read again. It takes no room, so nothing in the transcript moves; it shows only past half a second. Switch Back opens the conversation again from its copy: the spinner turns until the reply written meanwhile joins. Lose the Connection drops the lane for four seconds.">
         <GalleryCatchingUp />
       </GallerySection>
       <GallerySection title="Transcript Entrance" note="Restored history appears without motion. Only blocks appended after restoration enter; switching or scrolling back to existing blocks does not replay their entrance.">
@@ -4031,19 +3955,14 @@ onBeforeUnmount(() => {
     <template v-if="view === 'panel'">
       <GallerySection
         title="The Frame"
-        note="The app frame with the work panel open on the right: the sidebar, the session, and the panel are siblings, each side pane behind its own divider. The header’s panel control opens it and the panel’s fold control closes it, using the same 28px button, 14px icon, 12px right inset, tooltip and hover treatment as the conversation’s Open panel control; drag or double-click the divider on its left. A press in the panel or on its divider leaves an open Agents or Running window open, so a child’s changes are read beside it; only a press in the sidebar or the session closes it. The panel keeps a share of the width it splits with the session, so resizing the frame scales both while the sidebar keeps its px width; Reset Panel restores the initial selections."
+        note="The app frame: the sidebar, then the conversation with its work in windows over it and the taskbar under it. A file, a change, a page or an attachment the conversation names opens in its window, floating in the middle of the area above the composer; Esc puts the front window away. Drag a window by its title bar to move it, onto the area’s right quarter to dock it beside the conversation; the taskbar’s buttons show, hide and pick a window’s tab, and its + menu opens one. Reset Panel restores the initial selections."
       >
         <GallerySpecimen variant="frame · live" wide>
-          <!-- The well holds what the frame fixes to the window on a phone, the work panel's
-               sheet and the sidebar's drawer, so they cover this frame, not the specimens below. -->
+          <!-- The well holds what the frame fixes to the window on a phone, the sidebar's
+               drawer, so it covers this frame, not the specimens below. -->
           <GalleryOverlayWell size="tall" class="w-full">
           <div class="gallery-frame flex h-[44rem] w-full overflow-hidden">
-            <SidebarLayout
-              v-model:width="panelSidebarWidth"
-              v-model:aside-open="panelAsideOpen"
-              v-model:aside-share="panelAsideShare"
-              class="w-full"
-            >
+            <SidebarLayout v-model:width="panelSidebarWidth" class="w-full">
               <template #sidebar>
                 <AppSidebar
                   :new-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'new')?.keys"
@@ -4070,15 +3989,13 @@ onBeforeUnmount(() => {
                 :reveal="frameReveal"
                 @revealed="frameReveal = null"
                 @reveal="(at) => (frameReveal = at)"
-                :aside-open="panelAsideOpen"
-                :panel-tabs="panelWork.panel.value.tabs.length"
+                :work="panelSessionWork"
                 :share="shareService"
                 searchable
                 :find-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'find')?.keys"
                 @find="openFrameSearch(true)"
                 :select-edit="panelWork.selectEdit"
                 :files="sessionFiles"
-                @open-aside="panelAsideOpen = true"
                 :pending-submissions="sessionFlow.pendingSubmissions.value"
                 :removing="sessionFlow.removing.value"
                 @retry-undelivered="(id) => sessionFlow.retrySubmission(id)"
@@ -4110,9 +4027,6 @@ onBeforeUnmount(() => {
                   />
                 </template>
               </ChatSession>
-              <template #aside>
-                <GalleryWorkPanel :work="panelWork" @close="panelAsideOpen = false" />
-              </template>
               <template #dialogs>
                 <SearchDialog
                   :is-open="frameSearchOpen"
@@ -4134,17 +4048,16 @@ onBeforeUnmount(() => {
           <!-- What the agent's `demi browser tab new` and `open` do, with `--show` or without: the browser tells the plugin of the new tab. -->
           <Button size="sm" @click="agentOpens(true)">Open and Show a Page as the Agent</Button>
           <Button size="sm" @click="agentOpens(false)">Open a Page to Check as the Agent</Button>
-          <span class="self-center font-mono text-[11px] text-fg-faint">panel {{ Math.round(panelAsideShare * 100) }}% of the width it splits with the session · at least {{ ASIDE_SHARE.minWidth }}px, leaving the session {{ ASIDE_SHARE.mainMinWidth }}px</span>
         </div>
       </GallerySection>
       <GallerySection
-        title="Work Panel"
-        note="Changes and Files are pinned tabs, the `change` and `file` kinds of the changes and file-browser plugins: tabs of one shape whatever is selected, each its icon and its own short title, Changes with its counts after it, and Files never the open file’s name, which is in its tooltip, that lead the strip’s one tab list, so the arrow keys move across them and the user’s tabs alike; they are never created, closed or saved, never scroll or drag with the strip’s tabs, and only compete with them for the selection. A divider parts them from the user’s tabs, and fades out while the tab on either side of it is selected or hovered. The strip holds the user’s tabs, content-sized, capped at 160px and an equal share of the strip, narrowing to 88px before it scrolls, with a button at its end that lists every tab once it scrolls, and close menus that affect only tabs. The strip has no control to open a tab: a tab appears when the agent opens one, or when a page in a tab opens one, as the first specimen’s Open and Show a Page as the Agent does. Before the browser has a tab, as while it reopens a tab it lost, the content says what Demi does from the frame the tab starts opening, centred with a spinner: Starting Cloud…, Downloading the browser… with a bar and how much has come, on a device without Chrome, Starting the browser… or Opening the page…, as the specimens held in each phase show, each a tab the browser lost that reopens; Stop the Cloud shows them in turn. Until the page has the browser’s tab list, which comes with the conversation’s opening, the area under the address stays empty, as the specimen held at Connecting shows. A pane changes whole: a click on a tab, or on another file, makes the strip, the address and the selected tab the new view’s in the same frame, and the area under the address, the file with its tree, the changes with their list, the browser’s page, stays empty at its size while the view reads what it first needs, a file’s text, its folder and the folders above it, a change list, its branch, its newest commits and the file it selects; it draws once, whole, when the last is in. The first view the panel shows, as the page loads or the panel opens, says Reading and the tab’s name under a spinner in the middle of it from its start, with the panel’s frame and tabs already drawn, as the specimen held before the conversation’s directory is known shows; a view that a switch brings says it only past 300 ms. A view read before shows at once when it is switched back to. An address typed before then shows at once with a thin loading line, and the tab opens there. Reload, Back, Forward and an address show the loading line on the click, before anything left the page: the gallery’s browser answers about a second later and starts loading a moment after its answer, as a far host does. The host numbers its tab lists and the answer names the last one before the request, so only a list numbered higher ends the line, whichever reaches the page first; a page that loads keeps the picture it had under the line until the browser says it stopped loading. Back and Forward are unavailable while the tab’s history has no page that way; go to another address to make Back available. A request the browser refuses ends the line at once and is reported in a toast, never in the tab; a tab the plugin could not open shows a region status with Retry. What the device’s view cannot do for the viewer while the picture still shows, such as delivering its input, is a toast once; a device that cannot capture its tabs shows a region status in place of the picture, as the specimen of one does. A closed tab leaves at once and never comes back, fading out as an unselected tab while the selection passes on. While a tab loads, it shows so in three places at once, as a web browser does: Reload turns into Stop, the tab’s mark in the strip turns into a spinner, and the line runs; Stop asks the browser to stop the page, and the three end once the browser says it stopped and, for a tab that shows no picture yet, such as one opening or reopening, once its first picture arrives. Stop is never unavailable while a tab loads: pressed before the browser has the tab, it gives up the address, and the tab opens blank. The gallery’s pages take five seconds to load, so Stop can be tried. A page the agent closed leaves the strip, as a closed tab does. A tab the browser lost when it ended, as a release or a stopped Cloud ends it, keeps its title and address, and opens its page again as soon as it is shown, loading as any page does; a reopening the host refuses shows its message with Retry, which returns the tab to loading at once. A view that reconnects keeps its last picture under a quiet note. A viewer’s browser that cannot decode the host’s H.264, such as a Chromium built without proprietary codecs, opens no view: its browser tab says so in place of the picture, as the last specimen’s does in any browser. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. A Web picture stands at its own size from the panel’s top-left corner and is never scaled: while the panel grows, the part it does not cover yet is white until a picture at the new size arrives, and while it shrinks, the panel cuts it; a phone’s picture is scaled to fit and centred. The cursor over the page is the page’s own, resolved here from where the page says each cursor applies, so moving across the button shows its pointer at once; no caret or local control shows over the picture. A tab selected again after another tab, or after File, shows its picture, address and title at once, with no loading line for a page that had loaded, and the File view’s tree shows as it was, with no slide. The agent shows a tab with demi browser show, or opens one with --show: once its job ends, the panel opens, closed or not, and selects that tab, once per showing, and the user’s own selection after it stands; a tab the agent opens only to check its own work joins the strip without taking the view (the app frame’s controls show both). The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. Change groups its added/removed counts with a 2px gap and shows uncommitted totals, none while nothing changed; picked again, it shows the view as it was left, its mode and file included; file pills still open retained edits there. A browser tab wears its page’s icon, as a web browser’s tab does, and the globe only for a page without one, such as the Docs tab’s site. Its menu offers Reload before the Close commands. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again. The address bar reads what is typed as a browser’s does: localhost:3000 opens over http, example.com over https, words are a Google search, and Escape gives back the page’s address. With the focus in the tab, ⌘L focuses the address, ⌘[ and ⌘] go Back and Forward and ⌘R reloads the page, never Demi. The drawn page’s link opens the invoice in a new tab, which joins the strip at once and is selected, as a click’s new tab is. A right click on the page opens the browser’s menu: Back, Forward and Reload, a link’s Copy Link Address, Cut, Copy and Paste in the field; Escape closes it, as it closes every menu. A tab the page’s link opens goes right after its page’s tab, behind the tabs that tab opened before, as Chrome places them, and keeps that order after a reload. Ship order asks in a dialog titled with the page’s host, which Enter and Escape answer. Download guide.pdf shows the download in a bubble under the address bar’s download button: its size as it comes, then Save, which saves it to this computer, and Show in Files, which opens it in File. While the conversation’s device is offline, the panel keeps its strip and puts a page in place of every tab’s contents, with the device’s name and that its files, changes and browser appear again when it reconnects, and no spinner; the contents stay behind it and show again as they were when the device is back. Beside a new conversation, before its first message, the panel binds no plugin and says that files and changes appear after the first message; Close is its only control."
+        title="Work Windows"
+        note="Each specimen shows the conversation’s work in its windows over the gallery project, a window filling the box as it opens; Restore floats it, and the taskbar under it shows, hides and picks a window’s tab. Files and Changes are windows of one pinned tab each, the `file` and `change` kinds of the file-browser and changes plugins: never created, closed or saved, their window closes and the taskbar’s + menu opens it again. The browser’s window holds the user’s tabs, content-sized, capped at 160px and an equal share of the strip, narrowing to 88px before it scrolls; its New Tab opens a blank page, and a tab appears too when the agent opens one, or when a page in a tab opens one, as the first specimen’s Open and Show a Page as the Agent does. Before the browser has a tab, as while it reopens a tab it lost, the content says what Demi does from the frame the tab starts opening, centred with a spinner: Starting Cloud…, Downloading the browser… with a bar and how much has come, on a device without Chrome, Starting the browser… or Opening the page…, as the specimens held in each phase show, each a tab the browser lost that reopens; Stop the Cloud shows them in turn. Until the page has the browser’s tab list, which comes with the conversation’s opening, the area under the address stays empty, as the specimen held at Connecting shows. A pane changes whole: a click on a tab, or on another file, makes the strip, the address and the selected tab the new view’s in the same frame, and the area under the address, the file with its tree, the changes with their list, the browser’s page, stays empty at its size while the view reads what it first needs, a file’s text, its folder and the folders above it, a change list, its branch, its newest commits and the file it selects; it draws once, whole, when the last is in. The first view a window shows, as the page loads or the window opens, says Reading and the tab’s name under a spinner in the middle of it from its start, with the window’s frame and tabs already drawn, as the specimen held before the conversation’s directory is known shows; a view that a switch brings says it only past 300 ms. A view read before shows at once when it is switched back to. An address typed before then shows at once with a thin loading line, and the tab opens there. Reload, Back, Forward and an address show the loading line on the click, before anything left the page: the gallery’s browser answers about a second later and starts loading a moment after its answer, as a far host does. The host numbers its tab lists and the answer names the last one before the request, so only a list numbered higher ends the line, whichever reaches the page first; a page that loads keeps the picture it had under the line until the browser says it stopped loading. Back and Forward are unavailable while the tab’s history has no page that way; go to another address to make Back available. A request the browser refuses ends the line at once and is reported in a toast, never in the tab; a tab the plugin could not open shows a region status with Retry. What the device’s view cannot do for the viewer while the picture still shows, such as delivering its input, is a toast once; a device that cannot capture its tabs shows a region status in place of the picture, as the specimen of one does. A closed tab leaves at once and never comes back, fading out as an unselected tab while the selection passes on. While a tab loads, it shows so in three places at once, as a web browser does: Reload turns into Stop, the tab’s mark in the strip turns into a spinner, and the line runs; Stop asks the browser to stop the page, and the three end once the browser says it stopped and, for a tab that shows no picture yet, such as one opening or reopening, once its first picture arrives. Stop is never unavailable while a tab loads: pressed before the browser has the tab, it gives up the address, and the tab opens blank. The gallery’s pages take five seconds to load, so Stop can be tried. A page the agent closed leaves the strip, as a closed tab does. A tab the browser lost when it ended, as a release or a stopped Cloud ends it, keeps its title and address, and opens its page again as soon as it is shown, loading as any page does; a reopening the host refuses shows its message with Retry, which returns the tab to loading at once. A view that reconnects keeps its last picture under a quiet note. A viewer’s browser that cannot decode the host’s H.264, such as a Chromium built without proprietary codecs, opens no view: its browser tab says so in place of the picture, as the last specimen’s does in any browser. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. A Web picture stands at its own size from the window’s top-left corner and is never scaled: while the window grows, the part it does not cover yet is white until a picture at the new size arrives, and while it shrinks, the window cuts it; a phone’s picture is scaled to fit and centred. The cursor over the page is the page’s own, resolved here from where the page says each cursor applies, so moving across the button shows its pointer at once; no caret or local control shows over the picture. A tab selected again after another tab, or after File, shows its picture, address and title at once, with no loading line for a page that had loaded, and the File view’s tree shows as it was, with no slide. The agent shows a tab with demi browser show, or opens one with --show: once its job ends, its window comes in front on that tab, once per showing, and the user’s own selection after it stands; a tab the agent opens only to check its own work joins the strip without taking the view (the app frame’s controls show both). The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. Change groups its added/removed counts with a 2px gap and shows uncommitted totals, none while nothing changed; picked again, it shows the view as it was left, its mode and file included; file pills still open retained edits there. A browser tab wears its page’s icon, as a web browser’s tab does, and the globe only for a page without one, such as the Docs tab’s site. Its menu offers Reload before the Close commands. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again. The address bar reads what is typed as a browser’s does: localhost:3000 opens over http, example.com over https, words are a Google search, and Escape gives back the page’s address. With the focus in the tab, ⌘L focuses the address, ⌘[ and ⌘] go Back and Forward and ⌘R reloads the page, never Demi. The drawn page’s link opens the invoice in a new tab, which joins the strip at once and is selected, as a click’s new tab is. A right click on the page opens the browser’s menu: Back, Forward and Reload, a link’s Copy Link Address, Cut, Copy and Paste in the field; Escape closes it, as it closes every menu. A tab the page’s link opens goes right after its page’s tab, behind the tabs that tab opened before, as Chrome places them, and keeps that order after a reload. Ship order asks in a dialog titled with the page’s host, which Enter and Escape answer. Download guide.pdf shows the download in a bubble under the address bar’s download button: its size as it comes, then Save, which saves it to this computer, and Show in Files, which opens it in File. While the conversation’s device is offline, each window keeps its tabs and puts a page in place of every tab’s contents, with the device’s name and that its files, changes and browser appear again when it reconnects, and no spinner; the contents stay behind it and show again as they were when the device is back. Beside a new conversation, before its first message, Files and Changes bind no plugin and say that files and changes appear after the first message."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <GalleryWorkPanel class="w-full" :work="exhibitWork" @close="exhibitWork.reset" />
+              <GalleryWorkWindows class="w-full" :work="exhibitWork" />
             </div>
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
               <Button size="sm" @click="exhibitAgentOpens">Open and Show a Page as the Agent</Button>
@@ -4153,7 +4066,7 @@ onBeforeUnmount(() => {
           </GallerySpecimen>
           <GallerySpecimen variant="tabs · the conversation browser’s tabs · live" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <GalleryWorkPanel class="w-full" :work="browserWork" @close="productWould('The work panel closes.')" />
+              <GalleryWorkWindows class="w-full" :work="browserWork" />
             </div>
             <!-- What the agent's close, and a conversation browser that ended, do to the tab being shown. -->
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
@@ -4208,7 +4121,7 @@ onBeforeUnmount(() => {
             wide
           >
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <GalleryWorkPanel class="w-full" :work="heldWorks[phase]" @close="productWould('The work panel closes.')" />
+              <GalleryWorkWindows class="w-full" :work="heldWorks[phase]" />
             </div>
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
               <Button size="sm" :disabled="heldWorks[phase].browser.held.value === null" @click="finishStarting(phase)">Let the Device Go On</Button>
@@ -4217,7 +4130,7 @@ onBeforeUnmount(() => {
           </GallerySpecimen>
           <GallerySpecimen variant="tabs · the device is offline" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <GalleryWorkPanel class="w-full" :work="offlineWork" :device-offline="deviceOfflineName" @close="productWould('The work panel closes.')" />
+              <GalleryWorkWindows class="w-full" :work="offlineWork" :device-offline="deviceOfflineName" />
             </div>
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
               <Button size="sm" @click="deviceOfflineName = deviceOfflineName === null ? 'alex-laptop' : null">
@@ -4228,17 +4141,17 @@ onBeforeUnmount(() => {
           </GallerySpecimen>
           <GallerySpecimen variant="tabs · a viewer’s browser that cannot decode H.264 · live" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <GalleryWorkPanel class="w-full" :work="undecodedWork" @close="productWould('The work panel closes.')" />
+              <GalleryWorkWindows class="w-full" :work="undecodedWork" />
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="tabs · a device that cannot capture · live" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <GalleryWorkPanel class="w-full" :work="uncapturedWork" @close="productWould('The work panel closes.')" />
+              <GalleryWorkWindows class="w-full" :work="uncapturedWork" />
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="tabs · the first view · before the conversation’s directory is known" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <GalleryWorkPanel class="w-full" :work="firstViewWork" @close="productWould('The work panel closes.')" />
+              <GalleryWorkWindows class="w-full" :work="firstViewWork" />
             </div>
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
               <Button size="sm" :disabled="directoryKnown" @click="directoryKnown = true">Bring the Working Directory</Button>
@@ -4247,18 +4160,18 @@ onBeforeUnmount(() => {
           </GallerySpecimen>
           <GallerySpecimen variant="before the first message · nothing to show yet" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <GalleryWorkPanel class="w-full" :work="unstartedWork" before-first-message @close="productWould('The work panel closes.')" />
+              <GalleryWorkWindows class="w-full" :work="unstartedWork" before-first-message />
             </div>
           </GallerySpecimen>
         </div>
       </GallerySection>
       <GallerySection
         title="Simulators"
-        note="The conversation’s simulators in the work panel, the mobile plugin’s `mobile` kind (`crates/plugin-mobile/page/src/index.ts`). The panel opens no device of its own: Open a Simulator as the Agent opens one as demi mobile open does, an iPhone first, then an iPad, an Android emulator, iPhone Duo and an Android foldable, and its tab joins the strip. A device’s tab and its toolbar, before the name, show its system’s logo, drawn as a device’s mark draws one: Apple for the iPhone and the iPad, the Android robot’s head for the Android emulator. A device’s tab shows its toolbar: the device’s name and, in grey and in parentheses, its model, such as Work iPhone (iPhone 17 Pro); where both do not fit the model is left out, where the name does not fit either the name too, and on a phone, whose tab names the device; Rotate Left, Rotate Right and Toggle Appearance turn and recolour the screen, the device turning there in 0.3 s as a phone turned in the hand does, at once with Reduce Motion; Home and Lock press the buttons, and on the Android emulator Back, which leaves Settings; Volume Up and Down press theirs, which the gallery’s screen does not draw, so a toast says what the simulator would show; Screenshot and Record save on this computer, as a download does. Record shows Stop Recording while the device records, whoever started it: Record as the Agent starts or stops the agent’s recording of the first device, and the toolbar follows. Each control runs the operation of the command that does the same. The picture sits in the device’s frame; this device has neither Xcode’s frames nor the Android device’s art, so the view draws the device itself in the look of Xcode’s frames: a black body with an even bezel concentric with the screen’s corners, the Android emulator’s the smooth curve its system UI draws, a metal edge, and its buttons as short bars, which turns with the device. A click on the screen is a tap, a drag a swipe; tapping the home screen’s upper half opens Settings, Home returns, and the scroll wheel scrolls Settings, as a swipe of its turn would on a device. On a panel too narrow for every control, the controls at the end go into the More menu (») at the toolbar’s end, as a macOS window’s toolbar puts them; narrow the window to see it. While the agent uses the device, from its first command until three seconds after its last, the view says The agent is using this device, and rings where it tapped; the panel’s own controls are the user’s and show neither. The controls that only send input, Home, Lock, the volume keys, Back, the rotations and Toggle Appearance, act on the press with no spinner. Lock turns the screen off: the picture keeps its last frame dimmed under Screen Off with Wake, and Wake, a tap or a key turns it on again; Sleep as the device turns each screen off as a device’s own sleep does. Until its first picture, a device’s view says what it waits for: the connection, the frame, the screen, in the device’s empty screen once its frame shows. Send a Frame That Can’t Show sends each shown device a frame whose image does not decode, drawn for it turned: the view says Couldn’t Show the Simulator, that the device’s frame couldn’t be shown, with Retry, which asks for the frame again and shows the device. Restart the Runner ends every device’s stream for a few seconds: the tabs stay, and each view keeps its last picture under Reconnecting to the simulator…, then returns to the live picture. Update the Runner does the same while the device downloads the plugin’s new program: the note says Downloading… with how much has come, until the download is done and the live picture returns. iPhone Duo, which opens closed, shows in 3D, here on a stand-in of two slabs, since Apple’s model is never committed, with each display's own pictures on its face, each on a stream of its own, the one the device does not light black: the outer one lit closed, the inner one, across both halves, once the hinge is past 90°. Its toolbar holds Closed, Half Open and Open, which turn the hinge towards their angle at once, from where it is, the one it is at pressed; pressed again, it moves the hinge there again, which a fold outside Demi may have left elsewhere. A fold the device refuses leaves the view at the device’s angle. A capsule under the device, on the view’s own background, holds the hinge’s slider with its angle, whose drag turns the hinge as it goes, the model following on a spring; beside it, in a circle of the same look, Face the device turns the view back to face the device in 0.4 s, and is dimmed while it faces the user. Half Open shows the device from between its pages, so both halves read and take taps. While the device is partly open, a drag on the body, a dark display or the space around turns the view about the device’s upright axis, at most 60° either way; closed or open flat, it faces the user and does not turn, the turn easing out as the hinge nears either end; on the lit display a click is a tap and a drag a swipe, however the device is turned or folded, and on the half in front of it a drag turns the view. Rotate Left and Right turn the device about the view’s axis, as a 2D frame turns, the picture upright. Where the browser has no WebGL 2, iPhone Duo shows in its lit display’s 2D frame, with the postures in its toolbar. Its view says what it waits for, Couldn’t Show the Simulator with Retry, and Reconnecting or Downloading as every device’s does. The Android foldable has Closed and Open in its toolbar, with the same icons, the one it is in pressed; each shows the other display in its 2D frame. Fold as the Agent opens the first foldable that is closed, or closes it, as demi mobile fold does, and the view follows. Closing a device’s tab closes the device."
+        note="The conversation’s simulators in their window, the mobile plugin’s `mobile` kind (`crates/plugin-mobile/page/src/index.ts`). The window opens no device of its own: Open a Simulator as the Agent opens one as demi mobile open does, an iPhone first, then an iPad, an Android emulator, iPhone Duo and an Android foldable, and its tab joins the strip. A device’s tab and its toolbar, before the name, show its system’s logo, drawn as a device’s mark draws one: Apple for the iPhone and the iPad, the Android robot’s head for the Android emulator. A device’s tab shows its toolbar: the device’s name and, in grey and in parentheses, its model, such as Work iPhone (iPhone 17 Pro); where both do not fit the model is left out, where the name does not fit either the name too, and on a phone, whose tab names the device; Rotate Left, Rotate Right and Toggle Appearance turn and recolour the screen, the device turning there in 0.3 s as a phone turned in the hand does, at once with Reduce Motion; Home and Lock press the buttons, and on the Android emulator Back, which leaves Settings; Volume Up and Down press theirs, which the gallery’s screen does not draw, so a toast says what the simulator would show; Screenshot and Record save on this computer, as a download does. Record shows Stop Recording while the device records, whoever started it: Record as the Agent starts or stops the agent’s recording of the first device, and the toolbar follows. Each control runs the operation of the command that does the same. The picture sits in the device’s frame; this device has neither Xcode’s frames nor the Android device’s art, so the view draws the device itself in the look of Xcode’s frames: a black body with an even bezel concentric with the screen’s corners, the Android emulator’s the smooth curve its system UI draws, a metal edge, and its buttons as short bars, which turns with the device. A click on the screen is a tap, a drag a swipe; tapping the home screen’s upper half opens Settings, Home returns, and the scroll wheel scrolls Settings, as a swipe of its turn would on a device. In a window too narrow for every control, the controls at the end go into the More menu (») at the toolbar’s end, as a macOS window’s toolbar puts them; narrow the window to see it. While the agent uses the device, from its first command until three seconds after its last, the view says The agent is using this device, and rings where it tapped; the window’s own controls are the user’s and show neither. The controls that only send input, Home, Lock, the volume keys, Back, the rotations and Toggle Appearance, act on the press with no spinner. Lock turns the screen off: the picture keeps its last frame dimmed under Screen Off with Wake, and Wake, a tap or a key turns it on again; Sleep as the device turns each screen off as a device’s own sleep does. Until its first picture, a device’s view says what it waits for: the connection, the frame, the screen, in the device’s empty screen once its frame shows. Send a Frame That Can’t Show sends each shown device a frame whose image does not decode, drawn for it turned: the view says Couldn’t Show the Simulator, that the device’s frame couldn’t be shown, with Retry, which asks for the frame again and shows the device. Restart the Runner ends every device’s stream for a few seconds: the tabs stay, and each view keeps its last picture under Reconnecting to the simulator…, then returns to the live picture. Update the Runner does the same while the device downloads the plugin’s new program: the note says Downloading… with how much has come, until the download is done and the live picture returns. iPhone Duo, which opens closed, shows in 3D, here on a stand-in of two slabs, since Apple’s model is never committed, with each display's own pictures on its face, each on a stream of its own, the one the device does not light black: the outer one lit closed, the inner one, across both halves, once the hinge is past 90°. Its toolbar holds Closed, Half Open and Open, which turn the hinge towards their angle at once, from where it is, the one it is at pressed; pressed again, it moves the hinge there again, which a fold outside Demi may have left elsewhere. A fold the device refuses leaves the view at the device’s angle. A capsule under the device, on the view’s own background, holds the hinge’s slider with its angle, whose drag turns the hinge as it goes, the model following on a spring; beside it, in a circle of the same look, Face the device turns the view back to face the device in 0.4 s, and is dimmed while it faces the user. Half Open shows the device from between its pages, so both halves read and take taps. While the device is partly open, a drag on the body, a dark display or the space around turns the view about the device’s upright axis, at most 60° either way; closed or open flat, it faces the user and does not turn, the turn easing out as the hinge nears either end; on the lit display a click is a tap and a drag a swipe, however the device is turned or folded, and on the half in front of it a drag turns the view. Rotate Left and Right turn the device about the view’s axis, as a 2D frame turns, the picture upright. Where the browser has no WebGL 2, iPhone Duo shows in its lit display’s 2D frame, with the postures in its toolbar. Its view says what it waits for, Couldn’t Show the Simulator with Retry, and Reconnecting or Downloading as every device’s does. The Android foldable has Closed and Open in its toolbar, with the same icons, the one it is in pressed; each shows the other display in its 2D frame. Fold as the Agent opens the first foldable that is closed, or closes it, as demi mobile fold does, and the view follows. Closing a device’s tab closes the device."
       >
         <GallerySpecimen variant="tabs · the conversation’s simulators · live" wide>
           <div class="gallery-frame flex h-[34rem] overflow-hidden">
-            <GalleryWorkPanel class="w-full" :work="mobileWork" @close="productWould('The work panel closes.')" />
+            <GalleryWorkWindows class="w-full" :work="mobileWork" />
           </div>
           <div class="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-fg-muted">
             <Button size="sm" @click="mobileWork.mobile.agentOpens()">Open a Simulator as the Agent</Button>
@@ -4275,7 +4188,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="File View"
-        note="A file of the device: its whole path as crumbs from the device’s root, the root and the home wearing their glyphs, the file itself under its bar, and the project tree beside it following the file, as Visual Studio Code’s Explorer follows the file being edited: whenever the view shows a file, by a button here, the tree, the crumbs, Back or Forward, the tree unfolds the folders above it together, their listings read as one request, selects its row and scrolls it into view if it is not, the other folders staying as they are; packages/agent/src/providers/anthropic.ts is four folders down. A file outside the project, as Open a File Outside the Project opens one of another checkout, leaves no row selected. A hidden tree stays hidden and shows the file once its control shows it. The file’s bar, over the file and not the tree, says what the file is: the language’s full name as the editor knows it, or Plain Text, with its lines and size; an image’s kind, pixel size, zoom and size, the zoom following the picture; a video’s pixel size and size; another file’s kind and size. On its right are Preview and Source for Markdown, SVG and HTML, Copy, which puts the whole text on the clipboard, Markdown’s source and not its rendering, and turns to a check and “Copied” for a moment, and Download for every file. Text opens read-only in the code editor, colored by its language, with folding; a click puts a blinking caret in it, which the arrows move and Shift extends a selection from. Mod-f in the text opens a find bar below it: the query with its match count, “Match case”, “Match whole word” and “Use regular expression”, and “Previous match” and “Next match”, which Shift+Enter and Enter in the field also do. Typing selects the first match from the selection on, the count shows a question mark while the selection is on no match, a count past 9999 stops there with a +, and the scrollbar marks every match counted until Escape or Close shuts the bar. An image opens fitted to the pane without being enlarged, over a checkerboard where it is transparent, and zooms and moves as in the media viewer, by the same component: the wheel or a pinch zooms about the pointer up to 800%, a drag moves it while it is larger than the pane, and a click without a drag toggles the fitted and the actual size about the clicked spot; its bar says its pixel size, its zoom and its file size. Video and audio play in the browser’s own player and PDF in its own viewer, its bar saying its pixel size, for video, and its file size. Markdown renders like a repository file on GitHub: its HTML sanitized, so the script and the handler at the end of the README never run, its centered logo at its tag’s height in the lockup for the theme Demi shows, its badges on one line, its alerts titled Note and Warning, its math and code rendered, its front matter a YAML block, and its links opening files here, scrolling to headings, or leaving for the web. An HTML file opens as the page it describes, on white whatever the theme, in a frame sandboxed from Demi: its scripts run, so report/index.html draws its chart and Add a Quarter draws another bar, and each new version of the file loads the page again. In the product it loads the stylesheets, scripts and images beside it on the device; here it shows from its own text. Markdown, SVG and HTML switch between Preview and Source. A file that is neither text nor previewable is a card with its facts and Download, and every file has Download in its bar. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, clicked in the tree or linked from a document replaces the one shown, and Back and Forward before the crumbs walk the files shown. A click on the crumb row anywhere but a crumb turns it into a text field with the absolute path; a relative path starts from the project and ~ names the home, so ~/Projects/shop/README.md opens the README; the field completes from its folders and files as it is typed, a completed file opening at once: Enter opens a file, or goes to a folder as Finder’s Go to Folder does, unfolding it in the tree with the folders above it and selecting it until another file opens; a folder outside the project says the tree shows the project only. A click on a row gives the tree the keyboard: the arrows, Home, End and Enter move through it and act, and typing a name moves to the first row shown that starts with it, opening nothing. A right-click in the tree downloads a file, or uploads into a folder, or into the project from the empty space; the uploads list under the tree, moving here at a pace slow enough to watch. The control at the end of the crumb row hides and shows the tree; it grows from the end as the file gives way, and shrinks back, and a tree hidden and shown again is as it was left. A view that would keep less than 320px beside the tree hides it by itself; the control then slides the tree in over the file, which stays as it is, its bar’s controls moving to the tree’s side, and the control, a click beside the tree or a file picked in it slides it away. The tree docks again once the view is wide enough, and its divider stops where the file would get narrower than that; the narrow frame resizes from its corner. Reads carry the fixture’s latency, so the text and each directory show their loading state the first time; the fixture’s device watches its files, as the product’s does, so a file or folder shown again shows at once, scrolled where it was, and asks nothing. Edit cookie.ts Outside Demi writes the file as another program would: the device reports it, and the text is read again and replaced in place, without a loading state, the scroll and folds staying. A read again that fails keeps the text and says so quietly over it, in the page’s own words, with Retry, and the view reads it again by itself once the device is back and its watch live again. A file that is not text keeps its card while it is read again. A file that is not there says it does not exist, its bar naming the file alone with nothing to do with it, with Retry, which shows the read on its way and then the same answer while the file is still not there. An image a document names that does not load shows its alt text in a dashed box, as the README’s missing one does, and tries again when the document is read again. server.log is over the text route’s 8 MiB: it opens as its first 8 MiB, with a line saying how much of how much shows and Download; its bar says its whole size and offers no Copy, since the page holds only the start. A file the device cannot watch has the view say that it shows it as last read, with Refresh, and it is checked each time it shows."
+        note="A file of the device: its whole path as crumbs from the device’s root, the root and the home wearing their glyphs, the file itself under its bar, and the project tree beside it following the file, as Visual Studio Code’s Explorer follows the file being edited: whenever the view shows a file, by a button here, the tree, the crumbs, Back or Forward, the tree unfolds the folders above it together, their listings read as one request, selects its row and scrolls it into view if it is not, the other folders staying as they are; packages/agent/src/providers/anthropic.ts is four folders down. A file outside the project, as Open a File Outside the Project opens one of another checkout, leaves no row selected. A hidden tree stays hidden and shows the file once its control shows it. The file’s bar, over the file and not the tree, says what the file is: the language’s full name as the editor knows it, or Plain Text, with its lines and size; an image’s kind, pixel size, zoom and size, the zoom following the picture; a video’s pixel size and size; another file’s kind and size. On its right are Preview and Source for Markdown, SVG and HTML, Copy, which puts the whole text on the clipboard, Markdown’s source and not its rendering, and turns to a check and “Copied” for a moment, and Download for every file. Text opens read-only in the code editor, colored by its language, with folding; a click puts a blinking caret in it, which the arrows move and Shift extends a selection from. Mod-f in the text opens a find bar below it: the query with its match count, “Match case”, “Match whole word” and “Use regular expression”, and “Previous match” and “Next match”, which Shift+Enter and Enter in the field also do. Typing selects the first match from the selection on, the count shows a question mark while the selection is on no match, a count past 9999 stops there with a +, and the scrollbar marks every match counted until Escape or Close shuts the bar. An image opens fitted to the pane without being enlarged, over a checkerboard where it is transparent, and zooms and moves as in the media viewer, by the same component: the wheel or a pinch zooms about the pointer up to 800%, a drag moves it while it is larger than the pane, and a click without a drag toggles the fitted and the actual size about the clicked spot; its bar says its pixel size, its zoom and its file size. Video and audio play in the browser’s own player and PDF in its own viewer, its bar saying its pixel size, for video, and its file size. Markdown renders like a repository file on GitHub: its HTML sanitized, so the script and the handler at the end of the README never run, its centered logo at its tag’s height in the lockup for the theme Demi shows, its badges on one line, its alerts titled Note and Warning, its math and code rendered, its front matter a YAML block, and its links opening files here, scrolling to headings, or leaving for the web. An HTML file opens as the page it describes, on white whatever the theme, in a frame sandboxed from Demi: its scripts run, so report/index.html draws its chart and Add a Quarter draws another bar, and each new version of the file loads the page again. In the product it loads the stylesheets, scripts and images beside it on the device; here it shows from its own text. Markdown, SVG and HTML switch between Preview and Source. A file that is neither text nor previewable is a card with its facts and Download, and every file has Download in its bar. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, clicked in the tree or linked from a document replaces the one shown, and Back and Forward before the crumbs walk the files shown. A click on the crumb row anywhere but a crumb turns it into a text field with the absolute path; a relative path starts from the project and ~ names the home, so ~/Projects/shop/README.md opens the README; the field completes from its folders and files as it is typed, a completed file opening at once: Enter opens a file, or goes to a folder as Finder’s Go to Folder does, unfolding it in the tree with the folders above it and selecting it until another file opens; a folder outside the project says the tree shows the project only. A click on a row gives the tree the keyboard: the arrows, Home, End and Enter move through it and act, and typing a name moves to the first row shown that starts with it, opening nothing. A right-click in the tree downloads a file, or uploads into a folder, or into the project from the empty space; the uploads list under the tree, moving here at a pace slow enough to watch. The control at the end of the crumb row hides and shows the tree; it grows from the end as the file gives way, and shrinks back, and a tree hidden and shown again is as it was left; whether it shows and its width stay as the reader left them, after a reload too. A view that would keep less than 640px beside the tree, about 80 columns of code with its line numbers, hides it by itself; the control then slides the tree in over the file, which stays as it is, its bar’s controls moving to the tree’s side, and the control, a click beside the tree or a file picked in it slides it away. The tree docks again once the view is wide enough, and its divider stops where the file would get narrower than that; the narrow frame resizes from its corner. Reads carry the fixture’s latency, so the text and each directory show their loading state the first time; the fixture’s device watches its files, as the product’s does, so a file or folder shown again shows at once, scrolled where it was, and asks nothing. Edit cookie.ts Outside Demi writes the file as another program would: the device reports it, and the text is read again and replaced in place, without a loading state, the scroll and folds staying. A read again that fails keeps the text and says so quietly over it, in the page’s own words, with Retry, and the view reads it again by itself once the device is back and its watch live again. A file that is not text keeps its card while it is read again. A file that is not there says it does not exist, its bar naming the file alone with nothing to do with it, with Retry, which shows the read on its way and then the same answer while the file is still not there. An image a document names that does not load shows its alt text in a dashed box, as the README’s missing one does, and tries again when the document is read again. server.log is over the text route’s 8 MiB: it opens as its first 8 MiB, with a line saying how much of how much shows and Download; its bar says its whole size and offers no Copy, since the page holds only the start. A file the device cannot watch has the view say that it shows it as last read, with Refresh, and it is checked each time it shows."
       >
         <div class="flex flex-wrap gap-1">
           <Button v-for="file in previewFiles" :key="file" size="sm" @click="showInFileView(`${project.root}/${file}`)">{{ file }}</Button>

@@ -1,4 +1,5 @@
 {
+  "window": { "attachments": "附件" },
   "kind": {
     "title": "文件",
     "titleNamed": "文件：{name}",

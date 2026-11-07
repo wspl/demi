@@ -58,6 +58,7 @@
       "session": "Session",
       "panel": "Panneau",
       "windows": "Fenêtres",
+      "taskbar": "Barre des tâches",
       "shared": "Page partagée"
     },
     "dialogs": {

@@ -10,7 +10,7 @@ import { mediumKey, useMediumSource, type ShownMedium } from './media-viewer'
 import type { StepReach } from './swipe-step'
 
 /**
- * One medium shown large, as the viewer's window and the work panel's Media tab
+ * One medium shown large, as the viewer's window and the Attachments window
  * show it: an image fitted to the space, which zooms and pans as in an image
  * viewer (`ImagePreview`), or a video that plays at once in Demi's player
  * while `open`, and never while not (`SwipeVideo`). A finger swipes either

@@ -204,7 +204,6 @@
     "forkedFrom": "分岔自 {agent}",
     "inherited": "繼承自此對話",
     "fast": "快速",
-    "chip": "{count} 個智慧體",
     "stopAgent": "停止智慧體",
     "copyId": "複製智慧體 ID",
     "closeTab": "關閉分頁",
@@ -218,10 +217,9 @@
     "thinkingOff": "思考已關閉"
   },
   "terminals": {
+    "none": "沒有正在執行的命令",
     "endCommand": "結束指令",
     "closeTab": "關閉分頁",
-    "chip": "{count} 個執行中",
-    "serviceChip": "{count} 個服務",
     "loading": "正在載入終端機…",
     "unavailable": "無法載入終端機。"
   },
@@ -233,10 +231,8 @@
     "empty": "沒有訊息",
     "start": "開始對話",
     "conversations": "對話",
-    "openPanel": "開啟面板",
     "tabs": "分頁",
     "tabsOpen": "分頁，已開啟 {count} 個",
-    "closePanel": "關閉面板",
     "options": "{title}，對話選項",
     "deviceState": "{name} {state}",
     "renameTitle": "重新命名對話",
@@ -425,16 +421,7 @@
     "label": "瀏覽器網址"
   },
   "panel": {
-    "allTabs": "顯示所有分頁",
     "more": "更多",
-    "windowHeight": "視窗高度",
-    "closeOthers": "關閉其他",
-    "closeRight": "向右關閉",
-    "closeLeft": "向左關閉",
-    "closeAll": "全部關閉",
-    "cannotShow": "無法顯示此分頁。",
-    "nothingOpen": "沒有開啟的內容",
-    "noFiles": "沒有檔案或變更",
     "reading": "正在讀取 {name}",
     "deviceOffline": "{name} 已離線。",
     "deviceOfflineDetail": "重新連線後，檔案、變更和瀏覽器會再次顯示。"

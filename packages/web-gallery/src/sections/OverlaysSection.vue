@@ -222,7 +222,7 @@ const widthDirectories = ['a-rather-long-directory-name', 'demi']
 /** The alignment specimen's two panes, each with a menu at its start and one at its end. */
 const alignmentPanes = [
   { id: 'conversation', label: 'Conversation', grow: 'flex-[3]' },
-  { id: 'panel', label: 'Work panel', grow: 'flex-[2]' },
+  { id: 'panel', label: 'Docked window', grow: 'flex-[2]' },
 ] as const
 const alignmentDirectories = ['photo-album', 'demi', 'renderfarm-render-pipeline']
 const alignmentDirectory = reactive<Record<string, string>>({
@@ -1117,7 +1117,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="Dropdown Alignment"
-        note="A menu grows toward the inside of the pane its trigger sits in: from a trigger in the pane’s end half it lines up with the trigger’s end and grows back across the pane, and otherwise with its start. The pane is the region a layout primitive marks (the sidebar, the conversation, the work panel, a dialog, a settings page), so a trigger at the work panel’s start opens rightward though it sits in the window’s right half. Whether a menu opens below or above is the caller’s, and it flips where it would not fit. A menu whose trigger is a caption that must not move, such as the Files tab’s directory name, may say which edge it lines up with (align): it then stays on that edge wherever the trigger is, grows rightward from a trigger at the pane’s end, and stops against the pane’s right edge, shifted left only as far as it must be, instead of flipping to the trigger’s end and covering the pane. Its two triggers here, in the pane’s end half, show the difference: the first opens back across the pane from its end, the second forward from its start."
+        note="A menu grows toward the inside of the pane its trigger sits in: from a trigger in the pane’s end half it lines up with the trigger’s end and grows back across the pane, and otherwise with its start. The pane is the region a layout primitive marks (the sidebar, the conversation, a window, a dialog, a settings page), so a trigger at a docked window’s start opens rightward though it sits in the window’s right half. Whether a menu opens below or above is the caller’s, and it flips where it would not fit. A menu whose trigger is a caption that must not move, such as the Files tab’s directory name, may say which edge it lines up with (align): it then stays on that edge wherever the trigger is, grows rightward from a trigger at the pane’s end, and stops against the pane’s right edge, shifted left only as far as it must be, instead of flipping to the trigger’s end and covering the pane. Its two triggers here, in the pane’s end half, show the difference: the first opens back across the pane from its end, the second forward from its start."
       >
         <GallerySpecimen variant="start and end of two panes" wide>
           <div class="flex w-[44rem] max-w-full overflow-hidden rounded-lg ring-1 ring-line">

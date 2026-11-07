@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { keptComputed } from '@demicodes/web-ui/infra/keep-same'
-import { computed, onUnmounted, ref, useTemplateRef, watch } from 'vue'
+import { computed, onUnmounted, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { coded } from '@demicodes/web-ui/infra/errors'
 import { viewAbandoned, viewOpened } from '@demicodes/web-ui/infra/view-timing'
@@ -27,6 +27,7 @@ import { messageCredentials } from '../settings/credentials'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useWorkPanel } from './work'
+import { useSessionWork } from './session-work'
 import { usePermissions } from './permissions'
 import { useNotifications } from '../state/notifications'
 import { APP_ICON } from '@demicodes/web-ui/assets/app-icon'
@@ -59,9 +60,6 @@ async function continueWith(conversation: Parameters<typeof store.start>[0], pro
   }
 }
 const resources = useResources()
-// The share follows the drag live in the page and reaches the preferences once it settles.
-const dockWindowShare = ref(resources.dockWindowShare)
-watch(() => resources.dockWindowShare, (share) => { dockWindowShare.value = share })
 const product = useProduct()
 const preferences = usePreferences()
 const work = useWorkPanel()
@@ -92,6 +90,8 @@ const navigation = useConversationNavigation()
 const conversation = computed(() =>
   store.items.find((c) => c.id === props.id),
 )
+/** The conversation's work, which opens in its windows. */
+const sessionWork = useSessionWork(() => conversation.value?.id ?? null)
 // The cards of the open conversation, the composer's and its subagents' windows', keep the window of its cost they show current.
 provideCostWatch((window) => {
   const current = conversation.value
@@ -110,7 +110,7 @@ provideHistoryReading((node) => {
   const current = conversation.value
   return current ? store.history.reading(current, node) : { before: false, after: false }
 })
-/** The schedules that wake the conversation, which the chip above the composer lists. */
+/** The schedules that wake the conversation, which the taskbar's Schedules button lists. */
 const schedules = computed(() => conversation.value?.metadata.shown.value?.schedules ?? [])
 /** The header's place, which carries out a move the offline primary device's card asks for. */
 const place = useTemplateRef<InstanceType<typeof ProjectInfo>>('place')
@@ -396,9 +396,8 @@ async function fork(request: MessageForkRequest): Promise<void> {
 <template>
   <ChatSession
     v-if="pageKind === 'session' && conversation"
-    v-model:dock-window-share="dockWindowShare"
-    @dock-window-resize-end="resources.dockWindowShare = $event"
     :conversation="conversation"
+    :work="sessionWork"
     :catching-up="catchingUp"
     :has-provider="hasProvider"
     :credential-kinds="credentialKinds"
@@ -449,8 +448,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @interrupt-pending-steer="store.interruptWithSteer(conversation, $event)"
     :edit-version="editVersion"
     :message-edit="conversation.messageEdit"
-    :aside-open="work.stateFor(conversation.id).open"
-    :panel-tabs="work.stateFor(conversation.id).panel.tabs.length"
     @update:message-edit="conversation.messageEdit = $event"
     @regenerate="store.regenerate(conversation, $event)"
     @switch-version="(id, to) => store.switchVersion(conversation!, id, to)"
@@ -470,7 +467,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @read-subagent-after="(id) => readHistory(store.history.readAfter(conversation!, id))"
     @shown="(node, block, within) => store.history.showAt(conversation!, node, block, within)"
     @show-subagent="store.showSubagent(conversation!, $event)"
-    @open-aside="work.setOpen(conversation.id, true)"
     :usage-limits="card.limitsOf"
     @compact-subagent="store.compact(conversation, $event)"
     :subagent-cost="subagentCost"

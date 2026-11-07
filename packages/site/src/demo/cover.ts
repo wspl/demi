@@ -1,4 +1,4 @@
-// A screen the demo draws itself over a live view of the work panel: the
+// A screen the demo draws itself over a live view in a window: the
 // page in the browser, the app in the simulator. The live view is a canvas,
 // as a device's stream is, and a recording would keep it as a picture that
 // blurs as the camera comes close; drawn as the page's own elements, the
@@ -15,7 +15,7 @@ export interface Cover<P extends object> {
 /**
  * Covers `canvas` with `screen`, laid out in `size` of its own pixels and
  * scaled to the canvas, its corners rounded by `radius` of them; the cover
- * follows the canvas as it moves and resizes, a panel sliding in included.
+ * follows the canvas as it moves and resizes, a window coming in included.
  */
 export function cover<P extends object>(canvas: Element, screen: Component, initial: P, size: { width: number; height: number }, radius = 0): Cover<P> {
   const props = reactive(initial) as P

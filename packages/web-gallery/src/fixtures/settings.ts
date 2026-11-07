@@ -1226,7 +1226,7 @@ export function createSettingsState() {
       {
         id: 'browser',
         name: 'Browser',
-        description: 'Gives the agent a browser on the conversation’s device, which it drives with demi browser and you watch and use in the work panel.',
+        description: 'Gives the agent a browser on the conversation’s device, which it drives with demi browser and you watch and use in its window.',
         enabled: true,
       },
       {
@@ -1244,10 +1244,10 @@ export function createSettingsState() {
       {
         id: 'changes',
         name: 'Changes',
-        description: 'Shows the uncommitted changes in the conversation’s working directory, and what each of the agent’s commands changed, as diffs in the work panel.',
+        description: 'Shows the uncommitted changes in the conversation’s working directory, and what each of the agent’s commands changed, as diffs in the Changes window.',
         enabled: true,
       },
-      { id: 'file-browser', name: 'File Browser', description: 'Opens the conversation’s files in the work panel to read them, with a tree of the working directory.', enabled: true },
+      { id: 'file-browser', name: 'File Browser', description: 'Opens the conversation’s files in the Files window to read them, with a tree of the working directory.', enabled: true },
     ] as SettingsPlugin[],
     subagents: createSubagentState(),
     smallModel: createSmallModelState(),

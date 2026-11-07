@@ -21,6 +21,7 @@ import PhoneFrameView from './phone/PhoneFrameView.vue'
 import AsksFrameView from './phone/AsksFrameView.vue'
 import SchedulesSection from './sections/SchedulesSection.vue'
 import SchedulesFrameView from './phone/SchedulesFrameView.vue'
+import WorkspaceFrameView from './workspace/WorkspaceFrameView.vue'
 import { t } from './locales/text'
 
 /** `frame`: a page alone, with no gallery around it, as a phone frame shows it. */
@@ -98,6 +99,7 @@ export const router = createRouter({
     { path: '/phone', component: PhoneSection, meta: { layout: 'catalog' } },
     { path: '/phone-frame', component: PhoneFrameView, meta: { layout: 'frame' } },
     { path: '/schedules-frame', component: SchedulesFrameView, meta: { layout: 'frame' } },
+    { path: '/taskbar-frame', component: WorkspaceFrameView, meta: { layout: 'frame' } },
     { path: '/asks-frame', component: AsksFrameView, meta: { layout: 'frame' } },
     { path: '/:pathMatch(.*)*', redirect: '/overview' },
   ],

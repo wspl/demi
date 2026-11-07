@@ -1,4 +1,5 @@
 {
+  "window": { "name": "Navigateur" },
   "reasons": {
     "invalid_input": "Le navigateur n’ouvre que des pages web, des fichiers et des pages vierges.",
     "tab_not_found": "Cette page n’est plus ouverte sur l’appareil.",

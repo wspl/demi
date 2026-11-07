@@ -1,25 +1,27 @@
-import { computed, type ComputedRef } from 'vue'
+import { computed, shallowRef, type ComputedRef, type ShallowRef } from 'vue'
 import { Slot, type SlotChange } from '../infra/slot'
 import { removeTabs, type PanelTab } from './panel-tabs'
 
 /**
- * One change of the work panel's tabs. An update sets the fields of `data` it
- * names and removes the null ones. /
+ * One change of the conversation's tabs, or of where its windows stand. An
+ * update sets the fields of `data` it names and removes the null ones.
  */
 export type PanelChange =
   | { type: 'create'; tab: PanelTab; index?: number }
   | { type: 'update'; id: string; data: Record<string, unknown> }
   | { type: 'remove'; id: string }
   | { type: 'move'; id: string; index: number }
+  | { type: 'windows'; windows: Record<string, unknown> }
 
 /**
- * The backend's panel: its tabs, and how many changes made them. It comes with
- * the conversation's entry in the list, so the panel draws as soon as the
- * conversation is listed.
+ * The backend's panel: its tabs, how many changes made them, and where its
+ * windows stand. It comes with the conversation's entry in the list, so the
+ * windows draw as soon as the conversation is listed.
  */
 export interface PanelRead {
   revision: number
   tabs: PanelTab[]
+  windows?: Record<string, unknown> | null
 }
 
 /**
@@ -49,7 +51,7 @@ export interface PanelBackend {
  * `tabs` after `change`, as the backend applies it; a change with nothing to do
  * leaves them.
  */
-export function applyPanelChange(tabs: readonly PanelTab[], change: PanelChange): PanelTab[] {
+export function applyPanelChange(tabs: readonly PanelTab[], change: PanelChange): readonly PanelTab[] {
   const index = (id: string) => tabs.findIndex((tab) => tab.id === id)
   switch (change.type) {
     case 'create': {
@@ -73,6 +75,9 @@ export function applyPanelChange(tabs: readonly PanelTab[], change: PanelChange)
       const at = Math.min(change.index, others.length)
       return [...others.slice(0, at), moving, ...others.slice(at)]
     }
+    // The layout is no tab: the same tabs, so nothing that reads them reads them again.
+    case 'windows':
+      return tabs
   }
 }
 
@@ -115,7 +120,7 @@ export function dataChanges(before: unknown, after: Record<string, unknown>): Re
  */
 interface Unsent {
   change: PanelChange
-  shown: SlotChange<PanelTab[]>
+  shown: SlotChange<readonly PanelTab[]>
 }
 
 /**
@@ -135,13 +140,19 @@ interface Unsent {
  */
 export class PanelTabs {
   /** Before the first read the panel is empty, so a change shows over it. */
-  private readonly slot = new Slot<PanelTab[]>([])
+  private readonly slot = new Slot<readonly PanelTab[]>([])
   /** The changes made and not yet sent, oldest first. */
   private unsent: Unsent[] = []
   private sending = false
   private started = false
   /** The tabs the page shows. */
-  readonly tabs: ComputedRef<PanelTab[]>
+  readonly tabs: ComputedRef<readonly PanelTab[]>
+  /**
+   * Where the windows stand as the panel last received said, null while it
+   * says none. The page reads it as it opens the conversation; its own
+   * changes of the layout are written, never shown back.
+   */
+  readonly windows: ShallowRef<Record<string, unknown> | null> = shallowRef(null)
 
   constructor(
     private readonly backend: PanelBackend,
@@ -178,6 +189,14 @@ export class PanelTabs {
    * them.
    */
   change(...changes: PanelChange[]): void {
+    // A layout replaces the one before it that has not left yet: only the last is sent.
+    if (changes.some((change) => change.type === 'windows')) {
+      const replaced = this.unsent.filter((entry) => entry.change.type === 'windows')
+      if (replaced.length > 0) {
+        this.slot.drop(replaced.map((entry) => entry.shown))
+        this.unsent = this.unsent.filter((entry) => entry.change.type !== 'windows')
+      }
+    }
     this.unsent.push(...changes.map((change) => ({
       change,
       shown: this.slot.change((tabs) => applyPanelChange(tabs, change)),
@@ -191,6 +210,9 @@ export class PanelTabs {
    * changes nothing.
    */
   receive(panel: PanelRead): void {
+    if (panel.revision > this.revision) {
+      this.windows.value = panel.windows ?? null
+    }
     this.slot.replace(panel.tabs, { revisions: { '': panel.revision } })
   }
 
@@ -220,7 +242,7 @@ export class PanelTabs {
         const alone = this.read && answer.changed && answer.revision === this.revision + 1
         this.slot.land(shown, {
           revisions: { '': answer.revision },
-          ...(alone ? { value: (tabs: PanelTab[]) => batch.reduce((next, entry) => applyPanelChange(next, entry.change), tabs) } : {}),
+          ...(alone ? { value: (tabs: readonly PanelTab[]) => batch.reduce((next, entry) => applyPanelChange(next, entry.change), tabs) } : {}),
         })
       }
     } finally {

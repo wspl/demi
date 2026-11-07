@@ -1,28 +1,23 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { MessageCircleQuestionMark } from '@lucide/vue'
-import { ICON_PX } from '../../ui/icon-metrics'
 import AgentMessageList from '../AgentMessageList.vue'
-import SessionOverlay from '../SessionOverlay.vue'
-import TabItem from '../TabItem.vue'
 import { useFocusReturn } from '../../overlay/focusReturn'
 import { focusByPage } from '../../ui/focus-by-page'
 import type { PersistedScrollState } from '../../composables/useBlockVirtualizer'
-import { questionText, pageToRead, readKey, shownTurns, type ShownSideQuestion } from './asks'
+import { pageToRead, readKey, shownTurns, type ShownSideQuestion } from './asks'
 
 /**
- * A side question's conversation, its steps included, in the window a
- * subagent's opens in: its own turns only, read-only, the first drawn as the
- * user's question with its quote; full screen on a phone. The history it
- * started from is the conversation's own, and its instruction is the product's.
+ * A side question's conversation, its steps included, as its window shows
+ * it: its own turns only, read-only, the first drawn as the user's question
+ * with its quote. The history it started from is the conversation's own, and
+ * its instruction is the product's.
  */
 const props = defineProps<{
-  /** The side question shown; null closes the window. */
+  /** The side question shown; null shows nothing. */
   question: ShownSideQuestion | null
 }>()
 
 const emit = defineEmits<{
-  close: []
   /** Read the page before the window shown, as the reader nears its start. */
   read: [id: string, at: 'latest' | 'before']
 }>()
@@ -48,15 +43,14 @@ const opening = computed<PersistedScrollState | undefined>(() => {
 // browser draw.
 const body = ref<HTMLElement | null>(null)
 /**
- * The window's region while it is open, which still holds the focus as it
- * closes.
+ * The window while it is open, which still holds the focus as it closes.
  */
 let region: HTMLElement | null = null
 const focusReturn = useFocusReturn((active) => region?.contains(active) === true)
 watch(body, (shown, was) => {
   if (shown && !was) {
     focusReturn.open()
-    region = shown.closest<HTMLElement>('[data-region]')
+    region = shown.closest<HTMLElement>('[data-work-window]')
     if (region)
       focusByPage(region, { preventScroll: true })
   } else if (!shown && was) {
@@ -79,15 +73,7 @@ watch(
 </script>
 
 <template>
-  <SessionOverlay :open="question !== null" @close="emit('close')">
-    <template #tabs>
-      <TabItem v-if="question" :title="question.title ?? questionText(question)" is-active :closable="false">
-        <template #mark>
-          <MessageCircleQuestionMark :size="ICON_PX.in28" class="text-[var(--ask-ink)]" aria-hidden="true" />
-        </template>
-      </TabItem>
-    </template>
-    <div v-if="question" ref="body" class="h-full">
+    <div v-if="question" ref="body" class="h-full [--session-gutter:0px]">
     <AgentMessageList
       :key="`${question.id}:${opening ? 'held' : 'asked'}`"
       class="h-full"
@@ -106,5 +92,4 @@ watch(
       read-only
     />
     </div>
-  </SessionOverlay>
 </template>

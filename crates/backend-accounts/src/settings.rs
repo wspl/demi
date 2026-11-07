@@ -140,6 +140,8 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
         .or(preferences.small_model_same_provider);
     preferences.suggested_replies = patch.suggested_replies.or(preferences.suggested_replies);
     preferences.output_speed = patch.output_speed.or(preferences.output_speed);
+    preferences.taskbar_pins = patch.taskbar_pins.or(preferences.taskbar_pins);
+    preferences.file_tree = patch.file_tree.or(preferences.file_tree);
     if let Some(change) = patch.context_limit {
         set_context_limit(&mut preferences.context_limits, change);
     }

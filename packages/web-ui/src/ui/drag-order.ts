@@ -33,6 +33,16 @@ export function dragShift(index: number, from: number, to: number): -1 | 0 | 1 {
   return 0
 }
 
+/**
+ * `all` with the items of `order`, a reordering of some of them, in that
+ * order, each in a slot one of them held; the others keep theirs.
+ */
+export function rearranged<T>(all: readonly T[], order: readonly T[]): T[] {
+  const moving = new Set(order)
+  let next = 0
+  return all.map((item) => (moving.has(item) ? order[next++]! : item))
+}
+
 /** `ids` with the one at `from` moved to the slot `to` among the others. */
 export function moved<T>(ids: readonly T[], from: number, to: number): T[] {
   const others = ids.filter((_, index) => index !== from)

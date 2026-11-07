@@ -1,4 +1,5 @@
 {
+  "window": { "attachments": "Archivos adjuntos" },
   "kind": {
     "title": "Archivos",
     "titleNamed": "Archivo: {name}",

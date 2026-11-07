@@ -1,6 +1,6 @@
 //! The `changes` plugin: its identity and its page package, and nothing else.
 //!
-//! Its page, `@demicodes/plugin-changes`, shows the work panel's Change view
+//! Its page, `@demicodes/plugin-changes`, shows the Changes window's Change view
 //! over the product's edit tracking and file routes
 //! (`crates/xtask/src/contracts/registry.rs`).
 //!
@@ -30,7 +30,7 @@ impl Changes {
         let mut manifest = Manifest::new(
             PluginId::try_from("changes").expect("a valid plugin id"),
             "Changes",
-            "Shows the uncommitted changes in the conversation's working directory, and what each of the agent's commands changed, as diffs in the work panel.",
+            "Shows the uncommitted changes in the conversation's working directory, and what each of the agent's commands changed, as diffs in the Changes window.",
         );
         manifest.page = Some(Page::new("@demicodes/plugin-changes"));
         Self { manifest }

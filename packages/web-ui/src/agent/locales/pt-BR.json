@@ -204,7 +204,6 @@
     "forkedFrom": "Ramificado de {agent}",
     "inherited": "Herdado desta conversa",
     "fast": "Rápido",
-    "chip": "{count} agente | {count} agentes",
     "stopAgent": "Parar agente",
     "copyId": "Copiar ID do agente",
     "closeTab": "Fechar aba",
@@ -218,10 +217,9 @@
     "thinkingOff": "Raciocínio desativado"
   },
   "terminals": {
+    "none": "Nada em execução",
     "endCommand": "Encerrar comando",
     "closeTab": "Fechar aba",
-    "chip": "{count} em execução",
-    "serviceChip": "{count} serviço | {count} serviços",
     "loading": "Carregando terminal…",
     "unavailable": "Não foi possível carregar o terminal."
   },
@@ -233,10 +231,8 @@
     "empty": "Nenhuma mensagem",
     "start": "Iniciar uma conversa",
     "conversations": "Conversas",
-    "openPanel": "Abrir painel",
     "tabs": "Abas",
     "tabsOpen": "Abas, {count} abertas",
-    "closePanel": "Fechar painel",
     "options": "{title}, opções da conversa",
     "deviceState": "{name} está {state}",
     "renameTitle": "Renomear conversa",
@@ -425,16 +421,7 @@
     "label": "Endereço do navegador"
   },
   "panel": {
-    "allTabs": "Mostrar todas as abas",
     "more": "Mais",
-    "windowHeight": "Altura da janela",
-    "closeOthers": "Fechar outras",
-    "closeRight": "Fechar à direita",
-    "closeLeft": "Fechar à esquerda",
-    "closeAll": "Fechar tudo",
-    "cannotShow": "Esta aba não pode ser mostrada.",
-    "nothingOpen": "Nada aberto",
-    "noFiles": "Nenhum arquivo ou alteração",
     "reading": "Lendo {name}",
     "deviceOffline": "{name} está offline.",
     "deviceOfflineDetail": "Arquivos, alterações e o navegador aparecem novamente quando ele se reconectar."

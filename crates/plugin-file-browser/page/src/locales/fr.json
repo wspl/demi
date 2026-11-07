@@ -1,4 +1,5 @@
 {
+  "window": { "attachments": "Pièces jointes" },
   "kind": {
     "title": "Fichiers",
     "titleNamed": "Fichier : {name}",

@@ -2,7 +2,7 @@ import type { Alignment } from '@floating-ui/vue'
 
 /**
  * The attribute a layout primitive puts on its region's element: the pane whose box
- * holds a trigger, such as the sidebar, the conversation, the work panel, a dialog
+ * holds a trigger, such as the sidebar, the conversation, a window, a dialog
  * or a settings page.
  *
  * The nearest one around a trigger is its region; without one, the viewport is.

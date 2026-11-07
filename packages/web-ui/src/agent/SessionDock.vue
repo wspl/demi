@@ -13,7 +13,7 @@ import { sessionComposerKey, sessionCoverKey } from './session-cover'
 import { dockCardsKey } from './dock-cards'
 import { DOCK_STEP_PX } from './composer-clearance'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   showScrollToBottom?: boolean
   /**
    * Whether the page is behind the conversation's session, which a spinner
@@ -68,16 +68,7 @@ onBeforeUnmount(() => {
 const cardsRef = ref<HTMLElement>()
 provide(dockCardsKey, cardsRef)
 
-// The scroll control belongs to the row of chips, right after the chips, or at
-// the row's left end with none. While the row shows, it stands level with it;
-// without, it floats where that row would be, above what waits over the
-// composer.
-const rowRef = ref<HTMLElement>()
-const chipsRef = ref<HTMLElement>()
 const composerRef = ref<HTMLElement>()
-const { height: rowHeight } = useElementSize(rowRef, { width: 0, height: 0 }, { box: 'border-box' })
-// The chips' own width: the scroller's padding lies outside the row's flow.
-const { width: chipsWidth } = useElementSize(chipsRef, { width: 0, height: 0 }, { box: 'content-box' })
 const { height: composerHeight } = useElementSize(composerRef, { width: 0, height: 0 }, { box: 'border-box' })
 const surfaceComposer = inject(sessionComposerKey, null)
 watch(composerHeight, (height) => {
@@ -92,20 +83,16 @@ onBeforeUnmount(() => {
 })
 /** The chips row's step over the composer (its `pb-2`). */
 const STEP_PX = DOCK_STEP_PX
-/** The gap between the row's parts (its `gap-1.5`). */
-const GAP_PX = 6
-const scrollBottom = computed(() =>
-  rowHeight.value > 0
-    ? `${composerHeight.value + STEP_PX}px`
-    : `calc(100% + ${coverHeight.value + STEP_PX}px)`,
-)
 /**
- * The spinner stands a step above whatever is the dock's top: what waits for
- * a decision over it, or else its first part.
+ * The scroll control stands a step above whatever is the dock's top, centred
+ * over the column: what waits for a decision over it, or else its first part.
  */
-const catchUpBottom = computed(() => `calc(100% + ${coverHeight.value + STEP_PX}px)`)
+const scrollBottom = computed(() => `calc(100% + ${coverHeight.value + STEP_PX}px)`)
+/** The catching-up spinner stands there too, a step above the scroll control while it shows. */
+const catchUpBottom = computed(() => props.showScrollToBottom
+  ? `calc(100% + ${coverHeight.value + 2 * STEP_PX}px + var(--spacing-chip))`
+  : scrollBottom.value)
 const iconPx = useIconPx()
-const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + GAP_PX}px` : '0px'))
 </script>
 
 <template>
@@ -118,18 +105,17 @@ const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + 
     - A part that is not there takes no room, so the next one moves up by the
       same step.
     - A press in the dock, on the composer or its empty space, closes the newest
-      window as one on the transcript does. Only the Agents, Running and Service chips
-      keep it.
+      floating window, such as the media viewer, as one on the transcript does.
   -->
   <div class="session-dock relative">
     <!--
-      The scroll control is the chips row's control after its chips, so it
-      takes no room in the dock. It shows only away from the scroll bottom,
-      where it covers nothing the user reads last.
+      The scroll control stands over the dock's top, centred, and takes no
+      room in it. It shows only away from the scroll bottom, where it covers
+      nothing the user reads last.
     -->
     <span
-      class="pointer-events-none absolute z-20 inline-flex size-chip"
-      :style="{ bottom: scrollBottom, left: scrollLeft }"
+      class="pointer-events-none absolute left-1/2 z-20 inline-flex size-chip -translate-x-1/2"
+      :style="{ bottom: scrollBottom }"
     >
       <Transition
         appear
@@ -185,10 +171,10 @@ const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + 
     -->
     <div ref="cardsRef" class="flex flex-col" />
     <!--
-      Chips read from the left, then the scroll control's room while it shows,
-      then the reading at the right end, its end over the send button's. A chip
-      or the reading renders nothing while it has nothing to say, so the row
-      shows only while one of its parts holds an element.
+      Chips read from the left, then the reading at the right end, its end
+      over the send button's. A chip or the reading renders nothing while it
+      has nothing to say, so the row shows only while one of its parts holds
+      an element.
 
       The chips keep their room: on a narrow row the reading gives way, its
       speed first. When the chips alone are wider than the row, as four are on
@@ -197,11 +183,10 @@ const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + 
       the chips' 0.5px ring does, so its padding holds the ring, and its
       margin of the same width keeps the chips where they stand.
     -->
-    <div ref="rowRef" class="hidden items-center gap-1.5 pb-2 has-[>*>*]:flex">
-      <div ref="chipsRef" class="-m-px flex min-w-0 shrink items-center gap-1.5 overflow-x-auto p-px overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
+    <div class="hidden items-center gap-1.5 pb-2 has-[>*>*]:flex">
+      <div class="-m-px flex min-w-0 shrink items-center gap-1.5 overflow-x-auto p-px overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
         <slot name="chips" />
       </div>
-      <span v-if="showScrollToBottom" class="w-chip shrink-0" />
       <div class="flex min-w-0 flex-1 justify-end pe-[var(--composer-inset)]">
         <RequestOutputMeter :output="output" :scope="scope" :turn-speed="turnSpeed" :visible="outputSpeed" />
       </div>

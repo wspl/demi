@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // One play of a demo's scene: Demi's app frame (the sidebar, the
-// conversation, its composer and the work panel) over the scene's
+// conversation, its composer and the windows of its work) over the scene's
 // conversation, and what the scene shows around the app, such as a phone's
 // notification.
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
@@ -18,7 +18,7 @@ import { homePath } from '@demicodes/web-ui/files/paths'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import type { ReplyCommenting, WaitingComment } from '@demicodes/web-ui/agent/comments/comments'
 import { galleryMessageFiles } from '@demicodes/web-gallery/fixtures/written-files'
-import GalleryWorkPanel from '@demicodes/web-gallery/components/GalleryWorkPanel.vue'
+import { gallerySessionWork } from '@demicodes/web-gallery/fixtures/session-work'
 import { galleryBrowser } from '@demicodes/web-gallery/fixtures/live-browser'
 import { galleryFiles, useGalleryWork } from '@demicodes/web-gallery/fixtures/work-panel'
 import { createChangeSetOf, createGalleryProject } from '@demicodes/web-gallery/fixtures/project'
@@ -51,6 +51,7 @@ if (readme)
 const project = { ...createGalleryProject(), changes: createChangeSetOf([]) }
 const savedRows: SavedRow[] = (readme?.saved ?? []).map((text, i) => ({ id: `saved-${i}`, parts: savedParts(text, []), state: 'saved' }))
 const work = useGalleryWork(null, { files: readmeFiles(galleryFiles(project)), browser: galleryBrowser([]), screen: readme?.screen })
+const sessionWork = gallerySessionWork(work)
 
 /** A README scene's files, where the body its foldable wears reads from the address its recorder serves it at. */
 function readmeFiles(files: ReturnType<typeof galleryFiles>): ReturnType<typeof galleryFiles> {
@@ -107,8 +108,6 @@ const commenting: ReplyCommenting = {
 const sidebarOpen = ref(false)
 /** The desktop's sidebar, collapsed for a scene that needs only the conversation. */
 const sidebarCollapsed = ref(scene.sidebar === false)
-// The panel as wide as the conversation lets it be, so its page and diff read in the small frame.
-const asideShare = ref(readme?.asideShare ?? 0.6)
 const draft = ref('')
 
 function focus(target: Element | string | CameraRect | null, cut = false): void {
@@ -126,7 +125,7 @@ function focus(target: Element | string | CameraRect | null, cut = false): void 
 
 async function open(target: Element | string | CameraRect | null): Promise<void> {
   // What the scene set up off camera has settled before the opening shot: a
-  // panel still sliding in would squeeze the conversation on camera. Endless
+  // window still coming in would draw half made on camera. Endless
   // animations, a spinner's, never settle and are left running. A change the
   // scene made just now starts its transition at the next frame.
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
@@ -198,7 +197,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="relative h-full">
-    <SidebarLayout v-model:open="sidebarOpen" v-model:collapsed="sidebarCollapsed" v-model:aside-open="work.open.value" v-model:aside-share="asideShare" class="h-full">
+    <SidebarLayout v-model:open="sidebarOpen" v-model:collapsed="sidebarCollapsed" class="h-full">
       <template #sidebar>
         <AppSidebar
           :account="{ id: 'alex', name: 'Alex', email: 'alex@example.com' }"
@@ -213,15 +212,12 @@ onBeforeUnmount(() => {
         :conversation="conversation.state"
         :files="conversation.files"
         has-provider
-        :aside-open="work.open.value"
-        :panel-tabs="work.panel.value.tabs.length"
+        :work="sessionWork"
         :select-edit="work.selectEdit"
         :commenting="commenting"
         :asking="readmeExtras.asking"
         :suggested-replies="readmeExtras.suggested ?? undefined"
         :schedules="schedules"
-        @open-aside="work.open.value = true"
-        @show-subagent="() => {}"
       >
         <template #place>
           <ProjectDirectoryMenu
@@ -259,9 +255,6 @@ onBeforeUnmount(() => {
           />
         </template>
       </ChatSession>
-      <template #aside>
-        <GalleryWorkPanel :work="work" @close="work.open.value = false" />
-      </template>
       <template #dialogs>
         <MoveConversationDialog
           :is-open="moveQuestion.open.value"

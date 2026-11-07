@@ -1,4 +1,5 @@
 {
+  "window": { "name": "Browser" },
   "reasons": {
     "invalid_input": "The browser opens only web, file and blank pages.",
     "tab_not_found": "This page is no longer open on the device.",

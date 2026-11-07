@@ -1,30 +1,29 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { Bot, CircleStop, X } from '@lucide/vue'
+import { computed, reactive, watch } from 'vue'
+import { Bot } from '@lucide/vue'
 import type { InstructionEntry } from '@demicodes/protocol'
 import type { RequestOutputReading } from '@demicodes/conversation-client'
 import { isAbortError } from '@demicodes/utils'
-import { vContextMenu, type ContextMenuGroup } from '../ui/context-menu'
 import RegionStatus from '../ui/RegionStatus.vue'
 import AgentMessageList from './AgentMessageList.vue'
 import AgentStatusBar from './AgentStatusBar.vue'
 import RequestOutputMeter from './RequestOutputMeter.vue'
-import SessionOverlay from './SessionOverlay.vue'
-import SubagentHistoryMenu from './SubagentHistoryMenu.vue'
-import TabItem from './TabItem.vue'
-import AgentMark from './AgentMark.vue'
-import { ICON_PX } from '../ui/icon-metrics'
 import { provideLiveCalls } from './live-calls'
-import { agentCompaction, agentName, subagentActivity, subagentPanelTabs, type SubagentRecord } from './subagents'
+import { agentCompaction, subagentActivity, subagentPanelTabs, type SubagentRecord } from './subagents'
 import { useCallTerminals, type TerminalRecord } from './terminals'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
 import type { UsageLimits } from './context-usage'
 import type { CostShown } from './context-cost'
 import { loadedInstructions } from './instructions'
 import { refusedForSize } from './session-status'
-import { agentMenu } from './agent-menu'
 import { shownError, type ShownError } from '../infra/errors'
+
+/**
+ * What the Agents window shows: the child `activeId` names, its transcript
+ * and its status bar, or that none runs. The window's tabs are the running
+ * children and the one shown (`subagentPanelTabs`).
+ */
 
 const props = withDefaults(
   defineProps<{
@@ -78,10 +77,6 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  /** Stop All: every live child. */
-  abort: []
-  /** Stop Agent in a live tab's menu: that child and its subtree. */
-  abortAgent: [id: string]
   /**
    * Read the page of the child's transcript before the window shown, as the
    * reader nears its start.
@@ -106,11 +101,7 @@ const emit = defineEmits<{
   /** An instruction in the child's context card opens where it is written. */
   openInstruction: [entry: InstructionEntry]
 }>()
-/**
- * Whether the panel is open, and the child it shows. None leaves it open,
- * empty, as it opens when no child runs.
- */
-const open = defineModel<boolean>('open', { required: true })
+/** The child it shows; none shows it empty, as it opens when no child runs. */
 const activeId = defineModel<string | null>('activeId', { required: true })
 
 const tabs = computed(() => subagentPanelTabs(props.agents, activeId.value))
@@ -183,25 +174,6 @@ function retryRead(): Promise<void> | undefined {
   return active.value ? readLatest(active.value.id) : undefined
 }
 
-function activate(id: string): void {
-  activeId.value = id
-}
-
-// A child picked from Completed replaces the finished tab in place. Nothing
-// opened or closed, so the strip shows the change at once.
-const replacing = ref(false)
-function pick(id: string): void {
-  replacing.value = true
-  activate(id)
-  void nextTick(() => {
-    replacing.value = false
-  })
-}
-
-function closePanel(): void {
-  open.value = false
-}
-
 /** What the shown child's context card holds beside its usage. */
 const context = computed(() => {
   const agent = active.value
@@ -216,70 +188,10 @@ const context = computed(() => {
   }
 })
 
-const anyRunning = computed(() => props.agents.some((agent) => agent.phase === 'running'))
-
-function agentOf(id: string): SubagentRecord | undefined {
-  return tabs.value.find((agent) => agent.id === id)
-}
-
-/**
- * A tab's menu: its agent's, a link's less Open, then Close Tab once the agent
- * is done.
- */
-function tabMenu(id: string): () => ContextMenuGroup[] {
-  return () => {
-    const agent = agentOf(id)
-    if (!agent) {
-      return []
-    }
-    return [
-      ...agentMenu({ number: agent.number, running: agent.phase === 'running' }, { stop: () => emit('abortAgent', id) }),
-      [{ icon: X, label: t('subagents.closeTab'), disabled: agent.phase === 'running', run: () => closeTab(id) }],
-    ]
-  }
-}
-
-/** What acts on every agent. */
-function stripMenu(): ContextMenuGroup[] {
-  return [[{ icon: CircleStop, label: t('subagents.stopAll'), disabled: !anyRunning.value, run: () => emit('abort') }]]
-}
-
-// A finished child's tab puts it away; a running one's tab stays until the
-// child is stopped.
-function closeTab(id: string): void {
-  activeId.value = tabs.value.filter((tab) => tab.id !== id).at(-1)?.id ?? null
-}
 </script>
 
 <template>
-  <SessionOverlay
-    :open="open"
-    :still-tabs="replacing"
-    :strip-menu="stripMenu"
-    @close="closePanel"
-  >
-    <template #tabs>
-      <TabItem
-        v-for="agent in tabs"
-        :key="agent.id"
-        :title="agentName(agent.name, agent.number)"
-        :is-active="agent.id === active?.id"
-        :closable="false"
-        @select="activate(agent.id)"
-        v-context-menu="tabMenu(agent.id)"
-      >
-        <template #mark>
-          <AgentMark :phase="agent.phase" :size="ICON_PX.markIn28" />
-        </template>
-      </TabItem>
-    </template>
-    <template #trailing>
-      <SubagentHistoryMenu
-        :agents="agents"
-        :active-id="activeId"
-        @select="pick"
-      />
-    </template>
+  <div class="h-full [--session-gutter:0px]">
     <div v-if="active" class="flex h-full flex-col">
       <RegionStatus
         v-if="load"
@@ -339,5 +251,5 @@ function closeTab(id: string): void {
       />
     </div>
     <RegionStatus v-else class="h-full" status="note" :icon="Bot" :label="t('subagents.none')" />
-  </SessionOverlay>
+  </div>
 </template>

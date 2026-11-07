@@ -9,7 +9,7 @@ import { createSharedComposable, useMediaQuery } from '@vueuse/core'
  * Below it:
  *
  * - The app frame shows one pane at a time (SidebarLayout): one top bar over the
- *   conversation, the sidebar as a drawer, the work panel and the session's
+ *   conversation, the sidebar as a drawer, and the conversation's
  *   windows full screen.
  * - Menus are bottom sheets (`Sheet.vue`).
  * - Rows are a finger's height, and what a hover reveals shows at rest.
@@ -23,8 +23,8 @@ export const PHONE_QUERY = '(max-width: 767px)'
  * A phone's screen edges are the app's: a touch that starts this close to the left
  * or right edge never takes the browser back or forward (`phone-page.ts`).
  *
- * One at the left edge that moves right opens the sidebar's drawer, or takes the
- * full-screen work panel back while it is open (SidebarLayout).
+ * One at the left edge that moves right opens the sidebar's drawer
+ * (SidebarLayout).
  */
 export const SCREEN_EDGE_PX = 16
 

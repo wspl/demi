@@ -200,7 +200,7 @@
     "handoff_expired": "此代码已过期。请在你的另一台设备上显示新代码。",
     "current_session": "请使用“退出登录”结束此会话。",
     "session_not_found": "未找到会话。",
-    "panel_full": "工作面板无法容纳更多标签页。",
+    "panel_full": "此对话无法容纳更多标签页。",
     "unknown_panel_kind": "没有已启用的插件可以打开此标签页。",
     "conversation_busy": "对话正在更改。请稍后重试。",
     "device_not_attached": "此设备未关联到对话。",

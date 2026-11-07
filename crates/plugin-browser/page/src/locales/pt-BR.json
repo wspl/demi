@@ -1,4 +1,5 @@
 {
+  "window": { "name": "Navegador" },
   "reasons": {
     "invalid_input": "O navegador abre apenas páginas da web, de arquivo e em branco.",
     "tab_not_found": "Esta página não está mais aberta no dispositivo.",

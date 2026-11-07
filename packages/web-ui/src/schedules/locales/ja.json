@@ -1,5 +1,5 @@
 {
-  "chip": "{count} 件のスケジュール | {count} 件のスケジュール",
+  "name": "スケジュール",
   "delete": "削除",
   "notYet": "まだ起こしていません",
   "trigger": {

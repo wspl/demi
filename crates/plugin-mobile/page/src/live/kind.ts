@@ -1,6 +1,7 @@
 import { defineComponent, h, onBeforeUnmount, type PropType } from 'vue'
 import { z } from 'zod'
-import { ICON_PX, SystemLogo, usePage, type PanelKind } from '@demicodes/plugin-sdk'
+import { Smartphone } from '@lucide/vue'
+import { ICON_PX, SystemLogo, usePage, type PanelKind, type PanelWindow } from '@demicodes/plugin-sdk'
 import MobileTabContent from './MobileTabContent.vue'
 import type { MobileStore } from './store'
 import { mobilePlatformSchema, type MobilePlatform } from '../generated/plugin'
@@ -34,6 +35,9 @@ const MobileTabMark = defineComponent({
   setup: (props) => () => h(MobilePlatformLogo, { platform: props.data.platform, class: 'text-fg-subtle' }),
 })
 
+/** The simulators' window, a tab per simulator or emulator the agent opened. */
+const simulatorsWindow: PanelWindow = { id: 'simulators', name: () => t('window.name'), icon: Smartphone }
+
 /**
  * The `mobile` tab kind over `store`: a device's live view, whose content
  * watches the conversation's simulators while it is mounted. The panel opens
@@ -63,6 +67,7 @@ export function mobileDeviceKind(store: MobileStore): PanelKind<MobileTabData> {
   return {
     kind: 'mobile',
     schema: mobileTabDataSchema,
+    window: simulatorsWindow,
     title: (data) => data.name,
     mark: MobileTabMark,
     content,

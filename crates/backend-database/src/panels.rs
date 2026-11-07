@@ -52,6 +52,7 @@ impl ControlService {
             Ok(WorkPanel {
                 revision,
                 tabs: document.tabs,
+                windows: document.windows,
             })
         })
         .await
@@ -82,7 +83,7 @@ impl ControlService {
                 let document = row.get::<_, String>(2)?;
                 let panel = decode("conversation_panels", "revision", u64::try_from(revision)).and_then(|revision| {
                     let document: PanelDocument = json("conversation_panels", "document", &document)?;
-                    Ok(WorkPanel { revision, tabs: document.tabs })
+                    Ok(WorkPanel { revision, tabs: document.tabs, windows: document.windows })
                 });
                 panels.insert(id, panel);
             }

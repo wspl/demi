@@ -45,7 +45,7 @@ impl Browser {
         let mut manifest = Manifest::new(
             PluginId::try_from("browser").expect("a valid plugin id"),
             "Browser",
-            "Gives the agent a browser on the conversation's device, which it drives with demi browser and you watch and use in the work panel.",
+            "Gives the agent a browser on the conversation's device, which it drives with demi browser and you watch and use in its window.",
         );
         manifest.commands = commands().manifest_commands();
         manifest.streams = vec![live_stream()];

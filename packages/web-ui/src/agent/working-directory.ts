@@ -29,7 +29,7 @@ export function blockDirectories(blocks: readonly Block[], current: string): Rea
 /**
  * The files the messages of a child's block name: relative paths start from
  * the `directory` the child wrote them in, and a file the page opens says
- * which directory the view is opened for, so the work panel roots its tree
+ * which directory the view is opened for, so Files roots its tree
  * there.
  */
 export function childMessageFiles(files: MessageFiles, directory: string): MessageFiles {

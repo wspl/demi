@@ -2,7 +2,7 @@ import { inject, provide, watch, type InjectionKey } from 'vue'
 import type { Showing } from './file-cache'
 
 /**
- * Whether the views under a component are on screen: a work panel tab the user switched away from
+ * Whether the views under a component are on screen: a window's tab the user switched away from
  * keeps its views and what they show, but follows nothing until it is
  * selected again. Outside any such place, views are on screen.
  */

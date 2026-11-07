@@ -5,7 +5,7 @@ import { attachmentPath, attachmentSource } from './attachment-source'
 import { formatBytes } from './format'
 
 /**
- * An attachment previewed in the work panel as the File view previews a file, from
+ * An attachment previewed in the conversation's windows as the File view previews a file, from
  * the attachment's stored copy: the same previews under the same bar, which names the
  * file and its size and offers Download.
  *
@@ -33,6 +33,5 @@ const label = computed(() => `${props.name} · ${formatBytes(props.size)}`)
     root="/"
     :path="attachmentPath({ name })"
     :label="label"
-    sheet-close
   />
 </template>

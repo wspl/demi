@@ -45,7 +45,7 @@ import type { OverlayStore } from '../overlay/overlayStore'
  * session's windows do. While it is the newest:
  *
  * - A press outside every window closes it, except in a place that keeps the
- *   windows, such as the work panel (`KEEPS_WINDOWS`).
+ *   windows, such as a thumbnail that shows its picture (`KEEPS_WINDOWS`).
  * - Escape closes it too, unless the focus is in a field the user types in, or a
  *   menu or a dialog of `overlayStore` is open and takes the key
  *   (`useEscapeClose`).

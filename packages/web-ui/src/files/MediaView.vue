@@ -8,8 +8,7 @@ import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import { formatCount } from '../ui/numbers'
 import { usePhone } from '../ui/phone'
-import { useSheetDismiss } from './panel-sheet'
-import SheetCloseButton from './SheetCloseButton.vue'
+import { useWindowDismiss } from '../windows/window-dismiss'
 import { downloadUrl } from './download'
 import MediumStage from './MediumStage.vue'
 import { arrowStep, samePlace, useMediaViewer, type MediumPlace } from './media-viewer'
@@ -22,19 +21,18 @@ import type { PixelSize } from './thumbnail'
 import { t } from './locales/text'
 
 /**
- * The work panel's Media tab: the medium the conversation's viewer shows, one
+ * The Attachments window: the medium the conversation's viewer shows, one
  * of the series of the conversation's pictures and videos, beside the
  * conversation.
  *
  * - The bar starts with its file's icon and name, as the Files tab shows a
  *   file; it ends with its resolution, its size, Download, then Previous,
- *   its place in the series, *3 / 12*, and Next, and in a phone's overlay
- *   Close (`SheetCloseButton`).
+ *   its place in the series, *3 / 12*, and Next.
  * - The arrow keys step through the series, Left and Up back, Right and Down
  *   on, and on a phone a
  *   swipe does, across a picture or a video; a video's player keeps its own
- *   keys. In a phone's overlay a pull down or a tap beside the medium closes
- *   it.
+ *   keys. On a phone a pull down or a tap beside the medium puts its window
+ *   away.
  * - A picture zooms and pans as in the viewer's window (`ImagePreview`); a
  *   video plays in Demi's player (`VideoPlayer`), and pauses while another tab
  *   shows.
@@ -52,8 +50,8 @@ const emit = defineEmits<{
 
 const viewer = useMediaViewer()
 const phone = usePhone()
-/** The step back of the overlay this view stands in, which a picture flicked down takes; null beside the conversation. */
-const dismiss = useSheetDismiss()
+/** What puts away the window this view stands in, which a picture flicked down does; null beside the conversation. */
+const dismiss = useWindowDismiss()
 const root = ref<HTMLElement | null>(null)
 
 const medium = computed(() => viewer.shown.value)
@@ -174,11 +172,6 @@ function download(): void {
       <Tooltip :content="t('media.next')">
         <IconButton :icon="ChevronRight" variant="ghost" size="sm" :aria-label="t('media.next')" :disabled="!reach.next" @click="viewer.step(1)" />
       </Tooltip>
-      <SheetCloseButton />
-    </div>
-    <!-- In a phone's overlay, Close stays when no medium shows, as the bar it ends goes. -->
-    <div v-else-if="dismiss" class="flex h-9 shrink-0 items-center justify-end border-b border-line px-1.5 phone:h-row">
-      <SheetCloseButton />
     </div>
     <div class="min-h-0 flex-1">
       <MediumStage
@@ -188,11 +181,11 @@ function download(): void {
         flush
         :steps="phone ? reach : undefined"
         :from="arriving"
-        :dismissible="!!dismiss"
+        :dismissible="dismiss() !== null"
         @size="(width, height) => (size = { width, height })"
         @bytes="bytes = $event"
         @step="onSwipe"
-        @dismiss="dismiss?.()"
+        @dismiss="dismiss()?.()"
       />
       <RegionStatus v-else class="h-full" status="note" :label="t('media.none')" />
     </div>

@@ -941,6 +941,41 @@ pub struct Preferences {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub output_speed: Option<bool>,
+    /// The windows pinned to a conversation's taskbar, by id, in their
+    /// order, the same in every conversation. Absent means none.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "Vec<String>")]
+    #[garde(length(max = TASKBAR_PINS_MAX), inner(length(min = 1, max = 64)))]
+    pub taskbar_pins: Option<Vec<String>>,
+    /// Whether the file tree beside a file shows, and how wide it is.
+    /// Absent means shown, at its default width.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "FileTree")]
+    #[garde(dive)]
+    pub file_tree: Option<FileTree>,
+}
+
+/// The most windows pinned to the taskbar: bounds what one preference stores,
+/// well past the windows the pages have.
+pub const TASKBAR_PINS_MAX: usize = 32;
+
+/// The file tree beside a file, as the user left it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FileTree {
+    #[garde(skip)]
+    pub shown: bool,
+    /// In px, within what its divider allows.
+    #[garde(range(min = 120, max = 480))]
+    pub width: u16,
 }
 
 /// The small model the user chose: model settings without a service tier,
@@ -1239,6 +1274,23 @@ pub struct PreferencesPatch {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub output_speed: Option<bool>,
+    /// Replaces the pins whole.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "Vec<String>")]
+    #[garde(length(max = TASKBAR_PINS_MAX), inner(length(min = 1, max = 64)))]
+    pub taskbar_pins: Option<Vec<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "FileTree")]
+    #[garde(dive)]
+    pub file_tree: Option<FileTree>,
 }
 
 /// `{ preferences }`: the answer of `GET` and `PATCH /settings/preferences`.

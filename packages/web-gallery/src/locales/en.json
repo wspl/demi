@@ -58,6 +58,7 @@
       "session": "Session",
       "panel": "Panel",
       "windows": "Windows",
+      "taskbar": "Taskbar",
       "shared": "Shared Page"
     },
     "dialogs": {

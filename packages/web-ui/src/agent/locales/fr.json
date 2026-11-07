@@ -204,7 +204,6 @@
     "forkedFrom": "Bifurqué depuis {agent}",
     "inherited": "Hérité de cette conversation",
     "fast": "Rapide",
-    "chip": "{count} agent | {count} agents",
     "stopAgent": "Arrêter l’agent",
     "copyId": "Copier l’ID de l’agent",
     "closeTab": "Fermer l’onglet",
@@ -218,10 +217,9 @@
     "thinkingOff": "Réflexion désactivée"
   },
   "terminals": {
+    "none": "Rien n’est en cours d’exécution",
     "endCommand": "Terminer la commande",
     "closeTab": "Fermer l’onglet",
-    "chip": "{count} en cours",
-    "serviceChip": "{count} service | {count} services",
     "loading": "Chargement du terminal…",
     "unavailable": "Impossible de charger le terminal."
   },
@@ -233,10 +231,8 @@
     "empty": "Aucun message",
     "start": "Démarrer une conversation",
     "conversations": "Conversations",
-    "openPanel": "Ouvrir le panneau",
     "tabs": "Onglets",
     "tabsOpen": "Onglets, {count} ouverts",
-    "closePanel": "Fermer le panneau",
     "options": "{title}, options de la conversation",
     "deviceState": "{name} est {state}",
     "renameTitle": "Renommer la conversation",
@@ -425,16 +421,7 @@
     "label": "Adresse du navigateur"
   },
   "panel": {
-    "allTabs": "Afficher tous les onglets",
     "more": "Plus",
-    "windowHeight": "Hauteur de la fenêtre",
-    "closeOthers": "Fermer les autres",
-    "closeRight": "Fermer à droite",
-    "closeLeft": "Fermer à gauche",
-    "closeAll": "Tout fermer",
-    "cannotShow": "Cet onglet ne peut pas être affiché.",
-    "nothingOpen": "Rien d’ouvert",
-    "noFiles": "Aucun fichier ni modification",
     "reading": "Lecture de {name}",
     "deviceOffline": "{name} est hors ligne.",
     "deviceOfflineDetail": "Les fichiers, les modifications et le navigateur réapparaissent à la reconnexion."

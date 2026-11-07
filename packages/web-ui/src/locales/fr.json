@@ -200,7 +200,7 @@
     "handoff_expired": "Ce code a expiré. Affichez-en un nouveau sur votre autre appareil.",
     "current_session": "Utilisez Se déconnecter pour mettre fin à cette session.",
     "session_not_found": "La session est introuvable.",
-    "panel_full": "Le panneau de travail ne peut pas contenir plus d’onglets.",
+    "panel_full": "Cette conversation ne peut pas contenir plus d’onglets.",
     "unknown_panel_kind": "Aucun plug-in activé ne peut ouvrir cet onglet.",
     "conversation_busy": "La conversation est en train de changer. Réessayez dans un instant.",
     "device_not_attached": "Cet appareil n’est pas rattaché à la conversation.",

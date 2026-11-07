@@ -66,9 +66,12 @@ const FADE_PX = 24
  * them sideways instead of the page.
  *
  * Slots. The host passes its `TabItem`s as children and sizes the strip in its
- * row. The `leading` slot holds tabs that stand ahead of them and never scroll,
- * such as the work panel's pinned tabs. They are elements of `role="tab"` like
- * the children, in the same tab list, each of one width whatever is selected,
+ * row. The `end` slot holds a control right after the last tab, as Chrome's
+ * New Tab: while the tabs scroll it stays in view at the strip's end, the tabs
+ * fading under its start. The `leading` slot holds tabs that stand ahead of
+ * them and never scroll, such as a window's pinned tabs. They are elements of
+ * `role="tab"` like the children, in the same tab list, each of one width
+ * whatever is selected,
  * which the strip's own tabs never squeeze. A divider parts them from the
  * strip's own tabs while there are any.
  *
@@ -342,10 +345,12 @@ function revealActive(): void {
     }
   }
   if (strip && active) {
+    // The end control stands over the view's end: the tab shows whole before it.
+    const end = strip.querySelector<HTMLElement>(':scope > [data-strip-end]')?.offsetWidth ?? 0
     const view = {
       scrollLeft: strip.scrollLeft,
-      clientWidth: strip.clientWidth,
-      scrollWidth: el.value ? settledScrollWidth(strip, el.value) : strip.scrollWidth,
+      clientWidth: strip.clientWidth - end,
+      scrollWidth: (el.value ? settledScrollWidth(strip, el.value) : strip.scrollWidth) - end,
     }
     const target = revealScroll(view, activeBounds(strip, active), FADE_PX)
     if (target !== null) {
@@ -736,6 +741,15 @@ defineExpose({ el })
       @leave-cancelled="onAfterLeave"
     >
       <slot />
+      <div
+        v-if="$slots.end"
+        key="strip-end"
+        data-strip-end
+        class="sticky right-0 z-2 flex shrink-0 items-center bg-(--tab-row) pl-0.5"
+        :class="{ 'strip-end-faded': moreAfter }"
+      >
+        <slot name="end" />
+      </div>
     </TransitionGroup>
     <div
       v-if="moreBefore"
@@ -761,15 +775,20 @@ defineExpose({ el })
 .tabs-leave-active {
   transition:
     width 200ms ease-out,
-    margin 200ms ease-out,
-    opacity 150ms ease;
+    margin 200ms ease-out;
 }
 .tabs-leave-active {
   pointer-events: none;
 }
-.tabs-enter-from,
-.tabs-leave-to {
-  opacity: 0;
+/* The tabs that scroll under the end control fade out before it. */
+.strip-end-faded::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  right: 100%;
+  width: 1.5rem;
+  pointer-events: none;
+  background: linear-gradient(to left, var(--tab-row), transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .tabs-enter-active,

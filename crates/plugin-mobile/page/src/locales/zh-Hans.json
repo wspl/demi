@@ -1,4 +1,5 @@
 {
+  "window": { "name": "模拟器" },
   "toolbar": {
     "model": "（{model}）",
     "rotateLeft": "向左旋转",

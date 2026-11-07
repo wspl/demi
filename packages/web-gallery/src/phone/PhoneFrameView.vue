@@ -21,7 +21,6 @@ import { DEVICE_REPORTS } from '../fixtures/device-reports'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import GalleryDeviceMenu from '../components/GalleryDeviceMenu.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
-import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
 import { longNameModels, longNameProviders } from '../fixtures/catalog'
 import { projectWorkflows } from '../fixtures/workflows'
@@ -31,9 +30,11 @@ import { galleryPasswordChoice } from '../fixtures/password-choice'
 import { galleryConversationFiles } from '../fixtures/message-files'
 import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
 import { createSettingsState } from '../fixtures/settings'
+import { gallerySchedules, switched } from '../fixtures/schedules'
 import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
 import { galleryFiles, useGalleryWork } from '../fixtures/work-panel'
+import { gallerySessionWork } from '../fixtures/session-work'
 import { createGalleryProject } from '../fixtures/project'
 import { PLUGIN_PAGES } from '../generated/pages'
 import { productWould } from '../product-would'
@@ -55,7 +56,7 @@ const agentContext = useAgentContext()
  * - the sidebar;
  * - the model picker;
  * - a long model name under the composer;
- * - the work panel on a Change, a file, its file tree or a browser tab;
+ * - a window on a Change, a file, its file tree or a browser tab;
  * - the Agents or Running window;
  * - Settings.
  *
@@ -81,8 +82,10 @@ onBeforeUnmount(() => {
 })
 
 const project = createGalleryProject()
-// The panel opens only where the scene shows it, and its history starts with it closed.
+// A window opens only where the scene shows it, and the history starts with none in front.
 const work = useGalleryWork('change', { files: galleryFiles(project), browser: galleryBrowser([]), open: false })
+const sessionWork = gallerySessionWork(work)
+const schedules = ref(gallerySchedules())
 const COOKIE = `${project.root}/src/auth/cookie.ts`
 
 const flow = useTurnFlow({
@@ -182,10 +185,18 @@ function pressWhenShown(selector: string, tries = 120): void {
     requestAnimationFrame(() => pressWhenShown(selector, tries - 1))
 }
 
-/** Presses the dock's chip whose label matches, as the user would. */
-function pressChip(label: RegExp): void {
-  const chip = [...document.querySelectorAll<HTMLElement>('[aria-haspopup="dialog"]')].find((element) => label.test(element.textContent ?? ''))
-  chip?.click()
+/** Opens the window whose name matches from the top bar's list of windows, as the user would. */
+async function openWindow(name: RegExp, tries = 120): Promise<void> {
+  press('[data-window-list]')
+  for (let left = tries; left > 0; left -= 1) {
+    const item = [...document.querySelectorAll<HTMLElement>('[role=menuitem]')].find((element) => name.test(element.textContent ?? ''))
+    if (item) {
+      item.click()
+      await nextTick()
+      return
+    }
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+  }
 }
 
 /** Taps the tab whose name matches once the window shows it, as a finger would: a tab selects as the press goes down. */
@@ -233,15 +244,12 @@ onMounted(async () => {
       break
     case 'change':
       work.select('change')
-      work.open.value = true
       break
     case 'file':
       work.openIn({ intent: 'file', payload: { path: COOKIE } })
-      work.open.value = true
       break
     case 'tree':
       work.openIn({ intent: 'file', payload: { path: COOKIE } })
-      work.open.value = true
       pressWhenShown('[aria-label="Show file tree"]')
       break
     case 'browser':
@@ -251,14 +259,14 @@ onMounted(async () => {
       await work.agentOpens('https://example.test/orders', true)
       break
     case 'agents':
-      pressChip(/Agents?$/)
+      await openWindow(/^Agents/)
       break
     case 'running':
-      pressChip(/Running/)
+      await openWindow(/^Running/)
       break
     case 'agents-failed':
       // The second child's tab is selected, then the child fails: a finished child's tab stays while it is selected.
-      pressChip(/Agents?$/)
+      await openWindow(/^Agents/)
       await selectTab(/Check the logout path/)
       session.subagents.find((agent) => agent.id === 'ag-logout')!.phase = 'error'
       break
@@ -277,13 +285,7 @@ onMounted(async () => {
 
 <template>
   <div class="h-full">
-    <SidebarLayout
-      v-model:open="sidebarOpen"
-      :aside-open="work.open.value"
-      @update:aside-open="(shown: boolean) => (shown ? (work.open.value = true) : work.closePanel())"
-      :aside-sheet="work.sheet.value"
-      class="h-full"
-    >
+    <SidebarLayout v-model:open="sidebarOpen" class="h-full">
       <template #sidebar>
         <AppSidebar
           :new-shortcut="appShortcuts().find((shortcut) => shortcut.id === 'new')?.keys"
@@ -309,18 +311,17 @@ onMounted(async () => {
           @sign-out="productWould('Sign Out')"
         />
       </template>
-      <ChatSession @show-subagent="() => {}"
+      <ChatSession
         :conversation="session"
         has-provider
-        :aside-open="work.open.value"
-        :panel-tabs="work.panel.value.tabs.length"
+        :work="sessionWork"
         :select-edit="work.selectEdit"
         :files="files"
         :primary-device="primaryDevice"
         :listed="shownListed"
         :pending-submissions="flow.pendingSubmissions.value"
         :removing="flow.removing.value"
-        @open-aside="work.openPanel()"
+        :schedules="schedules"
         @rename="session.title = $event"
         @pin="(pinned) => updateShown((conversation) => ({ ...conversation, pinned }))"
         @archive="leaveShown('Archive the Conversation and Open a New One')"
@@ -336,6 +337,8 @@ onMounted(async () => {
         @send-queued="flow.sendQueued"
         @recall-steer="flow.recallSteer"
         @interrupt-pending-steer="flow.interruptPendingSteer"
+        @pause-schedule="(id, paused) => (schedules = schedules.map((schedule) => schedule.id === id ? switched(schedule, paused) : schedule))"
+        @delete-schedule="(id) => (schedules = schedules.filter((schedule) => schedule.id !== id))"
         v-bind="agentContext.session"
       >
         <template #place>
@@ -363,9 +366,6 @@ onMounted(async () => {
           />
         </template>
       </ChatSession>
-      <template #aside>
-        <GalleryWorkPanel :work="work" @close="work.closePanel()" />
-      </template>
       <template #dialogs>
         <ChoosePasswordWizard
           :is-open="passwordChoiceOpen"

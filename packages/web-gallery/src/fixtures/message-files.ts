@@ -57,7 +57,7 @@ export function galleryConversationFiles(
   open: NonNullable<ConversationFiles['open']>,
   openCommit: NonNullable<ConversationFiles['openCommit']>,
   showInFiles: NonNullable<ConversationFiles['showInFiles']> = ({ path }) => productWould(`Show ${baseName(path)} in the File View’s Tree`),
-  openAttachment: NonNullable<ConversationFiles['openAttachment']> = (_id, { name }) => productWould(`Open ${name} in the Work Panel`),
+  openAttachment: NonNullable<ConversationFiles['openAttachment']> = (_id, { name }) => productWould(`Open ${name} in Its Window`),
   history: NonNullable<ConversationFiles['history']> = () => sharedHistory.source,
   openBranch: NonNullable<ConversationFiles['openBranch']> = ({ branch }) => productWould(`Open ${branch ?? 'HEAD'} in the Change View’s Commits`),
   shareReplyBlock: NonNullable<ConversationFiles['shareReplyBlock']> = (_tag, _id, title) => productWould(`Share ${title}`),

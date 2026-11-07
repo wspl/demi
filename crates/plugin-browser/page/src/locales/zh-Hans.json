@@ -1,4 +1,5 @@
 {
+  "window": { "name": "浏览器" },
   "reasons": {
     "invalid_input": "浏览器只能打开网页、文件和空白页。",
     "tab_not_found": "此页面已不在设备上打开。",

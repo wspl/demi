@@ -1,5 +1,5 @@
 import { shallowRef, type Component, type Directive, type VNode } from 'vue'
-import { Copy, Download, ExternalLink, Link, PanelRight, Search, SquareArrowOutUpRight } from '@lucide/vue'
+import { Copy, Download, ExternalLink, Globe, Link, Search, SquareArrowOutUpRight } from '@lucide/vue'
 import type { CopySource } from '../composables/useCopy'
 import type { Operation } from './operations'
 import { t as shared } from '../locales/text'
@@ -149,11 +149,11 @@ export interface ContextMenuServices {
   save: (url: string, name: string) => void
   openLink: (url: string) => void
   /**
-   * Opens a web page in a new tab of the conversation's browser, the work
-   * panel shown; absent where no conversation's panel takes one, and a link
-   * then has no Open in Work Panel.
+   * Opens a web page in a new tab of the conversation's Browser window, shown
+   * in front; absent where no conversation takes one, and a link then has no
+   * Open in Browser Window.
    */
-  openInWorkPanel?: (url: string) => void
+  openInBrowserWindow?: (url: string) => void
 }
 
 /**
@@ -321,11 +321,11 @@ function webPage(url: string): boolean {
 function contentGroup(el: Element, services: ContextMenuServices): ContextMenuGroup | null {
   if (el instanceof HTMLAnchorElement && el.href !== '') {
     const href = el.href
-    const inPanel = services.openInWorkPanel
+    const inWindow = services.openInBrowserWindow
     return [
       { icon: ExternalLink, label: t('contextMenu.openLink'), run: () => services.openLink(href) },
-      ...(inPanel && webPage(href)
-        ? [{ icon: PanelRight, label: t('contextMenu.openInWorkPanel'), run: () => inPanel(href) }]
+      ...(inWindow && webPage(href)
+        ? [{ icon: Globe, label: t('contextMenu.openInBrowserWindow'), run: () => inWindow(href) }]
         : []),
       { icon: Link, label: t('contextMenu.copyLink'), run: () => services.copy(href) },
     ]

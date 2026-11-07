@@ -37,7 +37,7 @@ export interface Stage {
   form: Form
   /** Where the conversation runs, which the header's device menu shows. */
   devices: DemoDevices
-  /** The schedules that wake the conversation, which its Scheduled chip counts. */
+  /** The schedules that wake the conversation, which its Schedules button counts. */
   schedules: Ref<readonly ConversationSchedule[]>
   /**
    * Opens the play on the part of the desktop's screen that `target` covers,
@@ -75,9 +75,9 @@ export interface Stage {
 export interface Scene {
   title: string
   cwd: string
-  /** The services the conversation runs when the scene opens, which its Service chip counts. */
+  /** The services the conversation runs when the scene opens, which its Services button counts. */
   services?: readonly TerminalRecord[]
-  /** The schedules that wake the conversation, which its Scheduled chip counts. */
+  /** The schedules that wake the conversation, which its Schedules button counts. */
   schedules?: readonly ConversationSchedule[]
   /** The conversation's workflow, which its composer's Workflow menu names. */
   workflow?: { choice: WorkflowChoice; list: WorkflowList }
@@ -267,16 +267,15 @@ const SCREEN = {
 
 /**
  * Where the desktop's screen shows a part of a scene with the sidebar
- * collapsed, measured as it lays out: the conversation, between the window's
- * edge and the work panel when it is open; its first steps; its steps further
- * down, above the composer; and the work panel.
+ * collapsed, measured as it lays out: the conversation, which the windows of
+ * its work float over; its first steps; its steps further down, above the
+ * composer; and the window in front.
  */
-function area(part: 'conversation' | 'steps' | 'later' | 'panel'): CameraRect {
-  const panel = document.querySelector('[data-work-panel]')?.getBoundingClientRect()
-  const right = panel && panel.width > 0 ? panel.left : 1024
-  if (part === 'panel' && panel)
-    return { x: panel.left, y: 0, width: panel.width, height: 614 }
-  const width = right
+function area(part: 'conversation' | 'steps' | 'later' | 'window'): CameraRect {
+  const window = document.querySelector('[data-work-window]')?.getBoundingClientRect()
+  if (part === 'window' && window)
+    return { x: window.left, y: window.top, width: window.width, height: window.height }
+  const width = 1024
   if (part === 'steps')
     return { x: 16, y: 0, width: width - 32, height: Math.round((width - 32) * 0.49) }
   if (part === 'later')
@@ -575,16 +574,16 @@ export const SCENES: Record<DemoId, Scene> = {
       // The phone keeps to the conversation; the desktop shows the device beside it, in 3D.
       if (form === 'desktop') {
         await work.mobile.agentOpens('iPhone Duo')
-        // `demi mobile open` shows the device in the panel, as the product's does.
+        // `demi mobile open` shows the device in its window, as the product's does.
         work.open.value = true
-        press(await shownText(c, '[data-work-panel] [role="tab"]', 'Duo'))
+        press(await shownText(c, '[data-work-window] [role="tab"]', 'Duo'))
         // The film covers the device's whole view, its hinge's slider included, which it has no part in.
-        const view = (await shown<HTMLCanvasElement>(c, '[data-work-panel] canvas.touch-none')).parentElement!.parentElement!
-        await open(area('panel'))
+        const view = (await shown<HTMLCanvasElement>(c, '[data-work-window] canvas.touch-none')).parentElement!.parentElement!
+        await open(area('window'))
         await until(c, () => view.clientHeight > 400)
         cover(view, DuoFilm, { src: duoFilm }, { width: view.clientWidth, height: view.clientHeight })
       } else {
-        await open(area('panel'))
+        await open(area('window'))
       }
       // The steps keep time with the film: closed, the button pressed; half
       // open; an order picked; open flat.

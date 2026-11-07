@@ -10,7 +10,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { ArrowRightLeft, ChevronDown, Ellipsis, Menu as MenuLines, PanelRight, Play, Search, Settings2, Share, TextCursorInput } from '@lucide/vue'
+import { AlarmClock, ArrowRightLeft, ChevronDown, Ellipsis, Menu as MenuLines, MessageCircleQuestionMark, Play, Search, Settings2, Share, TextCursorInput } from '@lucide/vue'
 import type { InstructionEntry, Version } from '@demicodes/protocol'
 import {
   beginMessageEdit,
@@ -27,13 +27,15 @@ import type { ReplyAsking } from './comments/asks'
 import SideQuestionWindow from './comments/SideQuestionWindow.vue'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
-import { DOCK_WINDOW_SHARE } from '@demicodes/web-ui/agent/dock-window'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
-import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
-import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
+import SubagentHistoryMenu from './SubagentHistoryMenu.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
-import { useSessionPanels } from './useSessionPanels'
+import SessionWindows, { type OwnWindow } from '../windows/SessionWindows.vue'
+import { useSessionStage, type SessionWork } from '../windows/session-work'
+import { useAgentsWindow } from './agents-window'
+import { useCommandWindows } from './command-windows'
+import { questionText } from './comments/asks'
 import { provideLiveCalls } from './live-calls'
 import { useCallTerminals, useDockTerminals } from './terminals'
 import { provideCommandRevealer } from './command-reports'
@@ -66,7 +68,9 @@ import { selectionEntries } from '../sidebar/selection-menu'
 import ConversationDeleteDialog from '../sidebar/ConversationDeleteDialog.vue'
 import { copyId } from '../infra/copy-id'
 import StatusDot from '../ui/StatusDot.vue'
-import SchedulesChip from '../schedules/SchedulesChip.vue'
+import SchedulesButton from '../schedules/SchedulesButton.vue'
+import SchedulesMenu from '../schedules/SchedulesMenu.vue'
+import { t as scheduleText } from '../schedules/locales/text'
 import type { ConversationSchedule } from '../schedules/types'
 import { provideScheduleOpener } from './message-origins'
 import { provideComposerFocus } from './composer-focus'
@@ -128,14 +132,11 @@ const props = withDefaults(defineProps<{
   /** The keys Find has in the keyboard settings, which Find in Conversation shows; none when it has none. */
   findShortcut?: string
   /**
-   * Whether the app frame's work panel is open; absent when the host has none.
+   * The conversation's work: its tabs, which open in windows over and beside
+   * the conversation, and their layout. Absent, as on a share, the
+   * conversation has only its own windows, such as Agents.
    */
-  asideOpen?: boolean
-  /**
-   * How many tabs the work panel has, its pinned ones aside, which the phone's
-   * panel button shows.
-   */
-  panelTabs?: number
+  work?: SessionWork
   /**
    * The conversation as the sidebar lists it. On a phone, its title sheet
    * offers the sidebar row's menu for it. Absent, as for a conversation not
@@ -143,8 +144,8 @@ const props = withDefaults(defineProps<{
    */
   listed?: { pinned: boolean }
   /**
-   * The schedules that wake the conversation. A chip above the composer lists
-   * them.
+   * The schedules that wake the conversation, which the taskbar's Schedules
+   * button lists.
    */
   schedules?: readonly ConversationSchedule[]
   /**
@@ -243,20 +244,10 @@ const props = withDefaults(defineProps<{
    */
   filePills?: boolean
 }>(), {
-  // Vue reads an absent boolean prop as false, which would offer Open panel
-  // where there is no panel. Absent stays undefined.
-  asideOpen: undefined,
-  panelTabs: 0,
   resumeAtRetry: undefined,
   filePills: true,
   outputSpeed: true,
 })
-/**
- * The share of the session area's height the dock's windows keep; the host
- * keeps it (`dock-window.ts`).
- */
-const dockWindowShare = defineModel<number>('dockWindowShare', { default: DOCK_WINDOW_SHARE.default })
-
 // A schedule's name above a message in the transcript opens the Schedules menu.
 const schedulesOpen = ref(false)
 provideScheduleOpener((id) => (props.schedules?.some((schedule) => schedule.id === id)
@@ -295,15 +286,9 @@ const emit = defineEmits<{
   /** Delete a schedule that wakes the conversation, from the Schedules menu. */
   deleteSchedule: [id: string]
   /**
-   * The dock windows' share settled: a drag ended, a key or a double-click
-   * applied.
-   */
-  dockWindowResizeEnd: [share: number]
-  /**
    * A failure's record turned the preference to resume at its time on or off.
    */
   'update:resumeAtRetry': [on: boolean]
-  openAside: []
   rename: [title: string]
   /**
    * The row menu's commands, from the phone's title sheet; Delete once the user
@@ -478,7 +463,7 @@ provideMessageFiles(() => props.files && {
   cwd: props.conversation.cwd,
   ...(props.share ? { shareReplyBlock } : {}),
 })
-const surface = ref<{ dockHeight: number }>()
+const surface = ref<{ dockHeight: number; dockFootprint: number }>()
 // The title shows whole while the header holds it. A longer one is cut first,
 // down to this width, while the controls beside it keep their labels; below
 // it, the controls give up their labels before the title is cut further.
@@ -505,10 +490,10 @@ const phone = usePhone()
 const drawer = useSidebarDrawer()
 const titleSheetOpen = ref(false)
 /**
- * The panel button's icon: the panel's tabs as a phone browser draws its tab
+ * The Tabs button's icon: the windows' tabs as a phone browser draws its tab
  * button.
  */
-const tabsIcon = computed(() => tabCountIcon(props.panelTabs))
+const tabsIcon = computed(() => tabCountIcon(props.work?.panel.tabs.length ?? 0))
 /** Where the title sheet shows the conversation's place, while it is open. */
 const placeTarget = ref<HTMLElement | null>(null)
 /** The primary device's state on the title, while it is not ready to run. */
@@ -548,14 +533,12 @@ function titleSheetEntries(listed: { pinned: boolean }) {
 /**
  * The page has been behind the conversation's session for `CATCH_UP_WAIT_MS`:
  * its lane is not open, or the root's transcript is read again. A spinner
- * over the transcript's end, where what it waits for will appear, says so,
- * unless a dock window covers that end.
+ * over the transcript's end, where what it waits for will appear, says so.
  */
 const behind = useHeldFor(
   () => !props.conversation.archived && behindSession(props.conversation.load, props.catchingUp),
   CATCH_UP_WAIT_MS,
 )
-const catchingUpShown = computed(() => behind.value && !agentsOpen.value && activeTerminalId.value === null && fullQuestion.value === null)
 const iconPx = useIconPx()
 
 /** The Rename button, or a double-click on the title, names it in place. */
@@ -768,12 +751,69 @@ function scrollToBottom(): void {
  * back with its version.
  */
 const shownAgents = keptComputed(() => props.conversation.subagents.filter((agent) => agent.onPath))
-const { agentsOpen, activeSubagentId, activeTerminalId, toggleAgents, toggleTerminals, close } =
-  useSessionPanels(
-    () => shownAgents.value,
-    () => terminals.value,
-    () => (props.conversation.load === 'loading' || props.conversation.load === 'reading' ? null : props.conversation.id),
-  )
+
+// ---- windows ----------------------------------------------------------------
+
+/** The conversation's windows, from the layout it keeps; a phone keeps none. */
+const stage = useSessionStage(() => props.conversation.id, () => props.work, () => !phone.value)
+const windowsArea = ref<InstanceType<typeof SessionWindows> | null>(null)
+/** On a phone, the list of windows the top bar's Tabs button opens. */
+const windowListOpen = ref(false)
+const agentsWindow = useAgentsWindow(() => shownAgents.value, {
+  stop: (id) => emit('abortSubagent', id),
+  stopAll: () => emit('abortSubagents'),
+})
+/** The child the Agents window shows; none shows it empty. */
+const activeSubagentId = agentsWindow.activeId
+const commandWindows = useCommandWindows(() => terminals.value, (id) => emit('abortTerminal', id))
+// Another conversation's windows show their own tabs.
+watch(() => props.conversation.id, () => {
+  activeSubagentId.value = null
+  commandWindows.active.value = { command: null, service: null }
+  fullAsk.value = null
+})
+
+/** Whether the window `id` is on screen. */
+function windowShown(id: string): boolean {
+  const placed = stage.value.find(id)
+  return placed !== undefined && placed.placement !== 'minimized'
+}
+const agentsOpen = computed(() => windowShown('agents'))
+
+/** Shows the Agents window on the child `id`. */
+function showAgent(id: string | null): void {
+  activeSubagentId.value = id
+  windowsArea.value?.show('agents')
+}
+
+const ownWindows = computed<OwnWindow[]>(() => {
+  const windows: OwnWindow[] = [agentsWindow.window.value, ...commandWindows.windows.value]
+  const question = fullQuestion.value
+  if (question) {
+    windows.push({
+      id: 'question',
+      icon: MessageCircleQuestionMark,
+      name: question.title ?? questionText(question),
+      tabs: [{ id: question.id, title: question.title ?? questionText(question), closable: false }],
+      current: question.id,
+      single: true,
+      select: () => {},
+      closed: () => {
+        fullAsk.value = null
+      },
+    })
+  }
+  return windows
+})
+// ↗ on a side question's card opens its window; a layout kept with one open
+// shows none, as the question it showed is not open.
+watch(fullQuestion, (question) => {
+  if (question) {
+    windowsArea.value?.show('question')
+  } else if (stage.value.find('question')) {
+    stage.value.remove('question')
+  }
+}, { immediate: true })
 // A receipt's name opens the Agents window on its sender's tab. A finished
 // sender is picked as Completed picks it. The host brings the block the receipt
 // names into view there; the root's block, in the transcript. A message from
@@ -787,7 +827,7 @@ provideOriginRevealer(({ conversationId, node, blockId }) => {
   }
   return () => {
     if (node !== null) {
-      activeSubagentId.value = node
+      showAgent(node)
     }
     if (blockId !== null) {
       emit('reveal', { node, blockId })
@@ -809,9 +849,9 @@ provideMessageAgents(() => ({
       return
     }
     if (next.open) {
-      activeSubagentId.value = next.activeId
-    } else {
-      close()
+      showAgent(next.activeId)
+    } else if (stage.value.find('agents')) {
+      stage.value.minimize('agents')
     }
   },
   // Stop Agent in the link's menu stops it as its tab's does; the
@@ -836,7 +876,7 @@ watch(
   () => props.reveal?.node,
   (node) => {
     if (node) {
-      activeSubagentId.value = node
+      showAgent(node)
     }
   },
 )
@@ -878,11 +918,12 @@ watch(
         <ChevronDown :size="ICON_PX.in20" class="shrink-0 text-fg-subtle" />
       </button>
       <IconButton
-        v-if="asideOpen !== undefined"
+        v-if="work"
         :icon="tabsIcon"
         variant="ghost"
-        :aria-label="panelTabs > 0 ? t('session.tabsOpen', { count: panelTabs }) : t('session.tabs')"
-        @click="emit('openAside')"
+        :aria-label="work.panel.tabs.length > 0 ? t('session.tabsOpen', { count: work.panel.tabs.length }) : t('session.tabs')"
+        data-window-list
+        @click="windowListOpen = true"
       />
       <span v-else class="size-hit shrink-0" />
       <!--
@@ -949,7 +990,7 @@ watch(
     </header>
     <header
       v-else
-      class="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-3 py-2"
+      class="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 border-b border-line-subtle px-3 py-2"
     >
       <div ref="titleCell" class="col-span-2 flex min-w-0 items-center gap-1 sm:col-span-1">
         <SidebarToggle placement="bar" />
@@ -1016,166 +1057,130 @@ watch(
             </Menu>
           </template>
         </Dropdown>
-        <!--
-          Only while the panel is closed: open, its own fold control closes it.
-        -->
-        <Tooltip
-          v-if="asideOpen === false"
-          :content="t('session.openPanel')"
-          class="shrink-0"
-        >
-          <IconButton
-            :icon="PanelRight"
-            variant="ghost"
-            :aria-label="t('session.openPanel')"
-            @click="emit('openAside')"
-          />
-        </Tooltip>
       </div>
     </header>
     <div class="relative min-h-0 flex-1 overflow-hidden">
-      <SessionSurface
-        ref="surface"
-        v-model:dock-window-share="dockWindowShare"
-        @dock-window-resize-end="emit('dockWindowResizeEnd', $event)"
+      <SessionWindows
+        ref="windowsArea"
+        v-model:list-open="windowListOpen"
+        :stage="stage"
+        :work="work"
+        :own="ownWindows"
+        :bottom="surface?.dockFootprint ?? 0"
       >
-        <div class="flex h-full min-h-0 flex-col">
-          <AgentMessageList
-            ref="list"
-            class="min-h-0 flex-1"
-            :key="conversation.id"
-            :conversation-id="conversation.id"
-            :blocks="shown.blocks"
-            :at-start="shownEdges.atStart"
-            :at-end="shownEdges.atEnd"
-            :latest="shownLatest"
-            :summaries="conversation.summaries"
-            :activity="activity"
-            :queue="conversation.queue"
-            :starting="conversation.starting"
-            :pending-steers="conversation.pendingSteers"
-            :phase="conversation.phase"
-            :load="conversation.load"
-            :catching-up="catchingUp"
-            :pending-action="conversation.pendingAction"
-            :resuming="conversation.resuming"
-            :failures="conversation.failures"
-            :load-error="conversation.lastError"
-            :failure="failureNotice"
-            :pending-submissions="pendingSubmissions"
-            :removing="removing"
-            :read-only="!canEdit"
-            :fork="fork"
-            :share="share ? shareAnswer : undefined"
-            :edit-target-id="messageEdit?.kind === 'message' ? messageEdit.request.targetBlockId : undefined"
-            :commenting="commenting"
-            :asking="shownAsking"
-            @edit-submission="(id) => emit('editSubmission', id)"
-            @delete-unsent="(id) => emit('deleteUnsent', id)"
-            :bottom-offset="surface?.dockHeight ?? 0"
-            :persisted-scroll-state="conversation.scroll ?? undefined"
-            :reveal-block-id="reveal?.node === null ? reveal.blockId : null"
-            @revealed="emit('revealed')"
-            @save-scroll-state="(id, state) => emit('saveScroll', id, state ?? null)"
-            @recall-queued="(id) => emit('recallQueued', id)"
-            @send-queued="(id) => emit('sendQueued', id)"
-            @recall-steer="(id) => emit('recallSteer', id)"
-            @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
-            @retry-undelivered="(id) => emit('retryUndelivered', id)"
-            @edit-user="editUser"
-            @regenerate="regenerate"
-            @switch-version="(id, to) => emit('switchVersion', id, to)"
-            @retry-load="emit('retryLoad')"
-            @read-before="emit('readBefore')"
-            @read-after="emit('readAfter')"
-            @shown="(block, within) => emit('shown', null, block, within)"
-          />
-        </div>
-        <template #dock>
-          <SessionDock
-            :catching-up="catchingUpShown"
-            :show-scroll-to-bottom="!shownLatest || (!!list && !list.isAtBottom)"
-            :output="shownOutput"
-            :scope="conversation.id"
-            :turn-speed="transcriptShown(conversation.load) ? conversation.turnSpeed : null"
-            :output-speed="outputSpeed"
-            @scroll-to-bottom="scrollToBottom"
-          >
-            <template v-if="dockShown && (permissionRequests?.length || notificationsCard)" #above>
-              <RequestCard
-                v-if="permissionRequests?.length"
-                :requests="permissionRequests"
-                :deciding="decidingPermission"
-                :error="requestError"
-                @decide="(id, decision, credential) => emit('decidePermission', id, decision, credential)"
-              />
-              <NotificationsCard
-                v-else-if="notificationsCard"
-                :permission="notificationsCard.permission"
-                :home-screen-icon="notificationsCard.homeScreenIcon"
-                :turning="notificationsCard.turning"
-                @turn-on="emit('turnOnNotifications')"
-                @dismiss="emit('dismissNotificationsCard')"
-              />
-            </template>
-            <template v-if="dockShown" #chips>
-              <!--
-                The transcript says what happened; the recovery controls are
-                here, over the input.
-              -->
-              <SessionDockChip v-if="recovery" @click="recover">
-                <Play :size="ICON_PX.in28" />
-                {{ recovery === 'resume' ? t('dock.resume') : t('dock.continue') }}
-              </SessionDockChip>
-              <SessionDockChip
-                v-if="continueWith"
-                @click="emit('continueWith', continueWith.providerId, continueWith.credentialId)"
-              >
-                <ArrowRightLeft :size="ICON_PX.in28" />
-                <span class="min-w-0 truncate">{{ t('dock.continueWith', { label: continueWith.label }) }}</span>
-              </SessionDockChip>
-              <SessionDockChip v-if="opensProviders" data-open-providers @click="emit('openProviders')">
-                <Settings2 :size="ICON_PX.in28" />
-                {{ t('dock.openProviders') }}
-              </SessionDockChip>
-              <AgentsChip
-                :agents="shownAgents"
-                :open="agentsOpen"
-                @open="toggleAgents"
-              />
-              <TerminalChip
-                :terminals="terminals"
-                kind="command"
-                :active-id="activeTerminalId"
-                @open="toggleTerminals('command')"
-              />
-              <TerminalChip
-                :terminals="terminals"
-                kind="service"
-                :active-id="activeTerminalId"
-                @open="toggleTerminals('service')"
-              />
-              <SchedulesChip
-                v-model:open="schedulesOpen"
-                :schedules="schedules ?? []"
-                :archived="conversation.archived"
-                @pause="(id, paused) => emit('pauseSchedule', id, paused)"
-                @delete="(id) => emit('deleteSchedule', id)"
-              />
-            </template>
-            <!-- A message sent while the session opens goes once it has. -->
-            <slot v-if="dockShown" name="composer" />
-          </SessionDock>
-        </template>
-        <template #overDock>
+        <SessionSurface ref="surface">
+          <div class="flex h-full min-h-0 flex-col">
+            <AgentMessageList
+              ref="list"
+              class="min-h-0 flex-1"
+              :key="conversation.id"
+              :conversation-id="conversation.id"
+              :blocks="shown.blocks"
+              :at-start="shownEdges.atStart"
+              :at-end="shownEdges.atEnd"
+              :latest="shownLatest"
+              :summaries="conversation.summaries"
+              :activity="activity"
+              :queue="conversation.queue"
+              :starting="conversation.starting"
+              :pending-steers="conversation.pendingSteers"
+              :phase="conversation.phase"
+              :load="conversation.load"
+              :catching-up="catchingUp"
+              :pending-action="conversation.pendingAction"
+              :resuming="conversation.resuming"
+              :failures="conversation.failures"
+              :load-error="conversation.lastError"
+              :failure="failureNotice"
+              :pending-submissions="pendingSubmissions"
+              :removing="removing"
+              :read-only="!canEdit"
+              :fork="fork"
+              :share="share ? shareAnswer : undefined"
+              :edit-target-id="messageEdit?.kind === 'message' ? messageEdit.request.targetBlockId : undefined"
+              :commenting="commenting"
+              :asking="shownAsking"
+              @edit-submission="(id) => emit('editSubmission', id)"
+              @delete-unsent="(id) => emit('deleteUnsent', id)"
+              :bottom-offset="surface?.dockHeight ?? 0"
+              :persisted-scroll-state="conversation.scroll ?? undefined"
+              :reveal-block-id="reveal?.node === null ? reveal.blockId : null"
+              @revealed="emit('revealed')"
+              @save-scroll-state="(id, state) => emit('saveScroll', id, state ?? null)"
+              @recall-queued="(id) => emit('recallQueued', id)"
+              @send-queued="(id) => emit('sendQueued', id)"
+              @recall-steer="(id) => emit('recallSteer', id)"
+              @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
+              @retry-undelivered="(id) => emit('retryUndelivered', id)"
+              @edit-user="editUser"
+              @regenerate="regenerate"
+              @switch-version="(id, to) => emit('switchVersion', id, to)"
+              @retry-load="emit('retryLoad')"
+              @read-before="emit('readBefore')"
+              @read-after="emit('readAfter')"
+              @shown="(block, within) => emit('shown', null, block, within)"
+            />
+          </div>
+          <template #dock>
+            <SessionDock
+              :catching-up="behind"
+              :show-scroll-to-bottom="!shownLatest || (!!list && !list.isAtBottom)"
+              :output="shownOutput"
+              :scope="conversation.id"
+              :turn-speed="transcriptShown(conversation.load) ? conversation.turnSpeed : null"
+              :output-speed="outputSpeed"
+              @scroll-to-bottom="scrollToBottom"
+            >
+              <template v-if="dockShown && (permissionRequests?.length || notificationsCard)" #above>
+                <RequestCard
+                  v-if="permissionRequests?.length"
+                  :requests="permissionRequests"
+                  :deciding="decidingPermission"
+                  :error="requestError"
+                  @decide="(id, decision, credential) => emit('decidePermission', id, decision, credential)"
+                />
+                <NotificationsCard
+                  v-else-if="notificationsCard"
+                  :permission="notificationsCard.permission"
+                  :home-screen-icon="notificationsCard.homeScreenIcon"
+                  :turning="notificationsCard.turning"
+                  @turn-on="emit('turnOnNotifications')"
+                  @dismiss="emit('dismissNotificationsCard')"
+                />
+              </template>
+              <template v-if="dockShown" #chips>
+                <!--
+                  The transcript says what happened; the recovery controls are
+                  here, over the input.
+                -->
+                <SessionDockChip v-if="recovery" @click="recover">
+                  <Play :size="ICON_PX.in28" />
+                  {{ recovery === 'resume' ? t('dock.resume') : t('dock.continue') }}
+                </SessionDockChip>
+                <SessionDockChip
+                  v-if="continueWith"
+                  @click="emit('continueWith', continueWith.providerId, continueWith.credentialId)"
+                >
+                  <ArrowRightLeft :size="ICON_PX.in28" />
+                  <span class="min-w-0 truncate">{{ t('dock.continueWith', { label: continueWith.label }) }}</span>
+                </SessionDockChip>
+                <SessionDockChip v-if="opensProviders" data-open-providers @click="emit('openProviders')">
+                  <Settings2 :size="ICON_PX.in28" />
+                  {{ t('dock.openProviders') }}
+                </SessionDockChip>
+              </template>
+              <!-- A message sent while the session opens goes once it has. -->
+              <slot v-if="dockShown" name="composer" />
+            </SessionDock>
+          </template>
+        </SessionSurface>
+        <template #own="{ id }">
           <SubagentPanel
-            v-model:open="agentsOpen"
+            v-if="id === 'agents'"
             v-model:active-id="activeSubagentId"
             :conversation="conversation.id"
             :agents="shownAgents"
             :terminals="conversation.terminals"
-            @abort="emit('abortSubagents')"
-            @abort-agent="(id) => emit('abortSubagent', id)"
             :reveal="reveal?.node ? reveal : null"
             :read-latest="readSubagentLatest"
             :streamed="subagentsStreamed"
@@ -1192,18 +1197,60 @@ watch(
             @open-instruction="(entry) => emit('openInstruction', entry)"
           />
           <SideQuestionWindow
-            v-if="asking"
+            v-else-if="id === 'question'"
             :question="fullQuestion"
-            @close="fullAsk = null"
-            @read="(id, at) => asking?.read(id, at)"
+            @read="(question, at) => asking?.read(question, at)"
           />
           <TerminalPanel
-            v-model:active-id="activeTerminalId"
-            :terminals="terminals"
-            @abort="(id) => emit('abortTerminal', id)"
+            v-else-if="id === 'running' || id === 'services'"
+            :terminals="commandWindows.tabs(id === 'running' ? 'command' : 'service')"
+            :active-id="commandWindows.shown(id === 'running' ? 'command' : 'service')"
           />
         </template>
-      </SessionSurface>
+        <template #trailing="{ id }">
+          <!-- Agents' Completed: a finished child picked replaces the finished tab. -->
+          <SubagentHistoryMenu
+            v-if="id === 'agents'"
+            :agents="shownAgents"
+            :active-id="activeSubagentId"
+            @select="(agent) => (activeSubagentId = agent)"
+          />
+        </template>
+        <template #system>
+          <SchedulesButton
+            v-model:open="schedulesOpen"
+            :schedules="schedules ?? []"
+            :archived="conversation.archived"
+            @pause="(schedule, paused) => emit('pauseSchedule', schedule, paused)"
+            @delete="(schedule) => emit('deleteSchedule', schedule)"
+          />
+        </template>
+        <template #list>
+          <MenuItem
+            v-if="schedules?.length"
+            :icon="AlarmClock"
+            :label="scheduleText('name')"
+            :value="String(schedules.length)"
+            value-faint
+            @select="windowListOpen = false; schedulesOpen = true"
+          />
+        </template>
+      </SessionWindows>
+      <!-- On a phone the Schedules button's menu is a sheet the window list opens. -->
+      <Sheet
+        v-if="phone"
+        :open="schedulesOpen && !!schedules?.length"
+        :label="scheduleText('name')"
+        :overlay-store="appOverlayStore"
+        @close="schedulesOpen = false"
+      >
+        <SchedulesMenu
+          :schedules="schedules ?? []"
+          :archived="conversation.archived"
+          @pause="(schedule, paused) => emit('pauseSchedule', schedule, paused)"
+          @delete="(schedule) => emit('deleteSchedule', schedule)"
+        />
+      </Sheet>
     </div>
     <ShareDialog
       v-if="sharing.shown.value"

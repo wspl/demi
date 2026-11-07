@@ -1,5 +1,5 @@
 {
-  "chip": "{count} Scheduled",
+  "name": "Schedules",
   "delete": "Delete",
   "notYet": "Not woken yet",
   "trigger": {

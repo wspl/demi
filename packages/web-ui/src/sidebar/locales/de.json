@@ -126,7 +126,6 @@
     "sidebarWidth": "Breite der Seitenleiste",
     "openSidebar": "Seitenleiste öffnen",
     "hideSidebar": "Seitenleiste ausblenden",
-    "showSidebar": "Seitenleiste einblenden",
-    "workPanelWidth": "Breite des Arbeitspanels"
+    "showSidebar": "Seitenleiste einblenden"
   }
 }

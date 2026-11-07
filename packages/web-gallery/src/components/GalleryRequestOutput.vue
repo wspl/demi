@@ -2,16 +2,13 @@
 import { onBeforeUnmount, reactive } from 'vue'
 import type { RequestOutputReading } from '@demicodes/conversation-client'
 import type { TurnSpeed } from '@demicodes/protocol'
-import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
+import { Play } from '@lucide/vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
-import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
-import SchedulesChip from '@demicodes/web-ui/schedules/SchedulesChip.vue'
-import { useGalleryTerminalChips } from '../terminal-chips'
+import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
+import { t as agentText } from '@demicodes/web-ui/agent/locales/text'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import { gallerySubagents } from '../fixtures/subagents'
-import { previewService, runningRunCommand } from '../fixtures/terminals'
+import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { productWould } from '../product-would'
-import { gallerySchedules, switched } from '../fixtures/schedules'
 import GalleryComposer from './GalleryComposer.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 
@@ -80,27 +77,6 @@ const specimens = reactive<Specimen[]>([
   }),
   specimen({ variant: 'Output Speed Off', chips: false, away: false, output: streaming(1_240, 15), turnSpeed: KEPT, outputSpeed: false }),
 ])
-
-const agents = reactive(gallerySubagents())
-const terminals = [runningRunCommand(), previewService()]
-const terminalChips = useGalleryTerminalChips(() => terminals)
-const schedules = reactive(gallerySchedules().slice(0, 1))
-
-/** The schedule's switch, as the product turns it off and on. */
-function pauseSchedule(id: string, paused: boolean): void {
-  const at = schedules.findIndex((each) => each.id === id)
-  if (at >= 0) {
-    schedules.splice(at, 1, switched(schedules[at]!, paused))
-  }
-}
-
-/** The schedule's Delete. */
-function deleteSchedule(id: string): void {
-  const at = schedules.findIndex((each) => each.id === id)
-  if (at >= 0) {
-    schedules.splice(at, 1)
-  }
-}
 
 /** What the server sends twice a second of each streaming request. */
 const frames = setInterval(() => {
@@ -209,14 +185,10 @@ const WIDTHS = ['22rem', '27.5rem', '30rem', '17rem']
             @scroll-to-bottom="specimen.away = false"
           >
             <template v-if="specimen.chips" #chips>
-              <AgentsChip :agents="agents" @open="productWould('Open the Agents Window')" />
-              <TerminalChip :terminals="terminals" kind="command" :active-id="terminalChips.activeId.value" @open="terminalChips.press('command')" />
-              <TerminalChip :terminals="terminals" kind="service" :active-id="terminalChips.activeId.value" @open="terminalChips.press('service')" />
-              <SchedulesChip
-                :schedules="schedules"
-                @pause="pauseSchedule"
-                @delete="deleteSchedule"
-              />
+              <SessionDockChip @click="productWould('Resume the Turn')">
+                <Play :size="ICON_PX.in28" />
+                {{ agentText('dock.resume') }}
+              </SessionDockChip>
             </template>
             <GalleryComposer
               @send="send(specimen)"

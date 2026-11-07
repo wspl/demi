@@ -126,7 +126,6 @@
     "sidebarWidth": "Largura da barra lateral",
     "openSidebar": "Abrir barra lateral",
     "hideSidebar": "Ocultar barra lateral",
-    "showSidebar": "Mostrar barra lateral",
-    "workPanelWidth": "Largura do painel de trabalho"
+    "showSidebar": "Mostrar barra lateral"
   }
 }

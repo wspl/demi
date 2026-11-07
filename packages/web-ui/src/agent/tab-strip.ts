@@ -8,8 +8,8 @@ import { clamp } from '@demicodes/utils'
 import { prefersReducedMotion } from '../ui/stream-reveal'
 
 /**
- * Provided by a window whose tabs narrow to their icons on a phone
- * (`SessionOverlay`: the Agents and Running windows): there only the selected
+ * Provided by a window whose tabs narrow to their icons on a phone (the
+ * Agents and Running windows, `WorkWindow`): there only the selected
  * `TabItem` shows its name, as Chrome's narrowed tabs show the active one's
  * title. /
  */
@@ -91,7 +91,7 @@ function measureSettled<T>(
   try {
     for (const child of entering) {
       const copy = child.cloneNode(true) as HTMLElement
-      for (const property of ['width', 'flex', 'min-width', 'max-width', 'overflow', 'opacity', 'position']) {
+      for (const property of ['width', 'flex', 'min-width', 'max-width', 'overflow', 'position']) {
         copy.style.removeProperty(property)
       }
       copy.style.transition = 'none'
@@ -266,30 +266,29 @@ function clearWidthLock(tab: HTMLElement): void {
 }
 
 /**
- * Whether a tab enters whole, in the frame it appears: the one the user is
- * shown, whose content shows at once, so the strip never lags it; any tab
- * when motion is reduced. Tabs added behind the shown one grow into place.
+ * Whether a tab enters whole, in the frame it appears: only when motion is
+ * reduced. Every other tab, the one the user is shown included, grows from
+ * nothing into place, as a new tab does in Chrome: it is there from the first
+ * frame, opaque, its content clipped while it grows.
  */
-function entersWhole(tab: HTMLElement): boolean {
-  return tab.getAttribute('aria-selected') === 'true' || prefersReducedMotion()
+function entersWhole(): boolean {
+  return prefersReducedMotion()
 }
 
 export function beforeEnterTab(el: Element): void {
   const tab = tabEl(el)
-  if (entersWhole(tab)) {
-    // Over the transition classes the strip's group adds: no fade, no growth.
+  if (entersWhole()) {
+    // Over the transition classes the strip's group adds: no growth.
     tab.style.transition = 'none'
-    tab.style.opacity = '1'
     return
   }
   tab.style.minWidth = '0'
   tab.style.overflow = 'hidden'
-  tab.style.opacity = '0'
 }
 
 export function enterTab(el: Element): void {
   const tab = tabEl(el)
-  if (entersWhole(tab)) {
+  if (entersWhole()) {
     return
   }
   const width = measureOpenWidth(tab)
@@ -303,7 +302,6 @@ export function enterTab(el: Element): void {
   void tab.offsetWidth
   tab.style.transition = ''
   tab.style.width = `${width}px`
-  tab.style.opacity = ''
 }
 
 /**
@@ -362,16 +360,17 @@ export function afterEnterTab(el: Element): void {
   tab.style.maxWidth = ''
   tab.style.overflow = ''
   tab.style.flex = ''
-  tab.style.opacity = ''
   tab.style.transition = ''
 }
 
+/** Whether `node` is one of the strip's tabs, not the control after them (`data-strip-end`). */
 function isStyledEl(node: unknown): node is HTMLElement {
   return (
     typeof node === 'object' &&
     node !== null &&
     'style' in node &&
-    'getBoundingClientRect' in node
+    'getBoundingClientRect' in node &&
+    !(node as unknown as Element).hasAttribute('data-strip-end')
   )
 }
 
@@ -464,8 +463,8 @@ export function beforeLeaveTab(el: Element): void {
   if (tab.parentElement) {
     leaveParents.set(tab, tab.parentElement)
   }
-  // A closing tab is no tab any more: the selection has passed on, so it fades
-  // out as an unselected one and the strip shows one selected tab throughout.
+  // A closing tab is no tab any more: the selection has passed on, so it
+  // closes as an unselected one and the strip shows one selected tab throughout.
   tab.setAttribute('aria-selected', 'false')
   tab.style.setProperty('--tab-active', 'var(--tab-row)')
   // A tab closed with others, as Close Others closes them one by one, may
@@ -480,9 +479,9 @@ export function beforeLeaveTab(el: Element): void {
 
 export function leaveTab(el: Element): void {
   const tab = tabEl(el)
+  // It narrows to nothing, its content clipped, as a closing tab does in Chrome.
   tab.style.width = '0'
   tab.style.marginRight = `-${columnGap(tab)}px`
-  tab.style.opacity = '0'
   if (tab.parentElement) {
     settleStaying(tab.parentElement, [tab])
   }

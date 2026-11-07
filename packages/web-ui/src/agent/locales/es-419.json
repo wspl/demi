@@ -204,7 +204,6 @@
     "forkedFrom": "Bifurcado de {agent}",
     "inherited": "Heredado de este chat",
     "fast": "Rápido",
-    "chip": "{count} agente | {count} agentes",
     "stopAgent": "Detener agente",
     "copyId": "Copiar ID del agente",
     "closeTab": "Cerrar pestaña",
@@ -218,10 +217,9 @@
     "thinkingOff": "Pensamiento desactivado"
   },
   "terminals": {
+    "none": "No hay nada en ejecución",
     "endCommand": "Finalizar comando",
     "closeTab": "Cerrar pestaña",
-    "chip": "{count} en ejecución",
-    "serviceChip": "{count} servicio | {count} servicios",
     "loading": "Cargando terminal…",
     "unavailable": "No se pudo cargar la terminal."
   },
@@ -233,10 +231,8 @@
     "empty": "No hay mensajes",
     "start": "Iniciar un chat",
     "conversations": "Chats",
-    "openPanel": "Abrir panel",
     "tabs": "Pestañas",
     "tabsOpen": "Pestañas, {count} abiertas",
-    "closePanel": "Cerrar panel",
     "options": "{title}, opciones del chat",
     "deviceState": "{name} está {state}",
     "renameTitle": "Cambiar nombre del chat",
@@ -425,16 +421,7 @@
     "label": "Dirección del navegador"
   },
   "panel": {
-    "allTabs": "Mostrar todas las pestañas",
     "more": "Más",
-    "windowHeight": "Altura de la ventana",
-    "closeOthers": "Cerrar las demás",
-    "closeRight": "Cerrar las de la derecha",
-    "closeLeft": "Cerrar las de la izquierda",
-    "closeAll": "Cerrar todas",
-    "cannotShow": "Esta pestaña no se puede mostrar.",
-    "nothingOpen": "No hay nada abierto",
-    "noFiles": "No hay archivos ni cambios",
     "reading": "Leyendo {name}",
     "deviceOffline": "{name} está sin conexión.",
     "deviceOfflineDetail": "Los archivos, los cambios y el navegador vuelven a aparecer cuando se reconecte."

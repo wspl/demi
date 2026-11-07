@@ -1,14 +1,11 @@
 <script setup lang="ts">
 import { onBeforeUnmount, reactive, ref } from 'vue'
 import { delay } from '@demicodes/utils'
-import DockWindowArea from '@demicodes/web-ui/agent/DockWindowArea.vue'
-import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import { EMPTY_TRANSCRIPT } from '@demicodes/web-ui/transport/protocol'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import { useAgentContext } from '../agent-context'
-import { dockWindowShare } from '../dock-window-share'
 import { briefSubagent } from '../fixtures/subagents'
+import GalleryOwnWindows from './GalleryOwnWindows.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 
 /**
@@ -18,7 +15,6 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * and Retry reads again. Each arrival and read here stands in for the
  * product's.
  */
-const agentContext = useAgentContext()
 const lifetime = new AbortController()
 onBeforeUnmount(() => lifetime.abort())
 
@@ -92,35 +88,35 @@ function stop(agents: SubagentRecord[]): void {
         <Button variant="ghost" size="sm" @click="finishLoading">Finish Loading</Button>
         <Button variant="ghost" size="sm" @click="loadAgain">Load Again</Button>
       </div>
-      <DockWindowArea v-model:share="dockWindowShare" class="h-[24rem]">
-        <SubagentPanel
+      <div class="gallery-frame h-[24rem] overflow-hidden">
+        <GalleryOwnWindows
           :key="loadingKey"
           v-model:open="loadingOpen"
           v-model:active-id="loadingId"
           :agents="loadingAgents"
           streamed
+          fill
           @abort="stop(loadingAgents)"
           @abort-agent="stop(loadingAgents)"
-          v-bind="agentContext.panel"
         />
-      </DockWindowArea>
+      </div>
     </GallerySpecimen>
     <GallerySpecimen variant="Failed" wide>
       <div class="mb-3 flex flex-wrap gap-2">
         <Button variant="ghost" size="sm" @click="failAgain">Fail Again</Button>
       </div>
-      <DockWindowArea v-model:share="dockWindowShare" class="h-[24rem]">
-        <SubagentPanel
+      <div class="gallery-frame h-[24rem] overflow-hidden">
+        <GalleryOwnWindows
           :key="failedKey"
           v-model:open="failedOpen"
           v-model:active-id="failedId"
           :agents="failedAgents"
           :read-latest="readFailing"
+          fill
           @abort="stop(failedAgents)"
           @abort-agent="stop(failedAgents)"
-          v-bind="agentContext.panel"
         />
-      </DockWindowArea>
+      </div>
     </GallerySpecimen>
   </div>
 </template>

@@ -41,7 +41,7 @@ import { t } from './locales/text'
 
 const props = defineProps<{
   conversation: Conversation
-  /** Shows a device file in the work panel; absent while no plugin shows files. */
+  /** Shows a device file in Files; absent while no plugin shows files. */
   openFile?: (target: MessageFileTarget) => void
 }>()
 const emit = defineEmits<{

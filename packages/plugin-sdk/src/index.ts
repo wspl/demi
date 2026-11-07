@@ -63,6 +63,7 @@ export {
   type PageDevice,
   type PageWorkspace,
   type PanelKind,
+  type PanelWindow,
   type HistoryDirection,
   type TabUpdate,
   type PluginCallOptions,
@@ -222,7 +223,7 @@ export { baseName, isAbsoluteDevicePath, joinPath, relativePath } from '@demicod
 export { downloadUrl } from '@demicodes/web-ui/files/download'
 export { formatByteRatio, formatBytes } from '@demicodes/web-ui/files/format'
 export { treeLayout } from '@demicodes/web-ui/files/tree-layout'
-// A view of the work panel says whether it has read what it first needs, and its empty area waits for it.
+// A window's view says whether it has read what it first needs, and its empty area waits for it.
 export { usePaneReady, usePaneWaiting } from '@demicodes/web-ui/agent/pane-ready'
 export { default as PaneReading } from '@demicodes/web-ui/ui/PaneReading.vue'
 
@@ -241,8 +242,6 @@ export { default as FileIcon } from '@demicodes/web-ui/files/FileIcon.vue'
 export { default as FileView } from '@demicodes/web-ui/files/FileView.vue'
 export { default as AttachmentView } from '@demicodes/web-ui/files/AttachmentView.vue'
 export { default as MediaView } from '@demicodes/web-ui/files/MediaView.vue'
-export { default as SheetCloseButton } from '@demicodes/web-ui/files/SheetCloseButton.vue'
-export { useSheetDismiss } from '@demicodes/web-ui/files/panel-sheet'
 export { default as LineCounts } from '@demicodes/web-ui/files/LineCounts.vue'
 export { default as FoldChevron } from '@demicodes/web-ui/ui/FoldChevron.vue'
 export { default as IconButton } from '@demicodes/web-ui/ui/IconButton.vue'

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { ArrowDownToLine, Download, File, FolderSearch, Monitor, Ruler, Smartphone } from '@lucide/vue'
-import { AddressBar, SheetCloseButton } from '@demicodes/plugin-sdk'
+import { AddressBar } from '@demicodes/plugin-sdk'
 import { IconButton } from '@demicodes/plugin-sdk'
 import { Menu } from '@demicodes/plugin-sdk'
 import { MenuItem } from '@demicodes/plugin-sdk'
@@ -311,7 +311,7 @@ function reopen(): Promise<void> {
 
 // A tab whose browser tab the browser lost opens again once shown, as a web
 // browser reloads a tab it discarded, and one the page made, as a link's Open
-// in Work Panel does, opens its browser tab (`bind` answers for a panel tab
+// in Browser Window does, opens its browser tab (`bind` answers for a panel tab
 // that has none); one whose opening failed waits for its Retry.
 watch(
   () => props.shown && (props.data.closed === true || props.data.tab === undefined) && !props.data.failure,
@@ -339,7 +339,6 @@ watch(
       @reload="history('reload')"
       @stop="stop"
     >
-      <template #end><SheetCloseButton /></template>
       <template v-if="viewport || downloads.length > 0" #trailing>
         <!-- The downloads, once the user started one here, as a browser's toolbar shows them. -->
         <Dropdown v-if="downloads.length > 0" v-model:open="bubble" :overlay-store="overlays" class="shrink-0">

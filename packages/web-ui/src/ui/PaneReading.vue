@@ -4,7 +4,7 @@ import { usePaneWaiting } from '../agent/pane-ready'
 import RegionStatus from './RegionStatus.vue'
 
 /**
- * What a work panel pane's empty area says once it has waited long enough
+ * What a window's pane's empty area says once it has waited long enough
  * (`agent/pane-ready.ts`): the loading pane, a spinner over what it is reading,
  * centred as every region's is. It stands in the area, which it covers, and
  * shows over it though the area is hidden.

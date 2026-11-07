@@ -1,5 +1,5 @@
 {
-  "chip": "{count} 个定时任务 | {count} 个定时任务",
+  "name": "定时任务",
   "delete": "删除",
   "notYet": "尚未唤醒",
   "trigger": {

@@ -137,6 +137,10 @@ export const usePreferences = defineStore('preferences', () => {
   const suggestedReplies = computed(() => product.snapshot?.preferences?.suggestedReplies ?? true)
   /** Whether conversations show the model's output speed (Settings › Agent); absent means yes. */
   const outputSpeed = computed(() => product.snapshot?.preferences?.outputSpeed ?? true)
+  /** The windows pinned to every conversation's taskbar, in order; absent means none. */
+  const taskbarPins = computed<readonly string[]>(() => product.snapshot?.preferences?.taskbarPins ?? [])
+  /** The file tree beside a file as the user left it; absent means shown at its default width. */
+  const fileTree = computed(() => product.snapshot?.preferences?.fileTree ?? null)
 
   /**
    * Whether the user turned the provider entry `providerId` off in
@@ -394,6 +398,8 @@ export const usePreferences = defineStore('preferences', () => {
     smallModelSameProvider,
     suggestedReplies,
     outputSpeed,
+    taskbarPins,
+    fileTree,
     contextLimit,
     setContextLimit,
     hidesProvider,

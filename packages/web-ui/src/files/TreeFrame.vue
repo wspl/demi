@@ -9,7 +9,7 @@ import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TooltipPlacement from '../ui/TooltipPlacement.vue'
 import { usePhone } from '../ui/phone'
-import { CONTENT_MIN_WIDTH, TREE_MOTION_MS, TREE_WIDTH } from './file-view'
+import { DOCKED_CONTENT_MIN_WIDTH, SHOWN_CONTENT_MIN_WIDTH, TREE_MOTION_MS, TREE_WIDTH } from './file-view'
 import { t } from './locales/text'
 
 /**
@@ -18,15 +18,18 @@ import { t } from './locales/text'
  *
  * Wide frame:
  *
- * - While the view keeps `CONTENT_MIN_WIDTH` beside it, the tree docks there
- *   behind a divider that sizes it, and the control at the header's end shows
- *   and hides it. The host keeps both (v-model `open` and `width`).
+ * - While the view keeps `SHOWN_CONTENT_MIN_WIDTH` beside it, the tree docks
+ *   there behind a divider that sizes it, and the control at the header's end
+ *   shows and hides it. The host keeps both (v-model `open` and `width`).
  *
- * Narrow frame:
+ * Narrower frame, two thresholds apart, as hiding and covering are:
  *
- * - A frame too narrow for that hides the tree on its own.
- * - The control then shows it over the view at the same width, until the control,
- *   a click on the view beside it or a pick in it (`dismiss`) puts it away.
+ * - Below `SHOWN_CONTENT_MIN_WIDTH`, the tree hides on its own. The control
+ *   still docks it while the view keeps `DOCKED_CONTENT_MIN_WIDTH`, and it
+ *   stays until the frame crosses the threshold again.
+ * - Below `DOCKED_CONTENT_MIN_WIDTH`, as in a window at its smallest, the
+ *   control shows it over the view at the same width, until the control, a
+ *   click on the view beside it or a pick in it (`dismiss`) puts it away.
  * - Once the frame is wide enough again, the tree docks if `open`.
  *
  * Motion:
@@ -35,14 +38,14 @@ import { t } from './locales/text'
  *   beside a tree over the view, move: a docked tree grows from the end and the
  *   view gives way, and a tree over the view slides in from the end.
  * - Anything else that shows or hides the tree shows it at once, such as the
- *   frame showing again in a work panel tab selected again, or its width
+ *   frame showing again in a window's tab selected again, or its width
  *   becoming known.
  *
  * A hidden tree stays mounted, so it shows again as it was left, with no
  * reading. The view learns how much of its end a tree shown over it covers, so
  * what it centres, such as an empty state, centres in the space beside the tree.
  *
- * In a work panel pane (`agent/pane-ready.ts`), the view under the header row
+ * In a window's pane (`agent/pane-ready.ts`), the view under the header row
  * stays empty at its size until its reads are in, and says what it reads once
  * it has waited long enough. The tree is empty with it until the pane is whole
  * the first time; after that it stays as it is while only the view beside it
@@ -63,8 +66,6 @@ defineSlots<{
   default(props: { overlap: number }): unknown
   /** The tree; without it there is no tree and no control. */
   tree?(): unknown
-  /** What ends the header row after the tree's control, such as a phone overlay's Close. */
-  end?(): unknown
 }>()
 
 const pane = usePaneWaiting()
@@ -84,14 +85,18 @@ const width = defineModel<number>('width', { default: TREE_WIDTH.default })
 const body = ref<HTMLElement | null>(null)
 const { width: bodyWidth } = useElementSize(body)
 /** The widest the tree can dock at: what the view leaves it. */
-const room = computed(() => Math.min(TREE_WIDTH.max, Math.floor(bodyWidth.value - CONTENT_MIN_WIDTH)))
+const room = computed(() => Math.min(TREE_WIDTH.max, Math.floor(bodyWidth.value - DOCKED_CONTENT_MIN_WIDTH)))
 const phone = usePhone()
 const docks = computed(() => !phone.value && width.value <= room.value)
+/** Whether the frame is wide enough for the tree to show on its own. */
+const roomy = computed(() => width.value <= bodyWidth.value - SHOWN_CONTENT_MIN_WIDTH)
+/** While the tree docks but the frame is not roomy: whether the user showed it. */
+const kept = ref(false)
 /** The tree's width over the view: the divider's, or on a phone the view's whole width. */
 const overWidth = computed(() => (phone.value ? bodyWidth.value : Math.min(width.value, bodyWidth.value)))
 /** While the tree cannot dock: whether it is shown over the view. */
 const over = ref(false)
-const shown = computed(() => docks.value ? open.value : over.value)
+const shown = computed(() => docks.value ? open.value && (roomy.value || kept.value) : over.value)
 const overlap = computed(() => shown.value && !docks.value ? overWidth.value : 0)
 const toggleLabel = computed(() => props.tree === 'files'
   ? (shown.value ? t('tree.hideFiles') : t('tree.showFiles'))
@@ -101,6 +106,10 @@ const resizeLabel = computed(() => props.tree === 'files' ? t('tree.resizeFiles'
 // A tree shown over the view does not come back by itself when the frame narrows again.
 watch(docks, () => {
   over.value = false
+})
+// Nor does one the user showed in a frame that is not roomy, once it crosses the threshold.
+watch(roomy, () => {
+  kept.value = false
 })
 
 /** Whether the tree's next show or hide is the user's, which moves. */
@@ -115,23 +124,25 @@ function byUser(change: () => void): void {
   })
 }
 
-function toggle(): void {
+/** Shows or hides the tree as the user asks: docked where it fits, otherwise over the view. */
+function showAs(next: boolean): void {
   byUser(() => {
-    if (docks.value)
-      open.value = !open.value
-    else
-      over.value = !over.value
+    if (docks.value) {
+      open.value = next
+      kept.value = next
+    } else {
+      over.value = next
+    }
   })
+}
+
+function toggle(): void {
+  showAs(!shown.value)
 }
 
 /** Shows the tree: docked where it fits, otherwise over the view. */
 function show(): void {
-  byUser(() => {
-    if (docks.value)
-      open.value = true
-    else
-      over.value = true
-  })
+  showAs(true)
 }
 
 /** Puts away a tree shown over the view, as a pick in it should; a docked tree stays. */
@@ -214,8 +225,6 @@ defineExpose({ show, dismiss })
             @click="toggle"
           />
         </Tooltip>
-        <!-- What ends the row after the tree's toggle, such as a phone overlay's Close. -->
-        <slot name="end" />
       </TooltipPlacement>
     </div>
     <!-- It clips a tree on its way in or out at the end. -->

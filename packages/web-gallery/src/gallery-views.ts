@@ -53,6 +53,7 @@ function galleryViews(): Record<string, readonly GalleryViewOption[]> {
       { value: 'session', label: t('views.session.session') },
       { value: 'panel', label: t('views.session.panel') },
       { value: 'windows', label: t('views.session.windows') },
+      { value: 'taskbar', label: t('views.session.taskbar') },
       { value: 'shared', label: t('views.session.shared') },
     ],
     '/sidebar': [{ value: 'sidebar', label: t('nav.sidebar') }],

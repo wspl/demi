@@ -78,7 +78,7 @@ const rules: readonly ElementRule[] = [
   },
   {
     kind: 'Tab',
-    where: 'A work panel tab’s title, the gallery’s view tabs',
+    where: 'A window tab’s title, the gallery’s view tabs',
     style: 'title',
     right: ['File Browser', 'Messages & Uploads'],
     wrong: ['Messages & uploads'],

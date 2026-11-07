@@ -41,8 +41,8 @@ import { useDevicePairing } from '@demicodes/web-ui/devices/pairing'
 import SettingsDialog from './settings/SettingsDialog.vue'
 import { pageUnderSettings, useSettingsAddress } from './settings/address'
 import TargetDialog from './targets/TargetDialog.vue'
-import WorkPane from './conversation/WorkPane.vue'
 import ChatPage from './conversation/ChatPage.vue'
+import { keepFileTree } from './conversation/file-tree'
 import { useConversations } from './conversation/store'
 import { useConversationNavigation } from './conversation/navigation'
 import { useWorkspaces } from './state/workspaces'
@@ -67,6 +67,7 @@ const product = useProduct()
 // The password manager follows the account's email and passkeys.
 usePasskeySignals()
 providePageHost(productPageHost())
+keepFileTree()
 // A page of another build than the backend serves loads itself again, once
 // per build; one that still gets another says so. While the update screen
 // shows, only the update's end loads the page (`state/update.ts`).
@@ -84,8 +85,8 @@ watch(
   },
   { immediate: true },
 )
-// A conversation's pictures and videos open in its work panel's Media tab,
-// and in the viewer's window while no page the user has on opens that tab.
+// A conversation's pictures and videos open in its Attachments window,
+// and in the viewer's window while no page the user has on opens it.
 const mediaViewer = provideMediaViewer({
   reveal: () => {
     const conversationId = activeId.value
@@ -129,8 +130,6 @@ const sidebarConversations = keptComputed(() =>
 // The widths follow the dividers frame by frame; the preference takes them when a resize settles.
 const sidebarWidth = ref(resources.sidebarWidth)
 watch(() => resources.sidebarWidth, (width) => { sidebarWidth.value = width })
-const asideShare = ref(resources.asideShare)
-watch(() => resources.asideShare, (share) => { asideShare.value = share })
 const route = useRoute()
 const router = useRouter()
 const settingsAddress = useSettingsAddress()
@@ -319,24 +318,14 @@ watch(
   },
   { immediate: true },
 )
-/** A link's Open in Work Panel: a new tab of the shown conversation's browser, while a page the user has on opens one. */
-const openInWorkPanel = computed(() => {
+/** A link's Open in Browser Window: a new tab of the shown conversation's browser, while a page the user has on opens one. */
+const openInBrowserWindow = computed(() => {
   const conversationId = activeId.value
   if (conversationId === null || !work.canOpen('web')) {
     return undefined
   }
   return (url: string) => work.openIn(conversationId, { intent: 'web', payload: { url } })
 })
-const asideOpen = computed({
-  get: () => activeId.value !== null && work.stateFor(activeId.value).open,
-  set: (open: boolean) => {
-    if (activeId.value !== null) {
-      work.setOpen(activeId.value, open)
-    }
-  },
-})
-// On a phone the panel opened from the conversation shows as an overlay over it, which the frame fades in.
-const asideSheet = computed(() => activeId.value !== null && work.stateFor(activeId.value).sheet)
 // The shown conversation is read while the user attends the page, and a
 // change of it is the user's action, from the sidebar, a link, Back or a
 // notification.
@@ -428,15 +417,15 @@ async function signOut(): Promise<void> {
 const phone = usePhone()
 /**
  * Where the user last pressed or moved the focus, which Find finds in: Files,
- * another view of the work panel, the sidebar, or the conversation shown.
+ * another of the conversation's windows, the sidebar, or the conversation shown.
  */
-const findArea = ref<'files' | 'panel' | 'sidebar' | 'conversation'>('conversation')
+const findArea = ref<'files' | 'window' | 'sidebar' | 'conversation'>('conversation')
 function noteFindArea(event: Event): void {
   const target = event.target instanceof Element ? event.target : null
   if (target?.closest('[data-file-view]'))
     findArea.value = 'files'
-  else if (target?.closest('[data-work-panel]'))
-    findArea.value = 'panel'
+  else if (target?.closest('[data-work-window]'))
+    findArea.value = 'window'
   else
     findArea.value = target?.closest('[data-sidebar]') ? 'sidebar' : 'conversation'
 }
@@ -467,9 +456,9 @@ const actions: Record<string, () => void> = {
   ),
   // The shown conversation's Files, with Search in Files over it.
   searchFiles,
-  // Another view of the work panel keeps the keys, for the browser to find in the page.
+  // Another of the conversation's windows keeps the keys, for the browser to find in the page.
   find: () => {
-    if (findArea.value === 'panel')
+    if (findArea.value === 'window')
       return false
     if (findArea.value === 'files')
       searchFiles()
@@ -506,11 +495,7 @@ useAppShortcuts(
       v-model:collapsed="resources.sidebarCollapsed"
       :toggle-shortcut="resources.keys.find((binding) => binding.id === 'sidebar')?.keys"
       v-model:width="sidebarWidth"
-      v-model:aside-share="asideShare"
-      v-model:aside-open="asideOpen"
-      :aside-sheet="asideSheet"
       @resize-end="resources.sidebarWidth = $event"
-      @aside-resize-end="resources.asideShare = $event"
     >
       <template #sidebar>
         <AppSidebar
@@ -552,14 +537,6 @@ useAppShortcuts(
       </template>
       <!-- Signed in, every address shows the chat: its own, or the one settings opened over. -->
       <ChatPage :id="activeId ?? undefined" @find="openSearch(findable)" />
-      <template #aside>
-        <!-- The panel belongs to the open conversation; the frame shows it only while one is open. -->
-        <WorkPane
-          v-if="activeId"
-          :conversation-id="activeId"
-          @close="asideOpen = false"
-        />
-      </template>
       <template #dialogs>
         <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->
         <SettingsDialog @sign-out="signOut" />
@@ -612,7 +589,7 @@ useAppShortcuts(
     <RouterView />
   </div>
   <!-- The page's one context menu, which the root handler opens for whatever declares one. -->
-  <ContextMenu :open-in-work-panel="openInWorkPanel" />
+  <ContextMenu :open-in-browser-window="openInBrowserWindow" />
   <!-- The text selection's comment field, by a selection in a message. -->
   <SelectionFieldHost />
   <ToastHost :below="APP_BAR_PX" />

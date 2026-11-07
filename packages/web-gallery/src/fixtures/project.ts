@@ -16,7 +16,7 @@ import { FileBrowserError } from '@demicodes/web-ui/files/types'
 import { WatchChannel } from '@demicodes/web-ui/files/watch-channel'
 
 /**
- * The demo project behind the work panel: the project the login-test
+ * The demo project behind the conversation's windows: the project the login-test
  * conversation edits, with the files its tabs and changed-file pills name.
  * Nothing here reads a real disk.
  */
@@ -370,7 +370,7 @@ function tree(): MemoryDirectory {
     '.vscode': dir(files('.vscode', ['settings.json', 'extensions.json'])),
     '.gitignore': textFile('node_modules\ndist\n', at),
     public: dir({ 'robots.txt': textFile(robotsTxt, at) }),
-    // Files the work panel previews rather than reads as text.
+    // Files the File view previews rather than reads as text.
     assets: dir({
       'logo.svg': textFile(logoSvg, at),
       'lockup-light.svg': textFile(lockupSvg('#1a1d24'), at),

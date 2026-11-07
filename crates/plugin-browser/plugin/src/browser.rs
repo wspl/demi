@@ -20,7 +20,7 @@ const FAILURE: &str =
     "a browser error on stderr with nonzero exit status; an action is never replayed automatically";
 
 /// When the agent shows a tab.
-const SHOW: &str = "Show a tab to the user: their work panel opens and selects it once this command’s job ends. Show a tab when the user is meant to look at it or act in it: the user asked to see a page, a sign-in or a choice needs the user’s hand, or the page is a result for the user. Showing does not bring the tab to the front of the device’s browser, and the user may have looked away again by the time you continue; showing a tab again shows it again.";
+const SHOW: &str = "Show a tab to the user: their browser window comes in front on it once this command’s job ends. Show a tab when the user is meant to look at it or act in it: the user asked to see a page, a sign-in or a choice needs the user’s hand, or the page is a result for the user. Showing does not bring the tab to the front of the device’s browser, and the user may have looked away again by the time you continue; showing a tab again shows it again.";
 
 /// Declares each operation's leaf from its name, its input and result types
 /// and its summary; a dotted name is a leaf of a subgroup.
@@ -34,7 +34,7 @@ macro_rules! operations {
 }
 
 operations! {
-    "tab.new" => TabNewInput, TabNewResult, "Make an empty tab on this device and print its ID; starts the conversation’s browser when needed. The tab joins the user’s work panel without taking the user’s view.";
+    "tab.new" => TabNewInput, TabNewResult, "Make an empty tab on this device and print its ID; starts the conversation’s browser when needed. The tab joins the user’s browser window without taking the user’s view.";
     "tab.list" => TabListInput, TabListResult, "List the conversation’s live browser tabs without starting a browser.";
     "tab.close" => TabCloseInput, TabCloseResult, "Close a tab. Closing the last tab ends this browser; the next tab new starts it again.";
     "open" => OpenInput, NavigationResult, "Open a URL in a tab, in place of its page; --show also shows the tab, as show does.";

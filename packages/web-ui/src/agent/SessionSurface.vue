@@ -1,25 +1,11 @@
 <script setup lang="ts">
 import { computed, provide, ref } from 'vue'
 import { useElementSize } from '@vueuse/core'
-import DockWindowArea from './DockWindowArea.vue'
-import { DOCK_WINDOW_SHARE } from './dock-window'
 import SessionBottomVeil from './SessionBottomVeil.vue'
 import { catchUpBand, COMPOSER_VEIL_FADE_PX } from './composer-clearance'
 import { useIconPx } from '../ui/icon-metrics'
 import { sessionComposerKey, sessionCoverKey } from './session-cover'
 
-/**
- * The share of this area's height the dock's windows keep (`dock-window.ts`);
- * the host keeps it.
- */
-const dockWindowShare = defineModel<number>('dockWindowShare', { default: DOCK_WINDOW_SHARE.default })
-const emit = defineEmits<{
-  /** The share of a dock window settled by a drag, a key or a double-click. */
-  dockWindowResizeEnd: [share: number]
-}>()
-
-const surfaceRef = ref<HTMLDivElement>()
-const { height: areaHeight } = useElementSize(surfaceRef, { width: 0, height: 0 }, { box: 'border-box' })
 const bottomAreaRef = ref<HTMLDivElement>()
 // Border-box: the dock's full footprint, its own padding included.
 const { height: dockFootprint } = useElementSize(
@@ -50,14 +36,18 @@ const iconPx = useIconPx()
 /**
  * What the transcript keeps clear at its foot: the dock, what stands over it
  * and the catching-up spinner's band above them, or the veil where it reaches
- * higher. A panel the dock opened stands on the dock alone, so the card
- * covers its lower part and it never moves when a card comes or goes.
+ * higher.
  */
 const dockHeight = computed(() =>
   Math.max(dockFootprint.value + coverHeight.value + catchUpBand(iconPx.value.in28), veilReach.value),
 )
 
-defineExpose({ dockHeight })
+/**
+ * `dockHeight`: what the transcript keeps clear at its foot. `dockFootprint`:
+ * the dock's own height from the area's foot, which windows floating over the
+ * conversation stay above.
+ */
+defineExpose({ dockHeight, dockFootprint })
 </script>
 
 <template>
@@ -67,28 +57,12 @@ defineExpose({ dockHeight })
     the full-width scroller, so the scrollbar stays at the edge.
   -->
   <div
-    ref="surfaceRef"
     class="relative h-full flex-1 overflow-hidden bg-surface [container-type:inline-size]"
     style="--session-gutter: max(0px, calc((100cqw - 50rem) / 2))"
   >
     <slot />
     <!--
-      The dock's windows stand on the dock, in the room above it up to the
-      session's top.
-    -->
-    <DockWindowArea
-      v-if="$slots.overDock"
-      v-model:share="dockWindowShare"
-      class="absolute inset-x-[calc(var(--session-gutter)+0.75rem)] top-0 z-20"
-      :style="{ bottom: `${dockFootprint}px` }"
-      :area="areaHeight"
-      @resize-end="emit('dockWindowResizeEnd', $event)"
-    >
-      <slot name="overDock" />
-    </DockWindowArea>
-    <!--
-      No stacking context of its own: the veil stays under a panel the dock
-      opened, and the dock, with what stands over its top, above it.
+      The dock, with what stands over its top, stands above the veil.
     -->
     <div
       ref="bottomAreaRef"

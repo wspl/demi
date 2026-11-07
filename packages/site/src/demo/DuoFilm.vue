@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// iPhone Duo's view in the work panel, as the demo shows it: a film of the
+// iPhone Duo's view in the Simulators window, as the demo shows it: a film of the
 // device in 3D, rendered ahead from its own body, since the live view is a
 // WebGL canvas a recording cannot keep. It plays once from when it shows.
 defineProps<{ src: string }>()

@@ -3,8 +3,9 @@ import { COMMITS_HEIGHT, TREE_WIDTH } from './file-view'
 
 /**
  * Whether the file tree beside a file or change preview is open, and how
- * wide it is, for the page's lifetime: every view that shows one, whichever
- * plugin shows it, keeps the reader's choice.
+ * wide it is: every view that shows one, whichever plugin shows it, keeps the
+ * reader's choice. The page's host keeps it for the user on every device,
+ * the product in the user's preferences.
  */
 export const treeLayout = {
   open: ref(true),
