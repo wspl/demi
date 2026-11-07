@@ -54,7 +54,7 @@ export default defineConfig({
     },
   },
   server: {
-    device: '127.0.0.1',
+    host: '127.0.0.1',
     port: 18933,
     strictPort: true,
   },
