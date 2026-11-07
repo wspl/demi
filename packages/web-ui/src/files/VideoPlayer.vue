@@ -351,7 +351,6 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--color-surface-float) 62%, transparent);
   box-shadow: 0 0 0 0.5px var(--color-line), var(--shadow-float);
   backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 
 .video-controls::before {
