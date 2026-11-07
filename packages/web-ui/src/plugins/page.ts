@@ -508,6 +508,19 @@ export interface PanelKind<Data> {
   shows?(data: Data): number
   /** What the strip shows after a pinned tab's title, such as its counts. Props: `conversation`, `data`. */
   badge?: Component
+  /**
+   * The rows of its window's entry in the taskbar's Open, as a submenu's
+   * `MenuItem`s, such as the simulators a device has. Props: `conversation`.
+   * Emits `opened` once the user chose one, which shows the window.
+   */
+  openMenu?: Component
+  /**
+   * What its window shows over its tabs while the kind opens one, such as a
+   * simulator that boots; nothing while none opens. Props: `conversation`.
+   * Emits `failed` when the opening was refused, which closes the window if
+   * it holds no tab.
+   */
+  opening?: Component
   /** The intents it opens: for each, the data its tab shows next, from the payload and what it shows now. */
   intents?: {
     file?(payload: IntentPayloads['file'], current: Data | null): Data
@@ -943,7 +956,15 @@ function bindKind(kind: PanelKind<unknown>, tab: KindTab, context: PageContext):
         })
     },
   })
-  const { badge, icon, busy, commands, subject } = kind
+  const { badge, icon, busy, commands, subject, openMenu, opening } = kind
+  /** `component` with the page around it and the tab's conversation as its prop. */
+  const inConversation = (component: Component) => defineComponent({
+    inheritAttrs: false,
+    setup(_props, { attrs }) {
+      providePage(context)
+      return () => h(component, { ...attrs, conversation: tab.conversation })
+    },
+  })
   return {
     kind: kind.kind,
     schema: kind.schema,
@@ -966,6 +987,8 @@ function bindKind(kind: PanelKind<unknown>, tab: KindTab, context: PageContext):
           },
         })
       : undefined,
+    openMenu: openMenu && inConversation(openMenu),
+    opening: opening && inConversation(opening),
   }
 }
 

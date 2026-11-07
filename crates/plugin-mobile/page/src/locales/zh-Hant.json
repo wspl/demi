@@ -1,5 +1,7 @@
 {
   "window": { "name": "模擬器" },
+  "open": { "listFailed": "無法載入模擬器", "loading": "正在載入模擬器…", "none": "沒有模擬器", "here": "已開啟", "running": "正在執行", "elsewhere": "另一個對話已開啟它。", "unavailable": "無法使用", "opening": "正在開啟「{name}」…", "booting": "正在啟動「{name}」…" },
+  "platforms": { "ios": "iOS", "android": "Android" },
   "toolbar": {
     "model": "（{model}）",
     "rotateLeft": "向左旋轉",
@@ -42,6 +44,7 @@
   },
   "failures": {
     "control": "模擬器無法執行此操作",
+    "open": "無法開啟模擬器",
     "save": "無法儲存檔案",
     "deviceFilesUnreachable": "目前無法取用裝置上的檔案。"
   },

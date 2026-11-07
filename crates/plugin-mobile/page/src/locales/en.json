@@ -1,5 +1,7 @@
 {
   "window": { "name": "Simulators" },
+  "open": { "listFailed": "Couldn’t Load Simulators", "loading": "Loading Simulators…", "none": "No Simulators", "here": "Open", "running": "Running", "elsewhere": "Another conversation has it open.", "unavailable": "Not Available", "opening": "Opening {name}…", "booting": "Starting {name}…" },
+  "platforms": { "ios": "iOS", "android": "Android" },
   "toolbar": {
     "model": "({model})",
     "rotateLeft": "Rotate Left",
@@ -42,6 +44,7 @@
   },
   "failures": {
     "control": "The simulator couldn’t do that",
+    "open": "Couldn’t Open the Simulator",
     "save": "Couldn’t Save the File",
     "deviceFilesUnreachable": "The device’s files can’t be reached right now."
   },

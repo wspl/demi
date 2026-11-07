@@ -3,12 +3,14 @@
  * which the plugin's store keeps while the plugin is on (`./store.ts`): each
  * open device's live view, on a stream of its own, kept until the device
  * closes, and the
- * panel's controls, each the page method of the command that does the same.
+ * panel's controls, each the page method of the command that does the same;
+ * and the simulators the user opens from the taskbar's Open, until their
+ * tabs are there.
  */
-import { ref, watch, type Ref } from 'vue'
+import { ref, shallowRef, watch, type Ref } from 'vue'
 import { clientPlatform } from '@demicodes/utils'
 import { pageVisibility, picturesSupported, type HeadlineText, type PluginCache } from '@demicodes/plugin-sdk'
-import { LIVE_NO_FOCUSED_FIELD, type FoldResult, type PanelReason } from '../generated/plugin'
+import { LIVE_NO_FOCUSED_FIELD, type FoldResult, type PanelReason, type Simulator } from '../generated/plugin'
 import { MobileError, type MobileApi } from '../devices'
 import { DeviceSession } from './session'
 import type { MobileTabData } from './kind'
@@ -31,6 +33,16 @@ export interface MobileErrors {
   defect(message: string, error: unknown): void
 }
 
+/** A simulator the user opens from the taskbar's Open, until its tab is there or the open was refused. */
+export interface Opening {
+  nativeId: string
+  name: string
+  /** It was shut down, so it boots first, which can take a minute. */
+  boots: boolean
+  /** Its handle once it is open, before the plugin adds its tab. */
+  device: string | null
+}
+
 export interface MobileControllerOptions {
   /** Whether this web browser shows the pictures; the page asks its decoder unless the gallery says. */
   pictures?: () => Promise<boolean>
@@ -43,6 +55,10 @@ export interface MobileControllerOptions {
 export class MobileDevicesController {
   /** Whether the pictures can show: unknown until the decoder answered. */
   readonly pictures: Ref<'unknown' | 'supported' | 'unsupported'> = ref('unknown')
+  /** The simulators the user opens, in the order they were chosen; shallow, so each is the object `open` made. */
+  readonly openings: Ref<readonly Opening[]> = shallowRef([])
+  /** How many opens were refused, which a window that holds no tab closes on. */
+  readonly refusals = ref(0)
   /** Each open device's live view, by device, made as a view of it first shows. */
   private readonly devices = new Map<string, DeviceSession>()
   private readonly platform: 'mac' | 'windows' | 'linux' | 'other'
@@ -54,6 +70,8 @@ export class MobileDevicesController {
   constructor(
     readonly api: MobileApi,
     private readonly errors: MobileErrors,
+    /** Selects the tab `id` of the conversation's panel, once it is there. */
+    private readonly select: (id: string) => void,
     options: MobileControllerOptions = {},
   ) {
     this.platform = options.platform ?? clientPlatform(navigator)
@@ -111,6 +129,38 @@ export class MobileDevicesController {
       session.enable()
     }
     return session
+  }
+
+  /**
+   * Opens `simulator` as the user chose it in the taskbar's Open, and selects
+   * its tab once the plugin adds it; one opening already is left to finish.
+   * One the conversation has open already only has its tab selected, with
+   * nothing to wait for. A refusal is a toast.
+   */
+  async open(simulator: Simulator): Promise<void> {
+    if (this.openings.value.some((each) => each.nativeId === simulator.nativeId)) {
+      return
+    }
+    const opening: Opening = { nativeId: simulator.nativeId, name: simulator.name, boots: simulator.state === 'shut-down', device: null }
+    if (simulator.open === undefined) {
+      this.openings.value = [...this.openings.value, opening]
+    }
+    try {
+      const opened = await this.api.open(simulator.nativeId)
+      this.openings.value = this.openings.value.map((each) => each === opening ? { ...opening, device: opened.device } : each)
+      this.select(opened.tab)
+    } catch (error) {
+      this.openings.value = this.openings.value.filter((each) => each !== opening)
+      this.refusals.value += 1
+      this.errors.report(t('failures.open'), error)
+    }
+  }
+
+  /** The devices whose tabs the panel holds now: their openings are done. */
+  shown(devices: ReadonlySet<string>): void {
+    if (this.openings.value.some((each) => each.device !== null && devices.has(each.device))) {
+      this.openings.value = this.openings.value.filter((each) => each.device === null || !devices.has(each.device))
+    }
   }
 
   /** The store released it, as when the plugin is turned off: every device's view ends and nothing reopens it. */

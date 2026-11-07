@@ -12,6 +12,7 @@ import { effectScope, onScopeDispose } from 'vue'
 import { KeptSessions, definePluginStore, type KeptSession, type PageContext, type PluginStore } from '@demicodes/plugin-sdk'
 import { mobileApi } from '../devices'
 import { MobileDevicesController, type MobileControllerOptions } from './controller'
+import { KIND } from './kind'
 
 /** One conversation's simulators as the store keeps them. */
 export interface KeptDevices extends KeptSession {
@@ -36,6 +37,7 @@ function keptDevices(page: PageContext, conversation: string, options: MobileCon
   const devices = scope.run(() => new MobileDevicesController(
     mobileApi(page.plugin.conversation(conversation)),
     page.errors,
+    (id) => page.panel.select(conversation, KIND, id),
     { cache: page.cache, ...options },
   ))!
   return {

@@ -2,15 +2,18 @@
 //! the operation the agent's command of the same meaning runs, as a package
 //! call for the conversation's user, and holds no simulator logic.
 //!
-//! The panel opens no device of its own; the agent does. Every control operates
-//! what runs without waking it.
+//! The user opens a device from the taskbar's Open, which lists the device's
+//! simulators with `list` and opens one with `open`; opening wakes a stopped
+//! Cloud, as opening a browser tab does. Every other control operates what
+//! runs without waking it.
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_mobile_protocol::PACKAGE;
 use demi_command_package_mobile_protocol::mobile::{
     AppearanceChoice, AppearanceInput, AppearanceResult, CloseInput, CloseResult, DeviceId,
     FailureDocument, FoldInput, FoldResult, Key, KeyInput, KeyResult, ListInput, ListResult, MobileErrorCode,
-    MobileOperation, PREFIX, RecordAction, RecordInput, RecordResult, RecordTarget, RotateInput, RotateResult,
+    MobileOperation, OpenInput, OpenResult, PREFIX, RecordAction, RecordInput, RecordResult, RecordTarget,
+    RotateInput, RotateResult,
     Rotation, ScreenshotInput, ScreenshotResult,
 };
 use demi_plugin_interface::{CallKind, Method, Page, PluginError, PluginPort, PortFailure, PortRefusal, Scope};
@@ -20,7 +23,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::panel::KIND;
+use crate::panel::{KIND, added_id};
 use crate::reason::PanelReason;
 
 /// The operation `name` names, in the mobile package.
@@ -109,6 +112,15 @@ pub struct RecordDevice {
     pub action: PanelRecord,
 }
 
+/// What `open` answers: the device and its tab, which the page selects once
+/// it arrives.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Opened {
+    pub device: DeviceId,
+    pub tab: String,
+}
+
 /// What Screenshot and a stopped Record answer: the file on the device the
 /// page saves on the user's computer through the file route.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -122,6 +134,8 @@ pub struct Saved {
 pub(crate) fn page() -> Page {
     Page::new("@demicodes/plugin-mobile")
         .panel_kind(KIND)
+        .method(Method::new::<ListInput, ListResult>("list", Scope::Conversation).calls(operation("list")))
+        .method(Method::new::<OpenInput, Opened>("open", Scope::Conversation).calls(operation("open")))
         .method(Method::new::<OnDevice, CloseResult>("close", Scope::Conversation).calls(operation("close")))
         .method(Method::new::<RotateDevice, RotateResult>("rotate", Scope::Conversation).calls(operation("rotate")))
         .method(Method::new::<FoldDevice, FoldResult>("fold", Scope::Conversation).calls(operation("fold")))
@@ -166,6 +180,20 @@ pub(crate) async fn call(
     port: &PluginPort,
 ) -> Result<Value, PluginError> {
     match method {
+        "list" => {
+            let input: ListInput = decode(params)?;
+            to_value(run::<ListResult, _>(port, MobileOperation::List, input, CallKind::Looks).await.map_err(refused)?)
+        }
+        // The plugin's sync adds the device's tab, on the package's word that
+        // the conversation's devices changed, as it does for the agent's open.
+        "open" => {
+            let input: OpenInput = decode(params)?;
+            let opened = run::<OpenResult, _>(port, MobileOperation::Open, input, CallKind::Starts)
+                .await
+                .map_err(refused)?;
+            let tab = added_id(opened.device.as_str());
+            to_value(Opened { device: opened.device, tab })
+        }
         "close" => {
             let OnDevice { device } = decode(params)?;
             let input = CloseInput { device: device_id(device)? };

@@ -4,8 +4,9 @@
  * runs the operation the agent's command of the same meaning runs.
  *
  * A call still waiting when the panel session ends is dropped and never sent
- * (`packages/web-ui/src/plugins/page.ts`). The panel opens no device: the agent
- * does, and the plugin gives each device its tab.
+ * (`packages/web-ui/src/plugins/page.ts`). The user opens a device from the
+ * taskbar's Open as the agent does from its command, and the plugin gives
+ * each device its tab.
  */
 import { onScopeDispose } from 'vue'
 import type { z } from 'zod'
@@ -15,13 +16,19 @@ import {
   closeResultSchema,
   foldResultSchema,
   keyResultSchema,
+  listResultSchema,
+  openedSchema,
   panelReasonSchema,
   recordResultSchema,
   rotateResultSchema,
   savedSchema,
   type FoldDevice,
   type FoldResult,
+  type ListInput,
+  type ListResult,
   type OnDevice,
+  type OpenInput,
+  type Opened,
   type PanelButton,
   type PanelReason,
   type PressButton,
@@ -58,6 +65,10 @@ export class MobileError extends Error {
 }
 
 export interface MobileApi {
+  /** The device's simulators, as `demi mobile list` lists them. */
+  list(): Promise<ListResult>
+  /** Opens the simulator of `nativeId`, booting it first when it is shut down, as `demi mobile open` does. */
+  open(nativeId: string): Promise<Opened>
   close(device: string): Promise<void>
   rotate(device: string, turn: Turn): Promise<RotateResult>
   fold(device: string, to: string): Promise<FoldResult>
@@ -84,6 +95,8 @@ export function mobileApi(plugin: ConversationPlugin): MobileApi {
     }
   }
   return {
+    list: () => call('list', {} satisfies ListInput, listResultSchema),
+    open: (nativeId) => call('open', { device: nativeId } satisfies OpenInput, openedSchema),
     close: async (device) => {
       await call('close', { device } satisfies OnDevice, closeResultSchema)
     },

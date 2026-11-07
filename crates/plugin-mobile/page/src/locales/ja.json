@@ -1,5 +1,7 @@
 {
   "window": { "name": "シミュレータ" },
+  "open": { "listFailed": "シミュレータを読み込めませんでした", "loading": "シミュレータを読み込み中…", "none": "シミュレータがありません", "here": "開いています", "running": "実行中", "elsewhere": "ほかの会話で開いています。", "unavailable": "利用できません", "opening": "{name}を開いています…", "booting": "{name}を起動しています…" },
+  "platforms": { "ios": "iOS", "android": "Android" },
   "toolbar": {
     "model": "（{model}）",
     "rotateLeft": "左に回転",
@@ -42,6 +44,7 @@
   },
   "failures": {
     "control": "シミュレータで実行できませんでした",
+    "open": "シミュレータを開けませんでした",
     "save": "ファイルを保存できませんでした",
     "deviceFilesUnreachable": "現在デバイスのファイルにアクセスできません。"
   },

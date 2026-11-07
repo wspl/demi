@@ -1,5 +1,7 @@
 {
   "window": { "name": "Simuladores" },
+  "open": { "listFailed": "No se pudieron cargar los simuladores", "loading": "Cargando simuladores…", "none": "No hay simuladores", "here": "Abierto", "running": "En ejecución", "elsewhere": "Otro chat lo tiene abierto.", "unavailable": "No disponible", "opening": "Abriendo {name}…", "booting": "Iniciando {name}…" },
+  "platforms": { "ios": "iOS", "android": "Android" },
   "toolbar": {
     "model": "({model})",
     "rotateLeft": "Girar a la izquierda",
@@ -42,6 +44,7 @@
   },
   "failures": {
     "control": "El simulador no pudo hacer eso",
+    "open": "No se pudo abrir el simulador",
     "save": "No se pudo guardar el archivo",
     "deviceFilesUnreachable": "No se puede acceder a los archivos del dispositivo en este momento."
   },

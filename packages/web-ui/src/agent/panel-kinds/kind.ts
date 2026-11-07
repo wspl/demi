@@ -81,6 +81,18 @@ export interface PanelTabKind<Data = unknown> {
    * `data`.
    */
   badge?: Component
+  /**
+   * The rows of its window's entry in the taskbar's Open, as a submenu, such
+   * as the simulators a device has. Emits `opened` once the user chose one,
+   * which shows the window.
+   */
+  openMenu?: Component
+  /**
+   * What its window shows over its tabs while the kind opens one, such as a
+   * simulator that boots; nothing while none opens. Emits `failed` when the
+   * opening was refused, which closes the window if it holds no tab.
+   */
+  opening?: Component
 }
 
 /** A tab with its kind and checked data, or why the panel cannot show it. */

@@ -51,7 +51,7 @@ impl TabData {
 
 /// The id of the tab the plugin adds for the device `device`: a handle is
 /// given once in a conversation, so a closed tab is never added again.
-fn added_id(device: &str) -> String {
+pub(crate) fn added_id(device: &str) -> String {
     format!("mobile-{device}")
 }
 

@@ -138,9 +138,9 @@ impl Plugin for Instance {
                 Request::PageCall {
                     conversation: None, ..
                 } => Err(PluginError::undeclared("user method")),
-                // The user closed a device's tab. The panel opens no
-                // device of its own: the plugin adds the kind's tabs, for
-                // the devices the agent opens.
+                // The user closed a device's tab. The plugin adds the
+                // kind's tabs itself, for each device the conversation
+                // opens, by the agent's command or the user's Open.
                 Request::PanelTab {
                     conversation, tab, ..
                 } => {

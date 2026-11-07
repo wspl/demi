@@ -33,6 +33,8 @@ export interface WorkWindow {
   selected: string | null
   /** The kind whose new tab its + opens, if one of its kinds opens tabs. */
   starts: PanelTabKind | null
+  /** The kind whose rows its entry in the taskbar's Open lists, if one of its kinds has some. */
+  offers: PanelTabKind | null
 }
 
 /** The windows of `kinds` in their order, each with its tabs: its pinned kinds' first, then the panel's in order. */
@@ -41,7 +43,7 @@ export function workWindows(panel: PanelState, pinned: PinnedTabs, kinds: readon
   const windowOf = (kind: PanelTabKind): WorkWindow => {
     let found = windows.get(kind.window.id)
     if (!found) {
-      found = { window: kind.window, tabs: [], selected: null, starts: null }
+      found = { window: kind.window, tabs: [], selected: null, starts: null, offers: null }
       windows.set(kind.window.id, found)
     }
     return found
@@ -50,6 +52,9 @@ export function workWindows(panel: PanelState, pinned: PinnedTabs, kinds: readon
     const window = windowOf(kind)
     if (kind.start && !kind.pinned && !window.starts) {
       window.starts = kind
+    }
+    if (kind.openMenu && !window.offers) {
+      window.offers = kind
     }
     if (kind.pinned) {
       const data = pinnedData(pinned, kind)

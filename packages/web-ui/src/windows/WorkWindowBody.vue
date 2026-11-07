@@ -16,7 +16,8 @@ import { provideWindowDismiss } from './window-dismiss'
  * selected tab of a window on screen is told it is shown.
  *
  * While the conversation's device is offline, the window says so over its
- * contents, which stay mounted behind it.
+ * contents, which stay mounted behind it. While a kind of it opens a tab,
+ * such as a simulator that boots, the kind says so over them too.
  */
 const props = defineProps<{
   window: WorkWindow
@@ -33,6 +34,8 @@ const emit = defineEmits<{
   updateTab: [id: string, data: unknown, how?: TabUpdate]
   updatePinned: [kind: string, data: unknown, how?: TabUpdate]
   closeTab: [id: string]
+  /** The tab its kind was opening was refused (`PanelTabKind.opening`). */
+  openingFailed: []
 }>()
 
 const present = computed(() => props.window.tabs.map((tab) => tab.id))
@@ -68,7 +71,8 @@ const contents = computed(() => kept.value.flatMap((id) => props.window.tabs.fil
 <template>
   <div class="flex h-full min-h-0 flex-col overflow-hidden">
     <DeviceOfflinePage v-if="deviceOffline !== null" :name="deviceOffline" />
-    <div v-show="deviceOffline === null" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div v-show="deviceOffline === null" class="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <component :is="window.offers.opening" v-if="window.offers?.opening" @failed="emit('openingFailed')" />
       <PaneScope
         v-for="tab in contents"
         v-show="tab.id === window.selected"

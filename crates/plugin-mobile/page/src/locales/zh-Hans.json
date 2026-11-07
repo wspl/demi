@@ -1,5 +1,7 @@
 {
   "window": { "name": "模拟器" },
+  "open": { "listFailed": "无法加载模拟器", "loading": "正在加载模拟器…", "none": "没有模拟器", "here": "已打开", "running": "正在运行", "elsewhere": "另一个对话已打开它。", "unavailable": "不可用", "opening": "正在打开“{name}”…", "booting": "正在启动“{name}”…" },
+  "platforms": { "ios": "iOS", "android": "Android" },
   "toolbar": {
     "model": "（{model}）",
     "rotateLeft": "向左旋转",
@@ -42,6 +44,7 @@
   },
   "failures": {
     "control": "模拟器无法执行此操作",
+    "open": "无法打开模拟器",
     "save": "无法存储文件",
     "deviceFilesUnreachable": "目前无法访问设备上的文件。"
   },

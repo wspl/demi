@@ -1,5 +1,7 @@
 {
   "window": { "name": "시뮬레이터" },
+  "open": { "listFailed": "시뮬레이터를 불러올 수 없음", "loading": "시뮬레이터 불러오는 중…", "none": "시뮬레이터 없음", "here": "열림", "running": "실행 중", "elsewhere": "다른 대화에서 열려 있습니다.", "unavailable": "사용할 수 없음", "opening": "{name} 여는 중…", "booting": "{name} 시작하는 중…" },
+  "platforms": { "ios": "iOS", "android": "Android" },
   "toolbar": {
     "model": "({model})",
     "rotateLeft": "왼쪽으로 회전",
@@ -42,6 +44,7 @@
   },
   "failures": {
     "control": "시뮬레이터에서 수행할 수 없음",
+    "open": "시뮬레이터를 열 수 없음",
     "save": "파일을 저장할 수 없음",
     "deviceFilesUnreachable": "지금은 기기의 파일에 접근할 수 없습니다."
   },

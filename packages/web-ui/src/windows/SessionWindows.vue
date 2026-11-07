@@ -108,17 +108,38 @@ function ensure(id: string): boolean {
   return true
 }
 
-// A window of kinds that are not pinned stands while it holds a tab; one that
-// comes without the address naming it waits minimized on the taskbar.
-watch([windows, ready], ([now]) => {
+/**
+ * The windows whose kind opens a tab the user chose in Open's submenu, such
+ * as a simulator that boots: each stands, empty, until a tab comes, the
+ * opening is refused or the user closes it.
+ */
+const awaiting = ref<ReadonlySet<string>>(new Set())
+function awaited(id: string): void {
+  if (awaiting.value.has(id)) {
+    const next = new Set(awaiting.value)
+    next.delete(id)
+    awaiting.value = next
+  }
+}
+
+// A window of kinds that are not pinned stands while it holds a tab, or
+// awaits one; one that comes without the address naming it waits minimized
+// on the taskbar.
+watch([windows, ready, awaiting], ([now]) => {
   for (const window of now) {
     if (window.tabs.some((tab) => !tab.pinned)) {
+      awaited(window.window.id)
       ensure(window.window.id)
-    } else if (window.tabs.length === 0 && props.stage.find(window.window.id)) {
+    } else if (window.tabs.length === 0 && props.stage.find(window.window.id) && !awaiting.value.has(window.window.id)) {
       props.stage.remove(window.window.id)
     }
   }
 }, { immediate: true })
+
+function awaitTab(id: string): void {
+  awaiting.value = new Set([...awaiting.value, id])
+  show(id)
+}
 
 /** The tab the address names, while it names one. */
 const named = computed(() => {
@@ -312,6 +333,7 @@ function newTab(id: string): void {
 
 /** Closes the window `id`: a window of the work closes its tabs with it, as a web browser's does. */
 function close(id: string): void {
+  awaited(id)
   const window = workOf(id)
   if (window) {
     const tabs = window.tabs.filter((tab) => !tab.pinned).map((tab) => tab.id)
@@ -433,6 +455,7 @@ const opens = computed<TaskbarOpen[]>(() => windows.value.filter((window) => win
   label: window.window.name(),
   open: props.stage.find(window.window.id) !== undefined,
   newTab: window.starts !== null && props.stage.find(window.window.id) !== undefined,
+  menu: window.offers?.openMenu,
 })))
 
 function openFromMenu(id: string): void {
@@ -522,6 +545,7 @@ function listPick(id: string): void {
             @update-tab="(tab: string, data: unknown, how?: TabUpdate) => work?.updateTab(tab, data, how)"
             @update-pinned="(kind: string, data: unknown, how?: TabUpdate) => work?.updatePinned(kind, data, how)"
             @close-tab="(tab: string) => work?.closeTabs([tab])"
+            @opening-failed="awaited(id)"
           />
           <slot v-else name="own" :id="id" />
         </template>
@@ -542,6 +566,7 @@ function listPick(id: string): void {
       @arrange="arrange"
       @close="close"
       @open="openFromMenu"
+      @await-tab="awaitTab"
     >
       <template #system>
         <slot name="system" />
@@ -560,12 +585,16 @@ function listPick(id: string): void {
         />
         <slot name="list" />
         <MenuItem
-          v-for="entry in opens.filter((open) => !open.open)"
+          v-for="entry in opens.filter((open) => open.menu || !open.open)"
           :key="`open-${entry.kind}`"
           :icon="entry.icon"
           :label="entry.label"
-          @select="listPick(entry.kind)"
-        />
+          @select="entry.menu || listPick(entry.kind)"
+        >
+          <template v-if="entry.menu" #submenu>
+            <component :is="entry.menu" @opened="listOpen = false; awaitTab(entry.kind)" />
+          </template>
+        </MenuItem>
       </Menu>
     </Sheet>
   </div>

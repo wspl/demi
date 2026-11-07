@@ -16,7 +16,10 @@ import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveActivity, type ViewerInp
 import {
   closeResultSchema,
   foldDeviceSchema,
+  listResultSchema,
   onDeviceSchema,
+  openInputSchema,
+  openedSchema,
   pressButtonSchema,
   recordDeviceSchema,
   rotateDeviceSchema,
@@ -280,6 +283,12 @@ function shows(tab: PanelTab): string | undefined {
   return mobileTabDataSchema.safeParse(tab.data).data?.device
 }
 
+/** A simulator another conversation has open, which Open lists and does not offer. */
+const ELSEWHERE = { name: 'Demo iPhone', platform: 'ios', model: 'iPhone 17', os: 'iOS 26.5', state: 'booted', nativeId: '2A3B4C5D-6E7F-4A8B-9C0D-1E2F3A4B5C6D', elsewhere: true } as const
+
+/** How long a shut-down simulator takes to boot in the gallery, a stand-in for the minute a device's can take. */
+const BOOT_MS = 3000
+
 function beat(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -330,6 +339,8 @@ export interface GalleryMobile {
 
 export function galleryMobile(panel: GalleryPanel, screen: GalleryScreen | null = null): GalleryMobile {
   const open = new Map<string, OpenDevice>()
+  /** The simulators that run, by native id: the first one at first, as a device's own use may have left it. */
+  const booted = new Set<string>(SIMULATORS.slice(0, 1).map((simulator) => simulator.nativeId))
   let numbers = 0
   const views = new Set<MobileView>()
 
@@ -399,6 +410,36 @@ export function galleryMobile(panel: GalleryPanel, screen: GalleryScreen | null 
 
   async function call(method: string, params: object): Promise<unknown> {
     switch (method) {
+      case 'list': {
+        await beat(400)
+        const devices = SIMULATORS.map((simulator) => {
+          const shown = [...open.values()].find((each) => each.simulator === simulator)
+          return {
+            name: simulator.name,
+            platform: simulator.platform,
+            model: simulator.model,
+            os: simulator.os,
+            state: booted.has(simulator.nativeId) ? 'booted' : 'shut-down',
+            nativeId: simulator.nativeId,
+            open: shown?.id,
+            elsewhere: false,
+          }
+        })
+        return listResultSchema.parse({ devices: [...devices, ELSEWHERE], unavailable: [] })
+      }
+      case 'open': {
+        const { device: nativeId } = openInputSchema.parse(params)
+        const simulator = SIMULATORS.find((each) => each.nativeId === nativeId)
+        if (!simulator) {
+          throw new PluginCallError('device_not_found', `no simulator ${nativeId}`, { type: 'status', status: '409 Conflict' })
+        }
+        if (!booted.has(nativeId)) {
+          await beat(BOOT_MS)
+          booted.add(nativeId)
+        }
+        const shown = await openDevice(simulator)
+        return openedSchema.parse({ device: shown.id, tab: `mobile-${shown.id}` })
+      }
       case 'close': {
         const { device: id } = onDeviceSchema.parse(params)
         closeDevice(id)

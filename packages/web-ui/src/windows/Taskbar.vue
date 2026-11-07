@@ -78,6 +78,11 @@ export interface TaskbarOpen {
   open: boolean
   /** Whether choosing it opens a new tab in its window. */
   newTab?: boolean
+  /**
+   * The rows it offers as a submenu, its window's kind's (`PanelTabKind.openMenu`):
+   * choosing one opens its window.
+   */
+  menu?: Component
 }
 
 const props = defineProps<{
@@ -95,6 +100,8 @@ const emit = defineEmits<{
   arrange: [ids: string[], pinned: boolean]
   close: [id: string]
   open: [kind: string]
+  /** A row of the entry's submenu was chosen: its window opens and waits for the tab it brings. */
+  awaitTab: [kind: string]
 }>()
 
 /** The least width a button narrows to, in px: its icon and a few characters. */
@@ -261,7 +268,7 @@ function press(item: TaskbarItem): void {
           <IconButton :icon="Plus" variant="ghost" :aria-label="t('open')" :pressed="isOpen" :disabled="opens.length === 0" />
         </Tooltip>
       </template>
-      <!-- A chosen row closes the menu itself. -->
+      <!-- A chosen row closes the menu itself; a row with a submenu opens it. -->
       <template #content>
         <Menu>
           <MenuItem
@@ -269,10 +276,14 @@ function press(item: TaskbarItem): void {
             :key="entry.kind"
             :icon="entry.icon"
             :label="entry.label"
-            :value="entry.newTab ? t('newTab') : entry.open ? t('alreadyOpen') : undefined"
+            :value="entry.menu ? undefined : entry.newTab ? t('newTab') : entry.open ? t('alreadyOpen') : undefined"
             value-faint
-            @select="emit('open', entry.kind)"
-          />
+            @select="entry.menu || emit('open', entry.kind)"
+          >
+            <template v-if="entry.menu" #submenu>
+              <component :is="entry.menu" @opened="emit('awaitTab', entry.kind)" />
+            </template>
+          </MenuItem>
         </Menu>
       </template>
     </Dropdown>
