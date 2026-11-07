@@ -288,6 +288,7 @@
   },
   "composer": {
     "placeholder": "何でも聞いてください…",
+    "sendNextWaiting": "{key} で次のメッセージをすぐに送信",
     "message": "メッセージ",
     "noModels": "利用できるモデルがありません",
     "configureModels": "モデルを設定",

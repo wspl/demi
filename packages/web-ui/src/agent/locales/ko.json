@@ -288,6 +288,7 @@
   },
   "composer": {
     "placeholder": "무엇이든 물어보세요…",
+    "sendNextWaiting": "{key} 키로 다음 메시지 바로 보내기",
     "message": "메시지",
     "noModels": "사용 가능한 모델 없음",
     "configureModels": "모델 설정",

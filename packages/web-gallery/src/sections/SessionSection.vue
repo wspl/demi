@@ -236,6 +236,7 @@ import { galleryTerminals, leftRunningCommand, runningRunCommand, steppedRunComm
 import { demoDeviceStart } from '../fixtures/device-installation'
 import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
+import { nextWaitingSend, type WaitingSend } from '@demicodes/web-ui/agent/pending-steers'
 import { appShortcuts } from '@demicodes/web-ui/settings/shortcuts'
 import GalleryAgentsChip from '../components/GalleryAgentsChip.vue'
 import { useGalleryTerminalChips } from '../terminal-chips'
@@ -1086,6 +1087,16 @@ session.queue = [
 ]
 const streamFlow = useTurnFlow({ id: 'gallery-stream' })
 const turnFlow = useTurnFlow({ id: 'gallery-turn' })
+// Return in the Turn specimen's empty composer, as a conversation page offers it.
+function turnNextWaiting(): (() => void) | undefined {
+  const next = nextWaitingSend(turnList.value?.waiting ?? [])
+  if (next === undefined) {
+    return undefined
+  }
+  return next.as === 'steer'
+    ? () => turnFlow.interruptPendingSteer(next.id)
+    : () => turnFlow.sendQueued(next.id)
+}
 /** The Turn specimen composes its dock itself, so it says it is behind as `ChatSession` does. */
 const turnBehind = useHeldFor(() => behindSession(turnFlow.state.load, false), CATCH_UP_WAIT_MS)
 const workFlow = useTurnFlow({ id: 'gallery-work', subagents: [workSubagent()] })
@@ -1227,7 +1238,7 @@ useGalleryTranscripts(() => ({ blocks: parentBlocks, subagents: [{ id: SUBAGENT,
 const changesSurface = ref<{ dockHeight: number }>()
 const changesList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
 const turnSurface = ref<{ dockHeight: number }>()
-const turnList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
+const turnList = ref<{ isAtBottom: boolean; scrollToBottom: () => void; waiting: readonly WaitingSend[] }>()
 const workSurface = ref<{ dockHeight: number }>()
 const workList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
 const streamSurface = ref<{ dockHeight: number }>()
@@ -3306,7 +3317,7 @@ onBeforeUnmount(() => {
       <GalleryCommandWakeup />
       <GallerySection
         title="Turn"
-        note="Requesting from the send, then each step rolls into the tail row, and the answer takes its place without a roll. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: a red alert stands left of the message and Not Delivered with the reason under it; the message’s hover actions offer Edit and Delete, a message sent next comes below it with its turn, and the alert sends it again with the same ID, as a new message at the end, and shows Requesting from then. Offline sends while the lane is lost: the message shows as it will stay and the tail row says Requesting; once the lane has been lost for half a second, the spinner over the transcript’s end turns, and the message goes with its ID once the lane is back within ten seconds, or shows Not Delivered with its alert after that, at once when the browser says it is offline. First Message sends a new conversation’s first message, which goes with the conversation’s creation: the tail row says Requesting from the send, through the opening of its lane. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Steer, Recall and Delete in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it. Recall takes it back at once: into the composer when that is empty, the caret at its end; when the composer holds a draft, the draft stays and a Message Recalled toast offers Undo, which sends it again the same way. Delete takes it away at once and gives nothing back. Steer, Recall or Delete pressed before the server holds it is carried out once it does. Resume, Retry and Connect wait for the server first."
+        note="Requesting from the send, then each step rolls into the tail row, and the answer takes its place without a roll. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: a red alert stands left of the message and Not Delivered with the reason under it; the message’s hover actions offer Edit and Delete, a message sent next comes below it with its turn, and the alert sends it again with the same ID, as a new message at the end, and shows Requesting from then. Offline sends while the lane is lost: the message shows as it will stay and the tail row says Requesting; once the lane has been lost for half a second, the spinner over the transcript’s end turns, and the message goes with its ID once the lane is back within ten seconds, or shows Not Delivered with its alert after that, at once when the browser says it is offline. First Message sends a new conversation’s first message, which goes with the conversation’s creation: the tail row says Requesting from the send, through the opening of its lane. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Steer, Recall and Delete in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it. Recall takes it back at once: into the composer when that is empty, the caret at its end; when the composer holds a draft, the draft stays and a Message Recalled toast offers Undo, which sends it again the same way. Delete takes it away at once and gives nothing back. Steer, Recall or Delete pressed before the server holds it is carried out once it does. While messages wait, the empty composer says “Press ⏎ to send the next message now”, and Return there sends the first of them now, as its Send does, one for each press. Resume, Retry and Connect wait for the server first."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -3394,6 +3405,7 @@ onBeforeUnmount(() => {
                   :running="turnFlow.state.phase === 'running' || turnFlow.startingTurn.value"
                   :compacting="turnFlow.state.phase === 'compacting'"
                   :flow="turnFlow"
+                  :send-next-waiting="turnNextWaiting"
                   @send="turnFlow.turn"
                   @steer="turnFlow.steer"
                   @queue="turnFlow.queue"

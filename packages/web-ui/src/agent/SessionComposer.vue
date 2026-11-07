@@ -18,6 +18,8 @@ import {
 import { missingFilesToast, pasteMessage, type CopiedMessage, type PasteHost } from './message-input/copied-message'
 import { useMessageEditComposer } from './message-input/useMessageEditComposer'
 import { editHasContent, editKey, useEditLastMessage, type MessageEditState } from './message-editing'
+import { useSendNextWaiting } from './pending-steers'
+import { namedKeyCap } from '../ui/shortcut'
 import { composerCapsule, composerTransfer, provideTransfers, type MessageCapsule } from './message-editor/capsules'
 import { parseTypedMarkdown, serializeTypedMarkdown } from '../markdown/user-markdown'
 import MessageEditor from './message-editor/MessageEditor.vue'
@@ -286,6 +288,12 @@ const edit = useMessageEditComposer({
 const editLastMessage = useEditLastMessage()
 const editLast = computed(() => props.disabled ? undefined : editLastMessage())
 /**
+ * Return in an empty draft sends the next waiting message now, where the page
+ * offers one.
+ */
+const sendNextWaitingMessage = useSendNextWaiting()
+const sendNextWaiting = computed(() => props.disabled ? undefined : sendNextWaitingMessage())
+/**
  * Where a dock stands the composer's cards, above its chips. None outside a
  * dock, where the cards stand over the input.
  */
@@ -531,7 +539,7 @@ const submitTip = computed(() => (!shownEdit.value || savedEdit.value) && workin
  * Enter pressed on the draft while the models load: the message goes once they
  * have, if it still holds one.
  */
-const waitingSend = useSendOnceLoaded({
+const sendOnceLoaded = useSendOnceLoaded({
   blocked: () => sendDisabled.value,
   loading: () => modelsLoading.value,
   send: (asksOtherWay) => {
@@ -547,9 +555,15 @@ const waitingSend = useSendOnceLoaded({
  */
 function submit(asksOtherWay: boolean) {
   const sendsCarried = !shownEdit.value && carries()
+  const next = sendNextWaiting.value
+  // Only where the placeholder says so: a draft of spaces shows none.
+  if (!asksOtherWay && !shownEdit.value && !draft.value && !capsules.value.length && !sendsCarried && next) {
+    next()
+    return
+  }
   if (sendDisabled.value) {
     if ((hasDraft.value || sendsCarried) && !shownEdit.value) {
-      waitingSend.keep(asksOtherWay)
+      sendOnceLoaded.keep(asksOtherWay)
     }
     // Enter on a message that cannot go: the send button says why, unpointed.
     sendButton.value?.showReason()
@@ -797,7 +811,9 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :attachments="carried"
             :shown-from-outside="draftShown"
             :autofocus="takesFocus"
-            :placeholder="placeholder ?? t('composer.placeholder')"
+            :placeholder="sendNextWaiting && !carries()
+              ? t('composer.sendNextWaiting', { key: namedKeyCap('Enter') })
+              : placeholder ?? t('composer.placeholder')"
             :edit-last="editLast"
             :label="t('composer.message')"
             @change="changeDraft"

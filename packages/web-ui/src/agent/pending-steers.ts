@@ -6,7 +6,8 @@ import type { QueueDividerBlock, QueuedRenderBlock } from './queued-messages'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import type { ActivitySlotState } from './useActivitySlot'
 import type { SessionFailureNotice } from './session-status'
-import type { Operation } from '../ui/operations'
+import { operations, type Operation } from '../ui/operations'
+import { inject, provide, type InjectionKey } from 'vue'
 
 /**
  * Send on the waiting message `id`, a steer or a queued message the session
@@ -15,6 +16,40 @@ import type { Operation } from '../ui/operations'
  */
 export function sendNowOperation(id: string): Operation {
   return { action: 'send-now', target: `waiting:${id}` }
+}
+
+/**
+ * What Send on a waiting message does: the steer `id` interrupts the agent's
+ * step and goes to the model, the queued message `id` goes without waiting
+ * for the turn to end.
+ */
+export interface WaitingSend {
+  as: 'steer' | 'queued'
+  id: string
+}
+
+/**
+ * The waiting message Return in an empty composer sends: the first of
+ * `waiting` whose Send is not on its way already, so each press sends the
+ * next one.
+ */
+export function nextWaitingSend(waiting: readonly WaitingSend[]): WaitingSend | undefined {
+  return waiting.find((send) => !operations.blocked(sendNowOperation(send.id)))
+}
+
+const sendNextWaitingKey: InjectionKey<() => (() => void) | undefined> = Symbol('send-next-waiting')
+
+/**
+ * What the main composer's Return does in an empty composer, read at each
+ * press and as the placeholder shows: sends the next waiting message now, as
+ * its Send does, and is absent while none waits.
+ */
+export function provideSendNextWaiting(handler: () => (() => void) | undefined): void {
+  provide(sendNextWaitingKey, handler)
+}
+
+export function useSendNextWaiting(): () => (() => void) | undefined {
+  return inject(sendNextWaitingKey, () => undefined)
 }
 
 export interface PendingSteerRenderBlock {
@@ -121,4 +156,14 @@ export function waitingAs(row: MessageListBlock): 'steer' | 'queued' | undefined
     default:
       return undefined
   }
+}
+
+/** What Send on the row does, for a row `waitingAs` says waits; undefined for any other. */
+export function waitingSend(row: MessageListBlock): WaitingSend | undefined {
+  const as = waitingAs(row)
+  const id = row.type === 'pending_steer' ? row.pendingSteerId
+    : row.type === 'queued_message' ? row.queueId
+      : row.type === 'pending_submission' ? row.submission.id
+        : undefined
+  return as === undefined || id === undefined ? undefined : { as, id }
 }

@@ -288,6 +288,7 @@
   },
   "composer": {
     "placeholder": "询问任何问题…",
+    "sendNextWaiting": "按 {key} 立即发送下一条消息",
     "message": "消息",
     "noModels": "没有可用的模型",
     "configureModels": "配置模型",

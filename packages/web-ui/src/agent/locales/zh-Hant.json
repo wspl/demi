@@ -288,6 +288,7 @@
   },
   "composer": {
     "placeholder": "想問什麼都可以…",
+    "sendNextWaiting": "按 {key} 立即傳送下一則訊息",
     "message": "訊息",
     "noModels": "沒有可用的模型",
     "configureModels": "設定模型",

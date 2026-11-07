@@ -5,6 +5,7 @@ import { previewMediaType, type ContextUsage, type UserContentBlock } from '@dem
 import { GLOBAL_PROFILES, OFFERED_PROFILES, useCardCost } from '../fixtures/cost'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { type WorkflowChoice, type WorkflowList, workflowProfiles } from '@demicodes/web-ui/agent/workflow-menu'
+import { provideSendNextWaiting } from '@demicodes/web-ui/agent/pending-steers'
 import { isEmptyMessage, joinMessageContent, splitMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import {
@@ -106,6 +107,11 @@ const props = withDefaults(
     onQueue?: (content: UserContentBlock[], message: SentMessage) => void
     /** The specimen's flow, whose Recall gives a message back into this composer, as the product's does. */
     flow?: { attachComposer(host: RecallComposer): () => void }
+    /**
+     * What Return in the empty composer does while the specimen's messages
+     * wait, as a conversation page offers it; outside one, its own when given.
+     */
+    sendNextWaiting?: () => (() => void) | undefined
     /** The messages saved for later the specimen starts with, newest first; Save for Later adds to them. */
     saved?: SeedSaved[]
     /** Their list starts open. */
@@ -252,6 +258,10 @@ const settings = ref<ModelSettings>({
   thinkingEffort: props.thinkingEffort === undefined ? 'medium' : props.thinkingEffort,
   serviceTierId: props.serviceTierId ?? null,
 })
+const offerNextWaiting = props.sendNextWaiting
+if (offerNextWaiting) {
+  provideSendNextWaiting(offerNextWaiting)
+}
 /** What the composer takes of the specimen's props: the model it starts with is the settings'. */
 const composerProps = computed(() => {
   const {
@@ -263,6 +273,7 @@ const composerProps = computed(() => {
     onSteer: _steer,
     onQueue: _queue,
     flow: _flow,
+    sendNextWaiting: _sendNextWaiting,
     sendWhileRunning: _sendWhileRunning,
     offlineDevice: _offlineDevice,
     hasMessages: _hasMessages,
