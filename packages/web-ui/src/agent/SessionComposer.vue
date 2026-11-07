@@ -762,7 +762,6 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
       </Teleport>
       <ComposerShell
         :focused="focused || props.focused"
-        :expanded="multiline || !!shownEdit"
         :dropping="dropping"
         @drop-files="dropFiles"
       >

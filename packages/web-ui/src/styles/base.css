@@ -1127,12 +1127,11 @@ html[data-theme="light"] .file-pill {
   --composer-shell-height: 44px;
   --composer-chip: var(--spacing-hit);
   --composer-inset: calc((var(--composer-shell-height) - var(--composer-chip)) / 2);
-  --composer-shell-radius: calc(var(--composer-shell-height) / 2);
+  /* The box's corners: round, and square enough that its two rows sit in it
+     as a card's. */
+  --composer-box-radius: 18px;
   --composer-line: calc(var(--agent-text) * var(--agent-leading));
   --composer-attach-gap: 8px;
-  /* The row under the box stands as far under it as the list stands under the
-     row: the box's own inset, so the row has the same room above and below. */
-  --composer-below-gap: var(--composer-inset);
   --composer-editor-pad-top: 16px;
   --composer-editor-pad-x: 16px;
   --composer-editor-pad-bottom: 12px;
@@ -1154,42 +1153,46 @@ html[data-theme="light"] .file-pill {
   }
 }
 
+/* The box: the message on top, one row of controls under it. */
 .composer-shell {
   display: grid;
-  align-items: center;
+  align-items: start;
   column-gap: 0.25rem;
-  border-radius: var(--composer-shell-radius);
+  row-gap: 0.25rem;
+  border-radius: var(--composer-box-radius);
+  padding: 0 var(--composer-inset) var(--composer-inset);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "editor editor editor"
+    "attach tools actions";
 }
 
-/* The row under the box: the model, then the context, at its right edge.
+/* The tools between the attach control and the actions: the workflow and the
+   saved messages at the left, the model and the context at the right.
 
    - On a narrow phone the model's chip alone gives way, its name cut short, so
-     the row's other controls stay whole and nothing leaves the screen.
-   - It stands one inset under the box, inside the 12px the dock keeps around the
-     composer.
-   - The row's controls are chips with their own padding, so its ends are the box's
-     edges: the first control's mark stands under the attach control's left edge,
-     and the context ring's, which is centred in its chip, under the send button's
-     right edge. */
-.composer-below {
+     the row's other controls stay whole and nothing leaves the screen. */
+.composer-tools {
+  grid-area: tools;
   display: flex;
+  align-self: center;
   align-items: center;
   justify-content: flex-end;
   gap: calc(var(--spacing) * 1);
-  margin-top: var(--composer-below-gap);
+  min-width: 0;
 }
 
-/* What stands at the row's left end, such as the workflow and the saved
+/* What stands at the tools' left end, such as the workflow and the saved
    messages' entries. */
 .composer-below-start {
   flex-shrink: 0;
   margin-inline-end: auto;
 }
 
-/* A list under the box (the saved messages) stands as far under the row as the row
-   stands under the box. */
+/* A list under the box (the saved messages) stands the box's own inset under
+   it. */
 .composer-list {
-  margin-top: var(--composer-below-gap);
+  margin-top: var(--composer-inset);
 }
 
 .composer-attach {
@@ -1207,27 +1210,8 @@ html[data-theme="light"] .file-pill {
   grid-area: actions;
 }
 
-.composer-shell-capsule {
-  height: var(--composer-shell-height);
-  padding: var(--composer-inset);
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas: "attach editor actions";
-}
-
-.composer-shell-expanded {
-  align-items: start;
-  row-gap: 0.25rem;
-  padding: 0 var(--composer-inset) var(--composer-inset);
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    "editor editor editor"
-    "attach ruler actions";
-}
-
-/* What one line offers the text, measured where the editor stands on one
-   line: its own cell, which the ruler lies in without taking height, and in
-   the open shell the free column of the lower row — the same two items, so
-   the same width, down to the editor's start margin. */
+/* What one line offers the text, measured in the editor's own cell, which the
+   ruler lies in without taking height. */
 .composer-line-ruler {
   grid-area: editor;
   height: 0;
@@ -1237,11 +1221,11 @@ html[data-theme="light"] .file-pill {
 
 /* A row over the message that captions it (ComposerShell's `caption`), such as
    what an edit edits: its left edge on the text's. */
-.composer-shell-expanded.composer-shell-caption {
+.composer-shell-caption {
   grid-template-areas:
     "caption caption caption"
     "editor editor editor"
-    "attach ruler actions";
+    "attach tools actions";
 }
 
 .composer-caption {
@@ -1256,30 +1240,25 @@ html[data-theme="light"] .file-pill {
   grid-area: carried;
 }
 
-.composer-shell-capsule.composer-shell-carried {
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
-  grid-template-areas: "attach carried editor actions";
-}
-
-.composer-shell-expanded.composer-shell-carried {
+.composer-shell-carried {
   grid-template-columns: auto auto minmax(0, 1fr) auto;
   grid-template-areas:
     "editor editor editor editor"
-    "attach carried ruler actions";
+    "attach carried tools actions";
 }
 
 /* An edit that carries comments: its caption over the text, its pill by the
    attach control. */
-.composer-shell-expanded.composer-shell-caption.composer-shell-carried {
+.composer-shell-caption.composer-shell-carried {
   grid-template-areas:
     "caption caption caption caption"
     "editor editor editor editor"
-    "attach carried ruler actions";
+    "attach carried tools actions";
 }
 
 /* The caption stands right over the message's first line, as a line of the
    same text would. */
-.composer-shell-expanded.composer-shell-caption .composer-editor {
+.composer-shell-caption .composer-editor {
   padding-top: 4px;
 }
 
@@ -1450,16 +1429,12 @@ html[data-theme="light"] .file-pill {
   display: none;
 }
 
-.composer-shell-expanded .composer-line-ruler {
-  grid-area: ruler;
-}
-
-.composer-shell-expanded .composer-attach,
-.composer-shell-expanded .composer-actions {
+.composer-shell .composer-attach,
+.composer-shell .composer-actions {
   align-self: center;
 }
 
-.composer-shell-expanded .composer-editor {
+.composer-shell .composer-editor {
   box-sizing: border-box;
   min-width: 0;
   max-height: var(--composer-editor-max-height);
@@ -1467,40 +1442,11 @@ html[data-theme="light"] .file-pill {
   padding: var(--composer-editor-pad-top) var(--composer-editor-pad-x) var(--composer-editor-pad-bottom);
 }
 
-.composer-shell-capsule .composer-editor {
-  display: flex;
-  height: var(--composer-chip);
-  min-width: 0;
-  flex: 1;
-  align-items: center;
-  margin-inline-start: calc(var(--composer-attach-gap) - 0.25rem);
-}
-
-/* One line: the text runs on sideways, its capsules sit on the line.
-
-   The line is as tall as in the open shell, centred in the chip's height by
-   padding, so the editor still takes a tap anywhere in that height. A capsule fits
-   its line (`.message-capsule-line`), so it keeps one size when the shell opens.
-
-   Were the line the chip's height, the capsule would change size with the shell,
-   and iOS Safari does not always update it: it kept a capsule sized for a phone's
-   40px chip on the open shell's 24px line. */
-.composer-shell-capsule .composer-editor .message-editor {
-  width: 100%;
-}
-
-.composer-shell-capsule .composer-editor .ProseMirror {
-  overflow: hidden;
-  padding-block: max(0px, calc((var(--composer-chip) - var(--composer-line)) / 2));
-  font-size: var(--agent-text);
-  line-height: var(--composer-line);
-  white-space: pre;
-}
-
 /* Lines: the text wraps, and past six lines scrolls, with no scrollbar: the
-   caret and the wheel move through so few lines. */
-.composer-shell-expanded .composer-editor .ProseMirror {
-  min-height: calc(var(--composer-line) * 2);
+   caret and the wheel move through so few lines. An empty message takes one
+   line, so the box is two rows, the line and the controls. */
+.composer-shell .composer-editor .ProseMirror {
+  min-height: var(--composer-line);
   max-height: calc(var(--composer-line) * var(--composer-editor-max-lines));
   overflow-x: hidden;
   overflow-y: auto;
@@ -1513,13 +1459,12 @@ html[data-theme="light"] .file-pill {
 /* On a phone the message is typed at 16px at least, as every field there is:
    iOS zooms in on a smaller one as it takes the focus. */
 @variant phone {
-  .composer-shell-capsule .composer-editor .ProseMirror,
-  .composer-shell-expanded .composer-editor .ProseMirror {
+  .composer-shell .composer-editor .ProseMirror {
     font-size: max(16px, var(--agent-text));
   }
 }
 
-.composer-shell-expanded .composer-editor .ProseMirror::-webkit-scrollbar {
+.composer-shell .composer-editor .ProseMirror::-webkit-scrollbar {
   display: none;
 }
 
